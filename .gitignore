@@ -72,3 +72,7 @@ chrome*.log
 # the mixer/caller-voice seam. Upstream code that must not be committed to this
 # public repo — same `git add -A` hazard as the browser profile above.
 subwave-probe/
+
+# livecall harness working data - caller audio and record snapshots stay local
+tools/livecall/audio/
+tools/livecall/records-archive/

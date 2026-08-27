@@ -91,14 +91,31 @@ async def come_back(guard, session: AgentSession) -> None:
 
 
 async def _say_it(guard, session: AgentSession, nod: str) -> None:
-    try:
-        await session.generate_reply(instructions=(
+    # A hold that interrupted an ENDED conversation must not restart it: on
+    # the 2026-08-25 harness call the caller had signed off, the announcement
+    # aired, and this instruction's "pick the conversation up" produced
+    # "Alright, I'm back" to a caller who was already gone — the call ran a
+    # minute past its end. The arc (call/arc.py) is the one thing that knows,
+    # and it rides the guard the same way last_dj_line does.
+    arc = getattr(guard, "arc", None)
+    if arc is not None and arc.ending:
+        instructions = (
+            "You stepped away to let something go out on air, and the "
+            "caller had already said their goodbye before it. Do not "
+            "restart the conversation and do not say you're back: one "
+            "short, warm sign-off — thank them for calling — and use the "
+            "end_call tool in this same turn." + nod
+        )
+    else:
+        instructions = (
             "You just stepped away to let something go out on air, and "
             "you're back on the call now. Say so in one short line — "
             "\"alright, I'm back\" — and pick the conversation up where "
             "you left it, in your own voice. Don't apologise at length, "
             "don't recap, and don't start a new topic." + nod
-        ))
+        )
+    try:
+        await session.generate_reply(instructions=instructions)
     except asyncio.CancelledError:
         # The station started talking again while we were coming back. The
         # caller is still on hold and still knows it, so this simply stops —
@@ -108,6 +125,8 @@ async def _say_it(guard, session: AgentSession, nod: str) -> None:
         log.debug("could not generate the back-from-air line: %s", e)
         try:
             session.say(
+                "That's gone out — thanks for calling, take care now."
+                if arc is not None and arc.ending else
                 "Alright, I'm back — where were we?",
                 allow_interruptions=True,
                 add_to_chat_ctx=False,

@@ -89,6 +89,7 @@ from api.sounds import (
 from api.chat import handle_chat_ws
 from api.onair import (audio_janitor, handle_on_air_clip,
                        handle_on_air_dump, hush_janitor)
+from api.override import handle_override_clear, handle_override_status
 from openlines.director import run as open_lines_director
 from api.openlines import (
     handle_open_lines_close,
@@ -128,6 +129,8 @@ def build_app() -> web.Application:
     # Open Lines: the operator's card. Admin-gated in the handlers, like
     # every other route that can put words on the broadcast.
     app.router.add_get("/open-lines", handle_open_lines_status)
+    app.router.add_get("/station/override", handle_override_status)
+    app.router.add_post("/station/override/clear", handle_override_clear)
     app.router.add_post("/open-lines/open", handle_open_lines_open)
     app.router.add_post("/open-lines/close", handle_open_lines_close)
     # The operator's shelf of subjects. The edit route carries both the

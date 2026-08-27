@@ -338,6 +338,8 @@ class Handler(BaseHTTPRequestHandler):
         # heart filling and the SENT beat without a station.
         if self.path.split("?")[0] == "/player/like":
             return self._json({"ok": True, "liked": True, "count": 4})
+        if self.path.split("?")[0] == "/station/override/clear":
+            return self._json({"ok": True})
         if self.path.split("?")[0] == "/player/request":
             return self._json({"success": True, "message": "Sent to the booth"})
         # The dump card's press, from a fixture: the stub never has a live
@@ -475,6 +477,16 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/open-lines":
             return self._json(_open_lines_status())
+        # The station-override box, standing: a takeover with ~42 minutes to
+        # run, so the box paints, names the show, and the clear is pressable.
+        if path == "/station/override":
+            import time as _t
+            return self._json({
+                "active": True, "kind": "takeover", "showId": "s1",
+                "show": "The Graveyard Shift",
+                "startedAt": int(_t.time() * 1000) - 18 * 60_000,
+                "expiresAt": int(_t.time() * 1000) + 42 * 60_000,
+            })
         if path == "/open-lines/premises":
             return self._json({"items": list(OPEN_LINES_PREMISES),
                                "personas": [

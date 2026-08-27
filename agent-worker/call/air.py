@@ -698,12 +698,13 @@ class CallAgent(Agent):
     """
 
     def __init__(self, instructions: str, guard: OnAirGuard, door=None,
-                 stuck=None, withheld=None) -> None:
+                 stuck=None, withheld=None, arc=None) -> None:
         super().__init__(instructions=instructions)
         self._guard = guard
         self._door = door
         self._stuck = stuck
         self._withheld = withheld
+        self._arc = arc
 
     async def on_user_turn_completed(self, turn_ctx, new_message) -> None:
         said = getattr(new_message, "text_content", "") or ""
@@ -736,6 +737,15 @@ class CallAgent(Agent):
                 # their line would be a record of something they never said.
                 turn_ctx.add_message(role="system", content=hint)
                 log.info("the last line held the door open — steering this one")
+        # The goodbyes are done and this turn must not perform them again —
+        # the across-turn half of closing, which the door (one turn of
+        # memory) cannot hold. See call/arc.py.
+        if self._arc is not None:
+            note = self._arc.hint_for(said)
+            if note:
+                turn_ctx.add_message(role="system", content=note)
+                log.info("both sides have said goodbye — steering this turn "
+                         "toward end_call")
         # The staged track note, consumed on the same Gemini-safe insertion
         # point as the door hint — a system message on the reply path, never
         # a generated turn. See _note_track for why it is staged rather than

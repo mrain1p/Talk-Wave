@@ -212,6 +212,39 @@ class TestThePromptTeachesTheDJHowToActuallyFindARecord(unittest.TestCase):
             self.assertIn("Search the ARTIST on their own", rules)
             self.assertIn("Use what you know", rules)
 
+    def test_an_earlier_call_is_answered_from_the_station_not_from_memory(self):
+        # The Casino night's opening line: "did you recently cancel my
+        # queue?" — answered "I haven't cleared anything since we started
+        # chatting", which is per-call true and globally evasive: the DJ's
+        # memory starts at pickup and the caller's question did not. The
+        # queue and the play log are readable; the rule points there.
+        for rules in self._both(self.ON):
+            flat = " ".join(rules.split())
+            self.assertIn("your memory starts at pickup", flat)
+            self.assertIn("memory resets between calls", flat)
+            self.assertIn("the queue itself is the answer", flat)
+
+    def test_a_soundtrack_is_knowledge_the_dj_may_not_disown(self):
+        # The Casino calls (2026-08-26, three thumbs-down): asked for songs
+        # from the film, the DJ searched the film's NAME, then said "I don't
+        # have a way to pull a soundtrack" — a false claim of incapacity from
+        # a model that knew the tracklist and later named it. The honesty
+        # rules against inventing LIBRARY facts had over-generalised into
+        # denying its own knowledge; this line draws the boundary where it
+        # belongs, on both mouths.
+        for rules in self._both(self.ON):
+            # Flattened: the rule wraps mid-sentence and the claim is about
+            # the words, not the line breaks.
+            flat = " ".join(rules.split())
+            self.assertIn("a LIST you already know", flat)
+            self.assertIn("YOU are the authority", flat)
+            self.assertIn(
+                "Never tell a caller you have no way to know a soundtrack",
+                flat)
+            # The substitute-by-offer rule — the "inspired mix" was queued
+            # unasked on the real call.
+            self.assertIn("never a silent swap", flat)
+
     def test_a_described_vibe_is_routed_to_the_sound_search(self):
         for rules in self._both(self.ON):
             self.assertIn("subwave_search_by_sound", rules)

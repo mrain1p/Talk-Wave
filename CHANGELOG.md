@@ -3,6 +3,26 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.72
+
+A standing takeover finally shows its face, a finished call stays finished, and a caller asking for the songs of a film gets the DJ's real knowledge instead of an apology — the week the call door earned its thumbs-down cluster and got each failure fixed at the mechanism.
+
+### The dashboard
+
+- **A Station override box.** A takeover or genre lock outlives the call that set it, and until now no panel showed one standing. The box appears only while a pin is in force — named from the station's own schedule, a genre lock told apart from a show takeover — with one CLEAR button that resumes the weekly schedule, riding the same idempotent cancel the DJ's own tool uses.
+
+### The call, at its end
+
+- **A finished call stays finished.** Both sides say goodbye, an on-air hold lands in the middle — and the DJ used to come back with "Alright, I'm back" to a caller who had already gone, or perform the whole farewell twice. One small mechanism now owns the fact the turn loop cannot see: the goodbyes are done. The come-back line signs off instead of resuming, a second farewell is steered into ending the call, and a caller who changes their mind reopens the call cleanly.
+
+### The call, in the middle
+
+- **A soundtrack is knowledge, not a missing tool.** Asked for songs from a film, the DJ searched the film's name, then claimed it had no way to know a soundtrack — from a model that knew the tracklist and eventually named it. The rule now draws the boundary where it belongs: the library is the only authority on what the station HAS; on what music IS, the DJ is the authority. It names the records it knows, searches each title, queues what is really on the shelf and owns the gaps — and a substitute is an offer, never a silent swap.
+- **A promised queue is kept or nudged.** "I'm queueing them both for you right now" used to slip the promise guard whenever a search had just run. The guard now tells a promise to LOOK (settled by the search itself) from a promise naming the DELIVERABLE (settled only by the action landing) — and consent questions stay exempt, so confirm mode is never nudged into answering itself.
+- **An earlier call is answered from the queue, not from memory.** "Did you cancel my queue?" used to get "I haven't touched anything since we started" — true for this call, evasive about the question. The DJ now checks the queue and the play log and says what it sees, and says plainly that the booth's memory resets between calls when that matters.
+
+Every fix above was reproduced from the night's own call records, measured against the deployed brain before shipping, and pinned by a scenario in the drill so it cannot quietly regress.
+
 ## 0.98.68
 
 The station moved to SUB/WAVE 1.9.0 and this release moves with it: the DJ speaks the record's real era, learns what the booth's voice can and cannot say, and stops overselling the new-arrivals shelf. The README also slims to a landing page.

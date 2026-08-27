@@ -45,8 +45,8 @@ from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 from onair import hush
 from onair.relay import CallRelay
 
-from . import (asks as asks_mod, background, clocks, comeback, door,
-               floor as floor_mod, greeting, handoff, heard as heard_mod,
+from . import (arc as arc_mod, asks as asks_mod, background, clocks, comeback,
+               door, floor as floor_mod, greeting, handoff, heard as heard_mod,
                lifecycle, postmortem, promise_guard, stuck as stuck_mod,
                tee as tee_mod, withheld as withheld_mod)
 from .actions import CallActions
@@ -190,6 +190,11 @@ class CallSession:
         # One call's memory of whether the last line showed the caller the
         # door — see call/door.py. Cheap enough to always build.
         self.door = door.Door()
+        # And of whether the goodbyes are already said — see call/arc.py.
+        # Rides the guard so the come-back line can consult it: a hold that
+        # interrupted an ENDED conversation must not restart it.
+        self.arc = arc_mod.CallArc()
+        self.air.arc = self.arc
         # One call's memory of what the caller has already had to ask, and
         # whether they have told the DJ it has this wrong — see call/stuck.py.
         # Same cost argument as the door: a few strings and a set intersection
@@ -615,7 +620,7 @@ class CallSession:
 
         await self.session.start(
             agent=CallAgent(self.instructions, self.air, self.door,
-                            self.stuck, self.withheld),
+                            self.stuck, self.withheld, self.arc),
             room=self.ctx.room,
             # RoomOptions replaces the deprecated RoomInputOptions/
             # RoomOutputOptions pair. close_on_disconnect keeps its meaning:
@@ -673,6 +678,7 @@ class CallSession:
                                            air=self.air, floor=self.floor,
                                            asks=self.asks)
         door.attach_door_watch(session, self.door)
+        arc_mod.attach_arc_watch(session, self.arc)
         comeback.attach_air_watch(session, self.air)
         floor_mod.attach_floor_watch(session, self.floor)
         asks_mod.attach_ask_watch(session, self.asks)

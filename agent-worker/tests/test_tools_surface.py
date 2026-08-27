@@ -98,6 +98,11 @@ class TestExposedSurface(unittest.TestCase):
         "POST /open-lines/premises": "admin",
         "POST /open-lines/premises/{premise_id}": "admin",
         "DELETE /open-lines/premises/{premise_id}": "admin",
+        # The dashboard's station-override box: read what stands, clear it.
+        # Admin both ways — the read names a show before its airtime and the
+        # clear cancels an operator's (or a caller's) standing takeover.
+        "GET /station/override": "admin",
+        "POST /station/override/clear": "admin",
         "GET /settings": "admin",
         "POST /settings": "admin",
         "GET /settings/options": "admin",

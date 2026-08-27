@@ -81,6 +81,8 @@ class TestHttpSurface(_TempStores):
         ("GET", "/prompt"),
         ("GET", "/calls"),
         ("GET", "/logs"),
+        ("GET", "/station/override"),
+        ("POST", "/station/override/clear"),
     ]
     # Reachable by anyone: the widget itself, and what it reads to render.
     PUBLIC = ["/health", "/", "/call.js", "/style.css", "/embed.js"]
@@ -224,6 +226,61 @@ class TestHttpSurface(_TempStores):
         self.assertEqual(got["vary"], "Accept-Encoding")
         self.assertIsNone(got["plain_encoding"])
         self.assertGreater(got["plain_body"], 10000)
+
+
+class TestAStandingOverrideIsVisibleAndClearable(unittest.TestCase):
+    """The dashboard's station-override box: a takeover or genre lock
+    outlives the call that set it, and until this card neither panel showed
+    one standing. The pin is named from the same /schedule read that reports
+    it, the genre lock is told apart by its reserved show id, and the clear
+    relays the station's own answer rather than claiming one."""
+
+    def _payload(self, schedule):
+        import asyncio
+
+        from api import override
+
+        class _St:
+            async def schedule(self):
+                return schedule
+
+            async def aclose(self):
+                pass
+
+        orig = override.StationClient
+        override.StationClient = _St
+        try:
+            return asyncio.run(override.override_payload())
+        finally:
+            override.StationClient = orig
+
+    def test_no_override_reads_as_inactive(self):
+        self.assertEqual(self._payload({"override": None, "shows": []}),
+                         {"active": False})
+
+    def test_a_takeover_is_named_from_the_same_read(self):
+        p = self._payload({
+            "override": {"showId": "s1", "startedAt": 1, "expiresAt": 2},
+            "shows": [{"id": "s1", "name": "The Graveyard Shift"}],
+        })
+        self.assertTrue(p["active"])
+        self.assertEqual(p["kind"], "takeover")
+        self.assertEqual(p["show"], "The Graveyard Shift")
+
+    def test_the_genre_lock_is_told_apart_by_its_reserved_id(self):
+        from api import override
+        from call.tools.broadcast import GENRE_LOCK_SHOW_ID
+
+        # One mirror, two modules — they must never disagree about which
+        # show id means "lock", because clearing rides the same DELETE and
+        # the card's words hang on the distinction.
+        self.assertEqual(override.GENRE_LOCK_SHOW_ID, GENRE_LOCK_SHOW_ID)
+        p = self._payload({
+            "override": {"showId": "genre_lock", "startedAt": 1,
+                         "expiresAt": 2},
+            "shows": [],
+        })
+        self.assertEqual(p["kind"], "genre-lock")
 
 
 class TestUsageControls(unittest.TestCase):

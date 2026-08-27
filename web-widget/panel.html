@@ -406,6 +406,26 @@
               <p class="olfoot" id="olFoot">it airs on the next break · the DJ says it in its own voice</p>
             </div>
           </div>
+          <!-- Station override. A takeover or genre lock outlives the call
+               that set it, and until this card neither panel showed one
+               standing. Same box family as Open Lines above; hidden while
+               the schedule runs itself — a box saying "none" all night is
+               furniture. The clear is the same DELETE the DJ's cancel tool
+               uses, and it is idempotent at the station. -->
+          <div id="overrideLine" hidden>
+            <div class="olbox">
+              <div class="olhead">
+                <span class="olname">STATION OVERRIDE</span>
+                <span class="oltag" id="ovState">standing</span>
+              </div>
+              <div class="olbody">
+                <p class="olpremise" id="ovWhat"></p>
+                <p class="olmeta" id="ovMeta"></p>
+              </div>
+              <button type="button" class="olgo" id="ovClear">CLEAR &mdash; BACK TO THE SCHEDULE</button>
+              <p class="olfoot">set on a call or from the booth &middot; it lapses on its own when the window ends</p>
+            </div>
+          </div>
       <div class="dashgroup needs">
         <div class="dashcaption">
           <p class="tlabel">Notifications</p>
