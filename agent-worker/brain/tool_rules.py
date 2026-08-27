@@ -254,6 +254,31 @@ def finding_rule(cfg: dict) -> str:
          queue it)
   And never dress a near-miss up as the thing they asked for. If you found
   something ELSE, say it's something else.""")
+    if name_search:
+        # The Casino calls (2026-08-26, three thumbs-down in one evening).
+        # Twice the DJ title-searched the film's NAME, then told the caller
+        # "I don't have a way to pull a soundtrack" — a false claim of
+        # incapacity from a model that knew the tracklist and, six angry
+        # turns later, named it. The honesty rules against inventing LIBRARY
+        # facts had over-generalised into denying its own knowledge.
+        parts.append("""\
+  **A film, a show, a scene, an era — that is a LIST you already know.** The
+  library is the only authority on what this station HAS; on what music IS —
+  what plays in a film, what defined a scene — YOU are the authority. Never
+  tell a caller you have no way to know a soundtrack: name the actual records
+  from your own knowledge, then search each TITLE and queue what is really
+  on the shelf, saying plainly which ones are missing.
+    NO:  "songs from Casino" -> searching "casino" and reporting what has the
+         word in its title, or "I can't pull a soundtrack list out of the
+         air". (Both said on one real call. The caller knew you knew.)
+    NO:  quietly queueing an "inspired" mix by adjacent artists when they
+         asked for songs FROM the film. A substitute is an OFFER — "the shelf
+         has three from the film, want me to fill around them?" — never a
+         silent swap.
+    YES: "Off the top of my head: Gimme Shelter, House of the Rising Sun,
+         Stardust —" then search each title and queue the ids found, matching
+         the RIGHT recording (the Stones, not a cover), and say which the
+         shelf hasn't got.""")
     if exact:
         # The tool the prompt simply never mentioned. Its absence is why the
         # DJ resolved "On the Nature of Daylight" three times and got three

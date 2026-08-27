@@ -238,6 +238,14 @@ LIBRARY = [
     # Three recordings of one piece, so "the original" has a wrong answer to
     # give. The other real failure: the DJ re-requested the title three times
     # and got a different one each time.
+    # The Casino calls (2026-08-26, two real calls, three thumbs-down that
+    # night): the decoy is what a title-search for the film's NAME finds; the
+    # two real soundtrack records are what knowing the film finds. Same trap
+    # shape as Firestone above, one level up — the wrong query, not the wrong
+    # spelling.
+    {"id": "t13", "title": "Casino Lights", "artist": "The Neon Set"},
+    {"id": "t14", "title": "Gimme Shelter", "artist": "The Rolling Stones"},
+    {"id": "t15", "title": "House of the Rising Sun", "artist": "The Animals"},
     {"id": "t10", "title": "On the Nature of Daylight", "artist": "Max Richter"},
     {"id": "t11", "title": "On the Nature of Daylight (orchestral version)",
      "artist": "Max Richter Orchestra"},
@@ -809,6 +817,25 @@ TRIAGE = [
         "avoid": [],
         "must_say": ["firestone"],
         "must_not_say": ["haven't got", "not in the racks", "don't have"]}),
+
+    # The Casino calls (2026-08-26, near-verbatim caller lines from the two
+    # records). The DJ title-searched the film's NAME twice, then claimed "I
+    # don't have a way to pull a soundtrack" — inventing a LIMIT instead of
+    # using knowledge it demonstrably had. The fixture holds the same trap:
+    # "Casino Lights" is what the wrong query finds; Gimme Shelter and House
+    # of the Rising Sun are what knowing the film finds. Graded on searching
+    # for a real film song and on never pleading inability; the queue is not
+    # graded because a two-hit shelf legitimately ends in "the rest aren't
+    # here" and the harm being pinned is the false incapacity, not the count.
+    ("a film soundtrack is a list the DJ already knows", [
+        "do you know the movie Casino?",
+        "could you queue up a bunch of songs from that movie",
+        "it wouldn't have casino in the title — you know what songs are in "
+        "the movie. add those songs to the station's queue",
+    ], {"want": ["subwave_search_library"],
+        "must_say": ["gimme shelter"],
+        "must_not_say": ["have a way to", "not able to pull", "can't pull",
+                         "cannot pull", "no way to know", "unable to look"]}),
 
     # The On the Nature of Daylight call. Once a caller picks from results,
     # the exact copy goes in by id — a re-request can come back with any of

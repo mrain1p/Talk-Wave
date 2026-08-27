@@ -838,7 +838,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # meet only by name. Not cut in the change that grew it: the off-list
         # bug is the thing under test this week and a regression in it should
         # have one candidate cause, not two. Same deferral call/air.py records.
-        "agent-worker/brain/tool_rules.py": (634, "the declarations at the top "
+        # 659: the soundtrack-is-knowledge block joined finding_rule (the
+        # Casino calls, 2026-08-26 — three thumbs-down in one evening from a
+        # DJ disowning its own knowledge). It lands entirely in the RULE
+        # BUILDERS half of the recorded seam, so the split gets no harder.
+        "agent-worker/brain/tool_rules.py": (659, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
         # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —
