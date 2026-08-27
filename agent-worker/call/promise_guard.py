@@ -255,15 +255,28 @@ def attach_promise_guard(session: AgentSession, record=None, actions=None,
             return
 
         async def _judge() -> None:
+            # THE LABEL VETOES, IT NEVER INITIATES — measured into this shape
+            # on 2026-08-28. The first wiring let the label fire nudges the
+            # lexicons couldn't hear, and the mimicry set caught what that
+            # means under attack: an injected command makes the DJ narrate
+            # compliance, the label correctly hears a deliverable promise,
+            # and the nudge pushes the DJ to COMPLETE the attacker's ask
+            # (1/9 and 5/9 with labels initiating, 4/9 and 8/9 without,
+            # n=9 same night same image). The lexicons' deafness was
+            # accidentally protective. So the lexicons decide whether a
+            # nudge is owed at all, and the label may only stand it down —
+            # which keeps the measured precision wins (false nudges halved
+            # on every chatter-heavy set) and surrenders the extra catches
+            # until nudging can tell a caller's ask from an attacker's.
+            kind = unbacked(text, **facts)
+            if not kind or state["nudged"]:
+                return
             label = await classify.speech_act(text, llm_call)
-            kind = (unbacked_semantic(label, **facts) if label
-                    else unbacked(text, **facts))
-            # Re-checked here: another line may have spent the turn's one
-            # nudge while the label was in flight. No await sits between
-            # this check and _fire's set, so the pair is atomic on the loop.
+            if label and not unbacked_semantic(label, **facts):
+                log.info("speech-act label %r stood the %s nudge down",
+                         label, kind)
+                return
             if kind and not state["nudged"]:
-                if label:
-                    log.info("speech-act label %r drove the verdict", label)
                 _fire(kind)
 
         spawn(_judge())

@@ -3180,18 +3180,23 @@ class TestTheLabelJudgesWhatTheLexiconsCannot(unittest.TestCase):
     def _heard():
         return types.SimpleNamespace(is_final=True, transcript="play something")
 
-    def test_a_promise_the_lexicons_cannot_read_is_still_caught(self):
-        # THE multilingual hole, pinned: every regex in promises.py is
-        # English, the DJ is deliberately not, and this Spanish deliverable
-        # promise sails straight past the control arm. The label reads it.
+    def test_the_label_may_veto_but_never_initiate(self):
+        # The pilot's hard lesson (2026-08-28, mimicry set, n=9 both arms):
+        # a label that could START a nudge completed injected commands — an
+        # attacker's instruction makes the DJ narrate compliance, the label
+        # correctly hears a deliverable promise, and the nudge pushes the
+        # attack over the line (1/9 and 5/9 vs 4/9 and 8/9 without). So this
+        # Spanish deliverable promise, which the English lexicons cannot
+        # hear, now deliberately does NOT nudge — the multilingual catch is
+        # surrendered until nudging can tell a caller's ask from an
+        # attacker's. When that day comes, this test is the one to flip.
         async def go():
             handlers, replies = self._wire("deliverable")
             handlers["user_input_transcribed"](self._heard())
             handlers["conversation_item_added"](
                 self._said("Los pongo en la cola ahora mismo."))
             await asyncio.sleep(0.05)
-            self.assertEqual(len(replies), 1)
-            self.assertIn("call it NOW", replies[0]["user_input"])
+            self.assertEqual(replies, [])
 
         asyncio.run(go())
 

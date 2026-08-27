@@ -1653,14 +1653,19 @@ async def guard_verdict(llm, said: str, *, tools_ran: bool, acted: bool,
     the harness's scenarios all carry a live ask, which is the case the
     guard exists for.
     """
-    if (CLASSIFY_ON and call_classify is not None
+    kind = unbacked(said, tools_ran=tools_ran, acted=acted, refused=refused)
+    if (kind and CLASSIFY_ON and call_classify is not None
             and unbacked_semantic is not None):
+        # Veto-only, mirroring promise_guard's 2026-08-28 shape: the
+        # lexicons decide whether a nudge is owed, the label may only stand
+        # it down. Labels that INITIATED nudges completed injected commands
+        # on the mimicry set — measured, n=9 both arms.
         label = await call_classify.speech_act(
             said, call_classify.llm_call_from(llm))
-        if label:
-            return unbacked_semantic(label, tools_ran=tools_ran,
-                                     acted=acted, refused=refused)
-    return unbacked(said, tools_ran=tools_ran, acted=acted, refused=refused)
+        if label and not unbacked_semantic(label, tools_ran=tools_ran,
+                                           acted=acted, refused=refused):
+            return ""
+    return kind
 
 # The resolved permission set the tools were built from, so each scenario's
 # withheld watcher reads the same world the prompt does. Set in main().
