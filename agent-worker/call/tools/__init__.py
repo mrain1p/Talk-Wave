@@ -12,6 +12,7 @@ modules implement the wrappers, grouped by what they touch:
     curation    a record's standing rather than its turn: likes, never-play
     broadcast   anything that makes the on-air DJ produce sound
     control     the call itself
+    reads       now-playing and the queue, locally served where MCP is absent
     late_match  what a request does after its tool has already answered
     rows        shaping one station listing row into something a DJ can read
 
@@ -24,6 +25,7 @@ from .curation import build_curation_tools
 from .discovery import build_discovery_tools
 from .finding import apply_finder_dispatch, build_finder_tools
 from .music import build_library_tools
+from .reads import build_read_tools
 from .registry import (
     catalogue,
     effective_tools,
@@ -39,6 +41,7 @@ __all__ = [
     "build_finder_tools",
     "build_library_tools",
     "build_on_air_tools",
+    "build_read_tools",
     "catalogue",
     "effective_tools",
     "library_search_needs_mcp",

@@ -764,6 +764,84 @@ class TestEveryStationRefusalShowsTheCallerACard(unittest.TestCase):
         self.assertTrue(any(k == "unavailable" for k, _ in actions._denied))
 
 
+class TestTheTextLineCanSeeTheStation(unittest.TestCase):
+    """The 2026-08-27 text exchange, at its root: chat carries no MCP, the
+    two station reads were MCP-only, and a caller asking for "tracks like my
+    current queue" was answered from a guess by a DJ that could not look —
+    it even called subwave_station_state and got "no such tool". The local
+    twins in call/tools/reads.py serve the same names over the REST client
+    the line already holds."""
+
+    def _build(self, station, creds=True):
+        from unittest import mock
+
+        from call.tools import reads
+
+        with mock.patch.object(reads, "library_search_needs_mcp",
+                               return_value=not creds):
+            built = reads.build_read_tools({}, station)
+        return {t.info.name: t for t in built}
+
+    def test_the_two_mcp_names_are_served_locally(self):
+        class _St:
+            pass
+
+        tools = self._build(_St())
+        self.assertIn("subwave_now_playing", tools)
+        self.assertIn("subwave_station_state", tools)
+
+    def test_the_queue_reads_in_order_and_names_whose_it_is(self):
+        class _St:
+            async def state(self):
+                return {"upcoming": [
+                    {"title": "Says", "artist": "Nils Frahm"},
+                    {"title": "Stardust", "artist": "Nat King Cole"},
+                ]}
+
+        out = asyncio.run(self._build(_St())["subwave_station_state"]())
+        self.assertIn("1. ", out)
+        self.assertIn("2. ", out)
+        self.assertLess(out.index("Says"), out.index("Stardust"))
+        # The queue is shared — the DJ must know these are not all its own.
+        self.assertIn("not just this call's", out)
+
+    def test_an_empty_or_failed_read_is_unknown_not_empty(self):
+        class _St:
+            async def state(self):
+                return {}
+
+        out = asyncio.run(self._build(_St())["subwave_station_state"]())
+        self.assertIn("look the same from here", out)
+        self.assertNotIn("1. ", out)
+
+    def test_now_playing_reads_the_stations_own_key(self):
+        class _St:
+            async def now_playing(self):
+                return {"nowPlaying": {"title": "Stardust",
+                                       "artist": "Dinah Washington"}}
+
+        out = asyncio.run(self._build(_St())["subwave_now_playing"]())
+        self.assertIn("Stardust", out)
+        self.assertIn("THIS moment", out)
+
+    def test_a_blank_booth_is_not_guessed_at(self):
+        class _St:
+            async def now_playing(self):
+                return {}
+
+        out = asyncio.run(self._build(_St())["subwave_now_playing"]())
+        self.assertIn("don't guess", out)
+
+    def test_without_credentials_nothing_builds(self):
+        # /state and /now-playing are admin REST here: an uncredentialed
+        # wrapper could only ever answer nothing, and a tool that always
+        # answers nothing teaches the DJ the station is empty.
+        class _St:
+            pass
+
+        self.assertEqual(self._build(_St(), creds=False), {})
+
+
 class TestATrackAlreadyWaitingIsOfferedNotReAdded(unittest.TestCase):
     """The 2026-08-27 text exchange: the DJ picked a record the caller could
     SEE was already waiting in the queue — queued outside the call, where

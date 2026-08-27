@@ -646,6 +646,21 @@ class TestClearingARunFromTheQueue(unittest.TestCase):
         asyncio.run(names["subwave_clear_from_queue"](titles="Kim\nStan"))
         self.assertEqual(sorted(st.cancelled), ["e1", "e2"])
 
+    def test_an_artist_embedded_in_the_title_still_matches(self):
+        # 2026-08-27 text exchange: rows queued outside this sidecar carried
+        # "Artist - Title" as one title string with the artist field empty,
+        # and "clear the Nils Frahm" matched nothing while two such rows sat
+        # in plain sight — the caller had to name the titles themselves.
+        queue = [
+            {"subsonic_id": "n1", "title": "Nils Frahm - Says", "artist": ""},
+            {"subsonic_id": "x1", "title": "Two Magpies", "artist": "Fink"},
+        ]
+        st, names = self._tool(queue)
+        out = asyncio.run(
+            names["subwave_clear_from_queue"](artist="Nils Frahm"))
+        self.assertEqual(st.cancelled, ["n1"])
+        self.assertIn("1 track(s)", out)
+
     def test_a_spent_call_is_refused_before_the_station_is_touched(self):
         from call.actions import CallActions
 

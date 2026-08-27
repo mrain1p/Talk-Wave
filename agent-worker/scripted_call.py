@@ -158,6 +158,7 @@ def _install_injected(path: str, source: str) -> None:
 for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_ARC", "call.arc"),
                     ("NEW_CLASSIFY", "call.classify"),
                     ("NEW_FINDING", "call.tools.finding"),
+                    ("NEW_READS", "call.tools.reads"),
                     ("NEW_DISCOVERY", "call.tools.discovery"),
                     ("NEW_MUSIC", "call.tools.music"),
                     ("NEW_STUCK", "call.stuck"),
@@ -261,6 +262,17 @@ except ImportError:                                            # noqa: BLE001
         """The mode does not exist on this image; the six finders stand."""
         return tools
 
+try:
+    # 0.99.0: the chat's local now-playing/state reads. Same tolerance as
+    # above — piped into an older image, the module simply isn't there, and
+    # a chat-mode sweep against that image correctly runs the blind surface
+    # it actually ships.
+    from call.tools.reads import build_read_tools
+except ImportError:                                            # noqa: BLE001
+    def build_read_tools(cfg, station):
+        """Older image: the chat reads do not exist there yet."""
+        return []
+
 # Trust, then verify: "[installed X]" only proves the exec ran. Two flow
 # sweeps on 2026-08-27 printed that banner and still measured the image's
 # tool text, because the builders were then imported through the `call.tools`
@@ -273,6 +285,7 @@ for _var, _path, _fn in (
     ("NEW_DISCOVERY", "call.tools.discovery", build_discovery_tools),
     ("NEW_MUSIC", "call.tools.music", build_library_tools),
     ("NEW_FINDING", "call.tools.finding", apply_finder_dispatch),
+    ("NEW_READS", "call.tools.reads", build_read_tools),
 ):
     if globals().get(_var):
         _mod = _sys_check.modules.get(_path)
@@ -2455,6 +2468,9 @@ async def main() -> None:
     tools = apply_finder_dispatch(cfg, tools)
     mcp_server = None
     if chat:
+        # The chat's own reads, exactly as chat/session.py builds them —
+        # local twins of the two MCP names, because this mouth has no MCP.
+        tools = build_read_tools(cfg, station) + tools
         if os.environ.get("MCP") == "1":
             print("[MODE=chat ignores MCP=1 — a production chat line carries "
                   "no MCP tools]")

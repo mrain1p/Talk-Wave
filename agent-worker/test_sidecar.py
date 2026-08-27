@@ -213,10 +213,12 @@ from tests.test_tools_surface import (  # noqa: F401
     TestStationWideTools,
     TestTellingTheCallerWhenTheirSongPlays,
     TestTheDJDescribesRecordsItHasInformationAbout,
+    TestTheTwoMouthsShareOneSurface,
 )
 from tests.test_tools_logic import (  # noqa: F401
     TestASegmentThatStoodDownIsNotReportedAsAiring,
     TestATrackAlreadyWaitingIsOfferedNotReAdded,
+    TestTheTextLineCanSeeTheStation,
     TestAnActionReceiptPointsForward,
     TestAnUnconfirmedDeliveryDoesNotStartAClock,
     TestEveryStationRefusalShowsTheCallerACard,
@@ -308,6 +310,7 @@ from tests.test_brain import (  # noqa: F401
 )
 from tests.test_chat import (  # noqa: F401
     TestALieAfterARefusalNeverReachesTheScreen,
+    TestTheTextLineIsNotBlind,
     TestTheTextLineWritesDownWhatWentWrong,
     TestToolResultsGoBackAsText,
     TestAProviderFailureIsVisibleToTheOperator,

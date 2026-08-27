@@ -3,6 +3,21 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.99.0
+
+The last stop before 1.0, and the release where the two mouths become one instrument: the text line gets the eyes the phone always had, the one tool family it was missing, and a standing guard that keeps the two from ever silently forking again.
+
+### The text line can finally see the station
+
+- **The chat gets the two station reads, under the same names the phone knows.** The call's `now_playing` and `station_state` arrive over MCP, and the text line carries no MCP — so until now it had no eyes at all: the 2026-08-27 exchange had the DJ answering "similar to my current queue" from a guess, reaching for a state read that wasn't there, and inventing a station rule to explain a duplicate it couldn't see. Local wrappers now serve both reads over the REST client the line already holds, with the same honesty rails as every other read: an unreadable queue is unknown, never "empty".
+- **The queue read says whose queue it is.** Every caller's picks and the station's own, in order, with the DJ told to read it before promising positions or adding anything a caller asked to keep duplicate-free.
+- **Likes and never-play reach the text line too.** The curation family was built for calls and never wired into chat — no reason recorded, just a fork nobody decided. A typed "I love this one" now counts the same as a spoken one.
+
+### The two mouths may only differ on purpose
+
+- **A parity guard now measures both surfaces and fails on any unexplained difference.** Same shape as the size ledgers: every tool family one mouth has and the other lacks needs a written reason beside it, and every MCP read needs a chat story — a local twin, or a justification in the table. Adding a tool to one mouth and not the other is now a red test, not a quiet drift.
+- **Clearing by artist matches rows that carry the artist in the title.** Tracks queued from outside the sidecar often arrive as one "Artist - Title" string with the artist field empty; "clear the Nils Frahm" used to match nothing while two such rows sat in plain sight.
+
 ## 0.98.74
 
 The flow suite's own findings get worked: a delegated choice becomes the DJ's to make, a landed action keeps the call moving, and a real text exchange from the same evening is fixed at the mechanism. The drill also learns to catch itself measuring the wrong thing — twice.

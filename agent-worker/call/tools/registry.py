@@ -60,9 +60,13 @@ TOOLS: tuple[Tool, ...] = (
     Tool("subwave_health", READ, MCP,
          "Is the station up and on air."),
     Tool("subwave_now_playing", READ, MCP,
-         "The current track, station context and listener count."),
+         "The current track, station context and listener count.",
+         "On the text line, which carries no MCP, a local wrapper serves "
+         "the same name over REST — see call/tools/reads.py."),
     Tool("subwave_station_state", READ, MCP,
-         "The upcoming queue, recent history and the booth log."),
+         "The upcoming queue, recent history and the booth log.",
+         "On the text line, which carries no MCP, a local wrapper serves "
+         "the same name over REST — see call/tools/reads.py."),
     Tool("subwave_schedule", READ, MCP,
          "Personas, shows and the weekly schedule.",
          "How much of this reaches the prompt is set under Station awareness."),
