@@ -208,6 +208,13 @@ TOOLS: tuple[Tool, ...] = (
          "show, so \"did my song play?\" from someone ringing back has a real "
          "answer instead of a guess.",
          needs_station_admin=True),
+    Tool("subwave_booth_log", READ, LOCAL,
+         "What this booth itself changed on the station lately, across calls.",
+         "The sidecar's own 48-hour ledger of station-changing actions — "
+         "queued, pulled, skipped, taken over — attributed by door tier, "
+         "never by name, and carrying no caller content. It is how \"did "
+         "you cancel my queue?\" from a caller ringing back gets a lookup "
+         "instead of a per-call evasion. No station read, no credentials."),
     Tool("subwave_like_track", "allow_favorite", LOCAL,
          "Adds a like to the track playing now — the same heart a listener taps.",
          "No station credentials needed, and the lowest-harm action here: a "

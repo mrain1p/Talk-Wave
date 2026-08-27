@@ -170,6 +170,59 @@ class Asks:
         return [what for when, what in self.asked if when > latest]
 
 
+#: The word in the DJ's ear when a caller's ask has outlived the turn it
+#: arrived in. Same delivery and same honesty rule as the door and arc
+#: hints: it names what to DO — finish the task or say where it stands —
+#: because "you left something hanging" with no direction is just nagging.
+COMEBACK_HINT = (
+    "[Note to you, not from the caller: they asked for \"{want}\" and it "
+    "has not happened yet. Come back to it NOW — do the task, or say "
+    "honestly where it stands — without making them ask again.]"
+)
+
+
+class OpenAskComeback:
+    """The director's second slice: the ask that survives an interruption.
+
+    The arc taught the turn loop one across-turn fact — the call is over.
+    This is the next one: THE CALLER IS STILL OWED SOMETHING. Today an open
+    ask survives in the ledger, but nothing drives the DJ back to it after
+    a hold, a segment, or a tangent; on the flow set's scenario the caller
+    has to re-ask, and on real calls they do too. This fires one steer when
+    an ask has outlived the caller turn it arrived in with no action landed
+    — once per ask, never while the goodbyes are done, and it stands down
+    the moment an action answers.
+
+    Turn-counted, not clock-timed, on purpose: the drill's turns take
+    however long the model takes, so a wall-clock threshold would make the
+    measurement flaky while changing nothing for real calls.
+    """
+
+    def __init__(self, asks: Asks) -> None:
+        self.asks = asks
+        self._turns_open = 0
+        self._hinted: set[str] = set()
+        # Read by the record, like door.corrections and the arc's: how often
+        # the DJ had to be steered back to what the caller came for.
+        self.corrections = 0
+
+    def hint_for(self, caller_text: str, acted_at) -> str:
+        open_asks = self.asks.unanswered(list(acted_at or []))
+        if not open_asks:
+            self._turns_open = 0
+            return ""
+        self._turns_open += 1
+        want = str(open_asks[-1])[:120]
+        # Turn one is the ask itself — the model is presumably acting on it
+        # right now, and steering it there would be noise. Turn two with
+        # nothing landed is the caller waiting.
+        if self._turns_open < 2 or want in self._hinted:
+            return ""
+        self._hinted.add(want)
+        self.corrections += 1
+        return COMEBACK_HINT.format(want=want)
+
+
 def attach_ask_watch(session, asks: Asks) -> None:
     """Listen to the caller, and only to the caller."""
 

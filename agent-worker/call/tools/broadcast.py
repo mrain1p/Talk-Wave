@@ -201,6 +201,10 @@ def build_on_air_tools(
             waited = await wait_for_clear_air()
             result = await station.run_skill(name)
             if not result.get("ok"):
+                # The receipt channel's refusal half: the caller sees the card
+                # whatever the DJ's prose does with it.
+                actions.denied("refused",
+                               result.get("error") or "the station refused it")
                 return (
                     f"That segment didn't run: "
                     f"{result.get('error') or 'the station refused it'}. "
@@ -262,6 +266,10 @@ def build_on_air_tools(
             waited = await wait_for_clear_air()
             result = await station.dj_segment(type)
             if not result.get("ok"):
+                # The receipt channel's refusal half: the caller sees the card
+                # whatever the DJ's prose does with it.
+                actions.denied("refused",
+                               result.get("error") or "the station refused it")
                 return (
                     f"That segment didn't fire: "
                     f"{result.get('error') or 'the station refused it'}. "
@@ -286,6 +294,10 @@ def build_on_air_tools(
                 return actions.refusal()
             result = await station.skip_track()
             if not result.get("ok"):
+                # The receipt channel's refusal half: the caller sees the card
+                # whatever the DJ's prose does with it.
+                actions.denied("refused",
+                               result.get("error") or "the station refused it")
                 return (
                     f"That didn't skip: "
                     f"{result.get('error') or 'the station refused it'}. "
@@ -310,10 +322,13 @@ def build_on_air_tools(
         @lk_llm.function_tool(name="subwave_takeover_show")
         async def takeover_show(show: str, minutes: int = 60) -> str:
             """Put a different show on air, ahead of the schedule, for a while.
-            `show` is the show's name as the caller said it. `minutes` defaults
-            to an hour — pass more ONLY if they asked for longer. This changes
-            what EVERYONE hears, not just this caller, and it outlasts the
-            call, so use it when they have actually asked for it."""
+            THIS is the tool for "change the DJ", "put Wade on", "switch to
+            the jazz show" — a show change is never a song request. `show` is
+            the show's name as the caller said it (a DJ's name finds their
+            show). `minutes` defaults to an hour — pass more ONLY if they
+            asked for longer. This changes what EVERYONE hears, not just this
+            caller, and it outlasts the call, so use it when they have
+            actually asked for it."""
             if actions.at_limit():
                 return actions.refusal()
 
@@ -348,6 +363,10 @@ def build_on_air_tools(
                          min(StationClient.TAKEOVER_MAX_MINUTES, asked))
             result = await station.pin_show(picked.get("id"), window)
             if not result.get("ok"):
+                # The receipt channel's refusal half: the caller sees the card
+                # whatever the DJ's prose does with it.
+                actions.denied("refused",
+                               result.get("error") or "the station refused it")
                 return (
                     f"That takeover didn't go through: "
                     f"{result.get('error') or 'the station refused it'}. "
@@ -401,6 +420,10 @@ def build_on_air_tools(
                 return actions.refusal()
             result = await station.clear_pinned_show()
             if not result.get("ok"):
+                # The receipt channel's refusal half: the caller sees the card
+                # whatever the DJ's prose does with it.
+                actions.denied("refused",
+                               result.get("error") or "the station refused it")
                 return (
                     f"That didn't cancel: "
                     f"{result.get('error') or 'the station refused it'}. "
@@ -454,6 +477,10 @@ def build_on_air_tools(
                     "queue records in that style one at a time."
                 )
             if not result.get("ok"):
+                # The receipt channel's refusal half: the caller sees the card
+                # whatever the DJ's prose does with it.
+                actions.denied("refused",
+                               result.get("error") or "the station refused it")
                 return (
                     f"That genre lock didn't go through: "
                     f"{result.get('error') or 'the station refused it'}. "
@@ -509,6 +536,10 @@ def build_on_air_tools(
                 )
             result = await station.clear_pinned_show()
             if not result.get("ok"):
+                # The receipt channel's refusal half: the caller sees the card
+                # whatever the DJ's prose does with it.
+                actions.denied("refused",
+                               result.get("error") or "the station refused it")
                 return (
                     f"That didn't lift: "
                     f"{result.get('error') or 'the station refused it'}. "

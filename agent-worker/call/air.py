@@ -683,8 +683,8 @@ class OnAirGuard(AirVerdict):
 
 class CallAgent(Agent):
     """The caller's DJ, with two additions: its replies wait for quiet air, and
-    a turn that showed the caller the door gets one word in its ear before the
-    next one.
+    the call's guards get one word in its ear before the next line — see
+    call/state.py for which guards, and in what order.
 
     Holding here rather than dropping input is deliberate. The caller's words
     are already transcribed and in the context by this point — only the REPLY
@@ -697,55 +697,29 @@ class CallAgent(Agent):
     not transfer.
     """
 
-    def __init__(self, instructions: str, guard: OnAirGuard, door=None,
-                 stuck=None, withheld=None, arc=None) -> None:
+    def __init__(self, instructions: str, guard: OnAirGuard,
+                 state=None) -> None:
         super().__init__(instructions=instructions)
         self._guard = guard
-        self._door = door
-        self._stuck = stuck
-        self._withheld = withheld
-        self._arc = arc
+        # The call's ConversationState (call/state.py) — the guards, their
+        # standing order, and their log lines, consulted as one object where
+        # this method used to consult four by hand.
+        self._state = state
 
     async def on_user_turn_completed(self, turn_ctx, new_message) -> None:
         said = getattr(new_message, "text_content", "") or ""
-        # Asked-again and told-you-are-wrong, on the same insertion point and
-        # for the same reason as the door hint: a caller who has repeated
-        # themselves needs the NEXT line to be different, and nothing that
-        # fires after the line has committed can do that. See call/stuck.py.
-        if self._stuck is not None:
-            note = self._stuck.hint_for(said)
-            if note:
-                turn_ctx.add_message(role="system", content=note)
-                log.info("the caller has asked this before — steering this turn")
-        # Asked for something this line's settings withhold: the caller gets
-        # the denied card, the DJ gets the truth before it can invent a
-        # station fault. Same insertion point, same reason. See
-        # call/withheld.py.
-        if self._withheld is not None:
-            note = self._withheld.hint_for(said)
-            if note:
-                turn_ctx.add_message(role="system", content=note)
-                log.info("the caller asked for a withheld capability — "
-                         "carding and steering this turn")
-        if self._door is not None:
-            hint = self._door.hint_for(said)
-            if hint:
-                # A system message at the tail, which is how the plugins deliver
-                # per-turn instructions and how the harness feeds the idle
-                # ladder. Not appended to the caller's own message: that text
-                # reaches the written transcript, and a note from us inside
-                # their line would be a record of something they never said.
-                turn_ctx.add_message(role="system", content=hint)
-                log.info("the last line held the door open — steering this one")
-        # The goodbyes are done and this turn must not perform them again —
-        # the across-turn half of closing, which the door (one turn of
-        # memory) cannot hold. See call/arc.py.
-        if self._arc is not None:
-            note = self._arc.hint_for(said)
-            if note:
-                turn_ctx.add_message(role="system", content=note)
-                log.info("both sides have said goodbye — steering this turn "
-                         "toward end_call")
+        # The call's guards, consulted in their standing order — stuck, then
+        # withheld, then door, then arc; call/state.py holds the order and
+        # says why it is load-bearing. Every note lands as a system message
+        # at the tail, which is how the plugins deliver per-turn instructions
+        # and how the harness feeds the idle ladder. Not appended to the
+        # caller's own message: that text reaches the written transcript, and
+        # a note from us inside their line would be a record of something
+        # they never said.
+        for log_line, note in (self._state.hints_for(said)
+                               if self._state is not None else []):
+            turn_ctx.add_message(role="system", content=note)
+            log.info(log_line)
         # The staged track note, consumed on the same Gemini-safe insertion
         # point as the door hint — a system message on the reply path, never
         # a generated turn. See _note_track for why it is staged rather than

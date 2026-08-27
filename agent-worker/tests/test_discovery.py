@@ -181,19 +181,27 @@ class TestDiscoveryToolsRideTheirSwitches(unittest.TestCase):
     given and tells the caller what the failure implies."""
 
     def test_each_tool_needs_its_own_permission(self):
-        self.assertEqual(sorted(_build({}, _Station())), [])
+        # The booth log is the one credential-free READ in the family: the
+        # sidecar's own day-log, built whatever the switches say, because a
+        # caller can always ask what an earlier call did.
+        self.assertEqual(sorted(_build({}, _Station())),
+                         ["subwave_booth_log"])
         self.assertEqual(
             sorted(_build({"allow_sound_search": "open"}, _Station())),
-            ["subwave_more_like_this", "subwave_search_by_sound"])
+            ["subwave_booth_log", "subwave_more_like_this",
+             "subwave_search_by_sound"])
         self.assertEqual(
             sorted(_build({"allow_library_search": "open"}, _Station())),
-            ["subwave_already_played", "subwave_browse_library",
-             "subwave_station_favourites"])
+            ["subwave_already_played", "subwave_booth_log",
+             "subwave_browse_library", "subwave_station_favourites"])
 
-    def test_no_station_credentials_means_no_tools_at_all(self):
-        # Every endpoint behind these is admin-only, so without credentials
-        # they could only ever fail — and a tool that always fails teaches the
-        # DJ that the library is empty.
+    def test_no_station_credentials_means_no_station_tools_at_all(self):
+        # Every STATION endpoint behind these is admin-only, so without
+        # credentials they could only ever fail — and a tool that always
+        # fails teaches the DJ that the library is empty. The booth log is
+        # the one survivor by design: it reads the sidecar's own day-log
+        # file, needs nothing from the station, and a locked-down line can
+        # still be asked what an earlier call did.
         from unittest import mock
 
         import station_config
@@ -204,7 +212,8 @@ class TestDiscoveryToolsRideTheirSwitches(unittest.TestCase):
                                return_value=("", "")):
             built = discovery.build_discovery_tools(ALL_ON, _Station(),
                                                     CallActions(5))
-        self.assertEqual(built, [])
+        self.assertEqual([t.info.name for t in built],
+                         ["subwave_booth_log"])
 
     def test_looking_is_free(self):
         # Reads must not spend the caller's action budget: a DJ that has to

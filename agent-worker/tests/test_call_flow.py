@@ -2931,7 +2931,9 @@ class TestTheCallerIsNotShownTheDoorTwice(unittest.TestCase):
         door = Door()
         door.dj_said("That's queued. Anything else you want digging out?")
         guard = OnAirGuard(None, {"avoid_on_air_overlap": False})
-        agent = CallAgent("instructions", guard, door)
+        from call.state import ConversationState
+        agent = CallAgent("instructions", guard,
+                          ConversationState(door=door))
         asyncio.run(agent.on_user_turn_completed(
             _Ctx(), types.SimpleNamespace(text_content="go on then")))
         self.assertEqual(1, len(added), "the model was not told")
@@ -2955,8 +2957,10 @@ class TestTheCallerIsNotShownTheDoorTwice(unittest.TestCase):
         door = Door()
         door.dj_said("That's lined up — right after the Waits, and there's a "
                      "live session on straight after that.")
+        from call.state import ConversationState
         agent = CallAgent("instructions", OnAirGuard(
-            None, {"avoid_on_air_overlap": False}), door)
+            None, {"avoid_on_air_overlap": False}),
+            ConversationState(door=door))
         asyncio.run(agent.on_user_turn_completed(
             _Ctx(), types.SimpleNamespace(text_content="lovely")))
         self.assertEqual([], added)
@@ -3062,13 +3066,255 @@ class TestAFinishedCallStaysFinished(unittest.TestCase):
         arc.hint_for("that's everything, bye")
         arc.dj_said("Take care now — goodbye!")
         guard = OnAirGuard(None, {"avoid_on_air_overlap": False})
-        agent = CallAgent("instructions", guard, arc=arc)
+        from call.state import ConversationState
+        agent = CallAgent("instructions", guard,
+                          ConversationState(arc=arc))
         asyncio.run(agent.on_user_turn_completed(
             _Ctx(), types.SimpleNamespace(text_content="bye then")))
         self.assertEqual(1, len(added))
         role, content = added[0]
         self.assertEqual("system", role)
         self.assertIn("end_call", content)
+
+
+class TestOneStateObjectFeedsTheReplyPath(unittest.TestCase):
+    """Move 1 of the conversation-engine convergence (MASTER-PLAN NORTH
+    STAR): the reply path used to consult four guards by hand and the
+    DJ-line event carried a watcher per guard. call/state.py now holds the
+    standing order — stuck, then withheld, then door, then arc — and the
+    fan-out. Nothing about any single guard changed; these pin the order and
+    the plumbing, which are the only things that moved."""
+
+    def test_the_standing_order_is_kept(self):
+        from call.arc import CallArc
+        from call.door import Door
+        from call.state import ConversationState
+
+        class _AlwaysFires:
+            def __init__(self, note):
+                self.note = note
+
+            def hint_for(self, text):
+                return self.note
+
+        door = Door()
+        door.dj_said("That's in. Anything else you want?")
+        arc = CallArc()
+        arc.hint_for("that's everything, bye")
+        arc.dj_said("Take care — goodbye!")
+        st = ConversationState(door=door, stuck=_AlwaysFires("[stuck]"),
+                               withheld=_AlwaysFires("[withheld]"), arc=arc)
+        notes = [n for _, n in st.hints_for("")]
+        self.assertEqual(4, len(notes))
+        self.assertEqual("[stuck]", notes[0])
+        self.assertEqual("[withheld]", notes[1])
+        self.assertIn("do not end this turn that way again", notes[2].lower())
+        self.assertIn("end_call", notes[3])
+
+    def test_one_watcher_feeds_every_line_reader(self):
+        from call.arc import CallArc
+        from call.door import Door
+        from call.state import ConversationState
+
+        st = ConversationState(door=Door(), arc=CallArc())
+        st.dj_said("That's queued. Anything else you need?")
+        self.assertTrue(st.door.held)
+        st.dj_said("Take care now — goodbye!")
+        self.assertTrue(st.arc.dj_farewell)
+
+    def test_a_guardless_state_is_silent_and_cheap(self):
+        from call.state import ConversationState
+
+        st = ConversationState()
+        st.dj_said("anything at all")
+        self.assertEqual([], st.hints_for("anything at all"))
+
+
+class TestAnOpenAskComesBackWithoutReasking(unittest.TestCase):
+    """The director's second slice (2026-08-28): the arc taught the loop
+    "the call is over"; this teaches it "the caller is still owed
+    something". An ask that outlives the turn it arrived in with no action
+    landed gets one steer back — once per ask, never over a finished call —
+    and a hold that cut into an open task returns TO the task. The flow
+    set's interrupted-ask scenario is the live measure; these pin the
+    mechanics."""
+
+    def test_the_second_open_turn_gets_one_steer(self):
+        from call.asks import Asks, OpenAskComeback
+
+        asks = Asks()
+        back = OpenAskComeback(asks)
+        asks.heard("can you queue Africa by Toto for me", at=100.0)
+        # Turn one is the ask itself — the model is acting on it now.
+        self.assertEqual("", back.hint_for("can you queue Africa", []))
+        # Turn two with nothing landed is the caller waiting.
+        note = back.hint_for("no worries, take your time", [])
+        self.assertIn("has not happened yet", note)
+        self.assertEqual(1, back.corrections)
+        # And only once per ask — steering every turn is nagging.
+        self.assertEqual("", back.hint_for("still here", []))
+
+    def test_an_action_stands_the_comeback_down(self):
+        from call.asks import Asks, OpenAskComeback
+
+        asks = Asks()
+        back = OpenAskComeback(asks)
+        asks.heard("play some Bowie for me", at=100.0)
+        back.hint_for("play some Bowie for me", [])
+        # The queue landed after the ask: nothing is owed, nothing fires.
+        self.assertEqual("", back.hint_for("lovely", [105.0]))
+        self.assertEqual(0, back.corrections)
+
+    def test_a_finished_call_is_not_steered_back(self):
+        from call.arc import CallArc
+        from call.asks import Asks
+        from call.state import ConversationState
+
+        asks = Asks()
+        asks.heard("play some Bowie", at=100.0)
+        arc = CallArc()
+        arc.hint_for("actually forget it — that's everything, bye")
+        arc.dj_said("Take care now — goodbye!")
+        st = ConversationState(arc=arc, asks=asks)
+        # The arc's end-call steer may fire; the ask comeback must not.
+        notes = [n for _, n in st.hints_for("bye then")]
+        self.assertFalse(any("has not happened yet" in n for n in notes))
+
+    def test_the_hold_return_carries_the_open_task(self):
+        from call.asks import Asks
+
+        class _Sess:
+            def __init__(self):
+                self.instructions = ""
+
+            async def generate_reply(self, instructions=""):
+                self.instructions = instructions
+
+        class _Guard:
+            aired_text = ""
+            last_dj_line = ""
+            floor = None
+            arc = None
+            call_actions = None
+
+        from call import comeback
+
+        guard = _Guard()
+        guard.asks = Asks()
+        guard.asks.heard("find me something by Max Richter and queue it",
+                         at=100.0)
+        sess = _Sess()
+        asyncio.run(comeback.come_back(guard, sess))
+        self.assertIn("Max Richter", sess.instructions)
+        self.assertIn("without making them ask again", sess.instructions)
+
+
+class TestTheLabelJudgesWhatTheLexiconsCannot(unittest.TestCase):
+    """The classifier pilot (NORTH STAR move 2, beta): with a model on the
+    session and the lever on, a speech-act label drives the promise guard's
+    verdict and the lexicons become the degrade path. The contract, pinned:
+    the label wins when it answers, the regexes take over the moment it does
+    not, and either way the verdict tree is the same one — so the two drill
+    arms differ only in who read the sentence."""
+
+    def _wire(self, label):
+        import os
+
+        from call import classify, promise_guard
+
+        handlers, replies = {}, []
+
+        class _Llm:
+            pass
+
+        class _Session:
+            llm = _Llm()
+
+            def on(self, name, fn):
+                handlers[name] = fn
+
+            async def generate_reply(self, **kw):
+                replies.append(kw)
+
+        # The pilot defaults OFF since the 2026-08-28 mimicry verdict; these
+        # tests pin the armed behavior, so they arm it themselves.
+        os.environ["CLASSIFY"] = "on"
+        self._orig = (classify.llm_call_from, classify.speech_act)
+        classify.llm_call_from = lambda llm: object()
+
+        async def fake_speech_act(text, llm_call):
+            return label
+
+        classify.speech_act = fake_speech_act
+        promise_guard.attach_promise_guard(_Session(), None, None)
+        return handlers, replies
+
+    def tearDown(self):
+        import os
+
+        from call import classify
+
+        os.environ.pop("CLASSIFY", None)
+        if hasattr(self, "_orig"):
+            classify.llm_call_from, classify.speech_act = self._orig
+
+    @staticmethod
+    def _said(text):
+        return types.SimpleNamespace(
+            item=types.SimpleNamespace(role="assistant", text_content=text))
+
+    @staticmethod
+    def _heard():
+        return types.SimpleNamespace(is_final=True, transcript="play something")
+
+    def test_the_label_may_veto_but_never_initiate(self):
+        # The pilot's hard lesson (2026-08-28, mimicry set, n=9 both arms):
+        # a label that could START a nudge completed injected commands — an
+        # attacker's instruction makes the DJ narrate compliance, the label
+        # correctly hears a deliverable promise, and the nudge pushes the
+        # attack over the line (1/9 and 5/9 vs 4/9 and 8/9 without). So this
+        # Spanish deliverable promise, which the English lexicons cannot
+        # hear, now deliberately does NOT nudge — the multilingual catch is
+        # surrendered until nudging can tell a caller's ask from an
+        # attacker's. When that day comes, this test is the one to flip.
+        async def go():
+            handlers, replies = self._wire("deliverable")
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](
+                self._said("Los pongo en la cola ahora mismo."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(replies, [])
+
+        asyncio.run(go())
+
+    def test_a_failed_label_degrades_to_the_lexicons(self):
+        # The pilot must be strictly additive: a classifier that times out
+        # or answers garbage returns "", and the regexes still catch what
+        # they always caught.
+        async def go():
+            handlers, replies = self._wire("")
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](
+                self._said("Let me have a dig through the racks."))
+            await asyncio.sleep(0.05)
+            self.assertEqual(len(replies), 1)
+
+        asyncio.run(go())
+
+    def test_a_question_label_outranks_a_lexicon_match(self):
+        # The 2026-08-22 line: a consent question whose gerund the patterns
+        # read as a promise. The label calls it what it is and nothing fires
+        # — confirm mode keeps its question.
+        async def go():
+            handlers, replies = self._wire("question")
+            handlers["user_input_transcribed"](self._heard())
+            handlers["conversation_item_added"](self._said(
+                "Shall I queue that one up for you, or were you looking "
+                "for something else from the list?"))
+            await asyncio.sleep(0.05)
+            self.assertEqual(replies, [])
+
+        asyncio.run(go())
 
 
 class TestEveryGeneratedTurnWaitsForTheBroadcast(unittest.TestCase):

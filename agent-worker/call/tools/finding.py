@@ -59,6 +59,15 @@ ROUTES: dict[str, str] = {
     "history": "subwave_already_played",
 }
 
+#: route_for's own keyword set, for callers that must filter a find_music
+#: argument dict down to the router's fields — the drill's C.5 A/B credits
+#: the routed tool from the model's find_music arguments, and re-listing
+#: these there would be the drift this module exists to prevent.
+ROUTE_FIELDS = frozenset((
+    "named_track", "artist", "mood", "genre", "energy", "vocal",
+    "year_from", "year_to", "sounds_like", "like_whats_on", "like_track_id",
+    "already_played", "let_you_pick"))
+
 #: What the receipt says a route means, in words the DJ can reuse out loud.
 SHELF: dict[str, str] = {
     "name": "a name search",

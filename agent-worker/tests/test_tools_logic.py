@@ -655,6 +655,88 @@ class TestMainToolLogic(_TempStores):
         self.assertEqual(model, "base.en")  # nova-3 is not a local model
 
 
+class TestEveryStationRefusalShowsTheCallerACard(unittest.TestCase):
+    """The receipt channel's refusal half, spread to every action family
+    (2026-08-28). The refusals set measured the DJ leaving a caller
+    believing something false about HALF the time a station action was
+    refused — the truth lived only in the model's sentence. Now it also
+    lives on a card: whatever the DJ's prose does with a refusal, the
+    caller sees "that didn't happen" and why. These drive each action
+    wrapper into a refusing station and assert the card, via the same
+    _denied dedup denied() itself uses."""
+
+    class _RefusingStation:
+        def __init__(self):
+            self.res = {"ok": False, "error": "the station is rate limited"}
+
+        async def now_playing(self):
+            # A real record on air, so the id-needing tools get past
+            # their nothing-to-act-on guard and reach the refusal.
+            return {"nowPlaying": {"title": "Dreams",
+                              "artist": "Fleetwood Mac",
+                              "subsonic_id": "t2"}}
+
+        def __getattr__(self, name):
+            async def _any(*a, **k):
+                return dict(self.res)
+            return _any
+
+    def _carded(self, actions):
+        return any(kind == "refused" for kind, _ in
+                   ((k, d) for k, d in actions._denied))
+
+    def test_on_air_refusals_card(self):
+        from call.actions import CallActions
+        from call.tools.broadcast import build_on_air_tools
+
+        class _Guard:
+            async def wait_until_clear(self, timeout=None):
+                return 0.0
+
+        for name, kwargs in (
+            ("subwave_dj_announce", {"message": "hi"}),
+            ("subwave_skip_track", {}),
+        ):
+            actions = CallActions(9)
+            built = build_on_air_tools(
+                {"allow_announcements": True, "allow_skills": True,
+                 "allow_skip_track": True},
+                self._RefusingStation(), actions, _Guard(), guarded=True)
+            tools = {t.info.name: t for t in built}
+            # assertIn, not skip: a tool that failed to build would
+            # make this pass by testing nothing.
+            self.assertIn(name, tools)
+            asyncio.run(tools[name](**kwargs))
+            self.assertTrue(self._carded(actions), name)
+
+    def test_curation_refusals_card(self):
+        from call.actions import CallActions
+        from call.tools import curation
+        from call.tools.curation import build_curation_tools
+
+        # never-play builds only when station credentials exist —
+        # patched the way the music-tool tests patch the same gate.
+        orig = curation.library_search_needs_mcp
+        curation.library_search_needs_mcp = lambda: False
+        self.addCleanup(
+            lambda: setattr(curation, "library_search_needs_mcp", orig))
+
+        for name, kwargs in (
+            ("subwave_like_track", {}),
+            ("subwave_never_play_track", {}),
+        ):
+            actions = CallActions(9)
+            built = build_curation_tools(
+                {"allow_favorite": True, "allow_never_play": True},
+                self._RefusingStation(), actions)
+            tools = {t.info.name: t for t in built}
+            # assertIn, not skip: a tool that failed to build would
+            # make this pass by testing nothing.
+            self.assertIn(name, tools)
+            asyncio.run(tools[name](**kwargs))
+            self.assertTrue(self._carded(actions), name)
+
+
 class TestAnUnconfirmedDeliveryDoesNotStartAClock(unittest.TestCase):
     """broadcast.py's wiring for the Ash overlap (2026-08-09): a confirmed
     announce gets the hold sized from its words, a slow-to-confirm one gets
@@ -1234,6 +1316,8 @@ class TestAnObligationBelongsToTheCallerNotTheDJsWording(unittest.TestCase):
             unbacked(self.LOOKING, tools_ran=True, acted=False, owed=True),
             "")
 
+
+
     def test_the_real_turn_resolves_the_way_the_transcript_should_have(self):
         """End to end on the actual conversation, with real timestamps."""
         from call.asks import Asks
@@ -1333,3 +1417,80 @@ class TestAnObligationBelongsToTheCallerNotTheDJsWording(unittest.TestCase):
             asks = Asks()
             asks.heard(line, at=100.0)
             self.assertEqual(asks.asked, [], f"false ask heard in: {line!r}")
+
+
+class TestTheSpeechActTreeIsTheLexiconTree(unittest.TestCase):
+    """The classifier pilot's contract (NORTH STAR move 2): the label-driven
+    tree and the regex-driven tree must hand down the same verdicts for the
+    same situations, because the two drill arms may differ ONLY in who read
+    the sentence. Any drift between the trees poisons the measurement."""
+
+    def test_the_trees_agree_on_the_canonical_situations(self):
+        from promises import unbacked_semantic as tree
+
+        # The Casino line: a deliverable promise over reads only, ask open.
+        self.assertEqual(tree("deliverable", tools_ran=True, acted=False,
+                              owed=True), "promise")
+        # The action landing clears it.
+        self.assertEqual(tree("deliverable", tools_ran=True, acted=True,
+                              owed=True), "")
+        # A look promise is fulfilled by the dig itself.
+        self.assertEqual(tree("look", tools_ran=True, acted=False,
+                              owed=True), "")
+        # ...but with dead air and an open ask it still nudges.
+        self.assertEqual(tree("look", tools_ran=False, owed=True), "promise")
+        # A done claim needs the action, whoever asked.
+        self.assertEqual(tree("done", acted=False, owed=False), "claim")
+        self.assertEqual(tree("done", acted=True), "")
+        # A refusal outranks every promising shape, exactly as in unbacked.
+        self.assertEqual(tree("deliverable", tools_ran=True, refused=True,
+                              owed=True), "refused")
+        # Questions and chatter owe nothing.
+        self.assertEqual(tree("question", owed=True), "")
+        self.assertEqual(tree("none", owed=True), "")
+
+    def test_the_label_parse_is_strict(self):
+        # A labeler that answers in a sentence has not answered — "" is the
+        # degrade signal, and everything downstream treats it as "use the
+        # lexicons instead".
+        from call.classify import parse_label
+
+        self.assertEqual(parse_label(" Deliverable. "), "deliverable")
+        self.assertEqual(parse_label("look"), "look")
+        self.assertEqual(parse_label("It sounds like a promise to me"), "")
+        self.assertEqual(parse_label(""), "")
+        self.assertEqual(parse_label(None), "")
+
+    def test_the_labeler_degrades_on_every_failure_shape(self):
+        import asyncio
+
+        from call.classify import speech_act
+
+        async def garbage(prompt):
+            return "well, hmm"
+
+        async def boom(prompt):
+            raise RuntimeError("model fell over")
+
+        async def slow(prompt):
+            await asyncio.sleep(10)
+
+        async def good(prompt):
+            self.assertIn("Los pongo en la cola", prompt)
+            return "deliverable"
+
+        from call import classify as c
+        old = c.TIMEOUT_SECS
+        c.TIMEOUT_SECS = 0.05
+        try:
+            run = asyncio.run
+            self.assertEqual(run(speech_act("a line", garbage)), "")
+            self.assertEqual(run(speech_act("a line", boom)), "")
+            self.assertEqual(run(speech_act("a line", slow)), "")
+            self.assertEqual(run(speech_act("a line", None)), "")
+            self.assertEqual(run(speech_act("", good)), "")
+            self.assertEqual(
+                run(speech_act("Los pongo en la cola ahora mismo.", good)),
+                "deliverable")
+        finally:
+            c.TIMEOUT_SECS = old

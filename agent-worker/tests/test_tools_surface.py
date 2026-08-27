@@ -186,6 +186,7 @@ class TestExposedSurface(unittest.TestCase):
         "subwave_session": "read",
         # A read like the five above it, but served by our wrapper: the
         # station publishes lyrics over public REST, not MCP. Added 0.10.47.
+        "subwave_booth_log": "read",
         "subwave_current_lyrics": "read",
         # One way in to the six finders, behind its own switch and OFF until
         # measured (0.98.22). It routes to wrappers already built, so it can

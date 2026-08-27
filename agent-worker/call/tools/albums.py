@@ -462,6 +462,11 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
             head += f" — {length}"
         head += ". It is NOT playing yet: it lines up behind what's already queued. "
         head += _first_position(queued)
+        if refused:
+            # The receipt channel's refusal half, batch-shaped: one card
+            # naming how many the station turned away.
+            actions.denied("refused", f"{len(refused)} track(s) were "
+                           "refused by the station and not queued")
         tail = _batch_report(queued, refused, dupes, unqueued,
                              withheld=withheld, dropped=dropped)
         return (head + " " + tail).strip()
@@ -530,6 +535,11 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
                 + ". None of it is playing yet — it lines up behind what's "
                   "already queued. ")
         head += _first_position(queued)
+        if refused:
+            # The receipt channel's refusal half, batch-shaped: one card
+            # naming how many the station turned away.
+            actions.denied("refused", f"{len(refused)} track(s) were "
+                           "refused by the station and not queued")
         tail = _batch_report(queued, refused, dupes, unqueued, dropped=dropped)
         return (head + " " + tail).strip()
 

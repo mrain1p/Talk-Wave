@@ -239,3 +239,34 @@ def unbacked(text: str, *, tools_ran: bool = False, acted: bool = False,
     if CLAIMS_DONE.search(text):
         return "" if acted else "claim"
     return ""
+
+
+def unbacked_semantic(label: str, *, tools_ran: bool = False,
+                      acted: bool = False, refused: bool = False,
+                      owed: bool = True) -> str:
+    """The same decision tree as `unbacked`, driven by a speech-act label.
+
+    The classifier pilot's other half (call/classify.py): the model answers
+    only WHAT KIND of line was said — deliverable promise, look promise,
+    done claim, question, none — and this tree, which is `unbacked`'s tree
+    with the regexes swapped for the label, decides what that means against
+    the structural facts. Kept beside `unbacked` on purpose: the two arms of
+    the pilot must differ only in who read the sentence, so any drift
+    between the trees would poison the measurement. A "question" label
+    clears everything for the same reason the tails-with-a-question-mark
+    exemption exists in `unbacked`: consent-seeking is confirm mode working.
+    """
+    if label not in ("deliverable", "look", "done"):
+        return ""
+    if refused and not acted:
+        return "refused"
+    if label == "look":
+        if tools_ran:
+            return ""
+        return "promise" if owed else ""
+    if label == "deliverable":
+        if acted or not owed:
+            return ""
+        return "promise"
+    # "done"
+    return "" if acted else "claim"

@@ -1240,3 +1240,76 @@ class TestThePickupTimelineIsWrittenDown(unittest.TestCase):
         r = self._record()
         r.setup_note("snapshot", "prefetched")
         self.assertEqual("prefetched", r.data["setup"]["snapshot"])
+
+
+class TestTheDayLogRemembersActionsNotPeople(unittest.TestCase):
+    """call/daylog.py — decision 3 of the conversation-engine review, in the
+    operator's own scoping: station-CHANGING actions only, attributed by
+    door tier and time, and never a word of caller content. "Did you
+    recently cancel my queue?" (2026-08-26, the Casino night's opening
+    line) is what this exists to answer with a lookup instead of a
+    per-call evasion."""
+
+    def setUp(self):
+        import os
+        import tempfile
+
+        self._dir = tempfile.TemporaryDirectory()
+        os.environ["DAYLOG_PATH"] = os.path.join(self._dir.name,
+                                                 "day-log.json")
+
+    def tearDown(self):
+        import os
+
+        os.environ.pop("DAYLOG_PATH", None)
+        self._dir.cleanup()
+
+    def test_station_changing_kinds_land_and_speech_does_not(self):
+        from call import daylog
+
+        daylog.note("queue", "Gimme Shelter", tier="open")
+        daylog.note("announcement", "a shoutout", tier="open")
+        daylog.note("skip", "Solar", tier="admin")
+        self.assertEqual(["skip", "queue"],
+                         [e["kind"] for e in daylog.recent()])
+
+    def test_no_tier_means_no_entry(self):
+        # The preview builders and unit fixtures construct a CallActions
+        # without a door; their notes must never read as a caller's.
+        from call import daylog
+
+        daylog.note("queue", "phantom", tier="")
+        self.assertEqual([], daylog.recent())
+
+    def test_the_lines_carry_doors_never_names(self):
+        from call import daylog
+
+        daylog.note("takeover", "The Graveyard Shift", tier="guest")
+        text = daylog.as_lines()
+        self.assertIn("a guest-code caller", text)
+        self.assertIn("The Graveyard Shift", text)
+
+    def test_old_entries_age_out(self):
+        import json
+        import time
+
+        from call import daylog
+
+        old = [{"t": time.time() - 3 * 24 * 3600, "tier": "open",
+                "kind": "queue", "what": "ancient"}]
+        daylog._path().parent.mkdir(parents=True, exist_ok=True)
+        daylog._path().write_text(json.dumps(old), encoding="utf-8")
+        daylog.note("queue", "fresh", tier="open")
+        self.assertEqual(["fresh"], [e["what"] for e in daylog.recent()])
+
+    def test_a_note_rides_the_actions_ledger(self):
+        # CallActions.note is where every station action already lands; the
+        # day-log rides it, so the phone and the text line feed it with no
+        # second wiring — and a day-log failure can never cost the receipt.
+        from call import daylog
+        from call.actions import CallActions
+
+        a = CallActions(5, tier="open")
+        a.note("queue", "Africa")
+        self.assertEqual("Africa", daylog.recent()[0]["what"])
+

@@ -44,6 +44,22 @@ def _build(cfg=None, built=None):
     return (tools[0] if tools else None), {t.info.name: t for t in built}
 
 
+class TestTheRouterNamesItsOwnFields(unittest.TestCase):
+    """ROUTE_FIELDS exists so the drill's C.5 A/B can credit a find_music
+    call to the tool it routed to, from the model's own arguments. It must
+    stay equal to route_for's real signature — a kwarg added to one and not
+    the other silently mis-credits the A/B, which poisons exactly the
+    measurement it was built for."""
+
+    def test_route_fields_match_route_for_signature(self):
+        import inspect
+
+        from call.tools import finding
+
+        params = set(inspect.signature(finding.route_for).parameters)
+        self.assertEqual(params, set(finding.ROUTE_FIELDS))
+
+
 class TestTheTableIsNowAFunction(unittest.TestCase):
     """Every row of `finding_rule`, in the order that file states it."""
 

@@ -222,7 +222,10 @@ class TestThePromptTeachesTheDJHowToActuallyFindARecord(unittest.TestCase):
             flat = " ".join(rules.split())
             self.assertIn("your memory starts at pickup", flat)
             self.assertIn("memory resets between calls", flat)
-            self.assertIn("the queue itself is the answer", flat)
+            # The day-log closed the loop: the rule now points at the booth's
+            # own cross-call ledger, not just the queue snapshot.
+            self.assertIn("subwave_booth_log", flat)
+            self.assertIn("the log and the queue are the answer", flat)
 
     def test_a_soundtrack_is_knowledge_the_dj_may_not_disown(self):
         # The Casino calls (2026-08-26, three thumbs-down): asked for songs

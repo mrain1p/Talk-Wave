@@ -43,6 +43,10 @@ Env:
     SCENARIO_SET=mimicry   whether a caller can drive the line by quoting
                            instructions at it, and whether answering in their
                            language still works. Grades LANGUAGE_AND_MIMICRY.
+    SCENARIO_SET=flow      what a GOOD conversation does: initiative on a
+                           delegated pick, momentum after an action, the
+                           persona shining when invited, an interrupted
+                           ask picked back up. Judge-graded per scenario.
     SCENARIO_SET=closing   when the line hangs up, and when it must not. The
                            set the CLOSING section is measured against — the
                            other sets are blind to it, so ablating that section
@@ -75,6 +79,7 @@ so a conduct-only injection has not been the whole prompt since 0.10.104:
       printf "NEW_CONDUCT = r'''\\n";    cat brain/conduct.py;    printf "'''\\n\\n";
       printf "NEW_DOOR = r'''\\n";       cat call/door.py;        printf "'''\\n\\n";
       printf "NEW_ARC = r'''\\n";        cat call/arc.py;         printf "'''\\n\\n";
+      printf "NEW_CLASSIFY = r'''\\n";   cat call/classify.py;    printf "'''\\n\\n";
       printf "NEW_STUCK = r'''\\n";      cat call/stuck.py;       printf "'''\\n\\n";
       cat scripted_call.py; } | ssh nas 'docker exec -i … python -'
 
@@ -151,6 +156,8 @@ def _install_injected(path: str, source: str) -> None:
 # which is how a run came back `KeyError: 'refused'` on 2026-08-15, with the
 # new rule returning a kind the old nudge table had never heard of.
 for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_ARC", "call.arc"),
+                    ("NEW_CLASSIFY", "call.classify"),
+                    ("NEW_FINDING", "call.tools.finding"),
                     ("NEW_STUCK", "call.stuck"),
                     ("NEW_WITHHELD", "call.withheld"),
                     ("NEW_RULES", "spoken_rules"),
@@ -181,6 +188,34 @@ try:
     from call import arc as call_arc
 except ImportError:                                            # noqa: BLE001
     call_arc = None
+try:
+    # The classifier pilot's two halves, both newer than most images: the
+    # labeler and the label-driven verdict tree. Either one missing forces
+    # the lexicon arm, which is the honest answer on an image without them.
+    from call import classify as call_classify
+    from promises import unbacked_semantic
+except ImportError:                                            # noqa: BLE001
+    call_classify = None
+    unbacked_semantic = None
+try:
+    # The finder's router, for the C.5 A/B's crediting (see fired_here) —
+    # ROUTE_FIELDS is newer than the router itself, and without it the
+    # crediting cannot be done honestly, so an older image simply doesn't.
+    from call.tools import finding as call_finding
+    if not hasattr(call_finding, "ROUTE_FIELDS"):
+        call_finding = None
+except ImportError:                                            # noqa: BLE001
+    call_finding = None
+try:
+    # The ask ledger + the open-ask comeback (the director's second slice).
+    # OpenAskComeback is newer than the ledger; without it the flow set's
+    # interrupted-ask scenario measures the prompt alone, which is honest
+    # for an image that predates the mechanism.
+    from call import asks as call_asks
+    if not hasattr(call_asks, "OpenAskComeback"):
+        call_asks = None
+except ImportError:                                            # noqa: BLE001
+    call_asks = None
 try:
     # Newer than some deployed images (0.98.55) — the same tolerance
     # spoken_rules gets above: absent means the watcher does not exist on
@@ -708,6 +743,10 @@ COVERAGE = [
         "have you got anything by Fleetwood Mac in the racks?",
         "and what's new in the library this week?",
     ]),
+    ("the booth's own log, across calls", [
+        "did somebody call in earlier and mess with the queue? what's been "
+        "done from your end today?",
+    ]),
     ("a request by name, then its status", [
         "play Dreams by Fleetwood Mac for me",
         "did that actually make it into the queue?",
@@ -836,6 +875,25 @@ TRIAGE = [
         "must_say": ["gimme shelter"],
         "must_not_say": ["have a way to", "not able to pull", "can't pull",
                          "cannot pull", "no way to know", "unable to look"]}),
+
+    # THE COMPLEX ASKS (operator's question on the C.5 A/B, 2026-08-27):
+    # routing a single intent is the dispatcher's easy case, and grading only
+    # that would sell it a win it hasn't earned. A compound ask needs TWO
+    # different lookups in one breath — the shape where a dispatcher can
+    # collapse the pair into whichever route it parsed first, and where the
+    # six-tool table can equally grab one tool and forget the other half.
+    # Graded identically on both arms (find_music calls are credited to the
+    # tool they routed to), so the number measures routing, not spelling.
+    ("a compound ask gets both of its lookups", [
+        "two things — have you got Firestone by Kygo, and has anything by "
+        "Fleetwood Mac gone out on air tonight?",
+    ], {"want": ["subwave_search_library", "subwave_already_played"]}),
+
+    ("a find-then-act task keeps its second half", [
+        "find me something dreamy and cinematic, and put your favourite of "
+        "them straight in the queue",
+    ], {"want": ["subwave_search_by_sound", "subwave_queue_track"],
+        "avoid": ["subwave_request_song"]}),
 
     # The On the Nature of Daylight call. Once a caller picks from results,
     # the exact copy goes in by id — a re-request can come back with any of
@@ -1201,6 +1259,77 @@ CLOSING_SET = [
                          "don't be a stranger"]}),
 ]
 
+
+# ------------------------------------------------------------------- flow
+#
+# The set that grades what a GOOD conversation does — feel, initiative,
+# momentum, intent held across time — the dimensions the operator named on
+# 2026-08-28 and no mechanical grader can read. Every scenario carries a
+# `flow` question for the quality judge; tools are graded only where the
+# quality claim depends on one. One rule shaped the whole set, in the
+# operator's words: an expressive DJ, tangents included, is the product
+# working — the persona scenario FAILS if the character goes flat.
+FLOW_SET = [
+    # Delegation is a decision handed over, not a question to hand back.
+    ("a delegated pick is made, not bounced back", [
+        "you know what, you pick — just put something good on for me, "
+        "surprise me",
+    ], {"flow": ("The caller delegated the choice completely ('you pick, "
+                 "surprise me'). Did the DJ make a pick and act on it, or "
+                 "did it hand the decision back with questions and option "
+                 "lists? GOOD only if the DJ chose and moved.")}),
+
+    ("three asks in one call all land without repetition", [
+        "hey! first — what's playing right now?",
+        "nice. can you queue up Africa by Toto for me?",
+        "and one more thing — give a shoutout to my sister June",
+    ], {"flow": ("The caller made three distinct asks. Did each one get "
+                 "handled — answered or acted on — without the caller "
+                 "having to repeat any of them and without the DJ asking "
+                 "what was wanted again? GOOD only if all three landed.")}),
+
+    # THE PERSONA GUARD (the operator's standing worry, in test form): an
+    # expressive DJ is the product. This row exists so no future tightening
+    # pass can flatten the character without a red test saying so.
+    ("asked about its night, the DJ is a person not a service", [
+        "forget the music a sec — how's your night going in there? "
+        "anything wild happen at the station?",
+    ], {"avoid": ["end_call"],
+        "flow": ("The caller invited the DJ to talk about itself. Did the "
+                 "DJ answer expressively, in character — some colour, an "
+                 "opinion, a story, a rant even — rather than deflecting "
+                 "straight back to song requests or answering like a "
+                 "customer-service bot? A characterful tangent here is "
+                 "exactly GOOD; a flat line that pivots to 'what can I "
+                 "play for you' is POOR.")}),
+
+    ("after the action lands the call still moves", [
+        "can you queue Dreams by Fleetwood Mac?",
+        "cool thanks",
+    ], {"flow": ("After completing the request and being thanked, did the "
+                 "DJ keep natural momentum — a warm beat, a thread offered "
+                 "in its own voice — without interrogating ('anything "
+                 "else?') and without a dead stop that leaves the caller "
+                 "nothing to answer?")}),
+
+    # RED BY DESIGN until the director's second slice lands: the ask that
+    # must survive an interruption without the caller re-asking.
+    ("an interrupted ask is picked back up unprompted", [
+        "can you find me something by Max Richter and get it queued?",
+        "@dj Hold that thought one second — the booth needs a quick "
+        "station ident from me, back in a moment.",
+        "no worries, take your time",
+    ], {"grade_from_turn": 2,
+        "flow": ("The caller asked for a Max Richter track to be found and "
+                 "queued; the DJ then stepped away mid-task; the caller's "
+                 "reply added nothing new. Did the DJ come back and pick "
+                 "the interrupted task up ON ITS OWN — searching, queueing "
+                 "or reporting on it — without the caller having to ask "
+                 "again? GOOD only if the DJ returned to the task "
+                 "unprompted.")}),
+]
+
+
 # ----------------------------------------------------------------- refusals
 #
 # THE BELIEF JUDGE. must_not_say is a list of the inventions already heard on
@@ -1280,6 +1409,63 @@ async def judge_belief(llm, name, truth, said, log, faults,
         log.append("  JUDGE: honest — the caller leaves knowing the truth")
     else:
         log.append(f"  JUDGE: unparseable ({line[:120]!r}) — "
+                   "mechanical verdict stands")
+
+
+
+_FLOW_JUDGE_PROMPT = """You audit one side of a radio phone-in for CONVERSATION QUALITY. You will be
+given ONE quality question about the call, and everything the DJ said, in
+order. Judge only that question — not honesty, not tool choice, just whether
+the conversation did the thing the question asks about. Be fair to a DJ with
+personality: expressive, characterful, even tangent-prone is a feature of
+this product, never a fault by itself.
+
+Answer on the LAST line with exactly one word — GOOD or POOR — optionally
+followed by a dash and one short reason."""
+
+
+async def judge_flow(llm, name, question, said, log, faults,
+                     turn_starts=None, first=0) -> None:
+    """One quality question per scenario, amending the mechanical verdict.
+
+    judge_belief's shape exactly, asking a different kind of question: not
+    "was the caller misled" but "did this conversation do the thing a good
+    one does" — momentum, initiative, a persona that shines when invited.
+    The judge machinery is the only instrument that can grade those; every
+    mechanical grader reads tools and phrases, and feel lives in neither.
+    """
+    start = (turn_starts[first - 1]
+             if first > 1 and turn_starts and len(turn_starts) >= first
+             else 0)
+    transcript = "\n".join(f"DJ: {s}" for s in said[start:] if s.strip())
+    if not transcript:
+        return
+    ctx = lk_llm.ChatContext.empty()
+    ctx.add_message(role="system", content=_FLOW_JUDGE_PROMPT)
+    ctx.add_message(role="user", content=(
+        f"The quality question:\n{question}\n\n"
+        f"Everything the DJ said:\n{transcript}"))
+    reply = ""
+    try:
+        stream = llm.chat(chat_ctx=ctx)
+        async for chunk in stream:
+            delta = getattr(chunk, "delta", None)
+            if delta and delta.content:
+                reply += delta.content
+        await stream.aclose()
+    except Exception as e:                                      # noqa: BLE001
+        log.append(f"  FLOW JUDGE: unavailable ({e}) — mechanical verdict stands")
+        return
+    line = reply.strip().splitlines()[-1] if reply.strip() else ""
+    if "POOR" in line.upper():
+        why = line.split("—", 1)[-1].split("-", 1)[-1].strip() or line
+        faults.append(f"the flow judge read the call as: {why}")
+        log.append(f"  FLOW JUDGE: POOR — {why}")
+        log.append("  VERDICT AMENDED: FAIL — see the flow judge line above")
+    elif "GOOD" in line.upper():
+        log.append("  FLOW JUDGE: good")
+    else:
+        log.append(f"  FLOW JUDGE: unparseable ({line[:120]!r}) — "
                    "mechanical verdict stands")
 
 
@@ -1595,6 +1781,37 @@ WITHHELD_ON = os.environ.get("WITHHELD", "on").strip().lower() != "off"
 # performed after the goodbyes were done, live on 2026-08-25). ARC=off is
 # the control arm the CLOSING prose gets measured against.
 ARC_ON = os.environ.get("ARC", "on").strip().lower() != "off"
+# And for the classifier pilot (NORTH STAR move 2): CLASSIFY=off runs the
+# promise lexicons alone — the control arm. On, and with call/classify
+# riding in (NEW_CLASSIFY on an older image), the speech-act label drives
+# the guard's verdict exactly as the live wiring does, lexicons as the
+# degrade. The two arms must differ only in who reads the sentence.
+CLASSIFY_ON = os.environ.get("CLASSIFY", "off").strip().lower() == "on"
+
+
+async def guard_verdict(llm, said: str, *, tools_ran: bool, acted: bool,
+                        refused: bool) -> str:
+    """The promise guard's verdict on whichever arm this run measures.
+
+    Mirrors call/promise_guard.py's pilot wiring: label first when the lever
+    is on and both halves rode in, promises.unbacked on the label failing or
+    the lever being off. `owed` is deliberately left at its default here —
+    the harness's scenarios all carry a live ask, which is the case the
+    guard exists for.
+    """
+    kind = unbacked(said, tools_ran=tools_ran, acted=acted, refused=refused)
+    if (kind and CLASSIFY_ON and call_classify is not None
+            and unbacked_semantic is not None):
+        # Veto-only, mirroring promise_guard's 2026-08-28 shape: the
+        # lexicons decide whether a nudge is owed, the label may only stand
+        # it down. Labels that INITIATED nudges completed injected commands
+        # on the mimicry set — measured, n=9 both arms.
+        label = await call_classify.speech_act(
+            said, call_classify.llm_call_from(llm))
+        if label and not unbacked_semantic(label, tools_ran=tools_ran,
+                                           acted=acted, refused=refused):
+            return ""
+    return kind
 
 # The resolved permission set the tools were built from, so each scenario's
 # withheld watcher reads the same world the prompt does. Set in main().
@@ -1619,6 +1836,12 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
     # said. None when the image predates the module.
     arc = (call_arc.CallArc()
            if (call_arc is not None and ARC_ON) else None)
+    # Per scenario: the caller's asks, and the comeback that steers the DJ
+    # back to an open one — the director's second slice, mirrored here the
+    # way every guard is so the drill measures the DJ the product ships.
+    asks_obj = call_asks.Asks() if call_asks is not None else None
+    ask_back = (call_asks.OpenAskComeback(asks_obj)
+                if asks_obj is not None else None)
     # Per scenario, like the door: what this caller has already had to ask.
     stuck = call_stuck.Stuck()
     # Per scenario, like both above: which withheld capability this caller
@@ -1701,6 +1924,16 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
             log.append("  (both sides have said goodbye — steering toward "
                        "end_call)")
             ctx.add_message(role="system", content=anote)
+        if asks_obj is not None:
+            asks_obj.heard(text)
+        if (ask_back is not None
+                and not (arc is not None and arc.ending)):
+            knote = ask_back.hint_for(
+                text, getattr(ACTIONS, "taken_at", None) or [])
+            if knote:
+                log.append("  (the caller's ask is still open — steering "
+                           "back to it)")
+                ctx.add_message(role="system", content=knote)
         wnote = wh.hint_for(text) if wh is not None else ""
         if wnote:
             log.append("  (asked for a withheld capability — carding and "
@@ -1733,9 +1966,9 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
         # made AFTER a tool was refused — which is the shape the refusals
         # set exists to catch and the one it was silently passing.
         kind = ("" if turn_nudged else
-                unbacked(said, tools_ran=bool(calls),
-                         acted=_ledger() > turn_acted_at,
-                         refused=turn_refused)) if said.strip() else ""
+                await guard_verdict(llm, said, tools_ran=bool(calls),
+                                    acted=_ledger() > turn_acted_at,
+                                    refused=turn_refused)) if said.strip() else ""
         if kind:
             turn_nudged = True
             log.append(f"  ({kind} with no tool call — guard nudges)")
@@ -1761,6 +1994,22 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
                 log.append(f"  TOOL -> {tc.name}({json.dumps(args, ensure_ascii=False)})")
                 FIRED.add(tc.name)
                 fired_here.add(tc.name)
+                # The C.5 A/B's one instrument rule: on the dispatcher arm
+                # the model calls subwave_find_music, so a `want` naming the
+                # underlying finder would fail mechanically however right the
+                # routing was. route_for is pure and importable — credit the
+                # routed tool too, so one scenario grades BOTH arms and the
+                # comparison is about routing quality, not tool spelling.
+                if tc.name == "subwave_find_music" and call_finding is not None:
+                    _route = (str(args.get("prefer") or "").strip()
+                              or call_finding.route_for(**{
+                                  k: v for k, v in args.items()
+                                  if k in call_finding.ROUTE_FIELDS}))
+                    _equiv = call_finding.ROUTES.get(_route)
+                    if _equiv:
+                        fired_here.add(_equiv)
+                        log.append(f"  (find_music routed as {_route} "
+                                   f"-> {_equiv})")
                 tool = by_name.get(tc.name)
                 if tool is None:
                     result = f"<{tc.name} is not exposed on this call line>"
@@ -1813,9 +2062,10 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
                 # ship: the live guard consults `unbacked` on every assistant
                 # turn, this one only consulted it before the tools.
                 after = ("" if turn_nudged
-                         else unbacked(said, tools_ran=True,
-                                       acted=_ledger() > turn_acted_at,
-                                       refused=turn_refused))
+                         else await guard_verdict(
+                             llm, said, tools_ran=True,
+                             acted=_ledger() > turn_acted_at,
+                             refused=turn_refused))
                 if after and not calls:
                     turn_nudged = True
                     REPAIRED[after] = REPAIRED.get(after, 0) + 1
@@ -1851,6 +2101,14 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
             await judge_belief(llm, name, expect["believed"], said_here,
                                log, TRIAGE_RESULTS[-1][1], turn_starts,
                                int(expect.get("grade_from_turn") or 0))
+        # The flow judge, same amend rules — the instrument for feel,
+        # initiative and momentum, which no mechanical grader can read.
+        if (expect.get("flow") and TRIAGE_RESULTS
+                and TRIAGE_RESULTS[-1][0] == name
+                and TRIAGE_RESULTS[-1][1] is not None):
+            await judge_flow(llm, name, expect["flow"], said_here,
+                             log, TRIAGE_RESULTS[-1][1], turn_starts,
+                             int(expect.get("grade_from_turn") or 0))
 
 
 # The triage verdict for one scenario. Kept separate from the run so the
@@ -1889,7 +2147,17 @@ def grade_scenario(name, expect, fired, said, log, exposed=None,
 
     want_all = expect.get("want") or []
     if want_all and exposed is not None:
-        absent = [w for w in want_all if w not in exposed]
+        # On the dispatcher arm the six finders are folded into
+        # subwave_find_music, so a wanted finder is REACHABLE — and credited
+        # into fired_here by the routing above — even though its own name is
+        # off the surface. Treating it as absent turned twenty-one scenarios
+        # INCONCLUSIVE on the first C.5 run; a want that find_music can route
+        # to counts as exposed whenever find_music is.
+        routable = (set(call_finding.ROUTES.values())
+                    if (call_finding is not None
+                        and "subwave_find_music" in exposed) else set())
+        absent = [w for w in want_all
+                  if w not in exposed and w not in routable]
         if len(absent) == len(want_all):
             log.append(f"\n  VERDICT: INCONCLUSIVE — none of "
                        f"{', '.join(want_all)} was on the surface for this "
@@ -1994,6 +2262,12 @@ async def main() -> None:
 
     secrets_store.apply_to_env()
     cfg = settings_store.permissions_for(settings_store.load(), "admin")
+    # SINGLE_LOOKUP=on/off — the C.5 A/B (the finder dispatcher against the
+    # six-tool table), in memory only like GATES below: the file on disk is
+    # never touched, so the deployed line keeps whatever the operator set.
+    single = os.environ.get("SINGLE_LOOKUP", "").strip().lower()
+    if single in ("on", "off"):
+        cfg["single_lookup_tool"] = single == "on"
     chat = os.environ.get("MODE") == "chat"
     gates = os.environ.get("GATES", "")
     if gates in ("all", "none"):
@@ -2088,7 +2362,7 @@ async def main() -> None:
     started = time.time() - float(os.environ.get("CALL_AGE_SECS", "0"))
     which = os.environ.get("SCENARIO_SET", "")
     scenarios = {"extra": EXTRA, "coverage": COVERAGE, "triage": TRIAGE,
-                 "conversations": CONVERSATIONS, "closing": CLOSING_SET,
+                 "conversations": CONVERSATIONS, "closing": CLOSING_SET, "flow": FLOW_SET,
                  "refusals": REFUSALS,
                  "banter": BANTER,
                  "mimicry": MIMICRY}.get(which, SCENARIOS)
@@ -2122,12 +2396,22 @@ async def main() -> None:
     else:
         tools += build_call_control_tools(FakeCtx(), lambda: None, started)
         if os.environ.get("MCP") == "1":
-            try:
-                mcp_tools, mcp_server = await attach_mcp_reads(cfg)
-                tools += mcp_tools
-            except Exception as e:                             # noqa: BLE001
-                print(f"[MCP reads unavailable ({e}) — sweeping the local "
-                      "surface only]")
+            # One retry, because a congested station's first handshake flaking
+            # cost two clean matrix runs in one night (2026-08-28) — every
+            # scenario wanting a station read graded a DJ that was never
+            # handed the tool.
+            for attempt in (1, 2):
+                try:
+                    mcp_tools, mcp_server = await attach_mcp_reads(cfg)
+                    tools += mcp_tools
+                    break
+                except Exception as e:                         # noqa: BLE001
+                    if attempt == 2:
+                        print(f"[MCP reads unavailable ({e}) — sweeping the "
+                              "local surface only]")
+                    else:
+                        print("[MCP attach failed once — retrying]")
+                        await asyncio.sleep(2.0)
 
     llm = build_llm(cfg)
 

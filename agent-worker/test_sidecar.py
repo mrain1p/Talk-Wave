@@ -154,9 +154,13 @@ from tests.test_call_record import (  # noqa: F401
     TestTheCallRecordSaysWhoRang,
     TestTheRecordAndItsProblemsShareOneClock,
     TestThePickupTimelineIsWrittenDown,
+    TestTheDayLogRemembersActionsNotPeople,
 )
 from tests.test_call_flow import (  # noqa: F401
     TestAFinishedCallStaysFinished,
+    TestAnOpenAskComesBackWithoutReasking,
+    TestOneStateObjectFeedsTheReplyPath,
+    TestTheLabelJudgesWhatTheLexiconsCannot,
     TestTheStationClientOutlivesTheShutdownWork,
     TestRingingRidesTheMintsHeadStart,
     TestTheBriefingStopsBeingWrongWhenTheStationMovesOn,
@@ -213,8 +217,10 @@ from tests.test_tools_surface import (  # noqa: F401
 from tests.test_tools_logic import (  # noqa: F401
     TestASegmentThatStoodDownIsNotReportedAsAiring,
     TestAnUnconfirmedDeliveryDoesNotStartAClock,
+    TestEveryStationRefusalShowsTheCallerACard,
     TestMainToolLogic,
     TestNativeScriptDoesNotAirSilently,
+    TestTheSpeechActTreeIsTheLexiconTree,
     TestOneRequestCannotTakeTwoQueueSlots,
     TestTakingAHeartBackOff,
 )
@@ -243,6 +249,7 @@ from tests.test_prompt_budget import (  # noqa: F401
 from tests.test_finding import (  # noqa: F401
     TestItCannotReachPastTheSettings,
     TestItIsAModeNotAnExtraTool,
+    TestTheRouterNamesItsOwnFields,
     TestNoCapabilityIsLost,
     TestNoDiscretionIsLost,
     TestTheDJIsToldWhichShelfItCameOff,
@@ -298,6 +305,7 @@ from tests.test_brain import (  # noqa: F401
     TestTheDrillsMcpReadsKeepUpWithTheRegistry,
 )
 from tests.test_chat import (  # noqa: F401
+    TestALieAfterARefusalNeverReachesTheScreen,
     TestTheTextLineWritesDownWhatWentWrong,
     TestToolResultsGoBackAsText,
     TestAProviderFailureIsVisibleToTheOperator,

@@ -846,7 +846,9 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # night's opening line — "did you cancel my queue?" answered from
         # per-call memory instead of the readable queue). Same half of the
         # seam again.
-        "agent-worker/brain/tool_rules.py": (666, "the declarations at the top "
+        # 668: the earlier-call bullet learns the booth log by name (the
+        # day-log's reader, decision 3) — same rule-builders half.
+        "agent-worker/brain/tool_rules.py": (668, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
         # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —
@@ -920,7 +922,14 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 831: the call arc (goodbyes-are-done state, call/arc.py) built
         # beside the door in prepare and watched in start — per-call state,
         # constructed where its siblings are, exactly the door's own lines.
-        "agent-worker/call/session.py": (831, "the ringing half (prepare, "
+        # 836 (beta spike): the guards folded into one ConversationState
+        # (call/state.py, NORTH STAR move 1) — five lines of holder build in
+        # prepare, and air.py SHRANK by 26 in the same change.
+        # 837: the door tier rides into CallActions for the day-log's
+        # attribution — one argument, prepare side.
+        # 841: the open-ask comeback rides the guard like the arc does -
+        # four lines of attach beside their siblings, prepare side.
+        "agent-worker/call/session.py": (841, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -945,7 +954,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # the same reason and on the same side of the seam. 660: the
         # claims-again grading after the nudge, same release, beside the
         # nudge it grades.
-        "agent-worker/chat/session.py": (660, "the one-conversation half "
+        # 661: the door tier rides into chat's CallActions for the day-log's
+        # attribution — the same one-argument change the phone got.
+        # 705: vet-before-show (2026-08-28) - the held round, the one
+        # rewrite, and the honest release, all in the ChatSession half
+        # the recorded seam already names.
+        "agent-worker/chat/session.py": (705, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "

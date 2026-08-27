@@ -88,6 +88,10 @@ def build_removal_tools(cfg: dict, station: StationClient,
                 "cuts it off for everyone listening."
             )
         if not res.get("ok"):
+            # The receipt channel's refusal half: the caller sees the
+            # card whatever the DJ's prose does with it.
+            actions.denied("refused",
+                           res.get("error") or "the station refused it")
             return (
                 f"That didn't come out of the queue: "
                 f"{res.get('error') or 'the station refused it'}. Tell the "
@@ -244,6 +248,8 @@ def build_removal_tools(cfg: dict, station: StationClient,
                         "a skip ends those, and it cuts them off for "
                         "everyone listening.")
         if failed:
+            actions.denied("refused", f"{len(failed)} track(s) stayed "
+                           "queued — the station refused to pull them")
             bits.append(f"{len(failed)} track(s) were refused by the station "
                         "and are STILL QUEUED — don't claim those are gone.")
         if left_unpulled:

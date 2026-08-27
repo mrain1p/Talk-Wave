@@ -95,7 +95,11 @@ class CallActions:
         "unavailable": ("🚧", "Not available on this station"),
     }
 
-    def __init__(self, limit: int, room=None, mode: str = "before") -> None:
+    def __init__(self, limit: int, room=None, mode: str = "before",
+                 tier: str = "") -> None:
+        # Which door this caller came through — attribution for the day-log
+        # (call/daylog.py): a tier, never an identity.
+        self.tier = str(tier or "")
         self.limit = max(0, int(limit or 0))
         self.count = 0
         self._room = room
@@ -248,6 +252,10 @@ class CallActions:
         log.info("caller action %d/%s: %s — %s", self.count, self.limit or "∞", kind, detail)
         self.taken.append((kind, detail))
         self.taken_at.append(time.time())
+        # The cross-call ledger — station-changing kinds only, filtered
+        # there, and never allowed to cost the action its receipt.
+        from . import daylog
+        daylog.note(kind, detail, tier=self.tier)
         self._deliver({"kind": kind, "icon": icon,
                        "label": label, "detail": detail})
 
