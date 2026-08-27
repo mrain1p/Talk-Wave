@@ -222,7 +222,11 @@ class CallSession:
         # them by name, and the holder is a holder, not a hiding place.
         self.state = state_mod.ConversationState(
             door=self.door, stuck=self.stuck, withheld=self.withheld,
-            arc=self.arc, asks=self.asks)
+            arc=self.arc, asks=self.asks, actions=self.actions)
+        # The come-back line consults these the way it consults the arc: a
+        # hold that cut into an open task must return TO the task.
+        self.air.asks = self.asks
+        self.air.call_actions = self.actions
 
         self.started_at = time.time()
         self.heard = {"n": 0}

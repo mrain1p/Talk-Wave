@@ -207,6 +207,16 @@ try:
 except ImportError:                                            # noqa: BLE001
     call_finding = None
 try:
+    # The ask ledger + the open-ask comeback (the director's second slice).
+    # OpenAskComeback is newer than the ledger; without it the flow set's
+    # interrupted-ask scenario measures the prompt alone, which is honest
+    # for an image that predates the mechanism.
+    from call import asks as call_asks
+    if not hasattr(call_asks, "OpenAskComeback"):
+        call_asks = None
+except ImportError:                                            # noqa: BLE001
+    call_asks = None
+try:
     # Newer than some deployed images (0.98.55) — the same tolerance
     # spoken_rules gets above: absent means the watcher does not exist on
     # that image, which is the correct answer for a run against it.
@@ -1822,6 +1832,12 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
     # said. None when the image predates the module.
     arc = (call_arc.CallArc()
            if (call_arc is not None and ARC_ON) else None)
+    # Per scenario: the caller's asks, and the comeback that steers the DJ
+    # back to an open one — the director's second slice, mirrored here the
+    # way every guard is so the drill measures the DJ the product ships.
+    asks_obj = call_asks.Asks() if call_asks is not None else None
+    ask_back = (call_asks.OpenAskComeback(asks_obj)
+                if asks_obj is not None else None)
     # Per scenario, like the door: what this caller has already had to ask.
     stuck = call_stuck.Stuck()
     # Per scenario, like both above: which withheld capability this caller
@@ -1904,6 +1920,16 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
             log.append("  (both sides have said goodbye — steering toward "
                        "end_call)")
             ctx.add_message(role="system", content=anote)
+        if asks_obj is not None:
+            asks_obj.heard(text)
+        if (ask_back is not None
+                and not (arc is not None and arc.ending)):
+            knote = ask_back.hint_for(
+                text, getattr(ACTIONS, "taken_at", None) or [])
+            if knote:
+                log.append("  (the caller's ask is still open — steering "
+                           "back to it)")
+                ctx.add_message(role="system", content=knote)
         wnote = wh.hint_for(text) if wh is not None else ""
         if wnote:
             log.append("  (asked for a withheld capability — carding and "

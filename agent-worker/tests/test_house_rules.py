@@ -927,7 +927,9 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # prepare, and air.py SHRANK by 26 in the same change.
         # 837: the door tier rides into CallActions for the day-log's
         # attribution — one argument, prepare side.
-        "agent-worker/call/session.py": (837, "the ringing half (prepare, "
+        # 841: the open-ask comeback rides the guard like the arc does -
+        # four lines of attach beside their siblings, prepare side.
+        "agent-worker/call/session.py": (841, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),

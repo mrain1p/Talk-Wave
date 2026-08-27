@@ -3130,6 +3130,85 @@ class TestOneStateObjectFeedsTheReplyPath(unittest.TestCase):
         self.assertEqual([], st.hints_for("anything at all"))
 
 
+class TestAnOpenAskComesBackWithoutReasking(unittest.TestCase):
+    """The director's second slice (2026-08-28): the arc taught the loop
+    "the call is over"; this teaches it "the caller is still owed
+    something". An ask that outlives the turn it arrived in with no action
+    landed gets one steer back — once per ask, never over a finished call —
+    and a hold that cut into an open task returns TO the task. The flow
+    set's interrupted-ask scenario is the live measure; these pin the
+    mechanics."""
+
+    def test_the_second_open_turn_gets_one_steer(self):
+        from call.asks import Asks, OpenAskComeback
+
+        asks = Asks()
+        back = OpenAskComeback(asks)
+        asks.heard("can you queue Africa by Toto for me", at=100.0)
+        # Turn one is the ask itself — the model is acting on it now.
+        self.assertEqual("", back.hint_for("can you queue Africa", []))
+        # Turn two with nothing landed is the caller waiting.
+        note = back.hint_for("no worries, take your time", [])
+        self.assertIn("has not happened yet", note)
+        self.assertEqual(1, back.corrections)
+        # And only once per ask — steering every turn is nagging.
+        self.assertEqual("", back.hint_for("still here", []))
+
+    def test_an_action_stands_the_comeback_down(self):
+        from call.asks import Asks, OpenAskComeback
+
+        asks = Asks()
+        back = OpenAskComeback(asks)
+        asks.heard("play some Bowie for me", at=100.0)
+        back.hint_for("play some Bowie for me", [])
+        # The queue landed after the ask: nothing is owed, nothing fires.
+        self.assertEqual("", back.hint_for("lovely", [105.0]))
+        self.assertEqual(0, back.corrections)
+
+    def test_a_finished_call_is_not_steered_back(self):
+        from call.arc import CallArc
+        from call.asks import Asks
+        from call.state import ConversationState
+
+        asks = Asks()
+        asks.heard("play some Bowie", at=100.0)
+        arc = CallArc()
+        arc.hint_for("actually forget it — that's everything, bye")
+        arc.dj_said("Take care now — goodbye!")
+        st = ConversationState(arc=arc, asks=asks)
+        # The arc's end-call steer may fire; the ask comeback must not.
+        notes = [n for _, n in st.hints_for("bye then")]
+        self.assertFalse(any("has not happened yet" in n for n in notes))
+
+    def test_the_hold_return_carries_the_open_task(self):
+        from call.asks import Asks
+
+        class _Sess:
+            def __init__(self):
+                self.instructions = ""
+
+            async def generate_reply(self, instructions=""):
+                self.instructions = instructions
+
+        class _Guard:
+            aired_text = ""
+            last_dj_line = ""
+            floor = None
+            arc = None
+            call_actions = None
+
+        from call import comeback
+
+        guard = _Guard()
+        guard.asks = Asks()
+        guard.asks.heard("find me something by Max Richter and queue it",
+                         at=100.0)
+        sess = _Sess()
+        asyncio.run(comeback.come_back(guard, sess))
+        self.assertIn("Max Richter", sess.instructions)
+        self.assertIn("without making them ask again", sess.instructions)
+
+
 class TestTheLabelJudgesWhatTheLexiconsCannot(unittest.TestCase):
     """The classifier pilot (NORTH STAR move 2, beta): with a model on the
     session and the lever on, a speech-act label drives the promise guard's

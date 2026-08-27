@@ -29,7 +29,7 @@ class ConversationState:
     """The guards one call runs, their order, and their two seams."""
 
     def __init__(self, door=None, stuck=None, withheld=None, arc=None,
-                 asks=None) -> None:
+                 asks=None, actions=None) -> None:
         self.door = door
         self.stuck = stuck
         self.withheld = withheld
@@ -37,6 +37,14 @@ class ConversationState:
         # Held for the same reason the others are — one object to hand around
         # — but consumed by the promise guard's wiring, not by the reply path.
         self.asks = asks
+        # The ledger, for the open-ask comeback's acted_at — and the comeback
+        # itself, the director's second slice (see asks.OpenAskComeback).
+        self.actions = actions
+        self.ask_back = None
+        if asks is not None:
+            from . import asks as asks_mod
+            if hasattr(asks_mod, "OpenAskComeback"):
+                self.ask_back = asks_mod.OpenAskComeback(asks)
 
     def dj_said(self, text: str) -> None:
         """Fan one DJ line to every guard that watches how lines end."""
@@ -74,6 +82,17 @@ class ConversationState:
             if note:
                 out.append(("both sides have said goodbye — steering this "
                             "turn toward end_call", note))
+        # Last, and never over a finished call: the open-ask comeback, so
+        # what the caller came for survives holds, segments and tangents
+        # without them having to ask twice.
+        if (self.ask_back is not None
+                and not (self.arc is not None and self.arc.ending)):
+            note = self.ask_back.hint_for(
+                caller_text,
+                getattr(self.actions, "taken_at", None) or [])
+            if note:
+                out.append(("the caller's ask is still open — steering "
+                            "back to it", note))
         return out
 
 

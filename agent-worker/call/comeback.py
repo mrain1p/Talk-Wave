@@ -77,6 +77,21 @@ async def come_back(guard, session: AgentSession) -> None:
         nod += (
             f" Before you stepped away you told them: \"{before[:200]}\". "
             "They have heard that — carry on from it, don't say it again.")
+    # The director's second slice (see asks.OpenAskComeback): a hold that
+    # cut into an open task must return TO the task, not just to the room.
+    # Skipped when the goodbyes are done — the arc's branch below owns that.
+    arc_now = getattr(guard, "arc", None)
+    asks = getattr(guard, "asks", None)
+    if asks is not None and not (arc_now is not None and arc_now.ending):
+        acted_at = getattr(getattr(guard, "call_actions", None),
+                           "taken_at", None) or []
+        open_asks = asks.unanswered(list(acted_at))
+        if open_asks:
+            nod += (
+                f" And before the break they asked for: "
+                f"\"{str(open_asks[-1])[:120]}\" — it has not happened yet. "
+                "Pick that task back up in the same breath as your return, "
+                "without making them ask again.")
     # One of the three turns that can start while another is generating — the
     # promise nudge is the one it would collide with, and both are about a
     # caller who has been left waiting. See call/floor.py.
