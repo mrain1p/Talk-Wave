@@ -1640,7 +1640,7 @@ ARC_ON = os.environ.get("ARC", "on").strip().lower() != "off"
 # riding in (NEW_CLASSIFY on an older image), the speech-act label drives
 # the guard's verdict exactly as the live wiring does, lexicons as the
 # degrade. The two arms must differ only in who reads the sentence.
-CLASSIFY_ON = os.environ.get("CLASSIFY", "on").strip().lower() != "off"
+CLASSIFY_ON = os.environ.get("CLASSIFY", "off").strip().lower() == "on"
 
 
 async def guard_verdict(llm, said: str, *, tools_ran: bool, acted: bool,

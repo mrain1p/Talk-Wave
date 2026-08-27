@@ -3139,6 +3139,8 @@ class TestTheLabelJudgesWhatTheLexiconsCannot(unittest.TestCase):
     arms differ only in who read the sentence."""
 
     def _wire(self, label):
+        import os
+
         from call import classify, promise_guard
 
         handlers, replies = {}, []
@@ -3155,6 +3157,9 @@ class TestTheLabelJudgesWhatTheLexiconsCannot(unittest.TestCase):
             async def generate_reply(self, **kw):
                 replies.append(kw)
 
+        # The pilot defaults OFF since the 2026-08-28 mimicry verdict; these
+        # tests pin the armed behavior, so they arm it themselves.
+        os.environ["CLASSIFY"] = "on"
         self._orig = (classify.llm_call_from, classify.speech_act)
         classify.llm_call_from = lambda llm: object()
 
@@ -3166,8 +3171,11 @@ class TestTheLabelJudgesWhatTheLexiconsCannot(unittest.TestCase):
         return handlers, replies
 
     def tearDown(self):
+        import os
+
         from call import classify
 
+        os.environ.pop("CLASSIFY", None)
         if hasattr(self, "_orig"):
             classify.llm_call_from, classify.speech_act = self._orig
 

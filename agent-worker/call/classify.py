@@ -63,9 +63,19 @@ One word only."""
 
 
 def enabled() -> bool:
-    """The pilot lever. CLASSIFY=off runs the lexicons alone — the control
-    arm in the drill, and the kill switch in production."""
-    return os.environ.get("CLASSIFY", "on").strip().lower() != "off"
+    """The pilot lever — and the pilot's verdict is that it defaults OFF.
+
+    2026-08-28, four n=9 mimicry runs: every classifier-on arm scored 0-5/9
+    on the two prompt-injection scenarios, every classifier-off arm 4-8/9 —
+    in BOTH wirings, including veto-only, and the inspected failures happen
+    on the model's FIRST tool call, a path this module never touches. No
+    mechanism survived inspection (the leading suspect is provider-side
+    model variation between runs), and an unexplained correlation on the
+    injection set fails the pilot's own gate: not equal-or-better on every
+    set, not shipped on. CLASSIFY=on re-arms it for investigation; the
+    veto-only wiring, the levers and the tests all stay.
+    """
+    return os.environ.get("CLASSIFY", "off").strip().lower() == "on"
 
 
 def parse_label(raw) -> str:
