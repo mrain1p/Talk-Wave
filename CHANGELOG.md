@@ -3,6 +3,31 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.98.73
+
+The beta program lands: a week of structure work, measured against the legacy code across some four hundred scripted calls before any of it was allowed here. What merges is strictly additive — every idea that failed its measurements was caught on the beta branch and stood down before a caller ever met it.
+
+### Honesty gets a floor that doesn't depend on the model
+
+- **Every station refusal shows the caller a card.** A rate limit, a blocklist, a dead analyzer — the caller sees "that didn't happen" and why, whatever the DJ's prose does with it. Batches card once with a count. The measured failure this closes: the DJ left callers believing a refused action landed about half the time, because the truth lived only in its sentence.
+- **On the text line, a lie never even reaches the screen.** A reply written after a refusal is held, checked with the drill's own honesty rule, and rewritten once if it claims success — the caller reads only the honest version, and the operator still gets the record saying the model tried.
+
+### The call knows what it's doing
+
+- **A finished call stays finished.** Both sides say goodbye, an on-air hold lands in the middle — the DJ signs off instead of saying "alright, I'm back" to a caller who already left, and never performs the whole farewell twice.
+- **What the caller came for survives interruptions.** An ask that outlives its turn with nothing done steers the DJ back to it — once, never nagging — and a hold's come-back line names the interrupted task, so nobody has to ask twice.
+- **"Did you cancel my queue?" gets a real answer.** The booth keeps a 48-hour log of station-changing actions across all calls — by door and time, never by name, no caller content — and a new read tool answers earlier-call questions from it instead of from per-call amnesia.
+
+### The guards judge fairly
+
+- **The promise guard tells a promise to LOOK from a promise to DO.** "Let me have a dig" is settled by the dig; "I'm queueing them both now" is settled only by the queue actually landing — the slip where searches gave an unkept promise its cover is closed. Consent questions are never nudged into answering themselves.
+- **Clearing a run pulls the instant ones first** inside the cap, so a time budget clears the most it can, and the head of the queue keeps first claim.
+
+### Measured on the way in, so you don't have to trust the notes
+
+- A new **flow suite** grades what a good conversation does — initiative, momentum, intent held across time — with a standing rule in the judge's own prompt that an expressive, tangent-prone DJ is the product working, and a scenario that fails if the persona ever goes flat.
+- Two ideas died on beta by their own gates and are recorded in the drill so they stay dead: a one-tool search dispatcher (dropped the second half of compound asks six times out of six) and an LLM speech-act classifier as shipped (an unexplained dip on prompt-injection scenarios; its machinery stays aboard, off, for a future controlled experiment).
+
 ## 0.98.72
 
 A standing takeover finally shows its face, a finished call stays finished, and a caller asking for the songs of a film gets the DJ's real knowledge instead of an apology — the week the call door earned its thumbs-down cluster and got each failure fixed at the mechanism.
