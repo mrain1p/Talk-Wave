@@ -1202,6 +1202,38 @@ class TestAnObligationBelongsToTheCallerNotTheDJsWording(unittest.TestCase):
 
         self.assertEqual(unbacked(self.LOOKING, tools_ran=False), "promise")
 
+    def test_reads_do_not_settle_an_action_promise(self):
+        # The Casino call (2026-08-26): two title searches ran, the DJ said
+        # this, no queue ever fired, and the caller hung up believing it had.
+        # The searches settled the dead-air half and nothing else; with the
+        # ask still open the promise is unkept, busy turn or not.
+        from promises import unbacked
+
+        line = "I do have both — I'm queueing them up for you right now."
+        self.assertEqual(
+            unbacked(line, tools_ran=True, acted=False, owed=True), "promise")
+        # The action landing clears it, exactly as before.
+        self.assertEqual(
+            unbacked(line, tools_ran=True, acted=True, owed=True), "")
+        # And nothing owed still means nothing to nudge.
+        self.assertEqual(
+            unbacked(line, tools_ran=True, acted=False, owed=False), "")
+        # A promise to LOOK is a different animal — the search IS the dig,
+        # and nudging it would interrupt the DJ doing the right thing.
+        self.assertEqual(
+            unbacked("Hold on, let me have a dig through the racks.",
+                     tools_ran=True, acted=False, owed=True), "")
+
+    def test_a_consent_question_after_a_search_is_not_nudged(self):
+        # Confirm mode's own required shape: search, then ASK before queueing.
+        # Nudging this is the 2026-08-22 failure again — the DJ answers its
+        # own question and confirm_requests is defeated by its own guard.
+        from promises import unbacked
+
+        self.assertEqual(
+            unbacked(self.LOOKING, tools_ran=True, acted=False, owed=True),
+            "")
+
     def test_the_real_turn_resolves_the_way_the_transcript_should_have(self):
         """End to end on the actual conversation, with real timestamps."""
         from call.asks import Asks

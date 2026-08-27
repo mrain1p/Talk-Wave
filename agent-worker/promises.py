@@ -83,6 +83,14 @@ CLAIMS_DONE = re.compile(
     rf"\b{_ACT}\b[^.!?\n]{{0,60}}\b{_DONE}\b",
     re.IGNORECASE)
 
+# The DELIVERABLE half of the promise vocabulary — _ACT plus the progressive
+# forms a promise naturally wears ("I'm queueing them both now"), which the
+# past-tense _ACT words can't reach across a word boundary. A promise that
+# names the deliverable is fulfilled only by the action happening; a promise
+# to go and look ("let me have a dig") is fulfilled by the dig itself.
+PROMISES_DELIVERABLE = re.compile(
+    rf"\b(?:queu\w+|(?:into|in) the rotation|{_ACT})\b", re.IGNORECASE)
+
 # What the RECORD says when one of these fires, for the operator reading a bad
 # conversation back. Here for the same reason the patterns are — the phone
 # wrote these into `problems` from the start and the text line, which declared
@@ -194,6 +202,19 @@ def unbacked(text: str, *, tools_ran: bool = False, acted: bool = False,
         return "refused"
     if PROMISES_ACTION.search(text):
         if tools_ran:
+            # A promise is about dead air, and any tool settles THAT half —
+            # "let me have a dig" is fulfilled by the dig. But the Casino
+            # call (2026-08-26) showed the other half: searches ran, the DJ
+            # said "I'm queueing them both for you right now", no queue ever
+            # fired, and the caller hung up believing it had. A promise that
+            # names the DELIVERABLE is fulfilled only by the action, so reads
+            # alone leave it standing while the caller's ask is open. A line
+            # that ENDS as a question stays cleared either way: that is
+            # confirm mode's own consent shape, and the 2026-08-22 lesson is
+            # that nudging a question makes the DJ answer itself.
+            if (owed and not acted and not text.rstrip().endswith("?")
+                    and PROMISES_DELIVERABLE.search(text)):
+                return "promise"
             return ""
         # AN OBLIGATION IS CREATED BY THE CALLER ASKING, NOT BY THE DJ'S
         # VOCABULARY. This pattern reads WORDS to infer a speech act, and

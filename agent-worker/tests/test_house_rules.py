@@ -842,7 +842,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # Casino calls, 2026-08-26 — three thumbs-down in one evening from a
         # DJ disowning its own knowledge). It lands entirely in the RULE
         # BUILDERS half of the recorded seam, so the split gets no harder.
-        "agent-worker/brain/tool_rules.py": (659, "the declarations at the top "
+        # 666: the earlier-call bullet joined the same table (the same
+        # night's opening line — "did you cancel my queue?" answered from
+        # per-call memory instead of the readable queue). Same half of the
+        # seam again.
+        "agent-worker/brain/tool_rules.py": (666, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
         # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —

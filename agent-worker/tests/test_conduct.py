@@ -212,6 +212,18 @@ class TestThePromptTeachesTheDJHowToActuallyFindARecord(unittest.TestCase):
             self.assertIn("Search the ARTIST on their own", rules)
             self.assertIn("Use what you know", rules)
 
+    def test_an_earlier_call_is_answered_from_the_station_not_from_memory(self):
+        # The Casino night's opening line: "did you recently cancel my
+        # queue?" — answered "I haven't cleared anything since we started
+        # chatting", which is per-call true and globally evasive: the DJ's
+        # memory starts at pickup and the caller's question did not. The
+        # queue and the play log are readable; the rule points there.
+        for rules in self._both(self.ON):
+            flat = " ".join(rules.split())
+            self.assertIn("your memory starts at pickup", flat)
+            self.assertIn("memory resets between calls", flat)
+            self.assertIn("the queue itself is the answer", flat)
+
     def test_a_soundtrack_is_knowledge_the_dj_may_not_disown(self):
         # The Casino calls (2026-08-26, three thumbs-down): asked for songs
         # from the film, the DJ searched the film's NAME, then said "I don't
