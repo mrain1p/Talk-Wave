@@ -16,6 +16,7 @@ from __future__ import annotations
 import tests  # noqa: F401
 
 from tests.test_settings import (  # noqa: F401
+    TestTheThinkingSoundShipsOff,
     TestTheMapTheOperatorNavigatesBy,
     TestTheOnAirDelayIsTheOperatorsDial,
     TestTheOnAirCallerSoundSetting,
@@ -157,6 +158,7 @@ from tests.test_call_record import (  # noqa: F401
     TestTheDayLogRemembersActionsNotPeople,
 )
 from tests.test_call_flow import (  # noqa: F401
+    TestTheGreetingRacesItsOwnSilence,
     TestAFinishedCallStaysFinished,
     TestAnOpenAskComesBackWithoutReasking,
     TestOneStateObjectFeedsTheReplyPath,
@@ -205,6 +207,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheSignOffIsHeardBeforeTheLineCloses,
 )
 from tests.test_tools_surface import (  # noqa: F401
+    TestABlindCallGetsTheChatsEyes,
     TestARefusalIsACardTheDJCannotSpin,
     TestActionsAllHaveAReceipt,
     TestTheCapAnnouncesItselfAsACard,
@@ -218,6 +221,7 @@ from tests.test_tools_surface import (  # noqa: F401
 from tests.test_tools_logic import (  # noqa: F401
     TestASegmentThatStoodDownIsNotReportedAsAiring,
     TestATrackAlreadyWaitingIsOfferedNotReAdded,
+    TestARefusedRequestNamesWhatDidNotHappen,
     TestTheTextLineCanSeeTheStation,
     TestAnActionReceiptPointsForward,
     TestAnUnconfirmedDeliveryDoesNotStartAClock,

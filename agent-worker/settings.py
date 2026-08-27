@@ -774,6 +774,14 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # into the room at pickup, so only an uploaded file applies — there is
     # no browser on that end to fetch a URL.
     "sound_vm_beep":    (None, ""),
+    # Booth texture while the DJ is thinking mid-call: a file path visible
+    # to the WORKER (e.g. /data/sounds/thinking.mp3), played on its own
+    # room track only while the agent is between hearing and speaking.
+    # Blank = silence, today's behaviour. FIELDS-only for now — settable
+    # via the settings API or data/settings.json; a panel row (and the
+    # sound-slot upload treatment) is the talkwave-setting follow-up if
+    # the experiment earns it.
+    "sound_thinking":   (None, ""),
     "call_volume":      (None, 100),
 }
 

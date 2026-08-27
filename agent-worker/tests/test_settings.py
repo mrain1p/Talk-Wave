@@ -1221,3 +1221,25 @@ class TestTheMapTheOperatorNavigatesBy(_TempStores):
         for gid in settings_store.GROUP_ALIASES:
             self.assertIn(gid, {g for g, *_ in settings_store.GROUPS},
                           f"GROUP_ALIASES names a section that does not exist: {gid}")
+
+
+class TestTheThinkingSoundShipsOff(unittest.TestCase):
+    """0.99.1's booth texture is additive: blank (the shipped default) is
+    silence, exactly today's behaviour, and only an operator writing a
+    path turns it on. FIELDS-only on purpose — settable via the settings
+    API or data/settings.json; the panel row is the talkwave-setting
+    follow-up if the experiment earns it."""
+
+    def test_the_default_is_silence(self):
+        self.assertEqual(settings_store.FIELDS["sound_thinking"][1], "")
+
+    def test_the_call_guards_on_the_value(self):
+        import inspect
+
+        from call.session import CallSession
+
+        src = inspect.getsource(CallSession.start)
+        self.assertIn('"sound_thinking"', src)
+        # Never fatal: a missing file costs the operator a note, not the
+        # call.
+        self.assertIn("could not start", src)

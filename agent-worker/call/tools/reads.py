@@ -9,27 +9,29 @@ finished by inventing a station rule ("it only holds one track at a time")
 to explain a duplicate it could not see. It even reached for
 subwave_station_state and was told "no such tool".
 
-These wrappers serve the same two reads over the station REST client the
-line already holds, under the same names, so every prompt rule that names
-them holds on both mouths. Built only where MCP is absent — the chat —
-because building them beside a live MCP session would put two tools on one
-name. A call that loses its MCP handshake is still blind; giving calls this
-fallback needs a name-clash answer first, and is recorded as its own piece
-of work rather than half-done here.
+These wrappers serve the same reads over the station REST client the line
+already holds, under the same names, so every prompt rule that names them
+holds on both mouths. Built only where MCP is absent: always on the chat,
+and on a call ONLY when the MCP warm-up decisively failed (call/session.py
+skips the dead toolset and builds these instead) — never beside a live MCP
+session, which would put two tools on one name.
 """
 
 from __future__ import annotations
 
 from livekit.agents import llm as lk_llm
 
+from call.actions import CallActions
 from station import StationClient
 
+from .music import _when_it_plays
 from .registry import library_search_needs_mcp
 from .rows import _fmt_track
 
 
-def build_read_tools(cfg: dict, station: StationClient) -> list:
-    """The two station reads, locally served. Empty without credentials:
+def build_read_tools(cfg: dict, station: StationClient,
+                     actions: CallActions | None = None) -> list:
+    """The station reads, locally served. Empty without credentials:
     /state and /now-playing are admin REST here, so an uncredentialed
     wrapper could only ever answer nothing — and a tool that always answers
     nothing teaches the DJ the station is empty."""
@@ -99,4 +101,49 @@ def build_read_tools(cfg: dict, station: StationClient) -> list:
         )
 
     tools.append(station_state)
+
+    if cfg.get("allow_requests"):
+        @lk_llm.function_tool(name="subwave_request_status")
+        async def request_status(requestId: str = "") -> str:
+            """Where a song request stands — pass the requestId a request
+            tool returned, or nothing at all to check the LAST request this
+            call put in. Use when a caller asks whether their request went
+            in, or when it will play."""
+            rid = (requestId or "").strip() or getattr(
+                actions, "last_request_id", "")
+            if not rid:
+                return (
+                    "No request id to look up — this call hasn't put one "
+                    "in, and none was given. If they mean an earlier call's "
+                    "request, the queue itself is the honest place to look: "
+                    "subwave_station_state."
+                )
+            st = await station.request_status(str(rid))
+            if not st:
+                return (
+                    "The station couldn't say where that request stands — "
+                    "the read failed. That is NOT a no: don't tell them it "
+                    "was lost, say you can't see it from here just now."
+                )
+            track = st.get("track") or st.get("matched") or {}
+            if isinstance(track, dict) and track.get("title"):
+                return (
+                    "That request is matched: " + _fmt_track(track) + ". "
+                    "It is queued, not playing yet. "
+                    + _when_it_plays(st.get("queuePosition"))
+                )
+            if str(st.get("status") or "").lower() == "pending":
+                return (
+                    "Still being matched in the booth — not queued yet, and "
+                    "not lost. Check again in a little while, and don't "
+                    "promise a title in the meantime."
+                )
+            return (
+                "The station doesn't know that request any more — it was "
+                "pruned or lost to a restart. Stop checking it; if the "
+                "caller still wants the song, put the request in again."
+            )
+
+        tools.append(request_status)
+
     return tools
