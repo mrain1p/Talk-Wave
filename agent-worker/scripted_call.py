@@ -43,6 +43,10 @@ Env:
     SCENARIO_SET=mimicry   whether a caller can drive the line by quoting
                            instructions at it, and whether answering in their
                            language still works. Grades LANGUAGE_AND_MIMICRY.
+    SCENARIO_SET=flow      what a GOOD conversation does: initiative on a
+                           delegated pick, momentum after an action, the
+                           persona shining when invited, an interrupted
+                           ask picked back up. Judge-graded per scenario.
     SCENARIO_SET=closing   when the line hangs up, and when it must not. The
                            set the CLOSING section is measured against — the
                            other sets are blind to it, so ablating that section
@@ -1241,6 +1245,77 @@ CLOSING_SET = [
                          "don't be a stranger"]}),
 ]
 
+
+# ------------------------------------------------------------------- flow
+#
+# The set that grades what a GOOD conversation does — feel, initiative,
+# momentum, intent held across time — the dimensions the operator named on
+# 2026-08-28 and no mechanical grader can read. Every scenario carries a
+# `flow` question for the quality judge; tools are graded only where the
+# quality claim depends on one. One rule shaped the whole set, in the
+# operator's words: an expressive DJ, tangents included, is the product
+# working — the persona scenario FAILS if the character goes flat.
+FLOW_SET = [
+    # Delegation is a decision handed over, not a question to hand back.
+    ("a delegated pick is made, not bounced back", [
+        "you know what, you pick — just put something good on for me, "
+        "surprise me",
+    ], {"flow": ("The caller delegated the choice completely ('you pick, "
+                 "surprise me'). Did the DJ make a pick and act on it, or "
+                 "did it hand the decision back with questions and option "
+                 "lists? GOOD only if the DJ chose and moved.")}),
+
+    ("three asks in one call all land without repetition", [
+        "hey! first — what's playing right now?",
+        "nice. can you queue up Africa by Toto for me?",
+        "and one more thing — give a shoutout to my sister June",
+    ], {"flow": ("The caller made three distinct asks. Did each one get "
+                 "handled — answered or acted on — without the caller "
+                 "having to repeat any of them and without the DJ asking "
+                 "what was wanted again? GOOD only if all three landed.")}),
+
+    # THE PERSONA GUARD (the operator's standing worry, in test form): an
+    # expressive DJ is the product. This row exists so no future tightening
+    # pass can flatten the character without a red test saying so.
+    ("asked about its night, the DJ is a person not a service", [
+        "forget the music a sec — how's your night going in there? "
+        "anything wild happen at the station?",
+    ], {"avoid": ["end_call"],
+        "flow": ("The caller invited the DJ to talk about itself. Did the "
+                 "DJ answer expressively, in character — some colour, an "
+                 "opinion, a story, a rant even — rather than deflecting "
+                 "straight back to song requests or answering like a "
+                 "customer-service bot? A characterful tangent here is "
+                 "exactly GOOD; a flat line that pivots to 'what can I "
+                 "play for you' is POOR.")}),
+
+    ("after the action lands the call still moves", [
+        "can you queue Dreams by Fleetwood Mac?",
+        "cool thanks",
+    ], {"flow": ("After completing the request and being thanked, did the "
+                 "DJ keep natural momentum — a warm beat, a thread offered "
+                 "in its own voice — without interrogating ('anything "
+                 "else?') and without a dead stop that leaves the caller "
+                 "nothing to answer?")}),
+
+    # RED BY DESIGN until the director's second slice lands: the ask that
+    # must survive an interruption without the caller re-asking.
+    ("an interrupted ask is picked back up unprompted", [
+        "can you find me something by Max Richter and get it queued?",
+        "@dj Hold that thought one second — the booth needs a quick "
+        "station ident from me, back in a moment.",
+        "no worries, take your time",
+    ], {"grade_from_turn": 2,
+        "flow": ("The caller asked for a Max Richter track to be found and "
+                 "queued; the DJ then stepped away mid-task; the caller's "
+                 "reply added nothing new. Did the DJ come back and pick "
+                 "the interrupted task up ON ITS OWN — searching, queueing "
+                 "or reporting on it — without the caller having to ask "
+                 "again? GOOD only if the DJ returned to the task "
+                 "unprompted.")}),
+]
+
+
 # ----------------------------------------------------------------- refusals
 #
 # THE BELIEF JUDGE. must_not_say is a list of the inventions already heard on
@@ -1320,6 +1395,63 @@ async def judge_belief(llm, name, truth, said, log, faults,
         log.append("  JUDGE: honest — the caller leaves knowing the truth")
     else:
         log.append(f"  JUDGE: unparseable ({line[:120]!r}) — "
+                   "mechanical verdict stands")
+
+
+
+_FLOW_JUDGE_PROMPT = """You audit one side of a radio phone-in for CONVERSATION QUALITY. You will be
+given ONE quality question about the call, and everything the DJ said, in
+order. Judge only that question — not honesty, not tool choice, just whether
+the conversation did the thing the question asks about. Be fair to a DJ with
+personality: expressive, characterful, even tangent-prone is a feature of
+this product, never a fault by itself.
+
+Answer on the LAST line with exactly one word — GOOD or POOR — optionally
+followed by a dash and one short reason."""
+
+
+async def judge_flow(llm, name, question, said, log, faults,
+                     turn_starts=None, first=0) -> None:
+    """One quality question per scenario, amending the mechanical verdict.
+
+    judge_belief's shape exactly, asking a different kind of question: not
+    "was the caller misled" but "did this conversation do the thing a good
+    one does" — momentum, initiative, a persona that shines when invited.
+    The judge machinery is the only instrument that can grade those; every
+    mechanical grader reads tools and phrases, and feel lives in neither.
+    """
+    start = (turn_starts[first - 1]
+             if first > 1 and turn_starts and len(turn_starts) >= first
+             else 0)
+    transcript = "\n".join(f"DJ: {s}" for s in said[start:] if s.strip())
+    if not transcript:
+        return
+    ctx = lk_llm.ChatContext.empty()
+    ctx.add_message(role="system", content=_FLOW_JUDGE_PROMPT)
+    ctx.add_message(role="user", content=(
+        f"The quality question:\n{question}\n\n"
+        f"Everything the DJ said:\n{transcript}"))
+    reply = ""
+    try:
+        stream = llm.chat(chat_ctx=ctx)
+        async for chunk in stream:
+            delta = getattr(chunk, "delta", None)
+            if delta and delta.content:
+                reply += delta.content
+        await stream.aclose()
+    except Exception as e:                                      # noqa: BLE001
+        log.append(f"  FLOW JUDGE: unavailable ({e}) — mechanical verdict stands")
+        return
+    line = reply.strip().splitlines()[-1] if reply.strip() else ""
+    if "POOR" in line.upper():
+        why = line.split("—", 1)[-1].split("-", 1)[-1].strip() or line
+        faults.append(f"the flow judge read the call as: {why}")
+        log.append(f"  FLOW JUDGE: POOR — {why}")
+        log.append("  VERDICT AMENDED: FAIL — see the flow judge line above")
+    elif "GOOD" in line.upper():
+        log.append("  FLOW JUDGE: good")
+    else:
+        log.append(f"  FLOW JUDGE: unparseable ({line[:120]!r}) — "
                    "mechanical verdict stands")
 
 
@@ -1939,6 +2071,14 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
             await judge_belief(llm, name, expect["believed"], said_here,
                                log, TRIAGE_RESULTS[-1][1], turn_starts,
                                int(expect.get("grade_from_turn") or 0))
+        # The flow judge, same amend rules — the instrument for feel,
+        # initiative and momentum, which no mechanical grader can read.
+        if (expect.get("flow") and TRIAGE_RESULTS
+                and TRIAGE_RESULTS[-1][0] == name
+                and TRIAGE_RESULTS[-1][1] is not None):
+            await judge_flow(llm, name, expect["flow"], said_here,
+                             log, TRIAGE_RESULTS[-1][1], turn_starts,
+                             int(expect.get("grade_from_turn") or 0))
 
 
 # The triage verdict for one scenario. Kept separate from the run so the
@@ -2192,7 +2332,7 @@ async def main() -> None:
     started = time.time() - float(os.environ.get("CALL_AGE_SECS", "0"))
     which = os.environ.get("SCENARIO_SET", "")
     scenarios = {"extra": EXTRA, "coverage": COVERAGE, "triage": TRIAGE,
-                 "conversations": CONVERSATIONS, "closing": CLOSING_SET,
+                 "conversations": CONVERSATIONS, "closing": CLOSING_SET, "flow": FLOW_SET,
                  "refusals": REFUSALS,
                  "banter": BANTER,
                  "mimicry": MIMICRY}.get(which, SCENARIOS)
