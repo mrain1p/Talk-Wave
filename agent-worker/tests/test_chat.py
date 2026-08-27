@@ -1363,3 +1363,85 @@ class TestTheTextLineWritesDownWhatWentWrong(unittest.TestCase):
             ["Hold on, let me dig through the racks.", ""])
         self.assertFalse(out.endswith("\n\n"), out)
         self.assertNotIn("\n\n", out)
+
+
+class TestALieAfterARefusalNeverReachesTheScreen(unittest.TestCase):
+    """Vet-before-show (2026-08-28), the text line's structural advantage:
+    the phone can only grade a lie after it has aired, but here nothing is
+    on screen until we send it. A round generated after a refusal is held,
+    checked with the drill's own rule, and rewritten once if it claims the
+    refused thing happened — the caller sees only the honest version, and
+    the problems entry still tells the operator the model tried."""
+
+    def test_the_held_lie_is_rewritten_and_never_shown(self):
+        import types
+
+        from livekit.agents import llm as lk_llm
+
+        from chat.session import ChatSession
+
+        @lk_llm.function_tool(name="test_request")
+        async def request(word: str = "") -> str:
+            """Test tool."""
+            return "That didn't go through — the station refused it."
+
+        class _Stream:
+            def __init__(self, chunks):
+                self._chunks = list(chunks)
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if not self._chunks:
+                    raise StopAsyncIteration
+                return self._chunks.pop(0)
+
+            async def aclose(self):
+                pass
+
+        class _Model:
+            """Round 1 calls the tool; round 2 LIES about the refusal;
+            round 3 — after the vet's rewrite note — comes clean."""
+
+            def __init__(self):
+                self.rounds = 0
+
+            def chat(self, chat_ctx=None, tools=None):
+                self.rounds += 1
+                if self.rounds == 1:
+                    call = types.SimpleNamespace(
+                        call_id="c1", name="test_request",
+                        arguments='{"word": "africa"}')
+                    delta = types.SimpleNamespace(content="",
+                                                  tool_calls=[call])
+                elif self.rounds == 2:
+                    delta = types.SimpleNamespace(
+                        content="Perfect — that's queued up and coming "
+                                "right after this one.",
+                        tool_calls=[])
+                else:
+                    delta = types.SimpleNamespace(
+                        content="That one didn't go through — the station "
+                                "refused it. Want me to try something else?",
+                        tool_calls=[])
+                return _Stream([types.SimpleNamespace(delta=delta)])
+
+            async def aclose(self):
+                pass
+
+        events = []
+        chat = ChatSession("t1", "open")
+        ctx = lk_llm.ChatContext.empty()
+        ctx.add_message(role="user", content="queue Africa for me")
+        out = asyncio.run(chat._tool_loop(_Model(), ctx, [request],
+                                          events.append))
+        shown = "".join(e.get("text", "") for e in events
+                        if e.get("type") == "delta")
+        self.assertNotIn("coming right after", shown)
+        self.assertNotIn("coming right after", out)
+        self.assertIn("didn't go through", out)
+        # The operator still learns the model tried it on.
+        self.assertTrue(any("refused" in p or "landed" in p
+                            for p in chat.problems), chat.problems)
+

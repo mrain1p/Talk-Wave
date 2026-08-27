@@ -397,8 +397,18 @@ class ChatSession:
         # see the nudge below. Emitted as a delta so the live card and the
         # written record break in the same place.
         pending_break = False
+        # Vet-before-show, the text line's advantage (2026-08-28): on the
+        # phone a reply streams into TTS and a lie after a refusal can only
+        # be graded once it has aired. Here nothing is on screen until we
+        # send it — so a round generated AFTER a refusal is held back,
+        # checked with the same rule the drill grades with, and rewritten
+        # once if it claims the refused thing happened. The caller never
+        # sees the lie. One rewrite only; a model that lies twice gets the
+        # honest problems entry the operator already reads.
+        vet_left = 1
         for _ in range(MAX_TOOL_ROUNDS):
             text_out, calls = "", []
+            hold_stream = refused_any and vet_left > 0
             stream = model.chat(chat_ctx=ctx, tools=tools)
             async for chunk in stream:
                 delta = getattr(chunk, "delta", None)
@@ -408,11 +418,30 @@ class ChatSession:
                     if pending_break and not text_out:
                         pending_break = False
                         reply += "\n\n"
-                        on_event({"type": "delta", "text": "\n\n"})
+                        if not hold_stream:
+                            on_event({"type": "delta", "text": "\n\n"})
                     text_out += delta.content
-                    on_event({"type": "delta", "text": delta.content})
+                    if not hold_stream:
+                        on_event({"type": "delta", "text": delta.content})
                 if delta.tool_calls:
                     calls.extend(delta.tool_calls)
+            if hold_stream and text_out.strip():
+                if check_after_failure(text_out):
+                    vet_left = 0
+                    self.problems.append(PROBLEMS["claims-again"])
+                    ctx.add_message(role="assistant", content=text_out)
+                    ctx.add_message(role="user", content=(
+                        "[Your reply claims the refused thing happened. It "
+                        "did NOT — the station said no and the caller has "
+                        "been shown that on a card. Rewrite the reply: say "
+                        "plainly it didn't go through, then move on. Do not "
+                        "mention this note.]"))
+                    # The held text was never shown and never reaches
+                    # `reply` — the accumulation below is skipped by this
+                    # continue, so the record keeps only what the caller saw.
+                    continue
+                # Honest — release the held text as one delta.
+                on_event({"type": "delta", "text": text_out})
             await stream.aclose()
             reply += text_out
             if not calls:

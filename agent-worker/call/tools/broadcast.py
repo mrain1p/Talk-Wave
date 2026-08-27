@@ -322,10 +322,13 @@ def build_on_air_tools(
         @lk_llm.function_tool(name="subwave_takeover_show")
         async def takeover_show(show: str, minutes: int = 60) -> str:
             """Put a different show on air, ahead of the schedule, for a while.
-            `show` is the show's name as the caller said it. `minutes` defaults
-            to an hour — pass more ONLY if they asked for longer. This changes
-            what EVERYONE hears, not just this caller, and it outlasts the
-            call, so use it when they have actually asked for it."""
+            THIS is the tool for "change the DJ", "put Wade on", "switch to
+            the jazz show" — a show change is never a song request. `show` is
+            the show's name as the caller said it (a DJ's name finds their
+            show). `minutes` defaults to an hour — pass more ONLY if they
+            asked for longer. This changes what EVERYONE hears, not just this
+            caller, and it outlasts the call, so use it when they have
+            actually asked for it."""
             if actions.at_limit():
                 return actions.refusal()
 

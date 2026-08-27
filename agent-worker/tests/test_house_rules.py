@@ -956,7 +956,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # nudge it grades.
         # 661: the door tier rides into chat's CallActions for the day-log's
         # attribution — the same one-argument change the phone got.
-        "agent-worker/chat/session.py": (661, "the one-conversation half "
+        # 705: vet-before-show (2026-08-28) - the held round, the one
+        # rewrite, and the honest release, all in the ChatSession half
+        # the recorded seam already names.
+        "agent-worker/chat/session.py": (705, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "

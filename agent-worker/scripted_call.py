@@ -743,6 +743,10 @@ COVERAGE = [
         "have you got anything by Fleetwood Mac in the racks?",
         "and what's new in the library this week?",
     ]),
+    ("the booth's own log, across calls", [
+        "did somebody call in earlier and mess with the queue? what's been "
+        "done from your end today?",
+    ]),
     ("a request by name, then its status", [
         "play Dreams by Fleetwood Mac for me",
         "did that actually make it into the queue?",
@@ -2392,12 +2396,22 @@ async def main() -> None:
     else:
         tools += build_call_control_tools(FakeCtx(), lambda: None, started)
         if os.environ.get("MCP") == "1":
-            try:
-                mcp_tools, mcp_server = await attach_mcp_reads(cfg)
-                tools += mcp_tools
-            except Exception as e:                             # noqa: BLE001
-                print(f"[MCP reads unavailable ({e}) — sweeping the local "
-                      "surface only]")
+            # One retry, because a congested station's first handshake flaking
+            # cost two clean matrix runs in one night (2026-08-28) — every
+            # scenario wanting a station read graded a DJ that was never
+            # handed the tool.
+            for attempt in (1, 2):
+                try:
+                    mcp_tools, mcp_server = await attach_mcp_reads(cfg)
+                    tools += mcp_tools
+                    break
+                except Exception as e:                         # noqa: BLE001
+                    if attempt == 2:
+                        print(f"[MCP reads unavailable ({e}) — sweeping the "
+                              "local surface only]")
+                    else:
+                        print("[MCP attach failed once — retrying]")
+                        await asyncio.sleep(2.0)
 
     llm = build_llm(cfg)
 
