@@ -58,6 +58,40 @@ def build_discovery_tools(cfg: dict, station: StationClient,
 
     tools: list = []
 
+    # The booth's own cross-call ledger — no station read, no credentials,
+    # just our day-log file (call/daylog.py). Always built, like every READ:
+    # any line's earlier calls can be asked about, and "did you cancel my
+    # queue?" once got a per-call truth that was a global evasion
+    # (2026-08-26, the Casino night's opening line).
+    @lk_llm.function_tool(name="subwave_booth_log")
+    async def booth_log() -> str:
+        """What THIS booth has done to the station lately — queued,
+        pulled, skipped, taken over — across ALL calls, newest first,
+        with when and which door did it. Use when a caller asks about an
+        EARLIER call: "did you cancel my queue?", "where's the song I
+        asked for?", "who put this on?". Attribution is by door only (a
+        caller, a guest-code caller, the operator's line) — never names.
+        For what actually AIRED, use subwave_already_played instead."""
+        from .. import daylog
+
+        lines = daylog.as_lines(12)
+        if not lines:
+            return (
+                "The booth's own log shows nothing in the last two days "
+                "— no queueing, pulling, skipping or takeovers came from "
+                "this line. If they're asking about an earlier call, "
+                "that IS the answer: nothing was done from here. The "
+                "station's own automatic picks are not in this log."
+            )
+        return (
+            "What this booth has done lately, newest first — doors, "
+            "never names:\n" + lines
+            + "\nThe station's own automatic picks are NOT here — this "
+            "is only what calls and the operator's line changed."
+        )
+
+    tools.append(booth_log)
+
     # Every tool here reads an admin-only station endpoint. Without credentials
     # the wrapper cannot succeed even once, and a tool that can only fail is
     # worse than an absent one — the model will keep reaching for it and

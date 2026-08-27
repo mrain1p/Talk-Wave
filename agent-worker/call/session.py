@@ -185,7 +185,8 @@ class CallSession:
         self.session: AgentSession | None = None
 
         self.actions = CallActions(self.cfg.get("max_actions_per_call"), room=ctx.room,
-                                   mode=str(self.cfg.get("action_cards") or "after"))
+                                   mode=str(self.cfg.get("action_cards") or "after"),
+                                   tier=self.tier)
         self.air = OnAirGuard(self.station, self.cfg, room=ctx.room)
         # One call's memory of whether the last line showed the caller the
         # door — see call/door.py. Cheap enough to always build.

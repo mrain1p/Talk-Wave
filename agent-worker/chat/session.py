@@ -294,7 +294,8 @@ class ChatSession:
 
             if self.actions is None:
                 self.actions = CallActions(
-                    int(cfg.get("max_actions_per_call") or 0))
+                    int(cfg.get("max_actions_per_call") or 0),
+                    tier=self.tier)
             actions = self.actions
             # Re-pointed every message: the receipt sink belongs to THIS
             # request's websocket, while the ledger behind it does not.

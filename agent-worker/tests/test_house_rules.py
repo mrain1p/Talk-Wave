@@ -846,7 +846,9 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # night's opening line — "did you cancel my queue?" answered from
         # per-call memory instead of the readable queue). Same half of the
         # seam again.
-        "agent-worker/brain/tool_rules.py": (666, "the declarations at the top "
+        # 668: the earlier-call bullet learns the booth log by name (the
+        # day-log's reader, decision 3) — same rule-builders half.
+        "agent-worker/brain/tool_rules.py": (668, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
         # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —
@@ -923,7 +925,9 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 836 (beta spike): the guards folded into one ConversationState
         # (call/state.py, NORTH STAR move 1) — five lines of holder build in
         # prepare, and air.py SHRANK by 26 in the same change.
-        "agent-worker/call/session.py": (836, "the ringing half (prepare, "
+        # 837: the door tier rides into CallActions for the day-log's
+        # attribution — one argument, prepare side.
+        "agent-worker/call/session.py": (837, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -948,7 +952,9 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # the same reason and on the same side of the seam. 660: the
         # claims-again grading after the nudge, same release, beside the
         # nudge it grades.
-        "agent-worker/chat/session.py": (660, "the one-conversation half "
+        # 661: the door tier rides into chat's CallActions for the day-log's
+        # attribution — the same one-argument change the phone got.
+        "agent-worker/chat/session.py": (661, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "
