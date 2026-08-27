@@ -469,6 +469,8 @@ def build_on_air_tools(
                 # Not a failure and not the caller's fault: this station is
                 # running a release without the control. Saying "that didn't
                 # work" would send the DJ round again.
+                actions.denied("unavailable", "a genre lock — this station's "
+                               "software doesn't have one yet")
                 return (
                     "This station's software doesn't have a genre lock yet, so "
                     "there is nothing to switch on. Tell the caller it isn't "

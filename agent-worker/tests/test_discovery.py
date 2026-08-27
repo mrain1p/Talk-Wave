@@ -168,6 +168,10 @@ class TestBrowsingSpeaksTheStationsOwnVocabulary(unittest.TestCase):
 
         self.assertIn("41", out)                 # the size of the real answer
         self.assertIn("b1", out)
+        # The delegated-case clause rides the base tail through all three
+        # variants (plain, swapped shelf, thin) — see the delegation test on
+        # the favourites tool for why it exists.
+        self.assertIn("don't read the list back", out)
         kw = [a for a in station.asked if a[0] == "browse"][0][1]
         self.assertEqual(kw["genre"], "Jazz")
         self.assertEqual(kw["year_from"], 1960)
@@ -419,6 +423,19 @@ class TestTheStationsFavouritesAndItsMemory(unittest.TestCase):
         out = asyncio.run(tools["subwave_station_favourites"]())
         self.assertIn("Loved", out)
         self.assertIn("audience", out.lower())
+
+    def test_a_delegated_pick_is_the_djs_to_make(self):
+        # The flow set measured delegation 0/3 (2026-08-27): "you pick,
+        # surprise me" came back as this list read out as a menu — because
+        # this very receipt said "queue whichever they choose" and stopped.
+        # The docstring always invited the delegated case; the receipt now
+        # says what to do with it. One taste-check question stays fine (the
+        # operator's ruling); a second is handing the decision back.
+        tools = _build(ALL_ON, _Station(
+            liked=[{"id": "l1", "title": "Loved", "artist": "Z"}]))
+        out = asyncio.run(tools["subwave_station_favourites"]())
+        self.assertIn("pick ONE", out)
+        self.assertIn("handing the decision back", out)
 
     def test_history_names_who_asked_for_it(self):
         # The commonest reason this gets read is somebody ringing back to ask

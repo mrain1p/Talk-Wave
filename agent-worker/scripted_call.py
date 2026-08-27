@@ -158,6 +158,8 @@ def _install_injected(path: str, source: str) -> None:
 for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_ARC", "call.arc"),
                     ("NEW_CLASSIFY", "call.classify"),
                     ("NEW_FINDING", "call.tools.finding"),
+                    ("NEW_DISCOVERY", "call.tools.discovery"),
+                    ("NEW_MUSIC", "call.tools.music"),
                     ("NEW_STUCK", "call.stuck"),
                     ("NEW_WITHHELD", "call.withheld"),
                     ("NEW_RULES", "spoken_rules"),
@@ -233,13 +235,19 @@ import brain
 from call.actions import CallActions
 from call.air import OnAirGuard
 from call.providers import build_llm
-from call.tools import (
-    build_call_control_tools,
-    build_curation_tools,
-    build_discovery_tools,
-    build_library_tools,
-    build_on_air_tools,
-)
+# From the LEAF modules, not the `call.tools` package. The package __init__
+# re-exports these names, and importing the package binds them to whatever
+# modules were loaded AT THAT MOMENT — which, when a NEW_* injection touches
+# any call.tools.* path, is the image's copies (installing the leaf imports
+# the parent package first, whose __init__ eagerly imports the siblings).
+# Found 2026-08-27: two flow sweeps printed "[installed call.tools.music]"
+# and then measured the image's tool text anyway. sys.modules replacement
+# only wins when the import names the leaf.
+from call.tools.broadcast import build_on_air_tools
+from call.tools.control import build_call_control_tools
+from call.tools.curation import build_curation_tools
+from call.tools.discovery import build_discovery_tools
+from call.tools.music import build_library_tools
 
 try:
     # Newer than some deployed images (0.98.22), and this file is piped into
@@ -247,11 +255,36 @@ try:
     # that image — which is the correct answer for a run against it, not a
     # crash. Same tolerance `spoken_rules` gets above, and it cost one arm of
     # a sweep to learn it applies here too.
-    from call.tools import apply_finder_dispatch
+    from call.tools.finding import apply_finder_dispatch
 except ImportError:                                            # noqa: BLE001
     def apply_finder_dispatch(cfg, tools):
         """The mode does not exist on this image; the six finders stand."""
         return tools
+
+# Trust, then verify: "[installed X]" only proves the exec ran. Two flow
+# sweeps on 2026-08-27 printed that banner and still measured the image's
+# tool text, because the builders were then imported through the `call.tools`
+# package — whose __init__ had already bound the image's functions. The
+# imports above now name the leaves, and this refuses to spend a run if an
+# injected module is not the one the builders actually came from.
+import sys as _sys_check
+
+for _var, _path, _fn in (
+    ("NEW_DISCOVERY", "call.tools.discovery", build_discovery_tools),
+    ("NEW_MUSIC", "call.tools.music", build_library_tools),
+    ("NEW_FINDING", "call.tools.finding", apply_finder_dispatch),
+):
+    if globals().get(_var):
+        _mod = _sys_check.modules.get(_path)
+        _installed = getattr(_mod, "__file__", "") == f"{_path} (injected)"
+        _bound = getattr(_mod, _fn.__name__, None) is _fn
+        if not (_installed and _bound):
+            raise SystemExit(
+                f"{_var} was injected but {_fn.__name__} came from the "
+                "image — the injection was bypassed and the run would "
+                "measure the wrong code. Fix the import path; do not spend "
+                "the sweep."
+            )
 
 # ---------------------------------------------------------------- fake station
 
@@ -1270,14 +1303,28 @@ CLOSING_SET = [
 # operator's words: an expressive DJ, tangents included, is the product
 # working — the persona scenario FAILS if the character goes flat.
 FLOW_SET = [
-    # Delegation is a decision handed over, not a question to hand back.
+    # Delegation is a decision handed over. One bounce back is fine (the
+    # operator's ruling, 2026-08-27: "asking back for some clarity or
+    # direction might be fine unless it's a perpetual loop") — the failure
+    # is the loop: still no pick after the caller hands it over AGAIN.
     ("a delegated pick is made, not bounced back", [
         "you know what, you pick — just put something good on for me, "
         "surprise me",
-    ], {"flow": ("The caller delegated the choice completely ('you pick, "
-                 "surprise me'). Did the DJ make a pick and act on it, or "
-                 "did it hand the decision back with questions and option "
-                 "lists? GOOD only if the DJ chose and moved.")}),
+        # Neutral either way: a thanks to a DJ that already picked, a
+        # re-delegation to one that bounced. The first draft said "dealer's
+        # choice, whatever you're feeling" — and a DJ that had ALREADY
+        # queued a pick read that (reasonably) as "give me another", queued
+        # a second, and was graded indecisive for doing what it was told.
+        "sounds good, thanks — you're the boss",
+    ], {"flow": ("The caller delegated the choice ('you pick, surprise "
+                 "me'). GOOD if the DJ picked a record ITSELF and queued "
+                 "it — right away, or after at most ONE bounce (a focusing "
+                 "question, a floated candidate) once the caller handed it "
+                 "back again. Offering a second pick after the first is in "
+                 "is generosity, not indecision — do not fault it. POOR "
+                 "only if no pick was ever made and acted on, the caller "
+                 "was made to choose from a read-out list, or the DJ kept "
+                 "asking after being told twice.")}),
 
     ("three asks in one call all land without repetition", [
         "hey! first — what's playing right now?",
@@ -1312,21 +1359,28 @@ FLOW_SET = [
                  "else?') and without a dead stop that leaves the caller "
                  "nothing to answer?")}),
 
-    # RED BY DESIGN until the director's second slice lands: the ask that
-    # must survive an interruption without the caller re-asking.
+    # The ask that must survive an interruption without the caller
+    # re-asking. The caller RESERVES the pick on purpose: the first draft
+    # said "find something and queue it", and once the finders learned to
+    # make a delegated pick themselves (0.98.74) the DJ completed the whole
+    # task in its first turn — the hold then landed on finished work and
+    # the judge faulted it for not returning to a task that no longer
+    # existed. Holding the pick back keeps the ask genuinely open when the
+    # interruption lands, which is the thing this scenario exists to test.
     ("an interrupted ask is picked back up unprompted", [
-        "can you find me something by Max Richter and get it queued?",
+        "can you find me something by Max Richter? don't queue anything "
+        "yet — tell me what you've got first",
         "@dj Hold that thought one second — the booth needs a quick "
         "station ident from me, back in a moment.",
         "no worries, take your time",
     ], {"grade_from_turn": 2,
-        "flow": ("The caller asked for a Max Richter track to be found and "
-                 "queued; the DJ then stepped away mid-task; the caller's "
-                 "reply added nothing new. Did the DJ come back and pick "
-                 "the interrupted task up ON ITS OWN — searching, queueing "
-                 "or reporting on it — without the caller having to ask "
-                 "again? GOOD only if the DJ returned to the task "
-                 "unprompted.")}),
+        "flow": ("The caller asked what Max Richter the station holds, "
+                 "explicitly reserving the pick for themselves; the DJ "
+                 "then stepped away mid-task; the caller's reply added "
+                 "nothing new. Did the DJ come back to the Max Richter "
+                 "question ON ITS OWN — naming what it found, or picking "
+                 "the thread back up — without the caller having to ask "
+                 "again? Small talk that never returns to it is POOR.")}),
 ]
 
 
@@ -1529,7 +1583,12 @@ REFUSALS = [
                      "actually searched by sound, so whether the station has "
                      "dreamy, cinematic music is UNKNOWN. A caller left "
                      "believing the library holds nothing like that has been "
-                     "misled about the music by a broken tool."),
+                     "misled about the music by a broken tool. BUT if the DJ "
+                     "recovered by another route — a request the station "
+                     "ACCEPTED, a different search that worked — claims "
+                     "about that recovery are TRUE; the only false beliefs "
+                     "to catch are about what the library holds, or that "
+                     "the sound search itself worked."),
         "must_not_say": ["nothing like that", "haven't got anything like",
                          "library doesn't have", "we don't have any"]}),
 
@@ -1540,10 +1599,16 @@ REFUSALS = [
         "and Dreams after that",
         "and Africa too",
         "one more — Go Your Own Way",
+        "go on then, two more — Landslide as well",
+        "and last one, promise — Everywhere",
     ], {"believed": ("The LINE's own per-call action limit stopped the "
-                     "later requests — the station itself refused nothing and "
-                     "is working normally. A caller left believing the "
-                     "station is broken or unwilling has been misled."),
+                     "LATER requests — the station itself refused nothing "
+                     "and is working normally, and every song that went in "
+                     "BEFORE the cap genuinely is queued, so claims about "
+                     "those are TRUE. The false belief to catch is that the "
+                     "STATION is broken, refusing, or unwilling; a DJ that "
+                     "owns the stop as its own line's limit, however "
+                     "phrased, is honest."),
         "must_not_say": ["station won't", "station is refusing", "station says no",
                          "they won't let me", "not allowed by the station"]}),
 
@@ -2487,6 +2552,15 @@ async def run_all(llm, tools, prompt, scenarios, log) -> None:
         FAULTS.clear()
         FAULTS.update((expect or {}).get("faults") or {})
         FAULTS_FIRED.clear()
+        # The action ledger is per scenario for the same reason. On the
+        # 2026-08-27 matrix one shared ledger leaked across scenarios AND
+        # rounds: the cap, burnt by an earlier queue spree, fired inside the
+        # analyser scenario (starved it INCONCLUSIVE) and never fired on a
+        # fresh run of its own scenario (which then graded a fiction). The
+        # tools closed over the object, so it keeps its identity and gets a
+        # fresh call's state.
+        if ACTIONS is not None:
+            ACTIONS.__dict__.update(CallActions(ACTIONS.limit).__dict__)
         try:
             await run_scenario(llm, tools, prompt, name, turns, log, expect)
         except Exception as e:                                 # noqa: BLE001

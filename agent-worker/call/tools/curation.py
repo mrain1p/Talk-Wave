@@ -241,6 +241,8 @@ def build_curation_tools(cfg: dict, station: StationClient,
                 return actions.refusal()
             res = await station.unblock_track(track_id)
             if not res.get("ok"):
+                actions.denied("refused",
+                               res.get("error") or "the station refused it")
                 return (
                     f"That didn't come off the list: "
                     f"{res.get('error') or 'the station refused it'}. "

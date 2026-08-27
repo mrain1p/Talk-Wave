@@ -232,6 +232,9 @@ def build_removal_tools(cfg: dict, station: StationClient,
                         "pulled now; only a skip ends the one playing, and "
                         "that cuts it off for everyone listening.")
             why = "the station refused them" if failed else "time ran out"
+            if failed:
+                actions.denied("refused", f"{len(failed)} track(s) stayed "
+                               "queued — the station refused to pull them")
             return (f"Nothing came out of the queue: {why}. Tell the caller "
                     "plainly — do NOT claim a clear-out happened.")
 

@@ -162,7 +162,9 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                 + "\n".join(lines)
                 + "\nThese are matched on the audio itself, so trust them over "
                 "the titles. Offer one or two by name; queue the exact one they "
-                "pick with subwave_queue_track."
+                "pick with subwave_queue_track. If they left the choice to you, "
+                "don't read the list back — pick ONE, queue it, and say what "
+                "you went with."
             )
 
         tools.append(search_by_sound)
@@ -228,7 +230,9 @@ def build_discovery_tools(cfg: dict, station: StationClient,
             return (
                 head + ", by how they actually sound:\n"
                 + "\n".join(_fmt_track(t, with_id=True) for t in items[:_PAGE])
-                + "\nQueue whichever they pick with subwave_queue_track."
+                + "\nQueue whichever they pick with subwave_queue_track. If "
+                "they left the choice to you, don't read the list back — pick "
+                "ONE, queue it, and say what you went with."
             )
 
         tools.append(more_like_this)
@@ -388,7 +392,9 @@ def build_discovery_tools(cfg: dict, station: StationClient,
             if withheld:
                 head += (f" ({withheld} more matched but are never-play — do "
                          "not offer them)")
-            tail = "\nQueue the one they pick with subwave_queue_track."
+            tail = ("\nQueue the one they pick with subwave_queue_track. If "
+                    "they left the choice to you, don't read the list back — "
+                    "pick ONE, queue it, and say what you went with.")
             if swapped:
                 # Never silently: the caller asked for one word and is being
                 # shown another, and a DJ that does not say so is describing
@@ -437,7 +443,11 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                 "The station's most-liked records:\n"
                 + "\n".join(_fmt_track(t, with_id=True) for t in items[:_PAGE])
                 + "\nThese are the audience's picks, not yours — say so if you "
-                "offer one. Queue whichever they choose with subwave_queue_track."
+                "offer one. Queue whichever they choose with subwave_queue_track. "
+                "But if the caller left the choice to YOU, this list is not a "
+                "menu to read back: pick ONE, queue it now, and tell them what "
+                "you went with and why. One quick taste-check question is fine; "
+                "more than one is handing the decision back."
             )
 
         tools.append(station_favourites)
