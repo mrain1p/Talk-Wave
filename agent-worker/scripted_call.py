@@ -1972,7 +1972,17 @@ def grade_scenario(name, expect, fired, said, log, exposed=None,
 
     want_all = expect.get("want") or []
     if want_all and exposed is not None:
-        absent = [w for w in want_all if w not in exposed]
+        # On the dispatcher arm the six finders are folded into
+        # subwave_find_music, so a wanted finder is REACHABLE — and credited
+        # into fired_here by the routing above — even though its own name is
+        # off the surface. Treating it as absent turned twenty-one scenarios
+        # INCONCLUSIVE on the first C.5 run; a want that find_music can route
+        # to counts as exposed whenever find_music is.
+        routable = (set(call_finding.ROUTES.values())
+                    if (call_finding is not None
+                        and "subwave_find_music" in exposed) else set())
+        absent = [w for w in want_all
+                  if w not in exposed and w not in routable]
         if len(absent) == len(want_all):
             log.append(f"\n  VERDICT: INCONCLUSIVE — none of "
                        f"{', '.join(want_all)} was on the surface for this "
