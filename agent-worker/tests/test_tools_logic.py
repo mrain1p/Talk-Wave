@@ -655,6 +655,88 @@ class TestMainToolLogic(_TempStores):
         self.assertEqual(model, "base.en")  # nova-3 is not a local model
 
 
+class TestEveryStationRefusalShowsTheCallerACard(unittest.TestCase):
+    """The receipt channel's refusal half, spread to every action family
+    (2026-08-28). The refusals set measured the DJ leaving a caller
+    believing something false about HALF the time a station action was
+    refused — the truth lived only in the model's sentence. Now it also
+    lives on a card: whatever the DJ's prose does with a refusal, the
+    caller sees "that didn't happen" and why. These drive each action
+    wrapper into a refusing station and assert the card, via the same
+    _denied dedup denied() itself uses."""
+
+    class _RefusingStation:
+        def __init__(self):
+            self.res = {"ok": False, "error": "the station is rate limited"}
+
+        async def now_playing(self):
+            # A real record on air, so the id-needing tools get past
+            # their nothing-to-act-on guard and reach the refusal.
+            return {"nowPlaying": {"title": "Dreams",
+                              "artist": "Fleetwood Mac",
+                              "subsonic_id": "t2"}}
+
+        def __getattr__(self, name):
+            async def _any(*a, **k):
+                return dict(self.res)
+            return _any
+
+    def _carded(self, actions):
+        return any(kind == "refused" for kind, _ in
+                   ((k, d) for k, d in actions._denied))
+
+    def test_on_air_refusals_card(self):
+        from call.actions import CallActions
+        from call.tools.broadcast import build_on_air_tools
+
+        class _Guard:
+            async def wait_until_clear(self, timeout=None):
+                return 0.0
+
+        for name, kwargs in (
+            ("subwave_dj_announce", {"message": "hi"}),
+            ("subwave_skip_track", {}),
+        ):
+            actions = CallActions(9)
+            built = build_on_air_tools(
+                {"allow_announcements": True, "allow_skills": True,
+                 "allow_skip_track": True},
+                self._RefusingStation(), actions, _Guard(), guarded=True)
+            tools = {t.info.name: t for t in built}
+            # assertIn, not skip: a tool that failed to build would
+            # make this pass by testing nothing.
+            self.assertIn(name, tools)
+            asyncio.run(tools[name](**kwargs))
+            self.assertTrue(self._carded(actions), name)
+
+    def test_curation_refusals_card(self):
+        from call.actions import CallActions
+        from call.tools import curation
+        from call.tools.curation import build_curation_tools
+
+        # never-play builds only when station credentials exist —
+        # patched the way the music-tool tests patch the same gate.
+        orig = curation.library_search_needs_mcp
+        curation.library_search_needs_mcp = lambda: False
+        self.addCleanup(
+            lambda: setattr(curation, "library_search_needs_mcp", orig))
+
+        for name, kwargs in (
+            ("subwave_like_track", {}),
+            ("subwave_never_play_track", {}),
+        ):
+            actions = CallActions(9)
+            built = build_curation_tools(
+                {"allow_favorite": True, "allow_never_play": True},
+                self._RefusingStation(), actions)
+            tools = {t.info.name: t for t in built}
+            # assertIn, not skip: a tool that failed to build would
+            # make this pass by testing nothing.
+            self.assertIn(name, tools)
+            asyncio.run(tools[name](**kwargs))
+            self.assertTrue(self._carded(actions), name)
+
+
 class TestAnUnconfirmedDeliveryDoesNotStartAClock(unittest.TestCase):
     """broadcast.py's wiring for the Ash overlap (2026-08-09): a confirmed
     announce gets the hold sized from its words, a slow-to-confirm one gets

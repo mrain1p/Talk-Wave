@@ -201,6 +201,10 @@ def build_on_air_tools(
             waited = await wait_for_clear_air()
             result = await station.run_skill(name)
             if not result.get("ok"):
+                # The receipt channel's refusal half: the caller sees the card
+                # whatever the DJ's prose does with it.
+                actions.denied("refused",
+                               result.get("error") or "the station refused it")
                 return (
                     f"That segment didn't run: "
                     f"{result.get('error') or 'the station refused it'}. "
@@ -262,6 +266,10 @@ def build_on_air_tools(
             waited = await wait_for_clear_air()
             result = await station.dj_segment(type)
             if not result.get("ok"):
+                # The receipt channel's refusal half: the caller sees the card
+                # whatever the DJ's prose does with it.
+                actions.denied("refused",
+                               result.get("error") or "the station refused it")
                 return (
                     f"That segment didn't fire: "
                     f"{result.get('error') or 'the station refused it'}. "
@@ -286,6 +294,10 @@ def build_on_air_tools(
                 return actions.refusal()
             result = await station.skip_track()
             if not result.get("ok"):
+                # The receipt channel's refusal half: the caller sees the card
+                # whatever the DJ's prose does with it.
+                actions.denied("refused",
+                               result.get("error") or "the station refused it")
                 return (
                     f"That didn't skip: "
                     f"{result.get('error') or 'the station refused it'}. "
@@ -348,6 +360,10 @@ def build_on_air_tools(
                          min(StationClient.TAKEOVER_MAX_MINUTES, asked))
             result = await station.pin_show(picked.get("id"), window)
             if not result.get("ok"):
+                # The receipt channel's refusal half: the caller sees the card
+                # whatever the DJ's prose does with it.
+                actions.denied("refused",
+                               result.get("error") or "the station refused it")
                 return (
                     f"That takeover didn't go through: "
                     f"{result.get('error') or 'the station refused it'}. "
@@ -401,6 +417,10 @@ def build_on_air_tools(
                 return actions.refusal()
             result = await station.clear_pinned_show()
             if not result.get("ok"):
+                # The receipt channel's refusal half: the caller sees the card
+                # whatever the DJ's prose does with it.
+                actions.denied("refused",
+                               result.get("error") or "the station refused it")
                 return (
                     f"That didn't cancel: "
                     f"{result.get('error') or 'the station refused it'}. "
@@ -454,6 +474,10 @@ def build_on_air_tools(
                     "queue records in that style one at a time."
                 )
             if not result.get("ok"):
+                # The receipt channel's refusal half: the caller sees the card
+                # whatever the DJ's prose does with it.
+                actions.denied("refused",
+                               result.get("error") or "the station refused it")
                 return (
                     f"That genre lock didn't go through: "
                     f"{result.get('error') or 'the station refused it'}. "
@@ -509,6 +533,10 @@ def build_on_air_tools(
                 )
             result = await station.clear_pinned_show()
             if not result.get("ok"):
+                # The receipt channel's refusal half: the caller sees the card
+                # whatever the DJ's prose does with it.
+                actions.denied("refused",
+                               result.get("error") or "the station refused it")
                 return (
                     f"That didn't lift: "
                     f"{result.get('error') or 'the station refused it'}. "

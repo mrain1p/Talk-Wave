@@ -216,6 +216,7 @@ from tests.test_tools_surface import (  # noqa: F401
 from tests.test_tools_logic import (  # noqa: F401
     TestASegmentThatStoodDownIsNotReportedAsAiring,
     TestAnUnconfirmedDeliveryDoesNotStartAClock,
+    TestEveryStationRefusalShowsTheCallerACard,
     TestMainToolLogic,
     TestNativeScriptDoesNotAirSilently,
     TestTheSpeechActTreeIsTheLexiconTree,
