@@ -20,6 +20,10 @@ These three all place genuine calls, and they differ in what they bring with the
 
 **[`livecall/`](livecall/)** — everything real except the mouth, which is a WAV file Chrome is pretending is a microphone. Real STT, real TTS, real station, real air. It exists because timing questions cannot be answered any other way and a human on the line changes what is being measured — every ducking fix from 0.10.121 to 0.10.124 was sized from a run of it. Slowest to set up; the only one that can see the on-air hold.
 
+## What actually happened on the line?
+
+**[`fetch_records.py`](fetch_records.py)** — the finished-call records, fetched over the panel's own HTTP auth and printed as conversations: problems up top, turns and tool runs merged in time order. Built after the 2026-08-27 text-exchange review cost an evening of hand-SSH and raw JSON for a question the records already answered. `save` archives them into `livecall/records-archive/` (gitignored — caller words never reach the public repo) before the server's 20-record window rotates them away. The `talkwave-records` skill carries the reading guide.
+
 ## Everything else
 
 **[`panel_dev_server.py`](panel_dev_server.py)** — the widget and panel against a fake backend, for driving them in a browser without a stack. Dev only, and it lives here so the Dockerfile cannot ship it.

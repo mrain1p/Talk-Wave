@@ -4482,3 +4482,76 @@ class TestRingingRidesTheMintsHeadStart(_TempStores):
         self.assertTrue(state["cancelled"],
                         "an orphaned join would hold the room open with "
                         "nobody coming to answer it")
+
+
+class TestTheGreetingRacesItsOwnSilence(unittest.TestCase):
+    """0.99.1. The 2026-08-11 call: three "recoverable" Gemini 504s, 43
+    seconds of dead air after the pickup click, and the record-check
+    fallback only ran once generate_reply finally returned. Against the
+    real SDK generate_reply hands back a SpeechHandle synchronously, so
+    greet() now waits GREET_RACE_SECS for the DJ to actually START
+    speaking; lost, the pending handle is killed BEFORE the canned pickup
+    speaks, so a generation landing late has nothing left to play."""
+
+    class _Handle:
+        def __init__(self):
+            self.interrupted = False
+            self.awaited = False
+
+        def interrupt(self, force=False):
+            self.interrupted = True
+
+        def __await__(self):
+            self.awaited = True
+            if False:
+                yield
+            return None
+
+    def _session(self, handle, speaking=False):
+        class _S:
+            agent_state = "speaking" if speaking else "thinking"
+
+            def __init__(self):
+                self.said = []
+                self.handlers = []
+
+            def generate_reply(self, **kw):
+                return handle
+
+            async def say(self, text, **kw):
+                self.said.append(text)
+
+            def on(self, name, fn):
+                self.handlers.append(name)
+
+            def off(self, name, fn):
+                self.handlers.remove(name)
+
+        return _S()
+
+    def test_a_greeting_that_never_starts_loses_to_the_canned_line(self):
+        from unittest import mock
+
+        from call import greeting
+
+        handle = self._Handle()
+        s = self._session(handle)
+        with mock.patch.object(greeting, "GREET_RACE_SECS", 0.02):
+            asyncio.run(greeting.greet(s, {}))
+        self.assertTrue(handle.interrupted,
+                        "the pending greeting must die BEFORE the canned "
+                        "line, or a late generation plays over it")
+        self.assertEqual(len(s.said), 1)
+        self.assertIn("through to the booth", s.said[0])
+        # The listener came off again — greet() must not leak handlers.
+        self.assertEqual(s.handlers, [])
+
+    def test_a_greeting_already_speaking_is_left_alone(self):
+        from call import greeting
+
+        handle = self._Handle()
+        s = self._session(handle, speaking=True)
+        asyncio.run(greeting.greet(s, {}))
+        self.assertTrue(handle.awaited)
+        self.assertFalse(handle.interrupted)
+        self.assertEqual(s.said, [], "no second voice barges in")

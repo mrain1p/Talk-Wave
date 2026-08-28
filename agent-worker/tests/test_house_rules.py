@@ -929,7 +929,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # attribution — one argument, prepare side.
         # 841: the open-ask comeback rides the guard like the arc does -
         # four lines of attach beside their siblings, prepare side.
-        "agent-worker/call/session.py": (841, "the ringing half (prepare, "
+        # 896 at 0.99.1: the blind-call fallback (a decisively failed MCP
+        # warm builds the chat's local read twins instead of a dead
+        # toolset) and the optional thinking-sound player — both belong in
+        # start() beside the session they configure; the recorded split is
+        # still the right one and neither piece moves it.
+        "agent-worker/call/session.py": (896, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),

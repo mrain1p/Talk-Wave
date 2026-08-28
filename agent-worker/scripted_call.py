@@ -269,7 +269,7 @@ try:
     # it actually ships.
     from call.tools.reads import build_read_tools
 except ImportError:                                            # noqa: BLE001
-    def build_read_tools(cfg, station):
+    def build_read_tools(cfg, station, actions=None):
         """Older image: the chat reads do not exist there yet."""
         return []
 
@@ -2425,8 +2425,6 @@ async def main() -> None:
         station, persona, snapshot=snap, cfg=cfg,
         mode="chat" if chat else "call")
 
-    global ACTIONS
-    actions = ACTIONS = CallActions(int(cfg.get("max_actions_per_call") or 0))
     # The withheld watcher reads the same resolved set the tools were built
     # from — see run_scenario, which builds one per scenario.
     WITHHELD_CFG.update(cfg)
@@ -2448,51 +2446,78 @@ async def main() -> None:
     class FakeCtx:
         room = type("R", (), {"name": "script-test"})()
 
-    tools = []
-    tools += build_library_tools(cfg, station, actions)
-    tools += build_discovery_tools(cfg, station, actions)
-    # Curation — the hearts, the never-play list. Missing here from 0.10.132,
-    # when the family was added to call/session.py and not to this list, until
-    # 0.97.25. Four tools the drill could not reach and did not report as
-    # unreached either: they were absent from the surface, so COVERAGE listed
-    # them in neither column and nothing said so. What it looked like instead:
-    # asked to heart a track, the DJ had no like tool and mimed it with an
-    # on-air announcement, which reads as a conduct fault and was the harness.
-    # TestTheDrillBuildsEveryToolTheCallDoes now fails if this drifts again.
-    tools += build_curation_tools(cfg, station, actions)
-    tools += build_on_air_tools(cfg, station, actions, guard, guarded=False)
-    # Last, and reading the list — the same order the call and the chat build
-    # it in, because it routes to what is already there. Empty unless the arm
-    # under test switched single_lookup_tool on, which is the whole point of
-    # it being here: the A/B is one sweep flag, not two harnesses.
-    tools = apply_finder_dispatch(cfg, tools)
     mcp_server = None
+    mcp_tools = []
     if chat:
-        # The chat's own reads, exactly as chat/session.py builds them —
-        # local twins of the two MCP names, because this mouth has no MCP.
-        tools = build_read_tools(cfg, station) + tools
         if os.environ.get("MCP") == "1":
             print("[MODE=chat ignores MCP=1 — a production chat line carries "
                   "no MCP tools]")
-    else:
-        tools += build_call_control_tools(FakeCtx(), lambda: None, started)
-        if os.environ.get("MCP") == "1":
-            # One retry, because a congested station's first handshake flaking
-            # cost two clean matrix runs in one night (2026-08-28) — every
-            # scenario wanting a station read graded a DJ that was never
-            # handed the tool.
-            for attempt in (1, 2):
-                try:
-                    mcp_tools, mcp_server = await attach_mcp_reads(cfg)
-                    tools += mcp_tools
-                    break
-                except Exception as e:                         # noqa: BLE001
-                    if attempt == 2:
-                        print(f"[MCP reads unavailable ({e}) — sweeping the "
-                              "local surface only]")
-                    else:
-                        print("[MCP attach failed once — retrying]")
-                        await asyncio.sleep(2.0)
+    elif os.environ.get("MCP") == "1":
+        # One retry, because a congested station's first handshake flaking
+        # cost two clean matrix runs in one night (2026-08-28) — every
+        # scenario wanting a station read graded a DJ that was never
+        # handed the tool.
+        for attempt in (1, 2):
+            try:
+                mcp_tools, mcp_server = await attach_mcp_reads(cfg)
+                break
+            except Exception as e:                             # noqa: BLE001
+                if attempt == 2:
+                    print(f"[MCP reads unavailable ({e}) — sweeping the "
+                          "local surface only]")
+                else:
+                    print("[MCP attach failed once — retrying]")
+                    await asyncio.sleep(2.0)
+
+    def rebuild_local_surface():
+        """One scenario is ONE CALL — fresh closures every time.
+
+        The tools used to be built once per run, and every piece of
+        per-call state living in their closures leaked across scenarios:
+        first the action ledger (the 2026-08-27 matrix's cap fired inside
+        the WRONG scenario and never inside its own), then — after the
+        ledger got a reset — the request wrapper's 20s refusal hold (round
+        1's armed 429 held rounds 2-3's requests before they reached the
+        armed fault, and the row graded INCONCLUSIVE while the DJ behaved
+        perfectly). Chasing closures one at a time is a losing game;
+        rebuilding the local surface per scenario gives each one a fresh
+        call's state the way a real call gets a fresh session. The MCP
+        toolset is the one shared piece, exactly as a real worker shares
+        the station connection across calls."""
+        global ACTIONS
+        actions = ACTIONS = CallActions(
+            int(cfg.get("max_actions_per_call") or 0))
+        tools = []
+        tools += build_library_tools(cfg, station, actions)
+        tools += build_discovery_tools(cfg, station, actions)
+        # Curation — the hearts, the never-play list. Missing here from
+        # 0.10.132, when the family was added to call/session.py and not to
+        # this list, until 0.97.25. Four tools the drill could not reach and
+        # did not report as unreached either: they were absent from the
+        # surface, so COVERAGE listed them in neither column and nothing
+        # said so. What it looked like instead: asked to heart a track, the
+        # DJ had no like tool and mimed it with an on-air announcement,
+        # which reads as a conduct fault and was the harness.
+        # TestTheDrillBuildsEveryToolTheCallDoes now fails if this drifts.
+        tools += build_curation_tools(cfg, station, actions)
+        tools += build_on_air_tools(cfg, station, actions, guard,
+                                    guarded=False)
+        # Last, and reading the list — the same order the call and the chat
+        # build it in, because it routes to what is already there. Empty
+        # unless the arm under test switched single_lookup_tool on, which is
+        # the whole point of it being here: the A/B is one sweep flag, not
+        # two harnesses.
+        tools = apply_finder_dispatch(cfg, tools)
+        if chat:
+            # The chat's own reads, exactly as chat/session.py builds them —
+            # local twins of the MCP names, because this mouth has no MCP.
+            tools = build_read_tools(cfg, station, actions) + tools
+        else:
+            tools += build_call_control_tools(FakeCtx(), lambda: None,
+                                              started)
+        return tools + mcp_tools
+
+    tools = rebuild_local_surface()
 
     llm = build_llm(cfg)
 
@@ -2525,7 +2550,8 @@ async def main() -> None:
             if repeats > 1:
                 log.append(f"\n{'#' * 72}\n# ROUND {_round + 1} of {repeats}\n"
                            f"{'#' * 72}")
-            await run_all(llm, tools, prompt, scenarios, log)
+            await run_all(llm, tools, prompt, scenarios, log,
+                          rebuild=rebuild_local_surface)
         await summarise(log, repeats, which, tools)
     except BaseException as e:                                 # noqa: BLE001
         # BaseException, not Exception: a cancelled task or a Ctrl-C mid-sweep
@@ -2547,7 +2573,7 @@ async def main() -> None:
         print("\n".join(log))
 
 
-async def run_all(llm, tools, prompt, scenarios, log) -> None:
+async def run_all(llm, tools, prompt, scenarios, log, rebuild=None) -> None:
     # SCENARIO=<substring> runs just the ones whose name contains it. A whole
     # set is the right unit for a verdict and the wrong one for a PROBE — the
     # thought-signature question is about a single scenario, and paying for the
@@ -2568,15 +2594,13 @@ async def run_all(llm, tools, prompt, scenarios, log) -> None:
         FAULTS.clear()
         FAULTS.update((expect or {}).get("faults") or {})
         FAULTS_FIRED.clear()
-        # The action ledger is per scenario for the same reason. On the
-        # 2026-08-27 matrix one shared ledger leaked across scenarios AND
-        # rounds: the cap, burnt by an earlier queue spree, fired inside the
-        # analyser scenario (starved it INCONCLUSIVE) and never fired on a
-        # fresh run of its own scenario (which then graded a fiction). The
-        # tools closed over the object, so it keeps its identity and gets a
-        # fresh call's state.
-        if ACTIONS is not None:
-            ACTIONS.__dict__.update(CallActions(ACTIONS.limit).__dict__)
+        # And the whole LOCAL SURFACE is per scenario for the same reason,
+        # taken to its conclusion: one scenario is one call, so it gets
+        # fresh tool closures — the action ledger, the request wrapper's
+        # refusal hold, all of it. See rebuild_local_surface for the two
+        # leaks that taught this one at a time.
+        if rebuild is not None:
+            tools = rebuild()
         try:
             await run_scenario(llm, tools, prompt, name, turns, log, expect)
         except Exception as e:                                 # noqa: BLE001

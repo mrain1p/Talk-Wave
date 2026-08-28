@@ -795,11 +795,6 @@ class TestTheTwoMouthsShareOneSurface(unittest.TestCase):
         "build_call_control_tools":
             "call only — end_call puts a receiver down, and a text line "
             "has no receiver",
-        "build_read_tools":
-            "chat only — the call's reads arrive over MCP, and a local "
-            "twin beside a live MCP session would put two tools on one "
-            "name (call/tools/reads.py records the call-side fallback as "
-            "future work)",
     }
 
     # MCP-served reads the text line does NOT yet serve locally. Removing
@@ -816,9 +811,6 @@ class TestTheTwoMouthsShareOneSurface(unittest.TestCase):
         "subwave_session":
             "the on-air transcript feed; no typed exchange has needed it "
             "yet",
-        "subwave_request_status":
-            "parked — first candidate for a local twin the day a text "
-            "caller asks whether their request resolved",
         "subwave_list_skills":
             "the runnable skills already reach the prompt via the "
             "briefing's skills narrowing",
@@ -855,7 +847,8 @@ class TestTheTwoMouthsShareOneSurface(unittest.TestCase):
         with mock.patch.object(reads, "library_search_needs_mcp",
                                return_value=False):
             chat_local = {t.info.name
-                          for t in reads.build_read_tools({}, object())}
+                          for t in reads.build_read_tools(
+                              {"allow_requests": True}, object())}
         unexplained = mcp_names - chat_local - set(self.STILL_MCP_ONLY_ON_CHAT)
         self.assertFalse(
             unexplained,
@@ -869,3 +862,39 @@ class TestTheTwoMouthsShareOneSurface(unittest.TestCase):
             "entries so the table stays the truth")
         # And the twins must be real MCP names, not inventions.
         self.assertTrue(chat_local <= mcp_names, chat_local - mcp_names)
+
+
+class TestABlindCallGetsTheChatsEyes(unittest.TestCase):
+    """0.99.1: a call whose MCP handshake DECISIVELY failed used to attach
+    the dead toolset anyway — the SDK retries once, swallows the second
+    failure, and the call proceeds with zero MCP tools while the prompt
+    still promises the reads. Now that call builds the same local read
+    twins the chat runs on, and never both, so no name is served twice.
+    Pinned at the source: start() is unbuildable in a unit test (it needs
+    a room, a worker and three live providers — test_call_flow.py says
+    so), but the branch's load-bearing pieces are namable."""
+
+    def _start_src(self):
+        import inspect
+
+        from call.session import CallSession
+
+        return inspect.getsource(CallSession.start)
+
+    def test_the_fallback_branch_exists_and_is_recorded(self):
+        src = self._start_src()
+        # The decisive signal: a finished warm whose MCP session never
+        # opened — not the warm task's exception, which is always None.
+        self.assertIn("self.station_tools.initialized", src)
+        self.assertIn("build_read_tools(", src)
+        # The record says which route served the station this call.
+        self.assertIn('"stationTools"', src)
+        self.assertIn('"local-fallback"', src)
+
+    def test_never_both_routes_at_once(self):
+        # The toolset and the twins reuse the same tool names; the branch
+        # must be exclusive — the toolset only on the ready path.
+        src = self._start_src()
+        ready = src.index("station_ready")
+        self.assertLess(ready, src.index("MCPToolset("))
+        self.assertLess(ready, src.index("build_read_tools("))

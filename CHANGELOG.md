@@ -3,6 +3,32 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.99.1
+
+The open list from 0.99.0, worked to done: the last blind spots get eyes, the greeting races its own silence, the one dishonest refusal path tells the whole truth, and reading back what happened on the line becomes one command.
+
+### Nothing left blind
+
+- **"Did my request go in?" is answerable on the text line.** A local `request_status` twin joins the chat's reads — pass nothing and it checks the LAST request this call submitted, an id the model was deliberately never shown. The parity guard's own stale-entry rule forced the bookkeeping, which is the guard working.
+- **A call that loses its MCP handshake gets the chat's eyes.** A decisively failed warm-up used to attach a dead toolset anyway — the SDK retried once, swallowed the failure, and the call ran blind while the prompt promised reads. Now that call builds the same local twins the text line runs on (never both, so no name is served twice), and the record says which route served the station: `mcp`, `local-fallback`, or `absent`.
+
+### The rate limit tells the whole truth
+
+- **The refusal leads with what did NOT happen.** The station's own 429 text talks about the PREVIOUS request ("Your last request is still queued — it airs first"), and the DJ kept relaying it as though the NEW one were queued and coming. The wrapper now says NOTHING NEW was submitted, names the refused ask in the caller's words, and points at `request_status` so the earlier request's position is checkable instead of narratable. The repeat-hold's text finally reads as a refusal to the promise guard too — a claim made after it now arms the nudge, which it never did before. Measured on the repaired drill: 0/3 to 2/3, and the one remaining miss is an over-eager offer, not a false claim.
+
+### The pickup can no longer die in silence
+
+- **The greeting races a canned pickup.** The 2026-08-11 call sat through three "recoverable" model errors and 43 seconds of dead air before the fallback could even run. Now, if the generated greeting has not actually STARTED playing within ten seconds, the pending speech is killed first and the canned line goes out — killed first, so a generation landing late has nothing left to play, and the SDK's serial speech queue makes overlap structurally impossible.
+- **Optional booth texture while the DJ thinks** (ships off): point `sound_thinking` at an audio file and it plays on its own room track only while the agent is working — its own track, so it cannot leak onto the on-air relay, and no model involvement, so it cannot trip the speak-before-acting trap. Blank stays exactly today's silence.
+
+### Reading the line back is one command
+
+- **`tools/fetch_records.py`** pulls the finished-call records over the panel's own HTTP auth and prints each one as a conversation — problems up top, turns and tool runs merged in time order — with `save` archiving them before the server's 20-record window rotates. The `talkwave-records` skill carries the reading guide. Built after the 2026-08-27 review cost an evening of hand-SSH for a question the records already answered.
+
+### The drill: one scenario is one call, now literally
+
+- The tools were built once per run, and every piece of per-call state in their closures leaked across scenarios — first the action ledger, then the request wrapper's 20-second refusal hold, each one caught by a row it corrupted. The harness now rebuilds the whole local surface per scenario, so each gets a fresh call's closures the way a real call gets a fresh session, and that class of leak is closed rather than chased.
+
 ## 0.99.0
 
 The last stop before 1.0, and the release where the two mouths become one instrument: the text line gets the eyes the phone always had, the one tool family it was missing, and a standing guard that keeps the two from ever silently forking again.

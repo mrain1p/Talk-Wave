@@ -61,6 +61,7 @@ from .tools import (
     apply_finder_dispatch,
     build_library_tools,
     build_on_air_tools,
+    build_read_tools,
     mcp_allowlist,
 )
 
@@ -598,28 +599,56 @@ class CallSession:
 
         local_tools = self._build_tools()
 
+        # The warm-up started back in prepare(), under the ringing. Still
+        # connecting is fine — the toolset's setup() awaits the same
+        # in-flight connect. But a warm that has DECISIVELY failed (task
+        # done, MCP session never opened) used to be attached anyway: the
+        # SDK retries once at session start, swallows the second failure,
+        # and the call proceeds with zero MCP tools — a blind DJ promising
+        # reads the prompt says it has. Now that call gets the same local
+        # read twins the chat line runs on (call/tools/reads.py) instead of
+        # a dead toolset; same names, so the prompt stays true, and never
+        # both, so no name is served twice.
+        station_ready = (not self._tools_warm.done()
+                         or self.station_tools.initialized)
+        if station_ready:
+            # MCPToolset rather than the session's mcp_servers argument,
+            # which is deprecated: the toolset is just another entry in
+            # `tools`, so the station's tools and our own wrappers arrive
+            # by the same route.
+            toolset = mcp.MCPToolset(id="subwave",
+                                     mcp_server=self.station_tools)
+            tools = [*local_tools, toolset]
+            tool_count = self.allowed_tool_count + len(local_tools)
+            self.record.setup_note("stationTools", "mcp")
+        else:
+            fallback = build_read_tools(self.cfg, self.station, self.actions)
+            tools = [*local_tools, *fallback]
+            tool_count = len(tools)
+            self.record.setup_note(
+                "stationTools", "local-fallback" if fallback else "absent")
+            self.record.problem(
+                "The station's MCP handshake failed before the call "
+                "started — local read twins are standing in for the MCP "
+                "tools." if fallback else
+                "The station's MCP handshake failed and no local twins "
+                "could be built (no station credentials) — the DJ has no "
+                "station reads this call.")
+
         log.info(
             "call starting room=%s tier=%s persona=%s (%s) llm=%s/%s tts=%s voice=%s tools=%d",
             self.room_name, self.tier, self.persona["name"], self.persona["id"],
             self.cfg["llm_provider"], self.cfg["llm_model"],
             self.cfg["tts_mode"], self.voice,
-            self.allowed_tool_count + len(local_tools),
+            tool_count,
         )
-
-        # MCPToolset rather than the session's mcp_servers argument, which is
-        # deprecated: the toolset is just another entry in `tools`, so the
-        # station's tools and our own wrappers arrive by the same route. The
-        # server it wraps was built — and its connect started — back in
-        # prepare(), under the ringing; setup() reuses that session or, if the
-        # warm-up failed, retries the connect here as it always did.
-        toolset = mcp.MCPToolset(id="subwave", mcp_server=self.station_tools)
 
         self.session = AgentSession(
             stt=build_stt(self.cfg),
             llm=build_llm(self.cfg),
             tts=build_tts(self.cfg, self.voice),
             vad=self.ctx.proc.userdata["vad"],
-            tools=[*local_tools, toolset],
+            tools=tools,
             # One dict, and it must stay one dict — see turn_handling() for
             # what passing these alongside it silently did.
             turn_handling=turn_handling(self.cfg),
@@ -650,6 +679,32 @@ class CallSession:
         # and the barge-in half of the pair would read zero on exactly the
         # calls it matters most on.
         heard_mod.attach_heard(self.session, self.pacing, air=self.air)
+        # Optional booth texture while the DJ thinks (0.99.1, ships off).
+        # The player publishes its OWN room track — it never touches
+        # session.output.audio, so it cannot leak onto the on-air tee — and
+        # the SDK starts/stops it on the agent's thinking state, no model
+        # involvement, which is what keeps it clear of the speak-kills-tool
+        # trap the working line's docstring records. The value is a file
+        # path visible to the worker (e.g. under /data); blank means what
+        # it says.
+        thinking = str(self.cfg.get("sound_thinking") or "").strip()
+        if thinking:
+            try:
+                from livekit.agents.voice.background_audio import (
+                    BackgroundAudioPlayer,
+                )
+
+                self._thinking_audio = BackgroundAudioPlayer(
+                    thinking_sound=thinking)
+                await self._thinking_audio.start(
+                    room=self.ctx.room, agent_session=self.session)
+                self.ctx.add_shutdown_callback(self._thinking_audio.aclose)
+            except Exception as e:                             # noqa: BLE001
+                # A missing file must cost the operator a note, never the
+                # call.
+                if self.record:
+                    self.record.problem(
+                        f"sound_thinking is set but could not start: {e}")
         if self.record:
             self.record.leg("onLine")
 

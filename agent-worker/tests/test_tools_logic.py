@@ -841,6 +841,130 @@ class TestTheTextLineCanSeeTheStation(unittest.TestCase):
 
         self.assertEqual(self._build(_St(), creds=False), {})
 
+    def _build_with_requests(self, station, actions=None):
+        from unittest import mock
+
+        from call.tools import reads
+
+        with mock.patch.object(reads, "library_search_needs_mcp",
+                               return_value=False):
+            built = reads.build_read_tools(
+                {"allow_requests": True}, station, actions)
+        return {t.info.name: t for t in built}
+
+    def test_request_status_rides_the_requests_gate(self):
+        class _St:
+            pass
+
+        self.assertNotIn("subwave_request_status", self._build(_St()))
+        self.assertIn("subwave_request_status",
+                      self._build_with_requests(_St()))
+
+    def test_the_last_request_is_checkable_without_an_id(self):
+        # The request wrapper keeps ids out of its returns on purpose, so
+        # "did my request go in?" needs the ledger to remember the last one.
+        from call.actions import CallActions
+
+        class _St:
+            def __init__(self):
+                self.asked = []
+
+            async def request_status(self, rid):
+                self.asked.append(rid)
+                return {"track": {"title": "Dreams",
+                                  "artist": "Fleetwood Mac"},
+                        "queuePosition": 2}
+
+        actions = CallActions(5)
+        actions.last_request_id = "r77"
+        st = _St()
+        tool = self._build_with_requests(st, actions)[
+            "subwave_request_status"]
+        out = asyncio.run(tool())
+        self.assertEqual(st.asked, ["r77"])
+        self.assertIn("Dreams", out)
+        self.assertIn("not playing yet", out)
+
+    def test_no_request_anywhere_is_an_honest_miss(self):
+        class _St:
+            pass
+
+        tool = self._build_with_requests(_St())["subwave_request_status"]
+        out = asyncio.run(tool())
+        self.assertIn("hasn't put one in", out)
+        # Never a flat no: the way that DOES exist is named.
+        self.assertIn("subwave_station_state", out)
+
+    def test_pending_and_pruned_answers_stay_honest(self):
+        class _St:
+            def __init__(self, payload):
+                self.payload = payload
+
+            async def request_status(self, rid):
+                return dict(self.payload)
+
+        pending = self._build_with_requests(_St({"status": "pending"}))
+        out = asyncio.run(pending["subwave_request_status"](requestId="r1"))
+        self.assertIn("Still being matched", out)
+        self.assertIn("don't promise a title", out)
+        pruned = self._build_with_requests(_St({"status": "unknown"}))
+        out = asyncio.run(pruned["subwave_request_status"](requestId="r1"))
+        self.assertIn("pruned or lost", out)
+        failed = self._build_with_requests(_St({}))
+        out = asyncio.run(failed["subwave_request_status"](requestId="r1"))
+        self.assertIn("NOT a no", out)
+
+
+class TestARefusedRequestNamesWhatDidNotHappen(unittest.TestCase):
+    """The refusals drill's rate-limit row was 0/3 (2026-08-27): the
+    station's 429 body talks about the PREVIOUS request ("Your last request
+    is still queued — it airs first") and the DJ relayed it as though THIS
+    one were queued and coming. The wrapper now leads with the
+    nothing-was-submitted fact, names the refused ask in the caller's own
+    words, and points at the read that can verify the EARLIER request
+    instead of letting the DJ narrate it."""
+
+    def _tool(self):
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _St:
+            async def submit_request(self, text, requester):
+                return {"error": "Your last request is still queued — it "
+                                 "airs first."}
+
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: False
+        try:
+            tools = build_library_tools(
+                {"allow_requests": True}, _St(), CallActions(9))
+        finally:
+            music.library_search_needs_mcp = orig
+        return next(t for t in tools
+                    if t.info.name == "subwave_request_song")
+
+    def test_the_refusal_says_nothing_new_went_in(self):
+        out = asyncio.run(self._tool()(request="Wuthering Heights"))
+        self.assertIn("NOTHING NEW was submitted", out)
+        self.assertIn('"Wuthering Heights" is NOT in the queue', out)
+        # The station's own words still travel verbatim…
+        self.assertIn("airs first", out)
+        # …and the earlier request is checkable, not narratable.
+        self.assertIn("subwave_request_status", out)
+
+    def test_the_repeat_hold_is_a_refusal_the_guard_can_see(self):
+        import spoken_rules
+
+        tool = self._tool()
+        asyncio.run(tool(request="Wuthering Heights"))
+        second = asyncio.run(tool(request="Wuthering Heights"))
+        self.assertIn("Still the same answer", second)
+        self.assertIn("NOT in the queue", second)
+        # Until 0.99.1 the hold's text matched none of the refusal
+        # markers, so a claim made after it never armed the nudge.
+        self.assertTrue(spoken_rules.reads_as_a_refusal(second))
+
 
 class TestATrackAlreadyWaitingIsOfferedNotReAdded(unittest.TestCase):
     """The 2026-08-27 text exchange: the DJ picked a record the caller could
@@ -994,6 +1118,33 @@ class TestAnActionReceiptPointsForward(unittest.TestCase):
             out = asyncio.run(tool(request="Dreams by Fleetwood Mac"))
         self.assertIn("lined up, not that it's on", out)
         self.assertIn("leave something real in the air", out)
+
+    def test_a_submitted_request_leaves_its_id_on_the_ledger(self):
+        # For the request_status twin: "did my request go in?" needs an id
+        # the model was never shown. See CallActions.last_request_id.
+        from unittest import mock
+
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _Station:
+            async def submit_request(self, text, requester):
+                return {"requestId": "r9"}
+
+            async def request_status(self, rid):
+                return {"track": {"title": "Dreams"}, "queuePosition": 2}
+
+        actions = CallActions(9)
+        with mock.patch.object(music, "_INLINE_POLL_SECS", 0), \
+                mock.patch.object(music, "library_search_needs_mcp",
+                                  lambda: False):
+            tools = build_library_tools(
+                {"allow_requests": True}, _Station(), actions)
+            tool = next(t for t in tools
+                        if t.info.name == "subwave_request_song")
+            asyncio.run(tool(request="Dreams"))
+        self.assertEqual(actions.last_request_id, "r9")
 
 
 class TestAnUnconfirmedDeliveryDoesNotStartAClock(unittest.TestCase):

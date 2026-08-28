@@ -309,7 +309,7 @@ class ChatSession:
             # answering "similar to my current queue" from a guess and
             # reaching for a state read that wasn't there. See
             # call/tools/reads.py for why the same names serve both mouths.
-            tools = build_read_tools(cfg, station) + \
+            tools = build_read_tools(cfg, station, actions) + \
                 build_library_tools(cfg, station, actions) + \
                 build_discovery_tools(cfg, station, actions) + \
                 build_curation_tools(cfg, station, actions) + \

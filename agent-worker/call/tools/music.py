@@ -479,12 +479,19 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             # the wrapper holds the line instead.
             held = _recent_refusal(refusals)
             if held:
+                # "didn't go through" is deliberate: it is one of the
+                # promise guard's refusal markers, so a claim made after
+                # this hold finally arms the nudge — until 0.99.1 the
+                # hold's return matched none of them.
                 return (
-                    f"Still the same answer from the station: {held} Do NOT "
-                    "send it again — you already have the reason, and asking "
-                    "twice a second makes it worse. Tell the caller what the "
-                    "station said, and either wait it out or use a tool that "
-                    "isn't rate-limited."
+                    f"Still the same answer from the station, and this ask "
+                    f"didn't go through either — NOTHING was submitted: "
+                    f"\"{request}\" is NOT in the queue and will NOT play. "
+                    f"The station said: {held} Do NOT send it again — you "
+                    "already have the reason, and asking twice a second "
+                    "makes it worse. Tell the caller what the station said "
+                    "— not that their track is coming — and either wait it "
+                    "out or use a tool that isn't rate-limited."
                 )
 
             res = await station.submit_request(text, requester or "")
@@ -496,16 +503,33 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                 # 2026-08-13). Deduped in denied(), so the burst that sends
                 # four identical requests shows one card.
                 actions.denied("refused", str(res["error"]))
-                return (f"The station couldn't take that request: "
-                        f"{res['error']} The caller has been shown the "
-                        "station's refusal on a card, so the reason is "
-                        "already public — relay it, don't rewrite it.")
+                # The refusals drill's rate-limit row was 0/3 (2026-08-27):
+                # the station's own error talks about the PREVIOUS request
+                # ("Your last request is still queued — it airs first") and
+                # the DJ relayed it as though THIS one were queued and
+                # coming. The nothing-was-submitted fact now leads, and the
+                # earlier request's position is checkable rather than
+                # narratable.
+                return (f"The station couldn't take that request — NOTHING "
+                        f"NEW was submitted: \"{request}\" is NOT in the "
+                        "queue, and it will NOT play. The station's own "
+                        f"reason: {res['error']} If that reason mentions an "
+                        "earlier request, the earlier one is what's queued — "
+                        "this one was refused and does not follow it. Where "
+                        "the earlier one sits is checkable with "
+                        "subwave_request_status. The caller has been shown "
+                        "the station's refusal on a card, so the reason is "
+                        "already public — relay it, don't rewrite it, and "
+                        "don't promise this track is coming.")
 
             # Every success path below says QUEUED, never playing. Observed on
             # a real call: the DJ took a request and immediately introduced the
             # track on air as though it were spinning, minutes before it was.
             rid = res.get("requestId") or res.get("id")
             if rid:
+                # For the request_status twin: "did my request go in?" needs
+                # an id the model was never shown. See CallActions.
+                actions.last_request_id = str(rid)
                 await asyncio.sleep(_INLINE_POLL_SECS)
                 st = await station.request_status(str(rid))
                 track = st.get("track") or st.get("matched") or {}
