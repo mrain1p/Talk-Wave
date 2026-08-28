@@ -24,7 +24,7 @@ from aiohttp import web
 
 import settings as settings_store
 from api.auth import _guest_ok
-from api.wire import _cors
+from api.wire import _caller_key, _cors
 from log_setup import describe
 
 log = logging.getLogger("callin.token")
@@ -57,7 +57,14 @@ async def _relay(request: web.Request, method: str, path: str,
     refusals are written for listeners and are better UX than anything this
     sidecar could invent about a station it cannot see into."""
     root = settings_store.station_base_url()
-    fwd = request.headers.get("X-Forwarded-For") or (request.remote or "")
+    # The address WE honestly observed, not the header the caller sent. The
+    # station applies a per-IP throttle to these listener actions; forwarding
+    # a raw X-Forwarded-For let a caller spoof the IP it counts against, on a
+    # station that trusts its proxy chain — the deployment this feature is
+    # for. _caller_key walks the chain rightmost-untrusted and only believes
+    # a forwarded address from a proxy CALLIN_TRUSTED_PROXIES names, the same
+    # value the sidecar's own cooldown trusts (security sitting, 2026-08-28).
+    fwd = _caller_key(request)
     try:
         async with httpx.AsyncClient(timeout=8.0) as c:
             r = await c.request(

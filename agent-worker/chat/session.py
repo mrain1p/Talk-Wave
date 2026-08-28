@@ -35,6 +35,8 @@ import uuid
 import settings as settings_store
 from chat import openers
 from call.asks import Asks
+from call.door import Door
+from call.state import ConversationState
 from call.stuck import Stuck
 from call.withheld import Withheld
 from promises import PROBLEMS, unbacked
@@ -179,6 +181,20 @@ class ChatSession:
         # 0.10.149; the text line never did, so its promise guard had nothing
         # but the DJ's wording to go on — see promises.unbacked.
         self.asks = Asks()
+        # Move 3 of the conversation-engine convergence (NORTH STAR): the two
+        # mouths share ONE state holder and its standing order. Chat built its
+        # guards a while ago but consulted them by hand, in a shorter order
+        # than the phone's — it had stuck and withheld but never the door (a
+        # typed DJ can ask "anything else?" just as a spoken one can) or the
+        # open-ask comeback (a typed ask outlives its turn the same way). Both
+        # arrive here now, through the SAME call/state.py the phone runs.
+        # `arc` stays None on purpose: a text line has no end_call to steer
+        # toward, which call/arc.py's docstring records. `withheld` and
+        # `actions` are per-message and set on the state each turn, the way
+        # chat already retuned withheld.
+        self.state = ConversationState(
+            door=Door(), stuck=self.stuck, arc=None,
+            asks=self.asks, actions=None)
         self.persona_name = ""
         # The id as well as the name: a voice call records both, and a
         # record that knows only "Ash" cannot be grouped by persona the
@@ -336,20 +352,26 @@ class ChatSession:
             # asks, one wrong answer, no mechanism anywhere that noticed. See
             # call/stuck.py.
             self.asks.heard(text)
-            note = self.stuck.hint_for(text)
-            if note:
-                ctx.add_message(role="system", content=note)
-                self.problems.append(PROBLEMS["stuck"])
-            # Asked for something this line withholds: card + honest first
-            # answer, same as the phone. See call/withheld.py.
+            # Withheld is per-message (it needs the resolved cfg and this
+            # message's actions ledger); build or retune it, then hand it and
+            # the ledger to the shared state before consulting it.
             if self.withheld is None:
                 self.withheld = Withheld(cfg, actions)
             else:
                 self.withheld.actions = actions
                 self.withheld.retune(cfg)
-            note = self.withheld.hint_for(text)
-            if note:
+            self.state.withheld = self.withheld
+            self.state.actions = actions
+            # The phone's on_user_turn_completed and this loop now consult the
+            # SAME object in the SAME order — stuck, withheld, door, then the
+            # open-ask comeback (arc is None here). Each note lands as a system
+            # message after the caller's line, never inside it. The stuck note
+            # still earns its Needs-attention entry; it is the first in the
+            # order, so its log line names it.
+            for log_line, note in self.state.hints_for(text):
                 ctx.add_message(role="system", content=note)
+                if "asked this before" in log_line:
+                    self.problems.append(PROBLEMS["stuck"])
 
             self.remember("caller", text)
             self.messages += 1
@@ -364,6 +386,12 @@ class ChatSession:
                 reply = ("Line's a bit crackly at my end — say that again "
                          "for me?")
             self.remember("dj", reply)
+            # The outgoing seam: hand the DJ's line to the door (and arc,
+            # which no-ops here) so the NEXT turn can tell whether this one
+            # held the door open. The phone gets this from an SDK event on
+            # the assistant turn; the typed loop has the reply in hand and
+            # feeds it directly. See call/state.py dj_said.
+            self.state.dj_said(reply)
             self.actions_log.extend(
                 (kind, detail) for kind, detail in actions.taken)
             self.last_active = time.time()

@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import unittest
 from pathlib import Path
 import settings as settings_store
@@ -1221,6 +1222,67 @@ class TestTheMapTheOperatorNavigatesBy(_TempStores):
         for gid in settings_store.GROUP_ALIASES:
             self.assertIn(gid, {g for g, *_ in settings_store.GROUPS},
                           f"GROUP_ALIASES names a section that does not exist: {gid}")
+
+
+class TestEverySettingIsRealAndEveryKeyIsDeclared(unittest.TestCase):
+    """The manifest the plan asked for, sized to what actually bites
+    (2026-08-28, 204 settings). Two directions:
+
+    A `cfg.get("typo")` returns None and every falsy default reads as
+    "off" — a misspelled key is a setting that silently never arrives.
+    So every key the code asks for must be declared in FIELDS.
+
+    And a FIELDS key nothing consumes is a row the panel renders and the
+    operator tunes to no effect. Consumption has three channels: a python
+    read (cfg.get or subscript), or the browser (the widget reads config
+    fields by name in its own JS/HTML). At adoption, all 204 keys were
+    consumed and exactly one phantom existed — a docstring example — which
+    is why settings.py itself is excluded from the typo scan."""
+
+    _GET = re.compile(
+        r"""(?:\bcfg|self\.cfg|self\._cfg)\.get\(\s*["']([a-z0-9_]+)["']""")
+
+    def _python_sources(self):
+        for p in AGENT_WORKER.rglob("*.py"):
+            s = str(p)
+            if ("tests" in s or "scripted_call" in s or ".venv" in s
+                    or s.endswith("settings.py")):
+                continue
+            yield p.read_text(encoding="utf-8", errors="replace")
+
+    def test_no_code_asks_for_an_undeclared_setting(self):
+        # "allow_x" is prose — two comments describe the gate PATTERN with a
+        # placeholder name. A comment cannot silently return None.
+        prose = {"allow_x"}
+        unknown = {}
+        for src in self._python_sources():
+            for key in self._GET.findall(src):
+                if key not in settings_store.FIELDS and key not in prose:
+                    unknown[key] = True
+        self.assertEqual(
+            sorted(unknown), [],
+            "cfg.get() on keys FIELDS never declared — each one silently "
+            "returns None wherever it is read")
+
+    def test_no_setting_is_declared_that_nothing_consumes(self):
+        # settings.py itself is NOT consumption — the FIELDS table names
+        # every key by definition, and counting it would make this vacuous.
+        py = "\n".join(self._python_sources())
+        web = ""
+        widget = REPO / "web-widget"
+        for p in list(widget.glob("*.js")) + [widget / "panel.html"]:
+            web += p.read_text(encoding="utf-8", errors="replace")
+        dead = []
+        for key in settings_store.FIELDS:
+            if re.search(r"""[."'\[]""" + key + r"""["'\]]""", py):
+                continue
+            if key in web:
+                continue
+            dead.append(key)
+        self.assertEqual(
+            sorted(dead), [],
+            "declared in FIELDS but consumed by neither the python nor the "
+            "widget — the panel offers a dial wired to nothing")
 
 
 class TestTheThinkingSoundShipsOff(unittest.TestCase):

@@ -53,6 +53,25 @@ def degraded() -> bool:
 # forgets the ledger, which costs one call's worth of filtering, not privacy
 # of anything the station didn't already broadcast.
 from collections import deque as _deque
+from urllib.parse import quote as _quote
+
+
+def _seg(value) -> str:
+    """One id, safe to drop into a URL PATH segment.
+
+    Every id here arrives from the station via a tool result the MODEL has
+    relayed, or from a caller's own words — never ours to trust with the
+    shape of a path. Unquoted, a crafted id like "../../schedule/override"
+    re-targets the request at a different station endpoint under the admin
+    credentials we attach, which reaches DELETE routes whose own tools the
+    operator disabled — defeating the per-tool grant boundary the tier
+    ladder is built on (httpx collapses the dot-segments at build time).
+    request_status and unblock_track always quoted; three siblings did not
+    (security sitting, 2026-08-28). One quoter now, so a new path-building
+    call cannot forget again. `safe=''` leaves a slash as %2F, not a
+    separator.
+    """
+    return _quote(str(value), safe="")
 
 _AIRED_BY_US: _deque = _deque(maxlen=80)
 _AIRED_TTL_SECS = 2 * 3600.0
@@ -578,7 +597,7 @@ class StationClient:
             return []
         try:
             r = await self._client.get(
-                f"/library/observatory/track/{track_id}",
+                f"/library/observatory/track/{_seg(track_id)}",
                 auth=httpx.BasicAuth(user, password),
                 timeout=LIBRARY_TIMEOUT,
             )
@@ -654,7 +673,7 @@ class StationClient:
             return {"ok": False, "error": "no track id to cancel"}
         try:
             r = await self._client.delete(
-                f"/dj/queue/{track_id}",
+                f"/dj/queue/{_seg(track_id)}",
                 auth=httpx.BasicAuth(user, password),
                 timeout=ACTION_TIMEOUT,
             )
@@ -837,13 +856,10 @@ class StationClient:
         return {"error": str(last)[:140]}
 
     async def request_status(self, request_id: str) -> dict:
-        # Quoted: the id comes back from the station via a tool result the
-        # model has passed through, so it is not ours to trust with the shape
-        # of a URL path.
-        from urllib.parse import quote
-
+        # Quoted via _seg: the id comes back from the station through a tool
+        # result the model relayed, never ours to trust as a path.
         try:
-            r = await self._client.get(f"/request/{quote(str(request_id), safe='')}")
+            r = await self._client.get(f"/request/{_seg(request_id)}")
             r.raise_for_status()
             return r.json()
         except Exception:
@@ -1102,7 +1118,7 @@ class StationClient:
             return {"ok": False, "error": "nothing is playing to un-like right now"}
         try:
             r = await self._client.delete(
-                f"/likes/song/{song_id}/operator",
+                f"/likes/song/{_seg(song_id)}/operator",
                 auth=httpx.BasicAuth(user, password),
                 timeout=ACTION_TIMEOUT,
             )
@@ -1273,8 +1289,6 @@ class StationClient:
         """
         from station_config import admin_credentials
 
-        from urllib.parse import quote
-
         user, password = admin_credentials()
         if not (user and password):
             return {"ok": False, "error": "no station admin credentials"}
@@ -1282,7 +1296,7 @@ class StationClient:
             return {"ok": False, "error": "nothing identifiable to unblock"}
         try:
             r = await self._client.delete(
-                f"/library/blocklist/track/{quote(str(track_id), safe='')}",
+                f"/library/blocklist/track/{_seg(track_id)}",
                 auth=httpx.BasicAuth(user, password),
                 timeout=ACTION_TIMEOUT,
             )

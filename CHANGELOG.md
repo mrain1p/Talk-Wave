@@ -3,6 +3,31 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.99.4
+
+A formal security sitting, the two mouths finally sharing one guard, and three more audit items closed.
+
+### The security pass
+
+A five-surface adversarial review — caller-influenced tool arguments, station data reaching the prompt, the widget DOM, the HTTP edge, and secrets at rest — with every finding verified before it was acted on. The widget DOM came back clean (the pre-split "everything goes through textContent" bill of health still holds across all five JS files), and the HTTP edge, webhook auth, and credential-egress guards held. Six real fixes landed:
+
+- **Path-traversal closed on three station calls.** A track id relayed by the model or typed by a caller was interpolated raw into a station URL on cancel, un-block, and neighbours lookups, while two sibling calls correctly escaped theirs — a crafted `../` id could re-target the request at a station endpoint whose own tool the operator had disabled. Every id now routes through one quoter, so a new path-building call cannot forget again.
+- **Uncapped station fields into the prompt, capped.** The now-playing context block (mood, weather, clock, daypart) and the short identity strings (DJ name, station name, show name) rode the system prompt on every turn without the length cap their siblings had — a hostile or corrupt station value could balloon a prompt that is re-paid each turn. All now pass the same junk-guard.
+- **The day-log stops keeping a caller's words.** The request fallback logged the caller's own phrase (a dedication naming a person) into the 48-hour cross-call log that is read back to later callers — against that log's own no-caller-content contract. It notes a neutral label now.
+- **The voicemail store goes owner-only**, mirroring the call-transcript store it sits beside — a stranger's spoken message is the same private content, and it was world-readable on the shared volume.
+- **The player relay forwards the address it observed**, not the caller's spoofable `X-Forwarded-For`, so a caller can't forge the listener IP the station throttles.
+- **The proxy-trust guidance is fixed** so an operator behind the bundled reverse proxy knows to set `CALLIN_TRUSTED_PROXIES` — without it the brute-force lockout collapses to one shared bucket (it fails safe, but a griefer could lock everyone out).
+
+### The two mouths share one conversation state
+
+- **The text line adopts the phone's ConversationState** (NORTH STAR move 3). Chat built its guards a while ago but consulted them by hand in a shorter order — it had the repeated-ask and withheld-capability guards but never the door (a typed DJ can ask "anything else?" too) or the open-ask comeback. Both arrive now, through the same `call/state.py` the phone runs, in the same standing order; the end-of-call arc stays out by design, since a text line has no call to end. Proven at the seam: a door-holding line now yields the door hint on chat's own state.
+
+### More audit items closed
+
+- **Open Lines strips markdown before the station reads it aloud** — an operator's `*emphasis*` in a premise no longer airs as spoken asterisks (single underscores survive, so snake_case is safe).
+- **A settings manifest test** now fails if code asks for an undeclared setting or a declared setting reaches no consumer — worth more at 204 settings than when it was first sketched.
+- **The records tool learns to correlate ratings** (`corr`): up- vs down-rated calls compared on problems, duration, and refused actions, so a caller's thumb stops being a number with no cause attached. Wired into the weekly check-in.
+
 ## 0.99.3
 
 The widget gets its first executable check, and four long-standing audit items close with answers instead of activity.

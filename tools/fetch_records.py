@@ -94,19 +94,83 @@ def show(rec: dict) -> None:
     print()
 
 
+def correlate(calls: list[dict]) -> None:
+    """What a caller's thumb travels WITH — the weekly check-in read.
+
+    The rating was stored per record and correlated with nothing (the plan's
+    own note, 2026-08-28). This does not pretend to statistics on a handful
+    of rated calls; it just puts the thumb next to what else the record knows
+    — problems, duration, whether a station action was refused — so a
+    down-thumb stops being a number with no cause attached. It also reads the
+    archive alongside the live window, since the server only keeps 20.
+    """
+    pool = {r.get("id"): r for r in calls}
+    if ARCHIVE.exists():
+        for p in ARCHIVE.glob("*.json"):
+            try:
+                pool.setdefault(p.stem, json.loads(p.read_text("utf-8")))
+            except (OSError, ValueError):
+                pass
+    rated = {"up": [], "down": []}
+    for rec in pool.values():
+        r = rec.get("rating")
+        if r in rated:
+            rated[r].append(rec)
+    total = len(pool)
+    n_rated = len(rated["up"]) + len(rated["down"])
+    print(f"{total} records in reach ({len(calls)} live + archive); "
+          f"{n_rated} carry a caller thumb "
+          f"({len(rated['up'])} up, {len(rated['down'])} down).")
+    if not n_rated:
+        print("Nothing to correlate yet — press a thumb on a call, or run "
+              "`save` weekly so the rated ones survive the 20-record window.")
+        return
+
+    def _avg(recs, fn):
+        vals = [fn(r) for r in recs if fn(r) is not None]
+        return sum(vals) / len(vals) if vals else None
+
+    def _refused(rec):
+        return any(t.get("failed") for t in rec.get("tools") or [])
+
+    for label in ("up", "down"):
+        recs = rated[label]
+        if not recs:
+            continue
+        prob = _avg(recs, lambda r: len(r.get("problems") or []))
+        dur = _avg(recs, lambda r: r.get("durationSecs"))
+        refused = sum(1 for r in recs if _refused(r))
+        print(f"  thumb {label:<4} n={len(recs):<3} "
+              f"avg {prob:.1f} problem(s), "
+              f"avg {dur:.0f}s, "
+              f"{refused} had a refused action")
+    # The specific thing to read next: the worst down-rated call.
+    downs = sorted(rated["down"],
+                   key=lambda r: len(r.get("problems") or []), reverse=True)
+    if downs and (downs[0].get("problems")):
+        worst = downs[0]
+        print(f"\nMost-flagged down-rated call: {worst.get('id')} — "
+              f"`show --id {worst.get('id')}` to read it. First problem:")
+        print("  " + one_line((worst["problems"][0] or {}).get("what"), 150))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--base", required=True,
                     help="token server origin, e.g. http://192.168.1.245:8100")
     ap.add_argument("--key", default=os.environ.get("TALKWAVE_ADMIN_KEY", ""))
     ap.add_argument("--id", default="", help="one record id for `show`")
-    ap.add_argument("command", choices=["list", "show", "save"],
+    ap.add_argument("command", choices=["list", "show", "save", "corr"],
                     nargs="?", default="list")
     args = ap.parse_args()
 
     calls = fetch(args.base, args.key)
     if not calls:
         print("No records on the server (it returns the newest 20).")
+        return
+
+    if args.command == "corr":
+        correlate(calls)
         return
 
     if args.command == "list":

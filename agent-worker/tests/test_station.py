@@ -294,6 +294,85 @@ class TestTheDJKnowsWhoIsInTheBoothAndWhatTheShowPlays(unittest.TestCase):
         self.assertEqual(_fmt_show_shape({"genres": [], "moods": []}), "")
 
 
+class TestNoIdEscapesItsPathSegment(unittest.TestCase):
+    """The security sitting, 2026-08-28. Every id these tools drop into a
+    station URL arrives from the station via a tool result the MODEL relayed,
+    or from a caller's words — never ours to trust as a path. Three DELETE/GET
+    builders interpolated it raw while two siblings quoted; a crafted
+    "../../schedule/override" id re-targeted the request at another station
+    endpoint under the admin credentials, reaching routes whose tools the
+    operator had disabled. _seg quotes every one now."""
+
+    def _capture(self, method_name, coro_factory):
+        from station import StationClient
+
+        seen = {}
+
+        class _FakeResp:
+            status_code = 200
+            content = b"{}"
+            headers = {"content-type": "application/json"}
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"ok": True}
+
+        class _FakeClient:
+            async def request(self, method, url, **kw):
+                seen["path"] = url
+                return _FakeResp()
+
+            async def get(self, url, **kw):
+                seen["path"] = url
+                return _FakeResp()
+
+            async def delete(self, url, **kw):
+                seen["path"] = url
+                return _FakeResp()
+
+            async def aclose(self):
+                pass
+
+        from unittest import mock
+
+        async def _run():
+            client = StationClient(base_url="http://station.invalid")
+            client._client = _FakeClient()
+            try:
+                with mock.patch("station_config.admin_credentials",
+                                return_value=("u", "p")):
+                    await coro_factory(client)
+            finally:
+                await client.aclose()
+
+        asyncio.run(_run())
+        return seen.get("path", "")
+
+    def test_a_traversal_id_is_percent_encoded_not_a_separator(self):
+        import station
+
+        evil = "../../schedule/override"
+        # The unit that every path builder now routes through.
+        self.assertNotIn("/", station._seg(evil))
+        self.assertIn("%2F", station._seg(evil))
+
+        # And end to end through the tools that were unquoted: the crafted id
+        # cannot introduce a new path segment.
+        from station_config import admin_credentials  # noqa: F401
+
+        for label, factory in (
+            ("cancel_queued_track",
+             lambda c: c.cancel_queued_track(evil)),
+        ):
+            with self.subTest(tool=label):
+                path = self._capture(label, factory)
+                self.assertNotIn("/schedule/override", path,
+                                 f"{label} let the id escape its segment")
+                self.assertIn("%2F", path)
+
+
 class TestTheStationLogSaysWhatWasSaid(unittest.TestCase):
     """The djLog records when an utterance STARTED and what was said — never
     when it ended. The guard sizes the end of its hold from the words, so the

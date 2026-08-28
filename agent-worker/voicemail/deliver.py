@@ -63,7 +63,14 @@ def hold(text: str, persona_name: str, delivered: str = "hold",
     tmp = MESSAGES_PATH.with_suffix(".json.tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(messages, f, indent=1)
-    for path, mode in ((MESSAGES_PATH.parent, 0o755), (tmp, 0o644)):
+    # Owner-only, mirroring call/record.py's transcript store: a voicemail is
+    # a stranger's spoken message, the same private caller content the calls
+    # directory deliberately keeps at 0700/0600 — and on the documented
+    # Synology target new files arrive mode 000, so this chmod is what SETS
+    # the mode, not merely tightens it. Was 0755/0644, which made the more-
+    # exposed of the two copies world-readable on the shared volume while the
+    # record store protected the same words (security sitting, 2026-08-28).
+    for path, mode in ((MESSAGES_PATH.parent, 0o700), (tmp, 0o600)):
         try:
             os.chmod(path, mode)
         except OSError:

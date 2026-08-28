@@ -118,24 +118,32 @@ def _fmt_now_playing(np: dict, speak_clock: bool = True) -> str:
     # that keeps the wall clock off air must not find the call-in DJ is the
     # one voice still announcing the hour. The daypart vibe below stays
     # either way — the station's own switch makes the same carve-out.
+    # Every one of these context fields is station-supplied and rides the
+    # SYSTEM PROMPT on every turn, exactly like the track fields above — so
+    # each goes through _fld, the same junk-and-hostile-field cap. Missed at
+    # first (the caps landed on the track siblings only); found in the
+    # 2026-08-28 security sitting, where a hostile or upstream-relayed value
+    # (a third-party weather condition, a mood aggregate) could otherwise
+    # arrive uncapped and unrepaired. Short caps: these are a word or two.
     if speak_clock and clock.get("display"):
-        where.append(clock["display"])
+        where.append(_fld(clock["display"], 40))
     # `time` is a plain string ("evening") on some builds and an object with a
     # `vibe` on others — take whichever this station sends.
     if isinstance(time_ctx, dict) and time_ctx.get("vibe"):
-        where.append(str(time_ctx["vibe"]))
+        where.append(_fld(time_ctx["vibe"], 40))
     elif isinstance(time_ctx, str) and time_ctx:
-        where.append(time_ctx)
+        where.append(_fld(time_ctx, 40))
     if isinstance(weather, dict) and weather.get("condition"):
-        temp = f", {weather['temp']}{weather.get('tempUnit', '')}" if weather.get("temp") else ""
-        where.append(f"{weather['condition']}{temp}")
+        temp = (f", {_fld(weather['temp'], 12)}{_fld(weather.get('tempUnit', ''), 4)}"
+                if weather.get("temp") else "")
+        where.append(f"{_fld(weather['condition'], 40)}{temp}")
     elif isinstance(weather, str) and weather:
-        where.append(weather)
+        where.append(_fld(weather, 40))
     if where:
         bits.append("It's " + ", ".join(where) + ".")
 
     if ctx.get("dominantMood"):
-        bits.append(f"The room tonight is {ctx['dominantMood']}.")
+        bits.append(f"The room tonight is {_fld(ctx['dominantMood'], 60)}.")
 
     # How many people are actually out there. A caller asking "is anyone even
     # listening?" is asking a real question, and the station knows the answer.

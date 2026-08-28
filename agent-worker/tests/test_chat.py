@@ -805,6 +805,27 @@ class TestChatActionCardsFollowTheLine(_TempStores):
              tools_mod.build_on_air_tools) = orig
         return events
 
+    def test_the_text_line_now_carries_the_shared_door(self):
+        # NORTH STAR move 3 (2026-08-28): chat adopts the phone's
+        # ConversationState, which gives it the door guard it never had — a
+        # typed DJ can hold the door open ("anything else?") just as a spoken
+        # one can. Proven at the seam: a door-holding line fed to the shared
+        # state, then a caller turn that is not a goodbye, yields the door
+        # hint — the same note the phone gets, on chat's own state object.
+        from call.door import HINT, holds_the_door
+        from chat import session as chat_session
+
+        chat = chat_session.ChatSession("door1", "open")
+        line = "That's queued for you. Anything else I can spin?"
+        self.assertTrue(holds_the_door(line), "fixture no longer trips door")
+        chat.state.dj_said(line)
+        hints = chat.state.hints_for("no, that's me done")
+        self.assertEqual(hints, [], "a goodbye must clear the door, not nag")
+        # A non-goodbye continuation gets the door note.
+        chat.state.dj_said(line)
+        notes = [note for _log, note in chat.state.hints_for("hmm")]
+        self.assertIn(HINT, notes)
+
     def test_after_is_the_default_and_the_card_lands_behind_the_line(self):
         events = self._run_ask()
         kinds = [e["type"] for e in events]

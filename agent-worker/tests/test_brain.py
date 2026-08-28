@@ -385,11 +385,20 @@ class TestOneBadTrackCannotSwallowThePrompt(unittest.TestCase):
         # 200), so a maxed line is longer — but still BOUNDED. The point is
         # that a multi-KB junk field can't reach the prompt, not the exact
         # ceiling: five 5000-char fields collapse from 25KB to ~1KB.
+        # The `context` block (clock, time.vibe, weather, dominantMood) was
+        # the SAME missed-cap gap one level down — this test set no context,
+        # so it passed green while those fields rode uncapped (security
+        # sitting, 2026-08-28). Now every context field is _fld'd too.
         np = {"nowPlaying": {"title": "x" * 5000, "artist": "y" * 5000,
                              "album": "z" * 5000, "genre": "g" * 5000,
-                             "moods": ["m" * 900] * 5}}
+                             "moods": ["m" * 900] * 5},
+              "context": {"clock": {"display": "c" * 5000},
+                          "time": {"vibe": "v" * 5000},
+                          "weather": {"condition": "w" * 5000,
+                                      "temp": "9" * 5000, "tempUnit": "F" * 500},
+                          "dominantMood": "d" * 5000}}
         line = _fmt_now_playing(np)
-        self.assertLess(len(line), 1300, f"now-playing rendered {len(line)}")
+        self.assertLess(len(line), 1600, f"now-playing rendered {len(line)}")
         rows = _tracks([{"title": "t" * 5000, "artist": "a" * 5000}], 4)
         self.assertTrue(all(len(r) < 500 for r in rows), rows)
 
@@ -529,6 +538,22 @@ class TestEveryMouthSpeaksAsTheSameDJ(unittest.TestCase):
         from brain.briefing import CARD_BUDGET
 
         self.assertEqual(CARD_BUDGET, 2000)
+
+    def test_the_short_identity_fields_are_capped_too(self):
+        # Security sitting, 2026-08-28: soul and topic were clipped to
+        # CARD_BUDGET, but their short siblings — the DJ name, station name
+        # and show name — rode the opening line of the prompt raw. A corrupt
+        # or hostile /dj or /schedule value re-costs every turn of a voice
+        # call. NAME_BUDGET now caps all three.
+        import inspect
+
+        from brain import assemble
+
+        src = inspect.getsource(assemble.build_system_prompt)
+        self.assertIn("NAME_BUDGET = 120", src)
+        # Every one of the three identity strings goes through clip(...,
+        # NAME_BUDGET) — the name, the station name, the show name.
+        self.assertEqual(src.count("NAME_BUDGET)"), 3)
 
 
 class TestTheConductHarnessCannotReachTheRealStation(unittest.TestCase):

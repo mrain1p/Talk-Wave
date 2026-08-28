@@ -491,6 +491,26 @@ class TestTheAuthLockoutKeyIsUnspoofable(unittest.TestCase):
         self.assertEqual(self._key("8.8.8.8", xff="10.0.0.1"), "8.8.8.8")
 
 
+class TestThePlayerRelayForwardsWhatItObserved(unittest.TestCase):
+    """Security sitting, 2026-08-28. The /player like/request proxy forwarded
+    the caller's RAW X-Forwarded-For to the station, so a caller could spoof
+    the listener IP the station throttles per-address. It now forwards
+    _caller_key — the address the sidecar honestly observed, the same value
+    its own cooldown trusts. Source-read because exercising the relay needs a
+    live station endpoint the suite must never reach."""
+
+    def test_the_relay_uses_the_observed_caller_not_the_raw_header(self):
+        import inspect
+
+        from api import player
+
+        src = inspect.getsource(player._relay)
+        self.assertIn("_caller_key(request)", src)
+        self.assertNotIn('request.headers.get("X-Forwarded-For")', src,
+                         "the relay is back to forwarding the spoofable "
+                         "header the caller sent")
+
+
 class TestAPasswordAttemptCannotChooseItsOwnLockoutBucket(_TempStores):
     """The lockout key was right where it was argued for and wrong in the two
     handlers that actually take a password. `_check_admin` used `_auth_key`;

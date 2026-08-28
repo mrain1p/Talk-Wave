@@ -1004,12 +1004,18 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 705: vet-before-show (2026-08-28) - the held round, the one
         # rewrite, and the honest release, all in the ChatSession half
         # the recorded seam already names.
-        "agent-worker/chat/session.py": (705, "the one-conversation half "
+        "agent-worker/chat/session.py": (726, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "
                                               "(ChatShelf: open, resume, "
-                                              "idle out, sweep)"),
+                                              "idle out, sweep). 726 at "
+                                              "0.99.4: NORTH STAR move 3 gave "
+                                              "chat the shared ConversationState "
+                                              "— the wiring shrank the "
+                                              "consultation but the holder + "
+                                              "its comment grew the file; the "
+                                              "recorded split is unaffected"),
         # Back over the ceiling at 630 with the tape-mode class (0.98.5); its
         # earlier entry (676) was rightly deleted when a split took it under.
         # The seam is the same one it has always had: the chunk-store half

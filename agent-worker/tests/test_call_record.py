@@ -1281,6 +1281,42 @@ class TestTheDayLogRemembersActionsNotPeople(unittest.TestCase):
         daylog.note("queue", "phantom", tier="")
         self.assertEqual([], daylog.recent())
 
+    def test_a_request_fallback_logs_no_caller_words(self):
+        # Security sitting, 2026-08-28: the request_song fallback paths
+        # noted the caller's own request phrase (a dedication naming a
+        # person, say), which the day-log then read back to LATER callers —
+        # a breach of this module's no-caller-content contract. The
+        # wrappers now note a neutral label. This pins the DOOR: whatever a
+        # caller typed, a stored request line carries no free text from it.
+        from unittest import mock
+
+        from call import daylog
+        from call.actions import CallActions
+        from call.tools import music
+
+        class _Station:
+            async def submit_request(self, text, requester):
+                return {"requestId": "r1"}
+
+            async def request_status(self, rid):
+                # No matched track yet — drives the ack-only fallback that
+                # used to log the caller's words.
+                return {"ack": "got it", "track": {}}
+
+        actions = CallActions(9, tier="open")
+        secret = "play something for my sister June in Fresno"
+        with mock.patch.object(music, "_INLINE_POLL_SECS", 0), \
+                mock.patch.object(music, "library_search_needs_mcp",
+                                  lambda: False):
+            tools = music.build_library_tools(
+                {"allow_requests": True}, _Station(), actions)
+            tool = next(t for t in tools
+                        if t.info.name == "subwave_request_song")
+            asyncio.run(tool(request=secret))
+        lines = " ".join(e.get("what", "") for e in daylog.recent())
+        self.assertNotIn("June", lines)
+        self.assertNotIn("Fresno", lines)
+
     def test_the_lines_carry_doors_never_names(self):
         from call import daylog
 

@@ -1223,5 +1223,39 @@ class TestTheRecordSurvivesBothContainers(_OnDisk):
         self.assertEqual(state.current(), {})
 
 
+class TestAPremiseSpeaksWithoutItsMarkup(unittest.TestCase):
+    """The plan's watch item, closed 2026-08-28: markdown in an operator's
+    premise (or a caller's typed line) rode the direction into the station's
+    own model and came back in `spoken` — asterisks the station TTS then
+    read aloud. Every direction builder now strips emphasis and code markers
+    at the one door to the booth; single underscores survive on purpose
+    (they hold snake_case together, and nobody writes _emphasis_ in a
+    premise box)."""
+
+    def test_every_direction_builder_strips_the_markup(self):
+        from openlines import air
+
+        premise = "**Tonight's** question: your *first* `driving` song"
+        cfg = {"open_lines_address": "https://example.test/call"}
+        directions = [
+            air.open_direction(premise, cfg),
+            air.remind_direction(premise, cfg, aired="I asked about *songs*"),
+            air.followup_direction(premise, "someone said **Africa**", cfg),
+            air.close_direction(premise, 2, reported=["they loved *it*"]),
+        ]
+        for d in directions:
+            with self.subTest(d=d[:40]):
+                self.assertNotIn("*", d)
+                self.assertNotIn("`", d)
+                self.assertIn("Tonight's question", d)
+
+    def test_snake_case_survives_the_strip(self):
+        from openlines.air import spoken_plain
+
+        self.assertEqual(spoken_plain("the file_name stays, __this__ goes"),
+                         "the file_name stays, this goes")
+        self.assertEqual(spoken_plain("# A heading\nplain"), "A heading\nplain")
+
+
 if __name__ == "__main__":
     unittest.main()

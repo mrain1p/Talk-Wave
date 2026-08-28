@@ -16,6 +16,7 @@ from __future__ import annotations
 import tests  # noqa: F401
 
 from tests.test_settings import (  # noqa: F401
+    TestEverySettingIsRealAndEveryKeyIsDeclared,
     TestTheThinkingSoundShipsOff,
     TestTheMapTheOperatorNavigatesBy,
     TestTheOnAirDelayIsTheOperatorsDial,
@@ -55,6 +56,7 @@ from tests.test_secrets_and_auth import (  # noqa: F401
     TestWrittenFilesGetExplicitModes,
 )
 from tests.test_http import (  # noqa: F401
+    TestThePlayerRelayForwardsWhatItObserved,
     TestAMissingModelNamesTheOnesTheServerHas,
     TestAStandingOverrideIsVisibleAndClearable,
     TestAnEmptyRoomIsNotAFaultWhenCallersTuneIn,
@@ -364,6 +366,7 @@ from tests.test_takeover import (  # noqa: F401
     TestLockingTheStationToAGenre,
 )
 from tests.test_station import (  # noqa: F401
+    TestNoIdEscapesItsPathSegment,
     TestTheDJsLanguageSurvivesTheRead,
     TestTheNeverPlayWritesAndTheGenreLock,
 )
@@ -518,6 +521,7 @@ from tests.test_heard import (  # noqa: F401
     TestAClearedSynthesisIsNotSomebodyTalkingOver,
 )
 from tests.test_open_lines import (  # noqa: F401
+    TestAPremiseSpeaksWithoutItsMarkup,
     TestOpenLinesIsAdditive,
     TestWhatTheDJIsToldAboutTheTopic,
     TestTheDJAllowlistActuallyMatches,
