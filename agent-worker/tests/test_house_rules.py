@@ -224,6 +224,35 @@ class TestTheCallHarnessOnlyDialsLocal(unittest.TestCase):
                              "— pointing this at a deployment is never right")
 
 
+class TestTheWidgetHarnessOnlyDrivesLocal(unittest.TestCase):
+    """tools/widget_check.py (A4, adopted 2026-08-28) drives a real browser
+    at a widget stub. Pointed at the operator's deployment it would hammer a
+    live box to answer a dev-box question, so it hard-refuses any
+    non-localhost base with no override flag — the same 'never becomes once,
+    by accident' rule as the call harness above. Source-read, because the
+    harness needs playwright and a browser, which the suite must never."""
+
+    def test_the_refusal_exists_and_has_no_escape_hatch(self):
+        src = (REPO / "tools" / "widget_check.py").read_text(encoding="utf-8")
+        self.assertIn("refuse_remote(args.base)", src,
+                      "the harness no longer checks its target")
+        self.assertIn('("localhost", "127.0.0.1", "::1")', src,
+                      "the localhost allowlist changed shape")
+        for flag in ("--remote-ok", "--force", "--i-know", "--unsafe"):
+            self.assertNotIn(flag, src,
+                             "the guard has grown an override flag; remove "
+                             "it — a browser harness never drives a "
+                             "deployment")
+        # And the suite's own no-new-dependency rule holds: playwright is
+        # imported lazily with a helpful refusal, never at module top.
+        self.assertIn("from playwright.sync_api import", src)
+        self.assertLess(src.index("def main"),
+                        src.index("from playwright.sync_api import"),
+                        "playwright import moved to module scope — the "
+                        "tool must degrade to a message, not a crash, on "
+                        "a box without it")
+
+
 class TestTheRetiredEvalStaysRetired(unittest.TestCase):
     """tools/tool_eval.py was deleted at 0.10.146. This is the note saying why,
     so it does not get rebuilt.
@@ -622,7 +651,13 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         "agent-worker/settings.py":
             "mostly DEFAULTS and GROUPS — a declaration table, not logic. Long "
             "because the station has a lot of settings, and reading it top to "
-            "bottom is how you find one. It is supposed to grow.",
+            "bottom is how you find one. It is supposed to grow. RULED "
+            "2026-08-28 (operator): stays exempt — the number is the table's, "
+            "same reasoning as the scenario tables. The one approved seam is "
+            "tables-out (FIELDS/SCHEMA/GROUPS to a schema module, machinery "
+            "stays; crossing is one-way — machinery reads tables, tables call "
+            "nothing), to be cut opportunistically at the START of the next "
+            "settings-heavy session, never as its own project.",
         "agent-worker/tests/test_open_lines.py":
             "one feature, and the seam was measured before exempting it. Open "
             "Lines is six modules (state, premise, premises, schedule, air, "

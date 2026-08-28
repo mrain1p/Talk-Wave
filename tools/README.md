@@ -20,6 +20,10 @@ These three all place genuine calls, and they differ in what they bring with the
 
 **[`livecall/`](livecall/)** — everything real except the mouth, which is a WAV file Chrome is pretending is a microphone. Real STT, real TTS, real station, real air. It exists because timing questions cannot be answered any other way and a human on the line changes what is being measured — every ducking fix from 0.10.121 to 0.10.124 was sized from a run of it. Slowest to set up; the only one that can see the on-air hold.
 
+## Does the widget actually render?
+
+**[`widget_check.py`](widget_check.py)** — both pages plus the embed's compact mode in a real headless browser, checking what the Python suite's text reads cannot see: a page that throws on load, CSS that parsed but died (computed-style spot checks — the class of bug that once re-inflated every embed to 896px and once ate `.skinart` with 23 modules green), and the two-pages contract as the browser actually resolved it. Playwright for Python, dev-box only (`pip install playwright && playwright install chromium`) — the image and CI need nothing. Boots its own stub; refuses any non-localhost base with no override flag, same rule as the call harness. Run it after any change to `web-widget/`, before a release. Proven on adoption day by recreating the comment-eats-rule incident: the suite stayed green, this failed on the exact dead rule.
+
 ## What actually happened on the line?
 
 **[`fetch_records.py`](fetch_records.py)** — the finished-call records, fetched over the panel's own HTTP auth and printed as conversations: problems up top, turns and tool runs merged in time order. Built after the 2026-08-27 text-exchange review cost an evening of hand-SSH and raw JSON for a question the records already answered. `save` archives them into `livecall/records-archive/` (gitignored — caller words never reach the public repo) before the server's 20-record window rotates them away. The `talkwave-records` skill carries the reading guide.

@@ -3,6 +3,21 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.99.3
+
+The widget gets its first executable check, and four long-standing audit items close with answers instead of activity.
+
+### The widget renders, and something can finally say so
+
+- **`tools/widget_check.py`** — both pages plus the embed's compact frame in a real headless browser (Playwright for Python: no npm, no build step, dev-box only — the image and CI need nothing). It fails on what the suite's text checks are structurally blind to: a page that throws on load, and CSS that parsed but died — the class of bug that once re-inflated every embed and once ate a rule with the whole suite green. Proven on adoption day by recreating that incident: the suite stayed green, the harness failed on the exact dead rule. Localhost-only with no override flag, pinned like the call harness.
+
+### Audit items closed by reading, not writing
+
+- **The deployed STT is local Whisper by stored choice** — the settings read the plan waited weeks for. The env's Deepgram/nova-3 sits provisioned but dormant under it, which means the 8–11-second per-turn transcription tax measured in the latency audit has a one-toggle fix waiting whenever the operator wants it. `max_concurrent_calls` resolves to the shipped default of 2 — the old "currently 0" worry is moot.
+- **There is no break-glass key to rotate**: `CALLIN_ADMIN_KEY` is empty on the live box, the once-disclosed placeholder is long gone, and the panel password is the only admin credential — the strongest posture the item could have closed in.
+- **The floor's collision counter reads zero** across every surviving record, but the window only reaches two days back — kept, with the read folded into the weekly check-in now that the records tool can archive before rotation.
+- **Two stale claims fixed at the source**: the voicemail mastering chain's docstring now tells the truth about running on the live on-air path per caller turn, and the web process stops importing the LiveKit SDK for one duck-pad constant — it comes from the timing leaf built for exactly that.
+
 ## 0.99.2
 
 The master plan's last earmarked phase reviewed and closed — and the review found the real problem living where the plan never looked.

@@ -250,6 +250,7 @@ from tests.test_tools_logic import (  # noqa: F401
 )
 from tests.test_house_rules import (  # noqa: F401
     TestEveryScenarioIsWellFormedBeforeItCostsAnything,
+    TestTheWidgetHarnessOnlyDrivesLocal,
 )
 from tests.test_prompt_budget import (  # noqa: F401
     TestTheClosingSplitTracksItsOwnText,

@@ -35,10 +35,12 @@ SETTINGS_PATH = Path(
 # The one number both ends of the on-air duck are sized from. Imported rather
 # than repeated: call/air.py owns the timing and this owns the default, and a
 # 5 here against a 4.5 there is how the two ends drifted apart in the first
-# place. Guarded because settings.py must import on a box with no LiveKit —
-# call.air pulls the agents SDK in at module scope.
+# place. From the timing LEAF, not call.air: air.py pulls the agents SDK in
+# at module scope, and this import used to drag LiveKit into the web process
+# for one float. air_timing exists to be importable anywhere; the guard
+# stays as a belt for a box with a broken checkout.
 try:
-    from call.air import DUCK_PAD_SECS as _DUCK_PAD
+    from call.air_timing import DUCK_PAD_SECS as _DUCK_PAD
 except Exception:                                          # noqa: BLE001
     _DUCK_PAD = 4.5
 
