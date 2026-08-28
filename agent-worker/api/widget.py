@@ -123,6 +123,18 @@ async def _assets(request: web.Request, handler):
     resp = await handler(request)
     path = request.path
 
+    # The operator's page must never render inside a frame. The rule has
+    # stood since the pages split (two-pages-on-purpose: framing the panel
+    # forecloses every future proxy rule and puts the authenticated surface
+    # inside whatever page framed it) but until 0.99.2 nothing ENFORCED it —
+    # no header, no test. Both addresses that serve the panel markup carry
+    # it: /settings (the canonical page) and the static /panel.html the
+    # widget mount also exposes. The CALL page must stay frameable forever —
+    # embeds are an iframe onto / — so this must never widen.
+    if path == "/settings" or path.endswith("panel.html"):
+        resp.headers["X-Frame-Options"] = "DENY"
+        resp.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+
     if path == "/" or path.endswith(".html"):
         resp.headers["Cache-Control"] = "no-cache"
     elif path.endswith((".js", ".css")):

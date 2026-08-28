@@ -76,6 +76,7 @@ from tests.test_http import (  # noqa: F401
 from tests.test_widget import (
     TestSectionTagsCanShowTheirState,  # noqa: F401
     TestThePanelKeepsItsOwnRules,
+    TestThePanelStylesStayOffTheCallPage,
     TestTheMusicComesBackAfterACall,
     TestNothingIsReachableOnlyByRecognisingIt,
     TestThePanelSaysWhereThingsAre,

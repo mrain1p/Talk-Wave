@@ -670,12 +670,17 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "ceiling. Every part of a call touches room, live, callBtn, capBox "
             "and muted, because that is what a call is.",
         "web-widget/style.css":
-            "both pages load it and splitting does not help: only 193 lines "
-            "are panel-only while 308 are used by both, so the split leaves "
-            "two files that still need each other and one still over the "
-            "ceiling. The real problem was that 1,103 lines carried one "
-            "comment; it has a table of contents and twelve section markers "
-            "now, which is what made it hard to read.",
+            "the call card and everything both pages share, since 0.99.2 "
+            "cut the panel-only half out: the old '193 panel-only lines' "
+            "claim had drifted seventeen-fold while every embed downloaded "
+            "all of it. What remains is one surface's styling plus the "
+            "shared base, and the regions left genuinely serve the card.",
+        "web-widget/panel.css":
+            "the operator-page half of the 0.99.2 cut — the settings run, "
+            "the preview stage, the Players page and the panelpage "
+            "newspaper redesign, loaded by panel.html alone. One page, one "
+            "file; the leak check both ways is written in its header, and "
+            "TestThePanelStylesStayOffTheCallPage holds it.",
         # The three test modules that crossed the ceiling in 0.9.111, and they
         # are here for one reason that applies to all of tests/: this ceiling
         # and agent-worker/CLAUDE.md's placement rule point in opposite

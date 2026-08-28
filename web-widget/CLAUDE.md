@@ -15,7 +15,8 @@ Keep it that way; the whole thing is served as static files by `token_server.py`
 | `panel-sounds.js` | `/panel-sounds.js` | The sound board: slot cards, the shelf, previews and uploads |
 | `panel-viewers.js` | `/panel-viewers.js` | Reading back what happened: the log and call viewers |
 | `panel-charts.js` | `/panel-charts.js` | The ACTIVITY strip: four charts over /calls + /stats/listeners |
-| `style.css` | `/style.css` | Both pages. Themed by `data-theme` on `<html>` |
+| `style.css` | `/style.css` | Both pages: the call card and the shared base. Themed by `data-theme` on `<html>` |
+| `panel.css` | `/panel.css` | The operator's page only, after `style.css` — the settings run, the preview stage, the Players page, the newspaper redesign (cut at 0.99.2) |
 | `skins.css` | `/skins.css` | The call page. EXPERIMENTAL card skins, keyed by `data-skin` on `<html>` |
 | `embed.js` | — | Drop-in `<script>` for third-party pages |
 | `embed-test.html` | — | Local harness for the embed path |
@@ -80,15 +81,17 @@ files lives in the Python suite (`test_sidecar.py`):
   other's, and asserts the call page contains no trace of the settings form.
 - `TestPanelMarkup`, `TestPanelLoadsOnOpen`, `TestAssetVersioning` — panel structure and
   cache-busting.
-- `TestNoFileGrowsWithoutSomebodyDeciding` — `call.js`, `panel.js`, `panel.html` and
-  `style.css` are all over the 600-line ceiling and all `EXEMPT`, every one of them *measured*
-  rather than assumed. **If you are tempted to split one of these, measure the seam first** —
-  count the names a candidate region needs from the rest of the file and the names the rest
-  needs back. The two splits that did happen scored 6 and 2. What is left scores 5 (captions,
-  for 140 lines), 10 (the pipeline check) and 25 (the call itself), and every region of
-  `call.js` is coupled in both directions because every part of a call touches `room`,
-  `live`, `callBtn`, `capBox` and `muted`. `style.css` has 308 lines used by both pages
-  against 193 panel-only, so splitting leaves two files that still need each other.
+- `TestNoFileGrowsWithoutSomebodyDeciding` — `call.js`, `panel.js`, `panel.html`,
+  `style.css` and `panel.css` are all over the 600-line ceiling and all `EXEMPT`, every one
+  of them *measured* rather than assumed. **If you are tempted to split one of these,
+  measure the seam first** — count the names a candidate region needs from the rest of the
+  file and the names the rest needs back. The two JS splits that did happen scored 6 and 2.
+  What is left scores 5 (captions, for 140 lines), 10 (the pipeline check) and 25 (the call
+  itself), and every region of `call.js` is coupled in both directions because every part
+  of a call touches `room`, `live`, `callBtn`, `capBox` and `muted`. The CSS was different:
+  its old "308 shared vs 193 panel-only" measurement drifted seventeen-fold, and CSS has no
+  name imports — so the panel-only half was cut to `panel.css` at 0.99.2 with zero seam
+  cost, and `TestThePanelStylesStayOffTheCallPage` holds the boundary both ways.
 
 So: **if you rename a DOM id or add a `fetch()`, run the Python suite.** That is what catches it.
 

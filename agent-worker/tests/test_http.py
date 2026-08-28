@@ -137,6 +137,36 @@ class TestHttpSurface(_TempStores):
                 on_disk = (REPO / "web-widget" / name).stat().st_size
                 self.assertEqual(size, on_disk, f"{name} decoded to {size}, file is {on_disk}")
 
+    def test_the_panel_never_renders_in_a_frame(self):
+        # "Never make /settings frameable" stood as prose from the day the
+        # pages split (two-pages-on-purpose); 0.99.2 makes it a header on
+        # BOTH addresses that serve the panel markup — /settings and the
+        # static /panel.html the widget mount also exposes. The CALL page
+        # must stay frameable forever (embeds are an iframe onto /), so its
+        # absence there is asserted just as hard.
+        async def check(client, ts):
+            out = {}
+            for path, hdrs in (("/settings", {"Accept": "text/html"}),
+                               ("/panel.html", {}),
+                               ("/", {}),
+                               ("/index.html", {})):
+                r = await client.get(path, headers=hdrs)
+                out[path] = (r.headers.get("X-Frame-Options"),
+                             r.headers.get("Content-Security-Policy") or "")
+            return out
+
+        served = self._serve(check)
+        for path in ("/settings", "/panel.html"):
+            with self.subTest(path=path):
+                self.assertEqual(served[path][0], "DENY")
+                self.assertIn("frame-ancestors 'none'", served[path][1])
+        for path in ("/", "/index.html"):
+            with self.subTest(path=path):
+                self.assertIsNone(
+                    served[path][0],
+                    f"{path} must stay frameable — embeds are an iframe onto it")
+                self.assertNotIn("frame-ancestors", served[path][1])
+
     def test_health_reports_the_running_version(self):
         async def check(client, ts):
             return await (await client.get("/health")).json()

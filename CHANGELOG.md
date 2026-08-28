@@ -3,6 +3,22 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.99.2
+
+The master plan's last earmarked phase reviewed and closed — and the review found the real problem living where the plan never looked.
+
+### Embeds stop downloading the operator's page
+
+- **The panel-only half of style.css moves to panel.css, loaded by the operator's page alone.** The old plan worried about panel JavaScript reaching embeds; that split actually happened at 0.9.105. What nobody re-measured was the stylesheet: ~3,200 of style.css's 6,473 lines — the settings run, the preview stage, the Players page, the whole panelpage newspaper redesign — were panel-only while the file's own header claimed 193, and every caller and every embed downloaded and parsed all of it. Unlike the JS split, CSS has no name imports, so this cut costs nothing: one extra link tag on the panel page, and the boundary is held both ways by a token-audited leak check and a standing test.
+
+### The panel's never-frameable rule becomes enforceable fact
+
+- **/settings (and the raw panel.html) now send X-Frame-Options DENY and frame-ancestors 'none'.** The rule that the operator's page must never render inside a frame has stood since the pages split — as prose, with no header and no test. Now it is both, and the test asserts the other direction just as hard: the call page stays frameable forever, because embeds are an iframe onto it.
+
+### The plan's ledger closes
+
+- Phase 5 — the last earmarked structural phase — is retired in MASTER-PLAN: the JS half shipped long ago, the 2026-08-05 case against the remainder held on re-review, and the CSS cut above is what the review actually surfaced. Every structural phase in the plan is now done or deliberately closed.
+
 ## 0.99.1
 
 The open list from 0.99.0, worked to done: the last blind spots get eyes, the greeting races its own silence, the one dishonest refusal path tells the whole truth, and reading back what happened on the line becomes one command.
