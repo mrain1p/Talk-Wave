@@ -317,7 +317,7 @@ _BOOKKEEPING_ROLES = {"event", "track"}
 _PRIVATE_KINDS = {"callin", "caller", "call"}
 
 
-def _is_spoken(m: dict) -> bool:
+def is_spoken(m: dict) -> bool:
     """Only actual DJ speech belongs in "things you said on air" — scenario
     lines, picker decisions and track-play markers are bookkeeping, and a
     track marker framed as the DJ's own words reads as nonsense."""
@@ -348,7 +348,7 @@ def _fmt_booth(session: dict, limit: int, show_name: str = "", show_topic: str =
     # window below what was asked for.
     for m in messages[-(limit * 3):]:
         text = m.get("text") or m.get("content") or ""
-        if not text or not _is_spoken(m):
+        if not text or not is_spoken(m):
             continue
         kind = str(m.get("kind") or "").lower()
         # The programme intro is pinned separately — keep it out of here.

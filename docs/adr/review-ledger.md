@@ -183,3 +183,37 @@ surfaces and dead code.
 - **CallActions dead getattr-defaults** (2 sites) and **reads.py import hygiene**
   — low-value polish, deferred; the untyped-bus reads that have real `__init__`
   defaults are already fine.
+
+---
+
+## Batch 5 — the brain (2026-08-29)
+
+Mostly **accept-with-reason**: the brain assembles a byte-pinned prompt, and it
+already follows the one-source-of-truth rule where strings are genuinely
+identical (shared imports for `SPEAK_AS_YOURSELF`/`DOORWAY`/`running_the_call`/
+`say_the_true_thing`; the `OFF_LIST` constant read by both the prompt and
+`TestNothingAskableGoesUnsaid` — a guard that exists because a two-place
+hardcode once drifted). The apparent duplication the recon flagged ("a miss is
+not proof", the film-soundtrack guidance) is **deliberate byte-different
+paraphrase** in often mutually-exclusive code paths — unifying it would change
+the shipped prompt for one path and trip the byte-identity guards. Left as-is.
+
+- **Fixed (the one safe win):** `brain.briefing._is_spoken` → `is_spoken`. It was
+  the single genuine cross-package reach past a brain underscore
+  (`openlines/quiz.py` imports it). A pure rename of a filter predicate — no
+  prompt byte changes — so the booth/quiz coupling is now an intentional public
+  surface rather than reaching past an underscore. `_fmt_now_playing`/`_fmt_booth`
+  turned out not to be reached cross-package; `CARD_BUDGET`/`OFF_LIST` are the
+  intended public constants.
+
+### Kept load-bearing (do NOT "simplify")
+- `_tools` complexity (27, ledgered) — each cfg branch gates a distinct
+  switch-riding paragraph; a capability taught without its tool gets *mimed*
+  (the 2026-08-12 fake-takeover). The branching is the product.
+- The ablation machinery (`SECTIONS` + `drop`, `TRUTH_CLAUSES`, `CLOSING_CLAUSES`)
+  and `conduct._CLOSING_GROUPS` — the closing split is *derived* from the one
+  string, not copied out; "fixing" it into copied strings would reintroduce the
+  drift the index approach removes.
+- `assemble.build_system_prompt`'s re-resolution — deliberate preview-vs-call
+  divergence (the preview resolves at admin tier to show the fullest capability
+  set); all three re-resolves are fallbacks the call path never hits.
