@@ -222,6 +222,7 @@ from tests.test_tools_surface import (  # noqa: F401
     TestTheTwoMouthsShareOneSurface,
 )
 from tests.test_tools_logic import (  # noqa: F401
+    TestANoOpCurationDoesNotChargeOrCard,
     TestASegmentThatStoodDownIsNotReportedAsAiring,
     TestATrackAlreadyWaitingIsOfferedNotReAdded,
     TestARefusedRequestNamesWhatDidNotHappen,
@@ -388,6 +389,7 @@ from tests.test_station import (  # noqa: F401
     TestAFailedReadSaysWhyItFailed,
     TestStationConfig,
     TestTheCardCacheHasOneHome,
+    TestTheCardOnlyClaimsOnAirWithARealDJ,
     TestTheDJKnowsWhoIsInTheBoothAndWhatTheShowPlays,
     TestTheDJKnowsWhoIsListening,
     TestTheHoldMatchesHowLongTheStationWillTalk,

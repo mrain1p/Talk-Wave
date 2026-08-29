@@ -285,6 +285,22 @@ def _for_this_caller(request: web.Request, payload: dict) -> dict:
     return out
 
 
+def _reachability(health, persona: dict, now: dict) -> tuple[bool, bool]:
+    """`(reachable, on_air)` for the card — a real, distinguishable state.
+
+    The card used to show whatever came back, so a station that answered but
+    had nobody on air looked identical to one that was live. The trap was that
+    `persona.get("id")` alone is ALWAYS truthy: resolve_live_persona falls back
+    to id "default" on every path, including an unreachable station, so it can
+    never stand for "someone is on air" (top-down review, 2026-08-28). A real
+    persona id — the sentinel excluded — is what "on air" needs; "reachable" is
+    that OR any actual health / now-playing data.
+    """
+    real_persona = (persona or {}).get("id") not in (None, "", "default")
+    reachable = bool(health) or bool(now) or real_persona
+    return reachable, reachable and real_persona
+
+
 async def handle_live(request: web.Request) -> web.Response:
     """Who's on air, proxied so the widget doesn't depend on the station
     sending CORS headers to whatever origin the widget is embedded on."""
@@ -302,19 +318,7 @@ async def handle_live(request: web.Request) -> web.Response:
         show = await station.active_show(now)
         track = now.get("nowPlaying") or {}
 
-        # "On air" needs to be a real, distinguishable state. Previously the
-        # card just showed whatever came back, so a station that answered but
-        # had nobody on air looked identical to one that was live.
-        #
-        # `persona.get("id")` alone was ALWAYS truthy — resolve_live_persona
-        # falls back to id "default" on every path, including when the station
-        # is unreachable — so reachable was a constant True and the widget's
-        # "cannot reach the station" branch was dead code (top-down review,
-        # 2026-08-28). Exclude the sentinel, matching the on_air line just
-        # below: a real persona id, or actual health/now-playing data.
-        real_persona = persona.get("id") not in (None, "", "default")
-        reachable = bool(health) or bool(now) or real_persona
-        on_air = reachable and real_persona
+        reachable, on_air = _reachability(health, persona, now)
 
         cfg = settings_store.load()
         sound_pack = cfg.get("sound_pack") or "classic"

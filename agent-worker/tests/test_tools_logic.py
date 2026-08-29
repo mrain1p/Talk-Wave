@@ -1574,6 +1574,70 @@ class TestTakingAHeartBackOff(unittest.TestCase):
         self.assertNotIn("no un-like", like.info.description)
 
 
+class TestANoOpCurationDoesNotChargeOrCard(unittest.TestCase):
+    """A like on an already-liked track, or a ban on an already-banned one,
+    changes nothing at the station. Before the top-down review (2026-08-28)
+    the idempotency check ran AFTER actions.note(), so a non-event still spent
+    one of the caller's action slots and fired a "Liked"/"Banned" receipt card
+    claiming a fresh action had landed. note() must not run for a no-op."""
+
+    def _like(self, station_result):
+        from call.actions import CallActions
+        from call.tools import curation
+
+        class _Station:
+            async def now_playing(self):
+                return {"nowPlaying": {"title": "Everyday", "artist": "Don McLean",
+                                       "subsonic_id": "donmc1"}}
+
+            async def like_track(self, song_id):
+                return dict(station_result)
+
+        actions = CallActions(9)
+        tools = curation.build_curation_tools(
+            {"allow_favorite": True}, _Station(), actions)
+        like = next(t for t in tools if t.info.name == "subwave_like_track")
+        out = asyncio.run(like())
+        return actions, out
+
+    def test_an_already_liked_track_bills_nothing_and_cards_nothing(self):
+        actions, out = self._like({"ok": True, "alreadyLiked": True})
+        self.assertEqual(0, actions.count, "a no-op like spent an action slot")
+        self.assertEqual([], actions.taken, "a no-op like fired a receipt card")
+        self.assertIn("lready liked", out)
+
+    def test_a_real_like_still_bills_and_cards(self):
+        # The other side of the guard: a genuine like must still count.
+        actions, _ = self._like({"ok": True, "count": 3})
+        self.assertEqual(1, actions.count)
+        self.assertEqual([("like", '"Everyday" by Don McLean')], actions.taken)
+
+    def test_an_already_banned_track_bills_nothing_and_cards_nothing(self):
+        from call.actions import CallActions
+        from call.tools import curation
+
+        class _Station:
+            async def now_playing(self):
+                return {"nowPlaying": {"title": "Filler", "subsonic_id": "fil1"}}
+
+            async def block_track(self, song_id):
+                return {"ok": True, "already": True}
+
+        actions = CallActions(9)
+        orig = curation.library_search_needs_mcp
+        curation.library_search_needs_mcp = lambda: False
+        try:
+            tools = curation.build_curation_tools(
+                {"allow_never_play": True}, _Station(), actions)
+        finally:
+            curation.library_search_needs_mcp = orig
+        ban = next(t for t in tools if t.info.name == "subwave_never_play_track")
+        out = asyncio.run(ban())
+        self.assertEqual(0, actions.count, "a no-op ban spent an action slot")
+        self.assertEqual([], actions.taken, "a no-op ban fired a receipt card")
+        self.assertIn("already on the never-play list", out)
+
+
 class TestASegmentThatStoodDownIsNotReportedAsAiring(unittest.TestCase):
     """Station 1.8's forced-skill path may answer 200 with `aired: false` and
     a reason — the skill ran, looked at what it fetched, and had nothing worth

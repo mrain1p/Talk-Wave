@@ -576,6 +576,44 @@ class TestARefusalNamesItsRule(unittest.TestCase):
         self.assertLessEqual(len(said), 240)
 
 
+class TestTheCardOnlyClaimsOnAirWithARealDJ(unittest.TestCase):
+    """The /live card used to read "on air" for any station that merely
+    answered, because resolve_live_persona falls back to id "default" on every
+    path — so `persona.get("id")` was always truthy and the widget's "cannot
+    reach the station" branch was dead code. on_air now needs a REAL persona
+    (top-down review, 2026-08-28)."""
+
+    def _reach(self, health, persona, now):
+        from api.live import _reachability
+        return _reachability(health, persona, now)
+
+    def test_a_default_persona_is_not_on_air(self):
+        # A reachable box that nobody has configured: health answers, but the
+        # persona is the sentinel. Reachable, yes; on air, no.
+        reachable, on_air = self._reach({"ok": True}, {"id": "default"},
+                                        {"nowPlaying": {"title": "Filler"}})
+        self.assertTrue(reachable)
+        self.assertFalse(on_air, "an unconfigured box read as on air")
+
+    def test_a_real_persona_is_on_air(self):
+        reachable, on_air = self._reach({"ok": True}, {"id": "midnight-jane"}, {})
+        self.assertTrue(reachable)
+        self.assertTrue(on_air)
+
+    def test_a_real_persona_alone_makes_a_silent_station_reachable(self):
+        # No health, nothing playing, but a real DJ resolved: still reachable.
+        reachable, on_air = self._reach(None, {"id": "midnight-jane"}, {})
+        self.assertTrue(reachable)
+        self.assertTrue(on_air)
+
+    def test_an_unreachable_station_is_neither(self):
+        # The dead-code branch this fix revived: no health, nothing playing,
+        # and only the fallback persona.
+        reachable, on_air = self._reach(None, {"id": "default"}, {})
+        self.assertFalse(reachable)
+        self.assertFalse(on_air)
+
+
 class TestTheCardCacheHasOneHome(unittest.TestCase):
     """Five modules stale the /live answer and one builds it. They must all be
     holding the same dict — a second copy would mean a settings save, a new

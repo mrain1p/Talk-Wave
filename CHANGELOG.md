@@ -3,6 +3,13 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.99.7
+
+Regression pins for three of the 0.99.6 review's fixes, and one small refactor to make them possible. No behaviour change.
+
+- **Three fixes now fail loudly if they regress.** The on-air card decision (a station reads "on air" only with a real DJ, not merely because it answered), the no-op curation guard (an already-liked or already-banned track bills nothing and prints no receipt), and the webhook re-registration when this box's own receiver address drifts each gain a dedicated test — the kind that survives a refactor because it says why it exists.
+- **The on-air decision is a named helper.** It was three inline booleans in the `/live` handler; it is now `_reachability(health, persona, now)`, which is what the new test pins. Same answer as 0.99.6, now nameable and testable on its own.
+
 ## 0.99.6
 
 A top-down review of the call and chat paths — thirty confirmed findings across seven subsystems, every one reproduced before it was touched and re-checked after. The headline is a "more like this" that seeded its search from nothing on a real station; the rest close a scatter of paper-cuts in what gets logged, what a tool charges for, what the prompt may claim, and what a hung-up call leaves running.

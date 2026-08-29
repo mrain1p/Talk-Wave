@@ -923,12 +923,14 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # are: the answer depends on the tier, and the shared payload is
         # cached across every caller. Eleven lines, eight of them the note
         # saying why the shelf itself is never published with it.
-        # 654 at 0.99.6 (top-down review, 2026-08-28): on_air now requires a
+        # 658 at 0.99.6 (top-down review, 2026-08-28): on_air now requires a
         # REAL persona, not merely a reachable station — an unconfigured box
         # with a default persona reads as off-air, so the widget stops claiming
-        # a DJ is on when none is. Eight lines on the shared-build side of the
-        # seam, where the card payload is assembled.
-        "agent-worker/api/live.py": (654, "the shared payload build split "
+        # a DJ is on when none is. The decision is a named _reachability helper
+        # so a unit test can pin it (test_station) rather than the whole
+        # handler; on the shared-build side of the seam where the card is
+        # assembled.
+        "agent-worker/api/live.py": (658, "the shared payload build split "
                                           "from the per-caller resolve"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
         # snapshot head start, the MCP warm-up, the join riding prepare). The
