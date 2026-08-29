@@ -161,9 +161,14 @@ surfaces and dead code.
   call `CallActions.station_refused(result, said)`, which reads the reason once,
   cards once, and returns the pinned house prose; each site passes only its own
   lead ("That didn't go out", "That segment didn't run"). **This fixed a latent
-  bug**: two curation sites spelled "don't", which `spoken_rules.reads_as_a_refusal`
-  and the refusals ablation do NOT recognise — so their refusals weren't being
-  graded as refusals. The other 9 sites (batch queue/album refusals, the two
+  bug** (attribution corrected in the pre-release review): the single queue-cancel
+  site (`removal.py`) ended "…do NOT claim it's gone", whose lead ("come out of
+  the queue") matched neither `spoken_rules.reads_as_a_refusal`'s "didn't go
+  out/through/into" nor its tail — so with a real station error it read as NOT a
+  refusal; the pinned "do not claim it worked" tail now matches. Net positive
+  (one more site graded, none lost); the two curation "don't" sites were already
+  matching via "didn't go through" and were never the gap. The other 9 sites
+  (batch queue/album refusals, the two
   "unavailable" capability gaps, and the request-song rate-gate relay) have
   genuinely different shapes and stay as they are. Two tests updated: the
   speech-filter grader pin now reads the phrase from its ONE home (`call.actions`),
@@ -236,8 +241,9 @@ the shipped prompt for one path and trip the byte-identity guards. Left as-is.
 - **Deliberately left out of the fold** (the review's per-site call): admin_auth
   — its read must keep absent-vs-corrupt APART (fail-closed: unreadable ⇒ "a
   password IS set"), which `read_or` would erase (a security regression);
-  settings._stored's read — it runs `_migrate({})` on absent, not a bare seed, so
-  folding would apply old-default stamps to a fresh store; call/record's three
+  settings._stored's read — its SUCCESS path returns `_migrate(json.load(f))`, so
+  `read_or` (which returns the raw dict, unmigrated) would drop the migration a
+  loaded store needs; call/record's three
   writes (different temp name + split dir-chmod — a real fold but not
   byte-identical); daylog/stats/prefetch (a leaner no-chmod sub-idiom — folding
   would ADD a chmod they don't have).
@@ -289,3 +295,38 @@ nothing to catch a regression and is out of scope. Only the provably-safe wins:
 - **Accepted:** both CSS design eras are live (bare-class selectors still resolve
   to real markup); the `callinTheme`/`callinPalette` three-file writers are the
   deliberate "apply the theme before /live arrives" pattern, not a drift to fold.
+
+---
+
+## Pre-release verification (2026-08-29) — before the parity push to :latest
+
+A five-agent adversarial pass over the whole `origin/main..HEAD` diff (0.99.2 →
+the 7 review batches), each reading the code to CONFIRM or REFUTE. **Verdict:
+GO.** Every high/med regression and security concern was **REFUTED** with
+evidence: the settings.py peel is *identity*-identical for all 31 importers,
+`guest_door_open` matches both former spellings across the full input space
+(0/44 mismatches), the readback split is byte-identical with all routes wired
+and the `_mint_info` shared dict intact, no store's file mode changed (secrets
+stay 0600, admin_auth's fail-closed absent≠corrupt intact), `watch.py`'s
+predicates are char-for-char identical, no auth gate dropped, and the version /
+two-container / commit-style / no-JS-toolchain invariants all hold. Suite 32/32,
+ruff clean.
+
+Confirmed items were all minor and none a regression from the review:
+- **Doc fixes (done):** the grader-gap attribution (it was the queue-cancel
+  site, not the two curation sites) and the `_stored` left-out rationale.
+- **Pre-existing follow-ups (NOT introduced here; the fold preserved existing
+  behaviour):** voicemail draft sidecars are 0644 while delivered messages are
+  0600 (a stranger's in-progress transcript is world-readable in a 0755 drafts
+  dir) — tighten `review.py` sidecars to 0600; and the shared voicemail dir mode
+  tugs between deliver's 0700 and greetings' 0755, so the 0700 hardening on the
+  messages dir is non-durable (the files are 0600 regardless). Both are voicemail
+  privacy hardening for a follow-up, not release blockers.
+- **`jsonstore.read_or`/`store_path`** have no production callers yet — they are
+  the API for the deferred read-fold tier; kept.
+- **Biggest residual risk:** `web-widget/` has no JS test harness, and this span
+  carries real widget changes (0.99.2's CSS split, 0.99.6's call.js on-air
+  re-entrancy, Batch 7). Mitigated by the Python text-contract tests, a live
+  driver smoke (both pages render, no JS errors), and existing dev exposure — but
+  a manual click-through of the panel + a real player-like/voicemail send is the
+  one thing worth an operator eyeball post-release.
