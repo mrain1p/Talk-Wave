@@ -52,7 +52,7 @@ def _shows_of(shows: list[dict], persona: dict) -> list[dict]:
     return [s for s in shows if pid and str(s.get("personaId") or "") == pid]
 
 
-def _match_show(shows: list[dict], wanted: str,
+def match_show(shows: list[dict], wanted: str,
                 personas: list[dict] | None = None) -> dict | None:
     """Find the show a caller named, without making the model look it up first.
 
@@ -141,7 +141,7 @@ def _close_to(want: str, candidates: list[str]) -> list[str]:
 
 def _show_miss(shows: list[dict], wanted: str,
                personas: list[dict]) -> str:
-    """What to say when `_match_show` came back empty.
+    """What to say when `match_show` came back empty.
 
     A miss is nearly always one of three things, and they need three
     different answers. The old text gave one — the whole roster, twice over,

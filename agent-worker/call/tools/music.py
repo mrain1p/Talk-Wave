@@ -29,7 +29,7 @@ from .removal import build_removal_tools
 # call sites already reach for, and moving the helpers to their own module is
 # not a reason to make every one of them move too.
 from .rows import (  # noqa: F401
-    _blocked_reason, _drop_blocked, _fmt_track, _query_variants,
+    _blocked_reason, _drop_blocked, _fmt_track, query_variants,
     looks_like_a_vibe,
 )
 
@@ -214,7 +214,7 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             # guess from a full page.
             PAGE = 8
             page = max(1, int(page or 1))
-            for attempt in _query_variants(q):
+            for attempt in query_variants(q):
                 items = await station.search_library(
                     attempt, offset=(page - 1) * PAGE, limit=PAGE + 1)
                 if items is None:
@@ -375,7 +375,7 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             # cause does not matter: a model that lost its receipt, a nudge
             # that fired twice, and a caller who repeats themselves all arrive
             # at this same line, and none of them should cost a second slot.
-            if str(id) in getattr(actions, "queued_ids", ()):
+            if str(id) in actions.queued_ids:
                 return (
                     f"\"{title}\" is ALREADY in the queue from earlier in this "
                     "call — nothing further has been added, and nothing needs "

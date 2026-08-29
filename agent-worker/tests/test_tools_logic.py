@@ -32,13 +32,13 @@ class TestMainToolLogic(_TempStores):
         cls.registry = registry
 
     def test_query_variants_strips_the_by_connector(self):
-        v = self.music._query_variants("Let It Be by The Beatles")
+        v = self.music.query_variants("Let It Be by The Beatles")
         self.assertEqual(v[0], "Let It Be by The Beatles")
         self.assertIn("Let It Be The Beatles", v)
         self.assertIn("Let It Be", v)
 
     def test_query_variants_keeps_titles_containing_by(self):
-        v = self.music._query_variants("Stand by Me by Ben E. King")
+        v = self.music.query_variants("Stand by Me by Ben E. King")
         self.assertIn("Stand by Me", v)  # rightmost split only
 
     def test_guarded_list_drops_on_air_tools_but_keeps_reads(self):

@@ -330,3 +330,47 @@ Confirmed items were all minor and none a regression from the review:
   driver smoke (both pages render, no JS errors), and existing dev exposure — but
   a manual click-through of the panel + a real player-like/voicemail send is the
   one thing worth an operator eyeball post-release.
+
+---
+
+## Follow-ons — the safe deferred items (2026-08-29, post-0.99.10)
+
+Working through the review's deferred backlog, doing only the safe/verifiable ones:
+
+- **Voicemail privacy hardening** (the pre-release follow-up): draft sidecars are
+  now `0600` (a stranger's in-progress voicemail is no longer world-readable —
+  `review.py`), and the shared voicemail dir is `0700` consistently across
+  `greetings`/`review`, so `deliver`'s `0700` on the messages dir is no longer
+  undone by the next greetings write.
+- **Two honest-coupling renames:** `_query_variants` → `query_variants`
+  (rows.py) and `_match_show` → `match_show` (shows.py) — the two `call/` privates
+  the voicemail preview reached across the package boundary are now public
+  surfaces, like Batch 5's `is_spoken`. Byte-preserving; source + tests renamed.
+- **Two dead getattr-defaults dropped** — `curation.py` and `music.py` read
+  `actions.last_liked`/`queued_ids` directly (both have `__init__` defaults, so
+  the `getattr(..., default)` was dead), matching the plain-attribute access the
+  siblings already use.
+- **reads.py import hygiene** — the livekit import deferred into `build_read_tools`
+  (so the module imports without livekit, like every sibling) and `CallActions`
+  imported relatively.
+- **record.py path-consolidation** — the on-disk filename convention
+  (`{stamp}-{room[-12:]}.json`) was re-typed in `write()` and `rate()`; it now has
+  one owner (`_record_path` / `_find_by_room`).
+
+### Still deferred (deliberately — need the operator's environment or more care)
+- **`session.py` / `air.py` god-object splits** — need a live-call harness; a
+  blind split of timing-sensitive on-air code is exactly what this review avoided.
+- **`station_config._extract_persona_voices` reshape** — needs a real live-station
+  `/settings` payload to validate against (the NAS).
+- **The divergent watchers** (lifecycle card-flush, clocks idle, promise_guard,
+  think_pace) — need per-handler predicates + their own proof before joining
+  `watch.py`.
+- **The widget audio merges** (`playPcm`/`playPcmWithEffect`, `mmss`/`fmt`) —
+  unprovable without a manual TTS listen; no JS harness.
+- **`tts_voices.py` split** and the **`stream_reply` LLM primitive** — real
+  consolidations, but each touches a behaviour-sensitive seam (TTS / LLM
+  streaming) and deserves its own focused, measured pass rather than riding a
+  cleanup batch.
+- **`settings.data_dir()`** — only pays off if the ~10 import-time store-path
+  constants route through it, which is a risky import-time/test-reassignment
+  change; its own pass.

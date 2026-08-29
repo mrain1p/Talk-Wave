@@ -19,25 +19,25 @@ class TestSearchingForWhatTheCallerActuallySaid(unittest.TestCase):
     racks" for a track the library holds three copies of."""
 
     def test_the_by_connector_is_stripped_before_reporting_a_miss(self):
-        from call.tools.music import _query_variants
+        from call.tools.music import query_variants
 
         self.assertEqual(
-            _query_variants("Let It Be by The Beatles"),
+            query_variants("Let It Be by The Beatles"),
             ["Let It Be by The Beatles", "Let It Be The Beatles", "Let It Be"],
         )
 
     def test_a_title_containing_by_survives_the_split(self):
         # Rightmost split, so "Stand by Me" is never torn in half.
-        from call.tools.music import _query_variants
+        from call.tools.music import query_variants
 
-        variants = _query_variants("Stand by Me by Ben E. King")
+        variants = query_variants("Stand by Me by Ben E. King")
         self.assertIn("Stand by Me", variants)
         self.assertNotIn("Stand", variants)
 
     def test_a_query_with_no_connector_is_tried_once(self):
-        from call.tools.music import _query_variants
+        from call.tools.music import query_variants
 
-        self.assertEqual(_query_variants("Mr. Blue Sky"), ["Mr. Blue Sky"])
+        self.assertEqual(query_variants("Mr. Blue Sky"), ["Mr. Blue Sky"])
 
 
 class TestAMoodIsNotASearch(unittest.TestCase):

@@ -4,6 +4,10 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+- **Review follow-ons.** Working through the deferred backlog, the safe items only: a voicemail-privacy tightening (an in-progress voicemail draft is no longer readable by anyone but the box's own user, matching how delivered messages are already kept); two internal helpers that the voicemail preview borrows got their "private" underscore dropped so the sharing is honest; a handful of dead-weight cleanups; and the on-disk naming rule for a call recording, which was written out in two places, now has one home. The bigger deferred pieces (the two call-core god-objects, a couple of behaviour-sensitive TTS/LLM seams) are left for their own focused passes — a blind split of on-air code is what this whole review set out to avoid.
+
 ## 0.99.10
 
 The maintainability review, released. Seven batches of consolidation — one source of truth for every rule that had been written down more than once — grounded in a full architecture recon and gated by a new set of guards (a linter, a per-function complexity ceiling, an import-layering test) plus a committed architecture doc. Every change is behaviour-preserving and was verified by an adversarial pre-release pass; the two bugs it turned up along the way were latent, not introduced. Batches 0 and 1 shipped as 0.99.8/0.99.9 below; this release brings them and batches 2–7 to `main` together, alongside the security and review work of 0.99.2–0.99.7. Decisions and deferrals live in docs/adr/review-ledger.md.

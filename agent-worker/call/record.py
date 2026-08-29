@@ -337,8 +337,7 @@ class CallRecord:
                 os.chmod(CALLS_DIR, 0o700)
             except OSError:
                 pass
-            stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(self.started))
-            path = CALLS_DIR / f"{stamp}-{self.room[-12:]}.json"
+            path = _record_path(self.started, self.room)
             tmp = path.with_suffix(".tmp")
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(self.data, f, indent=1, ensure_ascii=False)
@@ -383,6 +382,21 @@ def _prune(keep: int = KEEP) -> None:
 # What a record id may contain: the stamp and the room tail `write` builds it
 # from, and nothing else. Anchored, so no separator and no dot can ride in.
 _SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,80}")
+
+
+def _record_path(started: float, room: str) -> Path:
+    """Where a call's record lives — the ONE place the filename convention (a
+    local-time stamp + the room's last 12 chars) is written. rate() reads it
+    back via _find_by_room; delete_one/mark_one/recent use id == path.stem."""
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(started))
+    return CALLS_DIR / f"{stamp}-{room[-12:]}.json"
+
+
+def _find_by_room(room: str) -> list[Path]:
+    """A room's record files, newest first — the inverse of _record_path's
+    room-tail half; the stamp side is not known here, so it matches the suffix."""
+    tail = str(room or "")[-12:]
+    return sorted(CALLS_DIR.glob(f"*-{tail}.json"), reverse=True)
 
 
 def delete_one(record_id: str) -> bool:
@@ -456,7 +470,7 @@ def rate(room: str, rating: str) -> bool:
     if len(tail) < 6:
         return False
     try:
-        matches = sorted(CALLS_DIR.glob(f"*-{tail}.json"), reverse=True)
+        matches = _find_by_room(room)
     except OSError:
         return False
     if not matches:

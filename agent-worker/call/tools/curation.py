@@ -68,7 +68,7 @@ async def _target_to_unlike(station: StationClient, actions, title: str,
                     return row, found
         except Exception as e:                                 # noqa: BLE001
             log.debug("could not resolve %r to un-like: %s", named, e)
-    remembered = getattr(actions, "last_liked", None)
+    remembered = actions.last_liked
     if remembered and remembered[0]:
         return remembered[1], remembered[0]
     return await _track_on_air(station)
