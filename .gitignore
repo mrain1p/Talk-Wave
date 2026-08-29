@@ -76,3 +76,6 @@ subwave-probe/
 # livecall harness working data - caller audio and record snapshots stay local
 tools/livecall/audio/
 tools/livecall/records-archive/
+
+# run-talk-wave driver screenshots (dev-only)
+widget-shots/
