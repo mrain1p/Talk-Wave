@@ -388,6 +388,7 @@ from tests.test_station import (  # noqa: F401
     TestABadPlaylistStaysSmall,
     TestAFailedReadSaysWhyItFailed,
     TestStationConfig,
+    TestTheStationModelIsTheDJModelNotTheEmbedder,
     TestTheCardCacheHasOneHome,
     TestTheCardOnlyClaimsOnAirWithARealDJ,
     TestTheDJKnowsWhoIsInTheBoothAndWhatTheShowPlays,

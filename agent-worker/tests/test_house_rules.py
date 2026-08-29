@@ -649,15 +649,27 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "scenario tables, and those are supposed to grow: every real call "
             "worth not repeating becomes a few lines of caller turns here.",
         "agent-worker/settings.py":
-            "mostly DEFAULTS and GROUPS — a declaration table, not logic. Long "
+            "the layered store (FIELDS, load/save/_migrate) plus the resolver "
+            "machinery that reads the tables (schema_payload, _choices_for, "
+            "provider_base_urls, mcp_tools_payload). The approved tables-out "
+            "seam (RULED 2026-08-28) was CUT 2026-08-29 (Batch 1): the panel/"
+            "vocab presentation DATA (SCHEMA/GROUPS/SUPERGROUPS + the provider "
+            "and vocab tables) moved to settings_schema.py, and the caller-tier "
+            "security ladder — unrelated logic buried between FIELDS and the "
+            "panel copy — to caller_tiers.py. Both are pure leaves, re-exported "
+            "so settings_store.* is byte-identical; the crossing is one-way "
+            "(machinery reads the tables, the tables call nothing). What is "
+            "left is still over the ceiling because the store's field handling "
+            "and its resolvers are genuinely one subject; stays exempt.",
+        "agent-worker/settings_schema.py":
+            "the operator panel's declarative presentation data (SUPERGROUPS/"
+            "GROUPS/SCHEMA) plus the mirrored provider/vocab tables — a "
+            "declaration table, not logic, peeled from settings.py at Batch 1 "
+            "(the tables-out seam the operator ruled on 2026-08-28). Long "
             "because the station has a lot of settings, and reading it top to "
-            "bottom is how you find one. It is supposed to grow. RULED "
-            "2026-08-28 (operator): stays exempt — the number is the table's, "
-            "same reasoning as the scenario tables. The one approved seam is "
-            "tables-out (FIELDS/SCHEMA/GROUPS to a schema module, machinery "
-            "stays; crossing is one-way — machinery reads tables, tables call "
-            "nothing), to be cut opportunistically at the START of the next "
-            "settings-heavy session, never as its own project.",
+            "bottom is how you find one — the same reasoning settings.py itself "
+            "carried. Pure data: the functions that read it stayed in "
+            "settings.py, so nothing here is logic that could be split.",
         "agent-worker/tests/test_open_lines.py":
             "one feature, and the seam was measured before exempting it. Open "
             "Lines is six modules (state, premise, premises, schedule, air, "
@@ -1148,7 +1160,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # adapter_api_key/adapter_headers) against synthesis (AdapterTTS and
         # its stream). Discovery never reads the class; the class needs two
         # helper names back.
-        "agent-worker/tts_adapter.py": (654, "a voice-discovery module split "
+        # 669 at Batch 1 (2026-08-29): the fail-loud endpoint_path guard in
+        # load_adapter (the report-only type check is blind at this untyped-dict
+        # seam) plus a docstring paragraph naming the discovery half. Both are
+        # on the synthesis/config side; the seam above has not moved and the
+        # discovery split is still the one worth making.
+        "agent-worker/tts_adapter.py": (669, "a voice-discovery module split "
                                              "out from the AdapterTTS class"),
         # 0.10.113 pushed it over while rebuilding the duck: the pads were
         # collapsed into one constant and a measured voice.end was made to

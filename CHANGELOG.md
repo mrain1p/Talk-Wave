@@ -3,6 +3,15 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.99.9
+
+The maintainability plan, Batch 1 — the platform hubs. No behaviour change; every move is verified byte-identical by the suite.
+
+- **settings.py peeled from 3,169 to ~1,450 lines.** The panel/vocab presentation data (SCHEMA/GROUPS/SUPERGROUPS + the provider and vocab tables) moved to a new `settings_schema.py`, and the caller-tier security ladder — the fail-closed permission code that was buried between the field table and 1,300 lines of UI copy — to `caller_tiers.py`. Both are pure leaves, re-exported so `settings_store.<anything>` stays byte-identical for all 31 callers; the resolver functions that read the tables stayed put so the dependency runs one way.
+- **station.py's docstring stops lying.** It called itself a "slim read-only client" whose actions "go through MCP" over "public reads, no auth" — none of which survived the admin-gated write wrappers landing there. Rewritten to name both halves honestly; the one-class-per-service shape was right, so no split.
+- **A regression test pins the station's DJ model.** The blind depth-first search for the station's model skips the embedding/tagger subtrees that also carry a `model` key; nothing pinned that it works, so a reshuffle could have silently reported the wrong model as the DJ's. Now it can't.
+- **Smaller fixes:** tts_adapter fails loudly at load if an adapter config is missing `endpoint_path` (instead of a KeyError mid-call), station_config drops a docstring line for an endpoint it never reads and cleans three private-alias re-imports, and both files' docstrings gained the halves they had grown but never described.
+
 ## 0.99.8
 
 The maintainability plan's first slice (Batch 0): mechanical guards that keep the code's structure from eroding, plus a committed home for the invariants. No behaviour change — this is tooling, tests, and docs.

@@ -1,13 +1,23 @@
-"""
-Slim read-only client for the SUB/WAVE controller REST API.
+"""Client for the SUB/WAVE controller REST API — the station's read AND write
+surface, one class per external service.
 
-Scope note: the agent's *actions* during a call go through the station's MCP
-server (see main.py) rather than through here — MCP already exposes those as
-tool-calling-ready definitions with descriptions and schemas, so hand-rolling
-them again would be duplicate surface. What's left for this module is the
-handful of reads used to assemble the system prompt before the call starts.
+Two halves cohabit here:
 
-All endpoints used here are public reads; no auth needed.
+- READS (best-effort) assemble the pre-call system prompt: now-playing, the
+  schedule, the DJ persona, listener counts, the library. A failed read degrades
+  the prompt rather than the call — see `degraded()` and `_read_stats`.
+- WRITES / ACTIONS (admin-gated) are the wrappers behind the DJ's station-
+  changing tools — queue a track, take a request, like/unlike, block, run a
+  segment, take over the schedule. Each is the local receipt-writing tool for
+  its action (architecture invariant 12: every station-changing action leaves a
+  receipt the DJ cannot forge). They carry the operator's admin credential; they
+  are NOT public and NOT unauthenticated.
+
+An earlier docstring called this a "slim read-only client" whose actions "go
+through MCP" over "public reads, no auth" — none of which survived the write
+wrappers landing here, and the stale description misled for a while. The shape
+is right (one client per external service), so the fix was the words, not a
+split into read/write classes.
 """
 
 from __future__ import annotations

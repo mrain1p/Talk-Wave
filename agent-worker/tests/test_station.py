@@ -40,6 +40,35 @@ class TestStationConfig(unittest.TestCase):
         self.assertNotIn("p_empty0", m)
 
 
+class TestTheStationModelIsTheDJModelNotTheEmbedder(unittest.TestCase):
+    """The station's settings payload has no documented shape, so station_config
+    finds the DJ's model by a depth-first search for a `model`-ish key. The trap
+    (station_config._SKIP_SUBTREES): the embedding, search and tagger configs
+    ALSO carry a `model` key, and a blind DFS was seen reporting the embedding
+    model as the DJ model — which the sidecar then defaults its own DJ to. The
+    skip existed but nothing pinned that it works, so a reshuffle could silently
+    start returning the wrong model. This is that pin (Batch 1, 2026-08-29)."""
+
+    def test_a_sibling_embedding_model_does_not_win(self):
+        import station_config
+        payload = {
+            "embedding": {"model": "text-embedding-3-small"},
+            "tagger": {"model": "gpt-tagger-mini"},
+            "dj": {"llmModel": "claude-opus-4-8"},
+        }
+        self.assertEqual(
+            station_config._find_first(payload, station_config._MODEL_KEYS),
+            "claude-opus-4-8",
+            "the DFS returned a non-DJ model — a skip-subtree stopped skipping")
+
+    def test_a_top_level_dj_model_still_resolves(self):
+        import station_config
+        payload = {"llmModel": "claude-opus-4-8", "embedding": {"model": "emb"}}
+        self.assertEqual(
+            station_config._find_first(payload, station_config._MODEL_KEYS),
+            "claude-opus-4-8")
+
+
 class TestTuneIn(unittest.TestCase):
     """Where the caller's browser pulls the broadcast from.
 
