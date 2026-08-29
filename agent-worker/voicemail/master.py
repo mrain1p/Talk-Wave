@@ -21,8 +21,13 @@ out, levelled gently — and the on-air tee defaults to it; the costume stays a
 choice for stations that want the 90s look on purpose.
 
 Everything here is stdlib on purpose (wave/struct/math), same as capture.py:
-the suite needs no new dependency and neither does the image. The loops run at
-review time on a bounded clip, not on the audio path of a live call.
+the suite needs no new dependency and neither does the image. The loops run
+on bounded clips — a voicemail at review time, and since the on-air tee
+adopted this chain (call/tee.py _finalise_caller), each caller TURN before it
+airs. That second caller is on the live path: a turn is a few seconds of
+audio and the relay waits for the master before airing it, so anything added
+here is latency a listener hears. The numpy port parked in notes-archive/ is
+the answer if this chain ever grows past what a few-second clip forgives.
 """
 
 from __future__ import annotations

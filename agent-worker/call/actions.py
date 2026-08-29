@@ -249,6 +249,24 @@ class CallActions:
         self._deliver({"kind": kind, "icon": icon,
                        "label": label, "detail": str(detail or "")[:200]})
 
+    def station_refused(self, result: dict, said: str) -> str:
+        """Card a station refusal and return the model-facing prose, once.
+
+        The refusal-card idiom, collapsed (Batch 4). Fourteen call/tools sites
+        read the station's reason TWICE — once for the denied() card, once
+        inside the return string — and drifted on the tail ("don't" vs "do
+        not"). Here the reason is read once, the card goes up once, and the
+        prose is built from the site's own `said` lead ("That didn't go out",
+        "That segment didn't run"). Everything after the reason is the pinned
+        house phrasing the refusal graders read (spoken_rules.reads_as_a_refusal
+        and the refusals ablation), so it is fixed here and cannot drift per
+        call site.
+        """
+        err = result.get("error") or "the station refused it"
+        self.denied("refused", err)
+        return (f"{said}: {err}. Tell the caller plainly — "
+                "do not claim it worked.")
+
     def note(self, kind: str, detail: str = "") -> None:
         # Something landed, so whatever was promised is no longer outstanding.
         self.promised_at = 0.0

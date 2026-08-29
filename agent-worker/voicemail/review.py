@@ -16,6 +16,8 @@ makes this testable without a station, a model, or an event loop.
 
 from __future__ import annotations
 
+from jsonstore import write_atomic
+
 import json
 import os
 import secrets
@@ -53,16 +55,7 @@ def audio_path(draft_id: str) -> Path:
 
 
 def _write_sidecar(draft_id: str, data: dict) -> None:
-    DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = _sidecar(draft_id).with_suffix(".json.tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=1)
-    for path, mode in ((DRAFTS_DIR, 0o755), (tmp, 0o644)):
-        try:
-            os.chmod(path, mode)
-        except OSError:
-            pass
-    tmp.replace(_sidecar(draft_id))
+    write_atomic(_sidecar(draft_id), data, dir_mode=0o755, indent=1)
 
 
 def get(draft_id: str) -> dict | None:

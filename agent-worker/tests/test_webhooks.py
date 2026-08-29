@@ -352,6 +352,20 @@ class TestPointingAtANewStationRegistersAgain(_StationWebhooks):
         self.assertTrue(self.hooks._registration_due())
         self.assertNotIn("gave_up", self.hooks._hook_state)
 
+    def test_our_own_address_moving_re_arms_registration(self):
+        # The mirror of the station-moved case: a non-container box whose DHCP
+        # lease changes keeps the station pushing to the old, now-dead receiver
+        # URL, silently — received freezes, nothing is rejected, so _mis_keyed
+        # never trips. Re-register to repoint it (top-down review, 2026-08-28).
+        self.register(_FakeStation())
+        self.assertFalse(self.hooks._registration_due())
+        self.assertEqual(self.hooks._hook_state["url"],
+                         "http://192.0.2.7:8100/hooks/station")
+
+        os.environ["CALLIN_HOOK_URL"] = "http://192.0.2.9:8100/hooks/station"
+        self.assertTrue(self.hooks._registration_due(),
+                        "a moved receiver URL must re-arm registration")
+
 
 class TestOurPushesCarryAnAuthHeader(_StationWebhooks):
     """The station echoes a per-hook Authorization header verbatim on every

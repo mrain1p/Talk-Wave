@@ -527,7 +527,7 @@ class TestAQueuedTrackCanComeBackOut(unittest.TestCase):
         st, tool = self._tool({"ok": False, "error": "station said no"})
         out = asyncio.run(tool(id="t1", title="Bella"))
         self.assertIn("station said no", out)
-        self.assertIn("do NOT claim it's gone", out)
+        self.assertIn("do not claim it worked", out)
 
     def test_the_tool_rides_its_own_switch(self):
         _, tool = self._tool({"ok": True}, cfg={"allow_requests": True})

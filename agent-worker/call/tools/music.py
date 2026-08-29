@@ -410,18 +410,7 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             )
             if not res.get("ok"):
                 # The refusal as a CARD as well as a receipt: the caller sees
-                # the station's own reason in a channel the persona cannot
-                # spin, so a DJ that dresses it up contradicts a fact already
-                # on screen. See CallActions.denied.
-                actions.denied("refused",
-                               res.get("error") or "the station refused it")
-                return (
-                    f"That didn't go into the queue: "
-                    f"{res.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked. The "
-                    "caller has been shown the station's refusal on a card, "
-                    "so the reason is already public."
-                )
+                return actions.station_refused(res, "That didn't go into the queue") + " The caller has been shown the station's refusal on a card, so the reason is already public."
             actions.queued_ids.add(str(id))
             actions.note("request", _fmt_track({"title": title, "artist": artist}))
             return (
@@ -553,7 +542,16 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                                           get_session=get_session, air=air,
                                           record=record, actions=actions))
                 if ack:
-                    actions.note("request", text[:120])
+                    # A neutral label, not the caller's own words: this note
+                    # rides CallActions into the 48h cross-call day-log, which
+                    # is read back to LATER callers and whose contract is
+                    # station-side labels only — no caller content, no names.
+                    # The caller's raw phrase (a dedication naming a person,
+                    # say) must not persist there. The resolved-track path
+                    # above already uses the station's _fmt_track label; the
+                    # match just hasn't landed here yet. (Security sitting,
+                    # 2026-08-28.)
+                    actions.note("request", "a caller's song request")
                     return f"It's in the queue, not on air yet. Station says: {ack}"
             elif record:
                 # No id means no way to ever ask what was matched — the
@@ -565,7 +563,10 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                     "id, so what it matched can never be surfaced to the "
                     "caller."
                 )
-            actions.note("request", text[:120])
+            # Neutral label for the same reason as the ack path above — the
+            # day-log takes no caller content, and here the station has not
+            # said what it matched, so there is no station label to use.
+            actions.note("request", "a caller's song request")
             return (
                 "Request is in — the station is lining something up. It plays later "
                 "in the running order, not now. You don't know yet which track the "

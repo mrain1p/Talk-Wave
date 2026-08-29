@@ -1,0 +1,57 @@
+# Ruff for agent-worker — the maintainability plan's lint guard (Batch 0).
+#
+# The bar here is "catch something that can MISBEHAVE on air, stay silent about
+# taste". The operator's time is the scarce thing, so this gates only the rule
+# families that flag a real runtime defect and leaves every style family off
+# until someone actually asks for that pass. Two broken images once shipped in
+# one afternoon — one of them a shadowed name — which is exactly the class this
+# now catches in under a second, locally, before CI and before an image.
+#
+# The app tree was clean of the whole genuine-bug set when this landed (no
+# undefined names, no format-string bugs, no dead vars, no syntax errors), so
+# `select` below goes green on the first run with F401 (unused imports) the only
+# family held back — see why inline.
+#
+# CI runs `ruff check .` from this directory (see .github/workflows/docker.yml);
+# the config is picked up from here. Not in requirements.txt on purpose: ruff is
+# a CI/dev tool and never ships in the runtime image.
+
+target-version = "py312"   # the image is python:3.12-slim
+
+[lint]
+# F  = pyflakes: undefined names (F821), format-string mismatches (F5xx), dead
+#      vars (F841), genuine redefinition/shadowing (F811). The ones that bite
+#      mid-call rather than mid-review.
+# E9 = errors ruff itself could not parse — a build-breaker, never noise.
+select = ["F", "E9"]
+
+ignore = [
+    # F401 unused-import — dead weight, not a defect, and a blanket `--fix` is
+    # ACTIVELY DANGEROUS here: test_sidecar.py re-imports every Test* class on
+    # purpose so `unittest test_sidecar` discovers the whole suite, and ruff
+    # reads those re-exports as unused. The real ones (~30 across app + tests)
+    # are a by-hand cleanup for a later batch, not a gate today.
+    "F401",
+]
+
+[lint.per-file-ignores]
+# The suite aggregator: its imports ARE its job (unittest keys discovery off the
+# module namespace), so F401 here is a false positive forever, not a cleanup —
+# pinned explicitly in case F401 is ever narrowed back into `select`.
+"test_sidecar.py" = ["F401"]
+
+# ---------------------------------------------------------------------------
+# Reviewed 2026-08-29 and DELIBERATELY left out of `select` — style/idiom with
+# no runtime effect. Run one ad hoc when you want that pass:
+#   ruff check . --select <CODE>
+#
+#   C408   (~200) dict()/list() as calls not literals — 199 live in settings.py's
+#                 config schema; pure taste, enormous diff, zero bug.
+#   SIM105 (~53)  try/except/pass -> contextlib.suppress. Readability only.
+#   SIM102/114/117/103/905, C416/C420, B904 — idiom/style, no runtime effect.
+#   B905   (4)    zip() without strict= — worth a look only if a length mismatch
+#                 is ever suspected; not today.
+#   B023   (6)    "closure over loop variable" in api/chat.py — VERIFIED false
+#                 positive: each lambda is awaited inline within the same
+#                 while-iteration before the loop rebinds. Do NOT "fix" these.
+# ---------------------------------------------------------------------------

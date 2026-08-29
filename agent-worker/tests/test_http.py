@@ -137,6 +137,36 @@ class TestHttpSurface(_TempStores):
                 on_disk = (REPO / "web-widget" / name).stat().st_size
                 self.assertEqual(size, on_disk, f"{name} decoded to {size}, file is {on_disk}")
 
+    def test_the_panel_never_renders_in_a_frame(self):
+        # "Never make /settings frameable" stood as prose from the day the
+        # pages split (two-pages-on-purpose); 0.99.2 makes it a header on
+        # BOTH addresses that serve the panel markup — /settings and the
+        # static /panel.html the widget mount also exposes. The CALL page
+        # must stay frameable forever (embeds are an iframe onto /), so its
+        # absence there is asserted just as hard.
+        async def check(client, ts):
+            out = {}
+            for path, hdrs in (("/settings", {"Accept": "text/html"}),
+                               ("/panel.html", {}),
+                               ("/", {}),
+                               ("/index.html", {})):
+                r = await client.get(path, headers=hdrs)
+                out[path] = (r.headers.get("X-Frame-Options"),
+                             r.headers.get("Content-Security-Policy") or "")
+            return out
+
+        served = self._serve(check)
+        for path in ("/settings", "/panel.html"):
+            with self.subTest(path=path):
+                self.assertEqual(served[path][0], "DENY")
+                self.assertIn("frame-ancestors 'none'", served[path][1])
+        for path in ("/", "/index.html"):
+            with self.subTest(path=path):
+                self.assertIsNone(
+                    served[path][0],
+                    f"{path} must stay frameable — embeds are an iframe onto it")
+                self.assertNotIn("frame-ancestors", served[path][1])
+
     def test_health_reports_the_running_version(self):
         async def check(client, ts):
             return await (await client.get("/health")).json()
@@ -459,6 +489,26 @@ class TestTheAuthLockoutKeyIsUnspoofable(unittest.TestCase):
 
     def test_a_public_peer_is_always_its_own_key(self):
         self.assertEqual(self._key("8.8.8.8", xff="10.0.0.1"), "8.8.8.8")
+
+
+class TestThePlayerRelayForwardsWhatItObserved(unittest.TestCase):
+    """Security sitting, 2026-08-28. The /player like/request proxy forwarded
+    the caller's RAW X-Forwarded-For to the station, so a caller could spoof
+    the listener IP the station throttles per-address. It now forwards
+    _caller_key — the address the sidecar honestly observed, the same value
+    its own cooldown trusts. Source-read because exercising the relay needs a
+    live station endpoint the suite must never reach."""
+
+    def test_the_relay_uses_the_observed_caller_not_the_raw_header(self):
+        import inspect
+
+        from api import player
+
+        src = inspect.getsource(player._relay)
+        self.assertIn("_caller_key(request)", src)
+        self.assertNotIn('request.headers.get("X-Forwarded-For")', src,
+                         "the relay is back to forwarding the spoofable "
+                         "header the caller sent")
 
 
 class TestAPasswordAttemptCannotChooseItsOwnLockoutBucket(_TempStores):

@@ -487,7 +487,7 @@ class TestTheCallRecordSaysWhoRang(_TempStores):
         import admin_auth
         import call.record
         from api import auth as api_auth
-        from api import diagnostics as api_diagnostics
+        from api import readback
         from api import tokens as api_tokens
 
         api_tokens._mint_info["room-x"] = {
@@ -502,7 +502,7 @@ class TestTheCallRecordSaysWhoRang(_TempStores):
         real = call.record.recent
         call.record.recent = lambda n: [{"room": "room-x"}, {"room": "room-y"}]
         try:
-            resp = asyncio.run(api_diagnostics.handle_calls(_FakeRequest()))
+            resp = asyncio.run(readback.handle_calls(_FakeRequest()))
         finally:
             call.record.recent = real
             admin_auth.AUTH_PATH = old_auth
@@ -742,14 +742,14 @@ class TestStaleRecordsCanBeThrownAway(unittest.TestCase):
 
         import admin_auth
         from api import auth as api_auth
-        from api import diagnostics as api_diagnostics
+        from api import readback
         from api import tokens as api_tokens
 
         api_tokens._mint_info["room-gone"] = {"client": "x", "network": "y", "ip": "z"}
         old_auth, admin_auth.AUTH_PATH = admin_auth.AUTH_PATH, Path(self._tmp.name) / "a.json"
         old_key, api_auth.ADMIN_KEY = api_auth.ADMIN_KEY, ""
         try:
-            resp = asyncio.run(api_diagnostics.handle_clear_calls(_FakeRequest()))
+            resp = asyncio.run(readback.handle_clear_calls(_FakeRequest()))
         finally:
             admin_auth.AUTH_PATH = old_auth
             api_auth.ADMIN_KEY = old_key
@@ -1267,10 +1267,10 @@ class TestTheDayLogRemembersActionsNotPeople(unittest.TestCase):
     def test_station_changing_kinds_land_and_speech_does_not(self):
         from call import daylog
 
-        daylog.note("queue", "Gimme Shelter", tier="open")
+        daylog.note("album", "Rumours", tier="open")
         daylog.note("announcement", "a shoutout", tier="open")
         daylog.note("skip", "Solar", tier="admin")
-        self.assertEqual(["skip", "queue"],
+        self.assertEqual(["skip", "album"],
                          [e["kind"] for e in daylog.recent()])
 
     def test_no_tier_means_no_entry(self):
@@ -1278,8 +1278,57 @@ class TestTheDayLogRemembersActionsNotPeople(unittest.TestCase):
         # without a door; their notes must never read as a caller's.
         from call import daylog
 
-        daylog.note("queue", "phantom", tier="")
+        daylog.note("album", "phantom", tier="")
         self.assertEqual([], daylog.recent())
+
+    def test_the_daylog_kinds_match_the_tools(self):
+        # KINDS drifted (top-down review, 2026-08-28): it carried two dead
+        # strings and missed three kinds the bulk-queue and un-ban tools
+        # emit, so a whole album a caller queued left NO trace and the DJ
+        # denied it on the ring-back. This pins the door both ways: the
+        # bulk actions ARE remembered, and a kind nothing emits is gone.
+        from call import daylog
+
+        for live in ("album", "mix", "never-play lifted"):
+            self.assertIn(live, daylog.KINDS, f"{live} would be dropped")
+        for dead in ("queue", "allowed again"):
+            self.assertNotIn(dead, daylog.KINDS, f"{dead} is emitted by no tool")
+
+    def test_a_request_fallback_logs_no_caller_words(self):
+        # Security sitting, 2026-08-28: the request_song fallback paths
+        # noted the caller's own request phrase (a dedication naming a
+        # person, say), which the day-log then read back to LATER callers —
+        # a breach of this module's no-caller-content contract. The
+        # wrappers now note a neutral label. This pins the DOOR: whatever a
+        # caller typed, a stored request line carries no free text from it.
+        from unittest import mock
+
+        from call import daylog
+        from call.actions import CallActions
+        from call.tools import music
+
+        class _Station:
+            async def submit_request(self, text, requester):
+                return {"requestId": "r1"}
+
+            async def request_status(self, rid):
+                # No matched track yet — drives the ack-only fallback that
+                # used to log the caller's words.
+                return {"ack": "got it", "track": {}}
+
+        actions = CallActions(9, tier="open")
+        secret = "play something for my sister June in Fresno"
+        with mock.patch.object(music, "_INLINE_POLL_SECS", 0), \
+                mock.patch.object(music, "library_search_needs_mcp",
+                                  lambda: False):
+            tools = music.build_library_tools(
+                {"allow_requests": True}, _Station(), actions)
+            tool = next(t for t in tools
+                        if t.info.name == "subwave_request_song")
+            asyncio.run(tool(request=secret))
+        lines = " ".join(e.get("what", "") for e in daylog.recent())
+        self.assertNotIn("June", lines)
+        self.assertNotIn("Fresno", lines)
 
     def test_the_lines_carry_doors_never_names(self):
         from call import daylog
@@ -1296,10 +1345,10 @@ class TestTheDayLogRemembersActionsNotPeople(unittest.TestCase):
         from call import daylog
 
         old = [{"t": time.time() - 3 * 24 * 3600, "tier": "open",
-                "kind": "queue", "what": "ancient"}]
+                "kind": "album", "what": "ancient"}]
         daylog._path().parent.mkdir(parents=True, exist_ok=True)
         daylog._path().write_text(json.dumps(old), encoding="utf-8")
-        daylog.note("queue", "fresh", tier="open")
+        daylog.note("album", "fresh", tier="open")
         self.assertEqual(["fresh"], [e["what"] for e in daylog.recent()])
 
     def test_a_note_rides_the_actions_ledger(self):
@@ -1310,6 +1359,6 @@ class TestTheDayLogRemembersActionsNotPeople(unittest.TestCase):
         from call.actions import CallActions
 
         a = CallActions(5, tier="open")
-        a.note("queue", "Africa")
+        a.note("album", "Africa")
         self.assertEqual("Africa", daylog.recent()[0]["what"])
 

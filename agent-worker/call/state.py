@@ -56,32 +56,38 @@ class ConversationState:
     def hints_for(self, caller_text: str) -> list:
         """The reply path's notes for this turn, in the standing order.
 
-        Each entry is (log_line, note); every note goes in front of the model
-        as a system message and every log line says which guard stepped in —
-        the same pairs, in the same order, that on_user_turn_completed used
-        to assemble by hand.
+        Each entry is (kind, log_line, note): `kind` is a stable per-guard
+        slug ("stuck", "withheld", "door", "arc", "open_ask") a consumer can
+        branch on, `log_line` is the human message saying which guard stepped
+        in, and `note` — always the LAST element — is the system message that
+        goes in front of the model. The kind exists because the text line
+        needs to tell the stuck hit from the others for its Needs-attention
+        record, and reading that off the prose log line coupled chat to
+        state.py by a substring nobody had marked load-bearing (cloud review,
+        2026-08-28).
         """
         out = []
         if self.stuck is not None:
             note = self.stuck.hint_for(caller_text)
             if note:
-                out.append(("the caller has asked this before — steering "
-                            "this turn", note))
+                out.append(("stuck", "the caller has asked this before — "
+                            "steering this turn", note))
         if self.withheld is not None:
             note = self.withheld.hint_for(caller_text)
             if note:
-                out.append(("the caller asked for a withheld capability — "
-                            "carding and steering this turn", note))
+                out.append(("withheld", "the caller asked for a withheld "
+                            "capability — carding and steering this turn",
+                            note))
         if self.door is not None:
             note = self.door.hint_for(caller_text)
             if note:
-                out.append(("the last line held the door open — steering "
-                            "this one", note))
+                out.append(("door", "the last line held the door open — "
+                            "steering this one", note))
         if self.arc is not None:
             note = self.arc.hint_for(caller_text)
             if note:
-                out.append(("both sides have said goodbye — steering this "
-                            "turn toward end_call", note))
+                out.append(("arc", "both sides have said goodbye — steering "
+                            "this turn toward end_call", note))
         # Last, and never over a finished call: the open-ask comeback, so
         # what the caller came for survives holds, segments and tangents
         # without them having to ask twice.
@@ -91,25 +97,15 @@ class ConversationState:
                 caller_text,
                 getattr(self.actions, "taken_at", None) or [])
             if note:
-                out.append(("the caller's ask is still open — steering "
-                            "back to it", note))
+                out.append(("open_ask", "the caller's ask is still open — "
+                            "steering back to it", note))
         return out
 
 
 def attach_state_watch(session, state: ConversationState) -> None:
-    """One watcher on the DJ's lines, where there used to be one per guard.
+    """One watcher on the DJ's lines, fanning to every guard through
+    ConversationState.dj_said. The event unwrap lives once in watch.on_dj_line
+    now; this is the wiring that used to be a copy per guard."""
+    from . import watch
 
-    Same shape as the watchers it replaces (door.attach_door_watch,
-    arc.attach_arc_watch), for the same reason: the event is the only place
-    that knows what actually went out.
-    """
-
-    def _on_said(ev) -> None:
-        item = getattr(ev, "item", None)
-        if getattr(item, "role", None) != "assistant":
-            return
-        text = str(getattr(item, "text_content", "") or "").strip()
-        if text:
-            state.dj_said(text)
-
-    session.on("conversation_item_added", _on_said)
+    watch.on_dj_line(session, state.dj_said)

@@ -21,12 +21,6 @@ from aiohttp import web
 import settings as settings_store
 from api import wire
 from api.diagnostics import (
-    handle_calls,
-    handle_clear_calls,
-    handle_delete_call,
-    handle_clear_logs,
-    handle_logs,
-    handle_mark_call,
     handle_prompt_preview,
     handle_speed_test,
     handle_test_admin,
@@ -35,6 +29,14 @@ from api.diagnostics import (
     handle_test_stt,
     handle_test_station,
     handle_test_tts,
+)
+from api.readback import (
+    handle_calls,
+    handle_clear_calls,
+    handle_clear_logs,
+    handle_delete_call,
+    handle_logs,
+    handle_mark_call,
 )
 from api.env import LIVEKIT_PUBLIC_URL, PORT
 from api.stats import handle_stats_listeners, sample_listeners

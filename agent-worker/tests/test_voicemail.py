@@ -152,6 +152,23 @@ class TestAMessageIsNeverLost(_VmDirs):
         self.assertEqual("hold", msgs[0]["delivered"])
         self.assertIn("failed", msgs[0]["note"])
 
+    def test_the_message_store_is_owner_only(self):
+        # Security sitting, 2026-08-28: a voicemail is a stranger's spoken
+        # message, the same private content call/record.py keeps at
+        # 0700/0600 — but this store shipped 0755/0644, world-readable on
+        # the shared volume. Now it mirrors the record store. (Skipped
+        # where the OS does not carry POSIX mode bits.)
+        import os
+        import stat
+
+        if os.name != "posix":
+            self.skipTest("POSIX mode bits are not enforced on this OS")
+        self._deliver({}, _FakeStation())
+        path = self.deliver.MESSAGES_PATH
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+        self.assertEqual(mode & 0o077, 0,
+                         f"messages.json is group/other-readable: {oct(mode)}")
+
     def test_air_goes_out_with_its_own_kind(self):
         station = _FakeStation()
         self._deliver({"voicemail_destination": "air"}, station)

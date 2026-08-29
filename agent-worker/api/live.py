@@ -7,7 +7,6 @@ that stales it reaches. This one builds it.
 from __future__ import annotations
 
 import logging
-import re
 import time
 
 import httpx
@@ -250,14 +249,11 @@ def _for_this_caller(request: web.Request, payload: dict) -> dict:
 
     admin_set = admin_auth.is_set()
     guest_set = admin_auth.guest_is_set()
-    mode = str(settings_store.load().get("front_access") or "auto").lower()
-    # Same rule as auth.caller_tier, and it has to stay the same rule — a
-    # fourth spelling of it is how the card and the panel disagreed by
-    # accident before. Admin-only has no guest; a code-gated door IS the guest
-    # tier; an open line elevates only while `guest_tier` is on.
-    guest_door = guest_set and (
-        mode == "guest" or (mode != "admin"
-                            and bool(settings_store.load().get("guest_tier", True))))
+    # The one guest-door rule, shared with auth.caller_tier through
+    # settings_store.guest_door_open (Batch 2) — no fourth spelling to drift.
+    guest_door = settings_store.guest_door_open(
+        cfg_now.get("front_access"), guest_set,
+        bool(cfg_now.get("guest_tier", True)))
     out["signinAvailable"] = (
         (tier == "open" and (guest_door or admin_set))
         or (tier == "guest" and admin_set)
@@ -285,6 +281,22 @@ def _for_this_caller(request: web.Request, payload: dict) -> dict:
     return out
 
 
+def _reachability(health, persona: dict, now: dict) -> tuple[bool, bool]:
+    """`(reachable, on_air)` for the card — a real, distinguishable state.
+
+    The card used to show whatever came back, so a station that answered but
+    had nobody on air looked identical to one that was live. The trap was that
+    `persona.get("id")` alone is ALWAYS truthy: resolve_live_persona falls back
+    to id "default" on every path, including an unreachable station, so it can
+    never stand for "someone is on air" (top-down review, 2026-08-28). A real
+    persona id — the sentinel excluded — is what "on air" needs; "reachable" is
+    that OR any actual health / now-playing data.
+    """
+    real_persona = (persona or {}).get("id") not in (None, "", "default")
+    reachable = bool(health) or bool(now) or real_persona
+    return reachable, reachable and real_persona
+
+
 async def handle_live(request: web.Request) -> web.Response:
     """Who's on air, proxied so the widget doesn't depend on the station
     sending CORS headers to whatever origin the widget is embedded on."""
@@ -302,11 +314,7 @@ async def handle_live(request: web.Request) -> web.Response:
         show = await station.active_show(now)
         track = now.get("nowPlaying") or {}
 
-        # "On air" needs to be a real, distinguishable state. Previously the
-        # card just showed whatever came back, so a station that answered but
-        # had nobody on air looked identical to one that was live.
-        reachable = bool(health) or bool(now) or bool(persona.get("id"))
-        on_air = reachable and bool(persona.get("id")) and persona["id"] != "default"
+        reachable, on_air = _reachability(health, persona, now)
 
         cfg = settings_store.load()
         sound_pack = cfg.get("sound_pack") or "classic"

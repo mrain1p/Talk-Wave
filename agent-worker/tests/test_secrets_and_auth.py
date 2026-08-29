@@ -142,7 +142,6 @@ class TestStoredKeysStayHome(_TempStores):
         self.assertFalse(_is_openai_host("https://notapi.openai.com.evil/v1"))
 
     def test_station_config_without_auth_reads_nothing_admin_only(self):
-        import asyncio
 
         from station_config import StationConfig
 

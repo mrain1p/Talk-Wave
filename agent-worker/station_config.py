@@ -16,7 +16,6 @@ What we can already read without auth:
 What needs admin basic auth (SUBWAVE_ADMIN_USER / SUBWAVE_ADMIN_PASS):
   - GET /api/settings   station config: expected to carry the persona->voice
                         mapping and the station's own TTS/LLM choices
-  - GET /api/system
 
 Both return 401 without credentials. Until creds are configured this module
 degrades to the local `persona-voices.json` fallback and says so in the logs,
@@ -28,6 +27,8 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -42,12 +43,9 @@ FALLBACK_VOICES_PATH = Path(__file__).parent / "persona-voices.json"
 # The last persona->voice map that mirrored from the station, on disk so it
 # survives across the per-call job processes and covers a station that times
 # out mid-mirror. Sibling of station.py's last-persona cache, same reason.
-import json as _json
-import os as _os
-import time as _time
 
 _VOICE_CACHE = Path(
-    _os.environ.get("LAST_VOICES_PATH",
+    os.environ.get("LAST_VOICES_PATH",
                     Path(__file__).parent.parent / "data" / "last-voices.json")
 )
 _VOICE_TTL = 1800.0     # half an hour — voices change far less often than shows
@@ -77,15 +75,15 @@ def _note_mirrored(mapped: dict) -> None:
 def _remember_voices(mapped: dict) -> None:
     try:
         _VOICE_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        _VOICE_CACHE.write_text(_json.dumps({"voices": mapped, "at": _time.time()}))
+        _VOICE_CACHE.write_text(json.dumps({"voices": mapped, "at": time.time()}))
     except Exception as e:                                    # noqa: BLE001
         log.debug("could not remember mirrored voices (harmless): %s", e)
 
 
 def _recall_voices() -> dict | None:
     try:
-        d = _json.loads(_VOICE_CACHE.read_text())
-        if _time.time() - float(d.get("at") or 0) < _VOICE_TTL:
+        d = json.loads(_VOICE_CACHE.read_text())
+        if time.time() - float(d.get("at") or 0) < _VOICE_TTL:
             return d.get("voices") or None
     except Exception:                                         # noqa: BLE001
         pass

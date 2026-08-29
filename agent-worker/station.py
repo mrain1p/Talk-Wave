@@ -1,13 +1,23 @@
-"""
-Slim read-only client for the SUB/WAVE controller REST API.
+"""Client for the SUB/WAVE controller REST API — the station's read AND write
+surface, one class per external service.
 
-Scope note: the agent's *actions* during a call go through the station's MCP
-server (see main.py) rather than through here — MCP already exposes those as
-tool-calling-ready definitions with descriptions and schemas, so hand-rolling
-them again would be duplicate surface. What's left for this module is the
-handful of reads used to assemble the system prompt before the call starts.
+Two halves cohabit here:
 
-All endpoints used here are public reads; no auth needed.
+- READS (best-effort) assemble the pre-call system prompt: now-playing, the
+  schedule, the DJ persona, listener counts, the library. A failed read degrades
+  the prompt rather than the call — see `degraded()` and `_read_stats`.
+- WRITES / ACTIONS (admin-gated) are the wrappers behind the DJ's station-
+  changing tools — queue a track, take a request, like/unlike, block, run a
+  segment, take over the schedule. Each is the local receipt-writing tool for
+  its action (architecture invariant 12: every station-changing action leaves a
+  receipt the DJ cannot forge). They carry the operator's admin credential; they
+  are NOT public and NOT unauthenticated.
+
+An earlier docstring called this a "slim read-only client" whose actions "go
+through MCP" over "public reads, no auth" — none of which survived the write
+wrappers landing here, and the stale description misled for a while. The shape
+is right (one client per external service), so the fix was the words, not a
+split into read/write classes.
 """
 
 from __future__ import annotations
@@ -53,6 +63,34 @@ def degraded() -> bool:
 # forgets the ledger, which costs one call's worth of filtering, not privacy
 # of anything the station didn't already broadcast.
 from collections import deque as _deque
+from urllib.parse import quote as _quote
+
+
+def _seg(value) -> str:
+    """One id, safe to drop into a URL PATH segment.
+
+    Every id here arrives from the station via a tool result the MODEL has
+    relayed, or from a caller's own words — never ours to trust with the
+    shape of a path. Unquoted, a crafted id like "../../schedule/override"
+    re-targets the request at a different station endpoint under the admin
+    credentials we attach, which reaches DELETE routes whose own tools the
+    operator disabled — defeating the per-tool grant boundary the tier
+    ladder is built on (httpx collapses the dot-segments at build time).
+    request_status and unblock_track always quoted; three siblings did not
+    (security sitting, 2026-08-28). One quoter now, so a new path-building
+    call cannot forget again. `safe=''` leaves a slash as %2F, not a
+    separator.
+
+    Dots are ALSO encoded — the subtle half, caught by the cloud review the
+    same day. `.` is unreserved per RFC 3986, so `quote('..')` returns `'..'`
+    unchanged, and httpx's build-time dot-segment collapse still fires on a
+    bare `..` id: `/dj/queue/..` becomes `/dj`. Only the slash-carrying input
+    the first test used was actually neutralised; a plain `..` still
+    traversed. Encoding dots to %2E defeats the collapse (httpx removes the
+    literal `..` before decoding, never the encoded form), and a station
+    decodes %2E back to `.` so a legitimate dotted id still resolves.
+    """
+    return _quote(str(value), safe="").replace(".", "%2E")
 
 _AIRED_BY_US: _deque = _deque(maxlen=80)
 _AIRED_TTL_SECS = 2 * 3600.0
@@ -578,7 +616,7 @@ class StationClient:
             return []
         try:
             r = await self._client.get(
-                f"/library/observatory/track/{track_id}",
+                f"/library/observatory/track/{_seg(track_id)}",
                 auth=httpx.BasicAuth(user, password),
                 timeout=LIBRARY_TIMEOUT,
             )
@@ -654,7 +692,7 @@ class StationClient:
             return {"ok": False, "error": "no track id to cancel"}
         try:
             r = await self._client.delete(
-                f"/dj/queue/{track_id}",
+                f"/dj/queue/{_seg(track_id)}",
                 auth=httpx.BasicAuth(user, password),
                 timeout=ACTION_TIMEOUT,
             )
@@ -837,13 +875,10 @@ class StationClient:
         return {"error": str(last)[:140]}
 
     async def request_status(self, request_id: str) -> dict:
-        # Quoted: the id comes back from the station via a tool result the
-        # model has passed through, so it is not ours to trust with the shape
-        # of a URL path.
-        from urllib.parse import quote
-
+        # Quoted via _seg: the id comes back from the station through a tool
+        # result the model relayed, never ours to trust as a path.
         try:
-            r = await self._client.get(f"/request/{quote(str(request_id), safe='')}")
+            r = await self._client.get(f"/request/{_seg(request_id)}")
             r.raise_for_status()
             return r.json()
         except Exception:
@@ -1102,7 +1137,7 @@ class StationClient:
             return {"ok": False, "error": "nothing is playing to un-like right now"}
         try:
             r = await self._client.delete(
-                f"/likes/song/{song_id}/operator",
+                f"/likes/song/{_seg(song_id)}/operator",
                 auth=httpx.BasicAuth(user, password),
                 timeout=ACTION_TIMEOUT,
             )
@@ -1273,8 +1308,6 @@ class StationClient:
         """
         from station_config import admin_credentials
 
-        from urllib.parse import quote
-
         user, password = admin_credentials()
         if not (user and password):
             return {"ok": False, "error": "no station admin credentials"}
@@ -1282,7 +1315,7 @@ class StationClient:
             return {"ok": False, "error": "nothing identifiable to unblock"}
         try:
             r = await self._client.delete(
-                f"/library/blocklist/track/{quote(str(track_id), safe='')}",
+                f"/library/blocklist/track/{_seg(track_id)}",
                 auth=httpx.BasicAuth(user, password),
                 timeout=ACTION_TIMEOUT,
             )

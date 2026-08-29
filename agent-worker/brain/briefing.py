@@ -118,24 +118,36 @@ def _fmt_now_playing(np: dict, speak_clock: bool = True) -> str:
     # that keeps the wall clock off air must not find the call-in DJ is the
     # one voice still announcing the hour. The daypart vibe below stays
     # either way — the station's own switch makes the same carve-out.
+    # Every one of these context fields is station-supplied and rides the
+    # SYSTEM PROMPT on every turn, exactly like the track fields above — so
+    # each goes through _fld, the same junk-and-hostile-field cap. Missed at
+    # first (the caps landed on the track siblings only); found in the
+    # 2026-08-28 security sitting, where a hostile or upstream-relayed value
+    # (a third-party weather condition, a mood aggregate) could otherwise
+    # arrive uncapped and unrepaired. Short caps: these are a word or two.
     if speak_clock and clock.get("display"):
-        where.append(clock["display"])
+        where.append(_fld(clock["display"], 40))
     # `time` is a plain string ("evening") on some builds and an object with a
     # `vibe` on others — take whichever this station sends.
     if isinstance(time_ctx, dict) and time_ctx.get("vibe"):
-        where.append(str(time_ctx["vibe"]))
+        where.append(_fld(time_ctx["vibe"], 40))
     elif isinstance(time_ctx, str) and time_ctx:
-        where.append(time_ctx)
+        where.append(_fld(time_ctx, 40))
     if isinstance(weather, dict) and weather.get("condition"):
-        temp = f", {weather['temp']}{weather.get('tempUnit', '')}" if weather.get("temp") else ""
-        where.append(f"{weather['condition']}{temp}")
+        # `is not None`, not truthiness: a numeric temp of exactly 0 (freezing
+        # C, bitter F) is a real reading the station sends, and `if temp`
+        # silently dropped it — a caller asking how cold it is got the
+        # condition with no number (top-down review, 2026-08-28).
+        temp = (f", {_fld(weather['temp'], 12)}{_fld(weather.get('tempUnit', ''), 4)}"
+                if weather.get("temp") is not None else "")
+        where.append(f"{_fld(weather['condition'], 40)}{temp}")
     elif isinstance(weather, str) and weather:
-        where.append(weather)
+        where.append(_fld(weather, 40))
     if where:
         bits.append("It's " + ", ".join(where) + ".")
 
     if ctx.get("dominantMood"):
-        bits.append(f"The room tonight is {ctx['dominantMood']}.")
+        bits.append(f"The room tonight is {_fld(ctx['dominantMood'], 60)}.")
 
     # How many people are actually out there. A caller asking "is anyone even
     # listening?" is asking a real question, and the station knows the answer.
@@ -305,7 +317,7 @@ _BOOKKEEPING_ROLES = {"event", "track"}
 _PRIVATE_KINDS = {"callin", "caller", "call"}
 
 
-def _is_spoken(m: dict) -> bool:
+def is_spoken(m: dict) -> bool:
     """Only actual DJ speech belongs in "things you said on air" — scenario
     lines, picker decisions and track-play markers are bookkeeping, and a
     track marker framed as the DJ's own words reads as nonsense."""
@@ -336,7 +348,7 @@ def _fmt_booth(session: dict, limit: int, show_name: str = "", show_topic: str =
     # window below what was asked for.
     for m in messages[-(limit * 3):]:
         text = m.get("text") or m.get("content") or ""
-        if not text or not _is_spoken(m):
+        if not text or not is_spoken(m):
             continue
         kind = str(m.get("kind") or "").lower()
         # The programme intro is pinned separately — keep it out of here.

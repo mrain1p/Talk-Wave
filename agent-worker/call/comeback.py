@@ -25,21 +25,14 @@ log = logging.getLogger("callin.agent")
 
 def attach_air_watch(session, guard) -> None:
     """Remember the DJ's last line, so the come-back knows what not to repeat.
+    The event unwrap lives once in watch.on_dj_line now; this keeps only what it
+    does with the line — by the time the come-back runs the turn is long gone."""
+    from . import watch
 
-    Same shape as door.attach_door_watch and for the same reason: the only
-    place that knows what was actually said is the event, and by the time the
-    come-back runs the turn is long gone.
-    """
+    def _remember(text: str) -> None:
+        guard.last_dj_line = text
 
-    def _on_said(ev) -> None:
-        item = getattr(ev, "item", None)
-        if getattr(item, "role", None) != "assistant":
-            return
-        text = str(getattr(item, "text_content", "") or "").strip()
-        if text:
-            guard.last_dj_line = text
-
-    session.on("conversation_item_added", _on_said)
+    watch.on_dj_line(session, _remember)
 
 
 async def come_back(guard, session: AgentSession) -> None:

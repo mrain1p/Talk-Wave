@@ -2,6 +2,13 @@
 TTS for the call-in agent — one canonical call, translated at request time
 into whatever shape the target backend expects, per a JSON adapter config.
 
+Two responsibilities live here: SYNTHESIS (AdapterTTS — the canonical-call to
+backend translation, and the speech-filter cleaning chokepoint every spoken
+line passes through), and VOICE DISCOVERY (parse_voice_list / available_voices
+— which voices a backend can actually speak). Discovery returns an EMPTY LIST
+to mean "could not find out", never "the backend has no voices"; callers must
+not collapse the two.
+
 This is the v2 adapter design from BUILD-INSTRUCTIONS, implemented as a real
 `livekit.agents.tts.TTS` subclass so it drops straight into an AgentSession.
 
@@ -293,6 +300,14 @@ def load_adapter(path: str | Path | None = None, mode: str = "") -> dict:
     p = Path(path) if path else _default_adapter_path(mode)
     with open(p, "r", encoding="utf-8") as f:
         cfg = json.load(f)
+    # The one key with no sensible default: without a path to POST audio to,
+    # the backend cannot be reached. Fail here, naming the file, rather than a
+    # KeyError deep in the first synthesis (the report-only type check is blind
+    # across this untyped-dict seam, so this is the guard that catches it).
+    if "endpoint_path" not in cfg or not str(cfg["endpoint_path"]).strip():
+        raise ValueError(
+            f"TTS adapter {p} is missing 'endpoint_path' — the URL path audio "
+            "requests are POSTed to. Add it to the adapter JSON.")
     cfg.setdefault("method", "POST")
     cfg.setdefault("static_fields", {})
     cfg.setdefault("auth", {"type": "none"})

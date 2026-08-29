@@ -331,6 +331,26 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
                 # the reply timeout — see _run_turn.
                 await _run_turn(ws, chat,
                                 lambda put: chat.ask(text, put), cfg)
+
+                # The hard ceilings live in ChatShelf.sweep, which holds no
+                # reference to this socket — so one long-held connection blew
+                # past chat_max_messages / chat_max_minutes and kept spending
+                # forever, the exact scriptable-curl abuse the ceilings exist
+                # to stop (top-down review, 2026-08-28). Enforce them here,
+                # after the turn, and tear the socket down like a `bye`.
+                msg_cap = int(cfg.get("chat_max_messages") or 0)
+                age_cap = 60 * int(cfg.get("chat_max_minutes") or 0)
+                if ((msg_cap and chat.messages >= msg_cap)
+                        or (age_cap and time.time() - chat.started > age_cap)):
+                    chat.write_record("the chat reached its limit")
+                    SHELF.chats.pop(chat.id, None)
+                    log.info("chat %s hit its ceiling (%d msgs) — closing",
+                             chat.id, chat.messages)
+                    await ws.send_json(
+                        {"type": "ended",
+                         "text": "That's a good long chat — I'll let the line "
+                                 "go here. Open a fresh one any time."})
+                    break
     finally:
         SHELF.sweep(settings_store.load())
     return ws

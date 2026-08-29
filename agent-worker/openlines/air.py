@@ -15,8 +15,24 @@ and the DJ invents a second, different version of its own topic.
 from __future__ import annotations
 
 import logging
+import re
 
 log = logging.getLogger("talkwave.openlines")
+
+# What the operator typed in the premise box, and what a caller typed on the
+# text line, both reach the station's OWN model inside these directions —
+# and markdown survives the trip: a premise written "*tonight's* question"
+# comes back with the asterisks in `spoken`, and the station TTS reads them
+# aloud. Stripped HERE, at the one door to the booth, rather than at every
+# call site: the emphasis and code markers go, the words stay. Single
+# underscores survive on purpose — they hold snake_case and file_names
+# together, and nobody writes _emphasis_ in a premise box.
+_MARKDOWN = re.compile(r"\*{1,3}|_{2,3}|`+|^#{1,6}[ \t]+", re.M)
+
+
+def spoken_plain(text) -> str:
+    """Markdown stripped from text bound for the booth's mouth."""
+    return _MARKDOWN.sub("", str(text or ""))
 
 # The announcement lands in the station's feed as a call-in line, which
 # brain.briefing._PRIVATE_KINDS keeps out of the next conversation's chatter
@@ -78,6 +94,7 @@ def open_direction(premise: str, cfg: dict, quiz: bool = False) -> str:
     # what it drops is whatever sits in the middle. Measured on air — "the
     # phone lines are OPEN right now… just give us a call" with no address in
     # it anywhere, from a direction that said the address was mandatory.
+    premise = spoken_plain(premise)
     address = str(cfg.get("open_lines_address") or "").strip() or own_address()
     where = f" Come and find me at {address}." if address else ""
     if quiz:
@@ -110,6 +127,7 @@ def open_direction(premise: str, cfg: dict, quiz: bool = False) -> str:
 
 
 def remind_direction(premise: str, cfg: dict, aired: str) -> str:
+    premise, aired = spoken_plain(premise), spoken_plain(aired)
     return (
         "[Producer, off air. The lines are still open on the same subject and "
         "you are coming back to it — briefly.\n"
@@ -134,6 +152,7 @@ def followup_direction(premise: str, line: str, cfg: dict) -> str:
     Dave from Fresno to attribute it to, and that is a real person being given
     words and a hometown they never offered.
     """
+    premise, line = spoken_plain(premise), spoken_plain(line)
     return (
         "[Producer, off air. Somebody came in on tonight's subject and you "
         "are telling the room what they said.\n"
@@ -166,7 +185,9 @@ def close_direction(premise: str, took_part: int, reported: list | None = None) 
     with nothing reported, acknowledge that people got in touch without
     characterising them.
     """
-    lines = [str(x).strip() for x in (reported or []) if str(x).strip()]
+    premise = spoken_plain(premise)
+    lines = [spoken_plain(x).strip() for x in (reported or [])
+             if str(x).strip()]
     if took_part <= 0:
         heard = ("Nobody took it up. Close it out the way you would on air when "
                  "a question does not land — lightly, without apologising for "

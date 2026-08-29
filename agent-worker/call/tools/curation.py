@@ -97,22 +97,20 @@ def build_curation_tools(cfg: dict, station: StationClient,
                 actions.last_liked = (song_id, track)
             res = await station.like_track(song_id)
             if not res.get("ok"):
-                # The receipt channel's refusal half: the caller sees the card
-                # whatever the DJ's prose does with it.
-                actions.denied("refused",
-                               res.get("error") or "the station refused it")
-                return (
-                    f"That like didn't go through: "
-                    f"{res.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — don't claim it worked."
-                )
+                return actions.station_refused(res, "That like didn't go through")
             name = _fmt_track(track) if track.get("title") else "the current track"
-            actions.note("like", name)
+            # The no-op check FIRST: an already-liked track changed nothing,
+            # so it must not spend a budget slot or fire a "Liked" receipt
+            # card that says a fresh action landed (top-down review,
+            # 2026-08-28). note() both bills and cards; a non-event does
+            # neither. Same for the never-play/allow-again twins below, and
+            # the same shape the queue family already uses.
             if res.get("alreadyLiked"):
                 return (
                     f"Already liked — {name} was on the board already, so the count "
                     "didn't move. Say so warmly."
                 )
+            actions.note("like", name)
             count = res.get("count")
             tail = f" That's {count} now." if isinstance(count, int) and count else ""
             return f"Done — added a like to {name}.{tail} Say it back in your own voice."
@@ -142,15 +140,7 @@ def build_curation_tools(cfg: dict, station: StationClient,
                 )
             res = await station.unlike_track(song_id)
             if not res.get("ok"):
-                # The receipt channel's refusal half: the caller sees the card
-                # whatever the DJ's prose does with it.
-                actions.denied("refused",
-                               res.get("error") or "the station refused it")
-                return (
-                    f"That didn't go through: "
-                    f"{res.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — don't claim it worked."
-                )
+                return actions.station_refused(res, "That didn't go through")
             name = _fmt_track(track) if track.get("title") else "the current track"
             actions.note("unlike", name)
             return f"Done — took the heart off {name}. Say it back in your own voice."
@@ -188,22 +178,15 @@ def build_curation_tools(cfg: dict, station: StationClient,
             name = _fmt_track(track) if track.get("title") else "the current track"
             res = await station.block_track(song_id)
             if not res.get("ok"):
-                # The receipt channel's refusal half: the caller sees the card
-                # whatever the DJ's prose does with it.
-                actions.denied("refused",
-                               res.get("error") or "the station refused it")
-                return (
-                    f"That didn't go on the never-play list: "
-                    f"{res.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
-                )
-            actions.note("never-play", name)
+                return actions.station_refused(res, "That didn't go on the never-play list")
             if res.get("already"):
+                # No-op — don't charge or card it (see like_track above).
                 return (
                     f"{name} was already on the never-play list — nothing "
                     "changed, and it was never going to come round again "
                     "anyway. Say so plainly."
                 )
+            actions.note("never-play", name)
             # The station drops it from the queue as part of the same write, so
             # a caller who asks "is it off now?" is owed a yes, not a "should
             # be". What it does NOT do is stop the record playing right now.
@@ -241,20 +224,15 @@ def build_curation_tools(cfg: dict, station: StationClient,
                 return actions.refusal()
             res = await station.unblock_track(track_id)
             if not res.get("ok"):
-                actions.denied("refused",
-                               res.get("error") or "the station refused it")
-                return (
-                    f"That didn't come off the list: "
-                    f"{res.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
-                )
-            actions.note("never-play lifted", name)
+                return actions.station_refused(res, "That didn't come off the list")
             if res.get("already"):
+                # No-op — don't charge or card it (see like_track above).
                 return (
                     f"{name} wasn't on the never-play list in the first place, "
                     "so nothing changed. Say so rather than implying you undid "
                     "something."
                 )
+            actions.note("never-play lifted", name)
             return (
                 f"Done — {name} is off the never-play list and the station can "
                 "pick it again. It is NOT queued: this only makes it eligible. "

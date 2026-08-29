@@ -451,7 +451,6 @@ class TestStationWideTools(_TempStores):
             station_config.admin_credentials = original
 
     def test_they_refuse_once_the_call_has_spent_its_actions(self):
-        import asyncio
 
         from call.actions import CallActions
 
@@ -566,7 +565,6 @@ class TestStationActionResults(unittest.TestCase):
         """Real call: the caller asked eight seconds after pickup, the station
         answered 503 because their tune-in hadn't reached its listener count
         yet, and the DJ told them the request failed. A 5xx is transient."""
-        import asyncio
 
         import httpx
 
@@ -595,7 +593,6 @@ class TestStationActionResults(unittest.TestCase):
 
     def test_a_4xx_refusal_is_not_retried(self):
         # A real refusal means retrying just repeats it and delays the answer.
-        import asyncio
 
         import httpx
 

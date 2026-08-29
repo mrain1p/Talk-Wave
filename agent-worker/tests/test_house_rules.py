@@ -224,6 +224,35 @@ class TestTheCallHarnessOnlyDialsLocal(unittest.TestCase):
                              "— pointing this at a deployment is never right")
 
 
+class TestTheWidgetHarnessOnlyDrivesLocal(unittest.TestCase):
+    """tools/widget_check.py (A4, adopted 2026-08-28) drives a real browser
+    at a widget stub. Pointed at the operator's deployment it would hammer a
+    live box to answer a dev-box question, so it hard-refuses any
+    non-localhost base with no override flag — the same 'never becomes once,
+    by accident' rule as the call harness above. Source-read, because the
+    harness needs playwright and a browser, which the suite must never."""
+
+    def test_the_refusal_exists_and_has_no_escape_hatch(self):
+        src = (REPO / "tools" / "widget_check.py").read_text(encoding="utf-8")
+        self.assertIn("refuse_remote(args.base)", src,
+                      "the harness no longer checks its target")
+        self.assertIn('("localhost", "127.0.0.1", "::1")', src,
+                      "the localhost allowlist changed shape")
+        for flag in ("--remote-ok", "--force", "--i-know", "--unsafe"):
+            self.assertNotIn(flag, src,
+                             "the guard has grown an override flag; remove "
+                             "it — a browser harness never drives a "
+                             "deployment")
+        # And the suite's own no-new-dependency rule holds: playwright is
+        # imported lazily with a helpful refusal, never at module top.
+        self.assertIn("from playwright.sync_api import", src)
+        self.assertLess(src.index("def main"),
+                        src.index("from playwright.sync_api import"),
+                        "playwright import moved to module scope — the "
+                        "tool must degrade to a message, not a crash, on "
+                        "a box without it")
+
+
 class TestTheRetiredEvalStaysRetired(unittest.TestCase):
     """tools/tool_eval.py was deleted at 0.10.146. This is the note saying why,
     so it does not get rebuilt.
@@ -620,9 +649,27 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "scenario tables, and those are supposed to grow: every real call "
             "worth not repeating becomes a few lines of caller turns here.",
         "agent-worker/settings.py":
-            "mostly DEFAULTS and GROUPS — a declaration table, not logic. Long "
+            "the layered store (FIELDS, load/save/_migrate) plus the resolver "
+            "machinery that reads the tables (schema_payload, _choices_for, "
+            "provider_base_urls, mcp_tools_payload). The approved tables-out "
+            "seam (RULED 2026-08-28) was CUT 2026-08-29 (Batch 1): the panel/"
+            "vocab presentation DATA (SCHEMA/GROUPS/SUPERGROUPS + the provider "
+            "and vocab tables) moved to settings_schema.py, and the caller-tier "
+            "security ladder — unrelated logic buried between FIELDS and the "
+            "panel copy — to caller_tiers.py. Both are pure leaves, re-exported "
+            "so settings_store.* is byte-identical; the crossing is one-way "
+            "(machinery reads the tables, the tables call nothing). What is "
+            "left is still over the ceiling because the store's field handling "
+            "and its resolvers are genuinely one subject; stays exempt.",
+        "agent-worker/settings_schema.py":
+            "the operator panel's declarative presentation data (SUPERGROUPS/"
+            "GROUPS/SCHEMA) plus the mirrored provider/vocab tables — a "
+            "declaration table, not logic, peeled from settings.py at Batch 1 "
+            "(the tables-out seam the operator ruled on 2026-08-28). Long "
             "because the station has a lot of settings, and reading it top to "
-            "bottom is how you find one. It is supposed to grow.",
+            "bottom is how you find one — the same reasoning settings.py itself "
+            "carried. Pure data: the functions that read it stayed in "
+            "settings.py, so nothing here is logic that could be split.",
         "agent-worker/tests/test_open_lines.py":
             "one feature, and the seam was measured before exempting it. Open "
             "Lines is six modules (state, premise, premises, schedule, air, "
@@ -641,15 +688,22 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "scatter one form the operator reads top to bottom.",
         "agent-worker/api/diagnostics.py":
             "one module per job, and /test/* is genuinely one job: eight probes "
-            "that all answer 'can this box reach that thing'. Splitting them "
-            "would scatter one answer across eight files.",
+            "that all answer 'can this box reach that thing', plus the prompt "
+            "preview. The call-record and log readback handlers — a DIFFERENT "
+            "job (reading back what happened, not probing whether it works) — "
+            "were split to api/readback.py at Batch 2 (2026-08-29). Splitting "
+            "the probes from each other would scatter one answer across eight "
+            "files.",
         "agent-worker/station.py":
-            "the read-only SUB/WAVE REST client — one method per station "
-            "endpoint plus the persona/show resolution that stitches several "
-            "reads into one answer. It grows a method when the station gains "
-            "an endpoint, the same declarative-surface reason settings.py is "
-            "exempt; splitting it scatters one client across files that all "
-            "hold the same httpx session and the same last-known-good caches.",
+            "the SUB/WAVE REST client — reads that assemble the prompt plus the "
+            "admin-gated write wrappers behind the DJ's tools (one class per "
+            "external service; the 'read-only' claim was corrected at Batch 1). "
+            "One method per station endpoint plus the persona/show resolution "
+            "that stitches several reads into one answer. It grows a method "
+            "when the station gains an endpoint, the same declarative-surface "
+            "reason settings.py is exempt; splitting it scatters one client "
+            "across files that all hold the same httpx session and the same "
+            "last-known-good caches.",
         "web-widget/panel.js":
             "measured again after the 0.10.85 split took the sound board out "
             "(4481 → 3715): the regions left are the settings form, the "
@@ -670,12 +724,17 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "ceiling. Every part of a call touches room, live, callBtn, capBox "
             "and muted, because that is what a call is.",
         "web-widget/style.css":
-            "both pages load it and splitting does not help: only 193 lines "
-            "are panel-only while 308 are used by both, so the split leaves "
-            "two files that still need each other and one still over the "
-            "ceiling. The real problem was that 1,103 lines carried one "
-            "comment; it has a table of contents and twelve section markers "
-            "now, which is what made it hard to read.",
+            "the call card and everything both pages share, since 0.99.2 "
+            "cut the panel-only half out: the old '193 panel-only lines' "
+            "claim had drifted seventeen-fold while every embed downloaded "
+            "all of it. What remains is one surface's styling plus the "
+            "shared base, and the regions left genuinely serve the card.",
+        "web-widget/panel.css":
+            "the operator-page half of the 0.99.2 cut — the settings run, "
+            "the preview stage, the Players page and the panelpage "
+            "newspaper redesign, loaded by panel.html alone. One page, one "
+            "file; the leak check both ways is written in its header, and "
+            "TestThePanelStylesStayOffTheCallPage holds it.",
         # The three test modules that crossed the ceiling in 0.9.111, and they
         # are here for one reason that applies to all of tests/: this ceiling
         # and agent-worker/CLAUDE.md's placement rule point in opposite
@@ -848,7 +907,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # seam again.
         # 668: the earlier-call bullet learns the booth log by name (the
         # day-log's reader, decision 3) — same rule-builders half.
-        "agent-worker/brain/tool_rules.py": (668, "the declarations at the top "
+        # 683 at 0.99.6 (top-down review, 2026-08-28): the "briefing is LIVE"
+        # line now forks on avoid_on_air_overlap — a station that doesn't hold
+        # for callers is told the briefing shows what played when the call
+        # CONNECTED, not what is live now. Fifteen lines, all in the rule
+        # builders half this seam already names; the split is no harder.
+        "agent-worker/brain/tool_rules.py": (683, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
         # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —
@@ -878,7 +942,14 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # are: the answer depends on the tier, and the shared payload is
         # cached across every caller. Eleven lines, eight of them the note
         # saying why the shelf itself is never published with it.
-        "agent-worker/api/live.py": (646, "the shared payload build split "
+        # 658 at 0.99.6 (top-down review, 2026-08-28): on_air now requires a
+        # REAL persona, not merely a reachable station — an unconfigured box
+        # with a default persona reads as off-air, so the widget stops claiming
+        # a DJ is on when none is. The decision is a named _reachability helper
+        # so a unit test can pin it (test_station) rather than the whole
+        # handler; on the shared-build side of the seam where the card is
+        # assembled.
+        "agent-worker/api/live.py": (658, "the shared payload build split "
                                           "from the per-caller resolve"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
         # snapshot head start, the MCP warm-up, the join riding prepare). The
@@ -934,7 +1005,13 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # toolset) and the optional thinking-sound player — both belong in
         # start() beside the session they configure; the recorded split is
         # still the right one and neither piece moves it.
-        "agent-worker/call/session.py": (896, "the ringing half (prepare, "
+        # 918 at 0.99.6 (top-down review, 2026-08-28): a _started flag guards
+        # the hush sweep from firing before the session exists (a fast hang-up
+        # during ringing used to raise on a half-built call), and the arc's
+        # come-back task now has a shutdown callback that cancels it. Both are
+        # on the LIVE half — start and shutdown ordering — where the seam
+        # already puts them; twenty-two lines, none of it across the cut.
+        "agent-worker/call/session.py": (918, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -964,12 +1041,43 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 705: vet-before-show (2026-08-28) - the held round, the one
         # rewrite, and the honest release, all in the ChatSession half
         # the recorded seam already names.
-        "agent-worker/chat/session.py": (705, "the one-conversation half "
+        # 762 at 0.99.6 (top-down review, 2026-08-28): chat now writes the
+        # shared postmortem notes on a SimpleNamespace view (repeat/correct,
+        # door, ask, lookup — the same record a call leaves), the vet-before-
+        # show path suppresses a held round WITHOUT dropping its tool calls,
+        # the sweep skips a locked conversation before the idle check, and the
+        # opener/nudge tell the shared state what the DJ said. All in the
+        # ChatSession half; thirty-three lines, none across the seam.
+        "agent-worker/chat/session.py": (762, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "
                                               "(ChatShelf: open, resume, "
-                                              "idle out, sweep)"),
+                                              "idle out, sweep). 726 at "
+                                              "0.99.4: NORTH STAR move 3 gave "
+                                              "chat the shared ConversationState "
+                                              "— the wiring shrank the "
+                                              "consultation but the holder + "
+                                              "its comment grew the file; the "
+                                              "recorded split is unaffected"),
+        # Over the ceiling at 631 at 0.99.6 (top-down review, 2026-08-28),
+        # from 597. The three fixes all land on the REGISTRATION side: the
+        # station is re-registered when the receiver URL drifts (a container
+        # that moved LAN address kept pushing to the old one), a single
+        # asyncio.Lock serialises the two register call sites so a warm-ping
+        # race can't double-register, and the mis-keyed re-key is cooldown-
+        # gated so a station that never accepts the key isn't hammered. The
+        # seam the file has carried all along is the REGISTRATION state machine
+        # (_registration_due, _mis_keyed, _stand_down, register_station_webhook)
+        # against the WARM-PING / TEST loop (keep_station_warm, fire_test_hook,
+        # handle_hooks_test); they meet only at the shared _hook_state and the
+        # admin-client helpers. Deliberately NOT cut in the change that grew
+        # it — the registration path is exactly what these fixes touched, and a
+        # regression in it should have one candidate cause, not two. The same
+        # deferral call/air.py records.
+        "agent-worker/api/hooks.py": (631, "the registration state machine "
+                                           "split from the warm-ping / test "
+                                           "loop"),
         # Back over the ceiling at 630 with the tape-mode class (0.98.5); its
         # earlier entry (676) was rightly deleted when a split took it under.
         # The seam is the same one it has always had: the chunk-store half
@@ -1059,7 +1167,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # adapter_api_key/adapter_headers) against synthesis (AdapterTTS and
         # its stream). Discovery never reads the class; the class needs two
         # helper names back.
-        "agent-worker/tts_adapter.py": (654, "a voice-discovery module split "
+        # 669 at Batch 1 (2026-08-29): the fail-loud endpoint_path guard in
+        # load_adapter (the report-only type check is blind at this untyped-dict
+        # seam) plus a docstring paragraph naming the discovery half. Both are
+        # on the synthesis/config side; the seam above has not moved and the
+        # discovery split is still the one worth making.
+        "agent-worker/tts_adapter.py": (669, "a voice-discovery module split "
                                              "out from the AdapterTTS class"),
         # 0.10.113 pushed it over while rebuilding the duck: the pads were
         # collapsed into one constant and a measured voice.end was made to
@@ -1528,3 +1641,329 @@ class TestEveryScenarioIsWellFormedBeforeItCostsAnything(unittest.TestCase):
             len(lyrics), 3,
             "the reads scenarios are gone: nothing grades 'what song is this' "
             f"any more. Names present: {names}")
+
+
+# --- the complexity ceiling: the size ledger's missing half ------------------
+# Added 2026-08-29 (the maintainability plan, Batch 0). TestNoFileGrowsWithout-
+# SomebodyDeciding stops a FILE growing past 600 lines, but a file can sit under
+# that ceiling and still be a knot of deeply nested functions — which is exactly
+# where a regression ends up with "two candidate causes". This measures
+# cyclomatic complexity per function and holds it the same way: over the line is
+# a written decision, and a recorded number is a ceiling of its own.
+
+def _cyclomatic_over(root):
+    """Every function in agent-worker/ (tests excluded) keyed
+    "agent-worker/rel::Qualified.name" -> cyclomatic complexity.
+
+    complexity = 1 + decision points (if / for / while / each with-item /
+    except / each boolean operand beyond the first / ternary / comprehension-if
+    / assert / match-case), counted over each function's OWN body — a nested def
+    is its own entry, not folded into its encloser. The LEDGER below records the
+    numbers this produces, so the two can never disagree.
+    """
+    import ast
+
+    decision = (ast.If, ast.For, ast.AsyncFor, ast.While,
+                ast.ExceptHandler, ast.IfExp, ast.Assert)
+
+    def score(body):
+        total, stack = 0, list(body)
+        while stack:
+            n = stack.pop()
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue  # scored as its own entry
+            if isinstance(n, decision):
+                total += 1
+            elif isinstance(n, ast.BoolOp):
+                total += len(n.values) - 1
+            elif isinstance(n, (ast.With, ast.AsyncWith)):
+                total += len(n.items)
+            elif isinstance(n, ast.comprehension):
+                total += len(n.ifs)
+            elif isinstance(n, ast.match_case):
+                total += 1
+            stack.extend(ast.iter_child_nodes(n))
+        return total
+
+    scores = {}
+    for path in sorted(Path(root).rglob("*.py")):
+        parts = path.parts
+        if "tests" in parts or "__pycache__" in parts or ".pytest_cache" in parts:
+            continue
+        rel = "agent-worker/" + str(path.relative_to(root)).replace("\\", "/")
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+
+        def visit(node, prefix):
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    name = prefix + child.name
+                    scores["%s::%s" % (rel, name)] = 1 + score(child.body)
+                    visit(child, name + ".")
+                elif isinstance(child, ast.ClassDef):
+                    visit(child, prefix + child.name + ".")
+                else:
+                    visit(child, prefix)
+
+        visit(tree, "")
+    return scores
+
+
+class TestNoFunctionGrowsTooComplex(unittest.TestCase):
+    """Cyclomatic complexity has a ceiling, ratcheted like file size.
+
+    The LEDGER doubles as a map into the review batches (the maintainability
+    plan): every entry names the batch that owns the eventual simplification, so
+    a walk through the plan and a walk down this list are the same walk. The
+    drill harness (scripted_call.py) is here too — it is not shipped, but it is
+    scanned like everything else and its branchy dispatch is recorded honestly.
+    """
+
+    CEILING = 25
+
+    # "file::qualified.name" -> (recorded complexity, owning batch / reason).
+    # Recorded numbers are ceilings: a function may shrink freely, but growing
+    # past its number needs a decision in the same commit.
+    LEDGER = {
+        # scripted_call.py — the drill harness (test tooling, not shipped);
+        # scenario dispatch and grading are inherently branchy.
+        "agent-worker/scripted_call.py::run_scenario": (75, "harness — scenario runner"),
+        "agent-worker/scripted_call.py::summarise": (36, "harness — result summary"),
+        "agent-worker/scripted_call.py::main": (35, "harness — arg/lever dispatch"),
+        "agent-worker/scripted_call.py::grade_scenario": (33, "harness — grading"),
+        # Batch 1 — platform hubs
+        "agent-worker/settings.py::_migrate": (33, "Batch 1 — settings migration ladder"),
+        # Batch 2 — the api edge
+        "agent-worker/api/live.py::handle_live": (55, "Batch 2 — the /live god-dict assembler"),
+        "agent-worker/api/diagnostics.py::handle_speed_test": (47, "Batch 2 — diagnostics god-module"),
+        "agent-worker/api/chat.py::handle_chat_ws": (46, "Batch 2 — the chat websocket loop"),
+        "agent-worker/api/hooks.py::register_station_webhook": (44, "Batch 2 — webhook reconcile"),
+        "agent-worker/api/tokens.py::handle_token": (41, "Batch 2 — mint + usage-ceiling ladder"),
+        "agent-worker/api/hook_receiver.py::_remember_air": (34, "Batch 2 — two-generation air merge"),
+        "agent-worker/api/diagnostics.py::handle_test_env": (33, "Batch 2 — diagnostics god-module"),
+        "agent-worker/api/diagnostics.py::handle_test_llm": (32, "Batch 2 — diagnostics god-module"),
+        "agent-worker/api/voicemail.py::handle_voicemail_status": (27, "Batch 2 — voicemail status handler"),
+        "agent-worker/api/voicemail.py::handle_voicemail_stage": (27, "Batch 2 — voicemail stage handler"),
+        "agent-worker/api/settings.py::handle_settings_options": (25, "Batch 2 — provider-discovery gather"),
+        # Batch 3 — the call core
+        "agent-worker/call/air.py::OnAirGuard.watch": (47, "Batch 3 — the on-air watch loop"),
+        "agent-worker/call/providers.py::build_llm": (34, "Batch 3 — multi-provider LLM constructor"),
+        # air_verdict._push_verdict was here at 26; Batch 3 folded its three
+        # speaking_secs copies into AirVerdict._spoken_secs, dropping it under
+        # the ceiling — row removed, per the ratchet.
+        # Batch 4 — the call tools
+        "agent-worker/call/tools/removal.py::build_removal_tools.clear_from_queue": (58, "Batch 4 — queue-clear matcher"),
+        "agent-worker/call/tools/discovery.py::build_discovery_tools.browse_library": (37, "Batch 4 — library browse"),
+        "agent-worker/call/tools/albums.py::build_album_tools.queue_album": (32, "Batch 4 — album queue"),
+        "agent-worker/call/tools/albums.py::build_album_tools.queue_mix": (25, "Batch 4 — mix queue"),
+        # Batch 5 — the brain
+        "agent-worker/brain/briefing.py::_fmt_now_playing": (32, "Batch 5 — now-playing formatter"),
+        "agent-worker/brain/assemble.py::build_system_prompt": (27, "Batch 5 — prompt assembler entry"),
+        "agent-worker/brain/tool_rules.py::_tools": (27, "Batch 5 — the prompt god-function"),
+        # Batch 6 — chat / onair / openlines / voicemail
+        "agent-worker/voicemail/capture.py::answer": (45, "Batch 6 — voicemail answer pipeline"),
+        "agent-worker/openlines/director.py::open_now": (38, "Batch 6 — premise-source ladder"),
+        "agent-worker/chat/session.py::ChatSession._tool_loop": (33, "Batch 6 — hand-rolled chat tool loop"),
+        "agent-worker/voicemail/deliver.py::_triage": (32, "Batch 6 — voicemail triage dispatch"),
+        "agent-worker/openlines/quiz.py::facts_from": (28, "Batch 6 — quiz fact extraction"),
+        "agent-worker/voicemail/air.py::deliver": (25, "Batch 6 — voicemail delivery branches"),
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        cls.scores = _cyclomatic_over(AGENT_WORKER)
+
+    def test_the_scan_found_the_functions(self):
+        self.assertGreater(len(self.scores), 400,
+                           "the function scan has stopped finding the tree")
+
+    def test_no_complex_function_is_unaccounted(self):
+        over = sorted("%s (%d)" % (k, c) for k, c in self.scores.items()
+                      if c >= self.CEILING and k not in self.LEDGER)
+        self.assertEqual(
+            over, [],
+            "these functions are at or over the complexity ceiling of "
+            f"{self.CEILING} and nobody decided that was right. Simplify them, "
+            "or add each to LEDGER with the review batch that will: %r" % (over,))
+
+    def test_no_ledgered_function_grew(self):
+        grown = sorted("%s was %d, is now %d" % (k, was, self.scores[k])
+                       for k, (was, _) in self.LEDGER.items()
+                       if k in self.scores and self.scores[k] > was)
+        self.assertEqual(
+            grown, [],
+            "recorded complexity is a ceiling of its own. Simplify, or raise "
+            "the number in the same commit and say why that was right: %r" % (grown,))
+
+    def test_no_ledger_entry_outlives_its_complexity(self):
+        stale = sorted(k for k in self.LEDGER
+                       if k not in self.scores or self.scores[k] < self.CEILING)
+        self.assertEqual(
+            stale, [],
+            "these ledger rows were simplified under the ceiling (or the "
+            "function was renamed/removed) — drop the row so it stops masking a "
+            "future regression behind an old allowance: %r" % (stale,))
+
+
+# --- the import-layering guard: an AST sibling of the routing-table test ------
+# Added 2026-08-29 (the maintainability plan, Batch 0). The repo already
+# AST-asserts one boundary (nothing under api/ imports token_server); this
+# encodes the whole layer map so the clean structure can't erode silently.
+
+def _layer_backedges(root):
+    """Every cross-layer import in agent-worker/ that runs AGAINST the intended
+    dependency direction, as (from_module, to_module, from_layer, to_layer).
+
+    The intended order (an importer may only reach a STRICTLY LOWER layer):
+      entrypoints > api > surfaces > call_tools > call > brain > transport > platform
+    call and call.tools are a co-recursive PAIR (session builds tools; tools
+    reach call helpers), so both directions between them are forward. onair/*
+    and voicemail/master are pure low-level transports that depend only on
+    platform. Sanctioning happens in the test, not here — this reports the raw
+    backward edges so a sanction can't outlive the import it excuses.
+    """
+    import ast
+
+    order = ["entrypoints", "api", "surfaces", "call_tools", "call",
+             "brain", "transport", "platform"]
+    rank = {n: i for i, n in enumerate(order)}
+    peers = {frozenset({"call", "call_tools"})}
+
+    root = Path(root)
+    known, internal = set(), set()
+    for path in root.rglob("*.py"):
+        if "__pycache__" in path.parts or ".pytest_cache" in path.parts:
+            continue
+        dotted = str(path.relative_to(root))[:-3].replace("\\", "/").replace("/", ".")
+        if dotted.endswith(".__init__"):
+            dotted = dotted[:-len(".__init__")]
+        known.add(dotted)
+        internal.add(dotted.split(".")[0])
+
+    def layer(mod):
+        p = mod.split(".")
+        top = p[0]
+        if top in ("token_server", "main"):
+            return "entrypoints"
+        if top == "api":
+            return "api"
+        if top == "call":
+            return "call_tools" if len(p) >= 2 and p[1] == "tools" else "call"
+        if top == "brain":
+            return "brain"
+        if top == "onair":
+            return "transport"
+        if top == "voicemail":
+            return "transport" if (len(p) >= 2 and p[1] == "master") else "surfaces"
+        if top in ("chat", "openlines"):
+            return "surfaces"
+        if top in internal:
+            return "platform"
+        return None
+
+    def targets_of(tree, pkg):
+        found = []
+
+        def add_from(base, names):
+            subs = [base + "." + n for n in names if (base + "." + n) in known]
+            if subs:
+                found.extend(subs)
+                if any((base + "." + n) not in known for n in names):
+                    found.append(base)
+            else:
+                found.append(base)
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                found.extend(a.name for a in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                names = [a.name for a in node.names]
+                if node.level == 0:
+                    if node.module:
+                        add_from(node.module, names)
+                else:
+                    base = ".".join(pkg[:len(pkg) - (node.level - 1)]
+                                    + ([node.module] if node.module else []))
+                    add_from(base, names)
+        return found
+
+    edges = []
+    for path in sorted(root.rglob("*.py")):
+        parts = path.parts
+        if "tests" in parts or "__pycache__" in parts or ".pytest_cache" in parts:
+            continue
+        rel = str(path.relative_to(root)).replace("\\", "/")
+        if rel == "scripted_call.py":
+            continue  # the drill harness imports product modules to inject them
+        from_mod = rel[:-3].replace("/", ".")
+        pkg = from_mod.split(".")[:-1]
+        fl = layer(from_mod)
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+        for tm in targets_of(tree, pkg):
+            tl = layer(tm)
+            if tl is None or tl == fl:
+                continue
+            if rank[tl] > rank[fl] or frozenset({fl, tl}) in peers:
+                continue
+            edges.append((from_mod, tm, fl, tl))
+    return sorted(set(edges))
+
+
+class TestTheImportLayeringHolds(unittest.TestCase):
+    """No module imports against the grain of the layer map, except the few
+    deliberate, mostly-deferred back-edges recorded here with their reason.
+
+    The five original exceptions were named in the architecture recon; the two
+    open-lines ones are the additive greeting/prompt clause that keeps the DJ
+    byte-identical when no line is up. A sanction is scoped to the exact (from,
+    to) modules so it excuses that import and nothing broader.
+    """
+
+    # (from_module_prefix, to_module_prefix) -> both matched by startswith.
+    SANCTIONED = {
+        ("settings", "call.air_timing"),       # platform -> call: DUCK_PAD default at load, guarded
+        ("settings", "call.tools.registry"),   # platform -> call_tools: the MCP allowlist is derived there
+        ("openlines.air", "api.env"),          # surfaces -> api: the public dial-in URL
+        ("openlines.director", "api.stats"),   # surfaces -> api: the "nobody listening" gate
+        ("voicemail.capture", "api.sounds"),   # surfaces -> api: the uploaded custom-beep path
+        ("call.greeting", "openlines.prompt"),  # call -> surfaces: additive open-lines greeting clause
+        ("brain.assemble", "openlines.prompt"),  # brain -> surfaces: additive open-lines prompt block
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        cls.back = _layer_backedges(AGENT_WORKER)
+
+    def _sanctioned(self, fm, tm):
+        return any(fm.startswith(sf) and tm.startswith(st)
+                   for sf, st in self.SANCTIONED)
+
+    def test_the_scan_saw_the_tree(self):
+        # A model that matched nothing would pass the grain check forever; the
+        # known back-edges are the proof it is still reading real imports.
+        self.assertGreaterEqual(
+            len(self.back), len(self.SANCTIONED),
+            "the import scan stopped finding the known back-edges")
+
+    def test_no_module_imports_against_the_grain(self):
+        bad = sorted("%s -> %s (%s -> %s)" % (fm, tm, fl, tl)
+                     for fm, tm, fl, tl in self.back if not self._sanctioned(fm, tm))
+        self.assertEqual(
+            bad, [],
+            "these imports run against the layer order (entrypoints > api > "
+            "surfaces > call_tools > call > brain > transport > platform; "
+            "call <-> call.tools are peers). Move the code to a lower layer, or "
+            "— if it is a deliberate, usually deferred exception like the seven "
+            "already sanctioned — add the (from, to) pair to SANCTIONED with a "
+            "reason: %r" % (bad,))
+
+    def test_no_sanctioned_exception_outlives_its_import(self):
+        present = {(fm, tm) for fm, tm, _, _ in self.back}
+        stale = sorted(
+            "%s -> %s" % (sf, st) for sf, st in self.SANCTIONED
+            if not any(fm.startswith(sf) and tm.startswith(st)
+                       for fm, tm in present))
+        self.assertEqual(
+            stale, [],
+            "these sanctioned back-edges no longer correspond to a real import "
+            "(the code moved) — drop the row so the exception list stays "
+            "honest: %r" % (stale,))

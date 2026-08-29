@@ -43,7 +43,7 @@ from station_config import StationConfig
 from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 
 from onair import hush
-from onair.relay import CallRelay
+from onair.relay import CallRelay, on_air_window_secs
 
 from . import (arc as arc_mod, asks as asks_mod, background, clocks, comeback,
                door, floor as floor_mod, greeting, handoff, heard as heard_mod,
@@ -184,6 +184,14 @@ class CallSession:
         self.voice = ""
         self.instructions = ""
         self.session: AgentSession | None = None
+        # Whether _on_shutdown has taken ownership of the started-call cleanup
+        # (the hush marker's tail). `session is not None` was the proxy for
+        # this, but session is assigned mid-start() while _on_shutdown is only
+        # registered after start() returns — so a start() that raised in that
+        # window orphaned the hush marker: _hush_sweep saw a non-None session
+        # and skipped, and _on_shutdown had never been wired to catch it
+        # (top-down review, 2026-08-28). This flag closes that gap.
+        self._started = False
 
         self.actions = CallActions(self.cfg.get("max_actions_per_call"), room=ctx.room,
                                    mode=str(self.cfg.get("action_cards") or "after"),
@@ -562,7 +570,7 @@ class CallSession:
                 # window is enforced regardless, so without this a live
                 # phone-in simply stopped mid-thought whenever the clock ran
                 # out. Radio does not end a segment that way.
-                window = int(self.cfg.get("on_air_max_seconds") or 0) or 240
+                window = int(on_air_window_secs(self.cfg))
                 # The on_air scope's moment: the relay is armed, this call IS
                 # going to broadcast. (The "all" scope engaged back in
                 # prepare(), where the greeting is still ahead.)
@@ -719,6 +727,13 @@ class CallSession:
         # it.
         air_task = asyncio.create_task(self.air.watch(session))
         ctx.add_shutdown_callback(lambda: lifecycle.cancel(air_task))
+        # The come-back task is spawned raw inside the watch loop and is
+        # otherwise cancelled only on a new busy edge — so at shutdown an
+        # in-flight one would call generate_reply into a session being torn
+        # down (the "Task was destroyed but it is pending" case lifecycle.cancel
+        # exists for). Cancelling air_task stops the loop but not its child;
+        # this reaps the child too (top-down review, 2026-08-28).
+        ctx.add_shutdown_callback(lambda: self.air._cancel_comeback())
 
         # Keep this call's hush marker fresh, when this call quieted the
         # station: the janitor reads a stopped heartbeat as a dead job and
@@ -761,6 +776,9 @@ class CallSession:
         # that would then need testing twice.
         clocks.attach_on_air_wrap(ctx, session, self.relay, floor=self.floor)
         ctx.add_shutdown_callback(self._on_shutdown)
+        # From here _on_shutdown owns the started-call cleanup; before this,
+        # _hush_sweep is the only owner. See _hush_sweep.
+        self._started = True
 
     async def greet(self) -> None:
         if self.record:
@@ -773,8 +791,12 @@ class CallSession:
     async def _hush_sweep(self) -> None:
         """The early-death half of the hush marker's removal — see the
         registration site in __init__ for why the started-call half lives at
-        the tail of _on_shutdown instead."""
-        if self.session is None:
+        the tail of _on_shutdown instead.
+
+        Keyed on _started, not `session is None`: session is assigned mid-way
+        through start(), so a start() that raised after that but before
+        _on_shutdown was registered left the marker with neither owner."""
+        if not self._started:
             hush.call_ended(self.room_name)
 
     async def _on_shutdown(self) -> None:

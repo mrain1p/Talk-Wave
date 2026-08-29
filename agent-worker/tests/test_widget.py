@@ -1623,18 +1623,58 @@ class TestNoStyleUsesAnUndefinedToken(unittest.TestCase):
     def test_every_var_reference_is_defined(self):
         import re
 
+        # panel.css loads AFTER style.css on the panel page, so its var()
+        # references may resolve against either sheet — but style.css must
+        # stand alone (the call page never loads panel.css).
         css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
-        defined = set(re.findall(r"(--[a-z0-9-]+)\s*:", css, re.IGNORECASE))
-        used = set(re.findall(r"var\(\s*(--[a-z0-9-]+)", css, re.IGNORECASE))
-        # A var() may carry its own fallback — `var(--x, #fff)` — which is
-        # legitimately defined-or-fallback; strip those from the requirement.
-        with_fallback = set(re.findall(
-            r"var\(\s*(--[a-z0-9-]+)\s*,", css, re.IGNORECASE))
-        missing = sorted((used - defined) - with_fallback)
-        self.assertEqual(
-            missing, [],
-            "these CSS custom properties are used via var() but defined "
-            f"nowhere in style.css — they render as nothing: {missing}")
+        panel = (REPO / "web-widget" / "panel.css").read_text(encoding="utf-8")
+        for name, sheet, defs in (("style.css", css, css),
+                                  ("panel.css", panel, css + panel)):
+            defined = set(re.findall(r"(--[a-z0-9-]+)\s*:", defs,
+                                     re.IGNORECASE))
+            used = set(re.findall(r"var\(\s*(--[a-z0-9-]+)", sheet,
+                                  re.IGNORECASE))
+            # A var() may carry its own fallback — `var(--x, #fff)` — which
+            # is legitimately defined-or-fallback; strip those.
+            with_fallback = set(re.findall(
+                r"var\(\s*(--[a-z0-9-]+)\s*,", sheet, re.IGNORECASE))
+            missing = sorted((used - defined) - with_fallback)
+            self.assertEqual(
+                missing, [],
+                "these CSS custom properties are used via var() but defined "
+                f"nowhere reachable from {name} — they render as nothing: "
+                f"{missing}")
+
+
+class TestThePanelStylesStayOffTheCallPage(unittest.TestCase):
+    """The 0.99.2 cut: ~3,200 panel-only lines left style.css after its own
+    header's '193 panel-only lines' claim had drifted seventeen-fold, with
+    every caller and embed downloading, parsing and matching none of it.
+    These hold the cut in both directions — the panel's styling stays in
+    panel.css, and panel.css never reaches a caller."""
+
+    def test_style_css_carries_no_panel_scoping(self):
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        self.assertNotIn(
+            "body.panelpage", css,
+            "panel-page scoping is back in the shared sheet — the cut "
+            "leaked backwards; it belongs in panel.css")
+
+    def test_the_panel_page_loads_the_panel_sheet_after_the_shared_one(self):
+        html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+        self.assertIn('href="/panel.css"', html)
+        self.assertLess(html.index('href="/style.css"'),
+                        html.index('href="/panel.css"'),
+                        "panel.css must load after style.css — the cascade "
+                        "is shared base, then the operator's page")
+
+    def test_no_caller_surface_references_the_panel_sheet(self):
+        for name in ("index.html", "embed.js", "call.js", "shared.js",
+                     "sw.js"):
+            src = (REPO / "web-widget" / name).read_text(encoding="utf-8")
+            self.assertNotIn("panel.css", src,
+                             f"{name} references the operator's stylesheet "
+                             "— a caller would download the panel again")
 
 
 class TestTheCardIsOnlyEverInOneMode(unittest.TestCase):
@@ -2314,7 +2354,9 @@ class TestThePanelReadsAtAGlance(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
-        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        cls.css = ((REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+               + "\n"  # panel-subject tests read BOTH sheets since the 0.99.2 cut
+               + (REPO / "web-widget" / "panel.css").read_text(encoding="utf-8"))
 
     def test_matrix_help_lives_in_the_label_cell(self):
         self.assertIn("'hint inlabel'", self.js)
@@ -2381,7 +2423,9 @@ class TestTheUrlRowsOnlyExistInUrlMode(unittest.TestCase):
     read as duplicated."""
 
     def test_the_hidden_attribute_wins_for_sloturl_rows(self):
-        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        css = ((REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+               + "\n"  # panel-subject tests read BOTH sheets since the 0.99.2 cut
+               + (REPO / "web-widget" / "panel.css").read_text(encoding="utf-8"))
         self.assertIn(".row.sloturl[hidden]", css)
         html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
         # Every URL row ships hidden; paintSlotCards() is the only unhider.
@@ -2396,12 +2440,14 @@ class TestTheStylesheetParsesToTheEnd(unittest.TestCase):
     editing accident that happened."""
 
     def test_braces_balance(self):
-        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
-        self.assertEqual(css.count("{"), css.count("}"),
-                         "style.css has unbalanced braces — every rule after "
-                         "the break is silently dead in the browser")
+        for name in ("style.css", "panel.css"):
+            css = (REPO / "web-widget" / name).read_text(encoding="utf-8")
+            self.assertEqual(css.count("{"), css.count("}"),
+                             f"{name} has unbalanced braces — every rule "
+                             "after the break is silently dead in the browser")
         # The canary: the LAST load-bearing rule must still be reachable,
         # so a balanced-but-broken file still has to keep it intact.
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
         self.assertIn("body.measuring", css)
 
     def test_no_comment_is_left_open_or_closed_twice(self):
@@ -2411,7 +2457,7 @@ class TestTheStylesheetParsesToTheEnd(unittest.TestCase):
         # ate the rule underneath it. Braces still balanced, 23 modules still
         # green, and .skinart was simply not in the browser's stylesheet
         # (2026-08-14, caught by looking at the page rather than the suite).
-        for name in ("style.css", "skins.css"):
+        for name in ("style.css", "skins.css", "panel.css"):
             css = (REPO / "web-widget" / name).read_text(encoding="utf-8")
             depth, i, faults = 0, 0, []
             while i < len(css):
@@ -2854,7 +2900,9 @@ class TestTheCornerControlsAreAllOneSize(unittest.TestCase):
                              "panel cannot draw it at picker size")
 
     def test_every_surface_that_draws_them_says_how_big(self):
-        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        css = ((REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+               + "\n"  # panel-subject tests read BOTH sheets since the 0.99.2 cut
+               + (REPO / "web-widget" / "panel.css").read_text(encoding="utf-8"))
         for selector in (".card .gear svg",        # the card's corner row
                          ".iconpick svg",          # the panel's trigger
                          ".icongrid .iconbtn svg"):  # the panel's picker
@@ -2866,7 +2914,9 @@ class TestTheCornerControlsAreAllOneSize(unittest.TestCase):
         # 13px is what the four inline SVGs in index.html are set to; this is
         # the number that has to agree, not just exist.
         html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
-        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        css = ((REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+               + "\n"  # panel-subject tests read BOTH sheets since the 0.99.2 cut
+               + (REPO / "web-widget" / "panel.css").read_text(encoding="utf-8"))
         inline = set(re.findall(r'<svg width="(\d+)" height="\1"', html))
         self.assertIn("13", inline, "the corner glyphs are no longer 13px")
         rule = css[css.index(".card .gear svg"):]
@@ -3147,7 +3197,9 @@ class TestThePanelSaysWhereThingsAre(unittest.TestCase):
     def setUpClass(cls):
         cls.js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
         cls.html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
-        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        cls.css = ((REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+               + "\n"  # panel-subject tests read BOTH sheets since the 0.99.2 cut
+               + (REPO / "web-widget" / "panel.css").read_text(encoding="utf-8"))
 
     def test_a_section_id_is_a_valid_address(self):
         block = self.js.split("function currentPage")[1][:700]
@@ -3272,7 +3324,9 @@ class TestSectionTagsCanShowTheirState(unittest.TestCase):
 
         from tests.support import REPO
 
-        raw = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        raw = ((REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+               + "\n"  # panel-subject tests read BOTH sheets since the 0.99.2 cut
+               + (REPO / "web-widget" / "panel.css").read_text(encoding="utf-8"))
         # Comments stripped: this file explains its own traps by quoting the
         # selectors involved, and a test that counts rules must not count the
         # prose describing them. (It caught itself doing exactly that.)
@@ -3326,7 +3380,9 @@ class TestThePanelKeepsItsOwnRules(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        css = ((REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+               + "\n"  # panel-subject tests read BOTH sheets since the 0.99.2 cut
+               + (REPO / "web-widget" / "panel.css").read_text(encoding="utf-8"))
         # The panel's own block. Everything before it is the CALL CARD, which
         # is a different surface with a different guide and its own tokens —
         # the 8/10/12 scale is still correct there.

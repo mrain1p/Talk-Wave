@@ -478,6 +478,13 @@
   //
   // askRoom is the extra px the host granted, 0 when we are not overlaid.
   let askRoom = 0, askWait = null, askShow = null, askClose = null;
+  // The current popup + button, and whether the document listeners are wired.
+  // setupAskPopup runs on every caller-tier change; it used to add a fresh
+  // pair of anonymous document listeners each time and never remove them, so
+  // a caller cycling sign-in/lock accumulated stale closures for the life of
+  // the page (top-down review, 2026-08-28). One persistent pair now, reading
+  // the current popup through these mutable refs.
+  let askPop = null, askBtn = null, askDocWired = false;
 
   function setOverlay(px, up) {
     askRoom = px;
@@ -533,11 +540,20 @@
     };
     $('askClose').onclick = close;
     // Escape and a click outside, because a popup with only an X is a trap on
-    // a phone.
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
-    document.addEventListener('click', (e) => {
-      if (!pop.hidden && !pop.contains(e.target) && e.target !== btn) close();
-    });
+    // a phone. Wired ONCE and read through askPop/askBtn/askClose, which this
+    // call has just refreshed — so re-running setupAskPopup adds no new
+    // listeners.
+    askPop = pop; askBtn = btn;
+    if (!askDocWired) {
+      askDocWired = true;
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && askClose) askClose();
+      });
+      document.addEventListener('click', (e) => {
+        if (askPop && !askPop.hidden && !askPop.contains(e.target)
+            && e.target !== askBtn && askClose) askClose();
+      });
+    }
   }
 
   const callBtn = $('callBtn'), muteBtn = $('muteBtn'), hangBtn = $('hangBtn');
@@ -800,12 +816,12 @@
       // the station's own current-track fallback applies.
       let song = null;
       try {
-        const s = await fetch('/player/like', { headers: plKeyHeaders() });
+        const s = await fetch('/player/like', { headers: keyHeaders() });
         if (s.ok) song = (await s.json()).songId || null;
       } catch (e) { /* fall through to the current-track like */ }
       const r = await fetch('/player/like', {
         method: 'POST',
-        headers: plKeyHeaders({ 'Content-Type': 'application/json' }),
+        headers: keyHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(song ? { songId: song } : {}),
       });
       if (!r.ok) throw new Error('refused');
@@ -2979,6 +2995,9 @@
   // against a card that said idle: the DJ heard a caller who thought they had
   // hung up. Reviewed 0.10.57.
   let callGen = 0;
+  // One teardown per call — see endCall's re-entrancy guard. Cleared when a
+  // fresh call starts.
+  let callEnded = false;
   // The route chip, for the whole call or recording — a caller must never be
   // able to forget which way they chose ("once you get in you could forget
   // which you picked", operator, 2026-08-18). Both states, voicemail
@@ -3001,6 +3020,7 @@
 
   async function startCall(asVoicemail) {
     const myGen = ++callGen;
+    callEnded = false;   // a new call may be torn down again
     vmCall = !!asVoicemail;
     // Pinned at the press: the route is only a REQUEST — the server re-gates
     // it at the mint and the worker preflights the transport, so this flag
@@ -3521,6 +3541,14 @@
   }
 
   function endCall(remote) {
+    // Re-entrancy guard: a local Hang up calls endCall(false), which then
+    // room.disconnect()s, and the Disconnected event fires endCall(true) a
+    // microtask later. The second pass releaseRoom()'d null and hid the
+    // feedback bar the first pass had just shown, so a local hang-up never
+    // saw the "How was it?" prompt (top-down review, 2026-08-28). One
+    // teardown per call; the disconnect echo is a no-op. startCall clears it.
+    if (callEnded) return;
+    callEnded = true;
     // Any in-flight startCall (e.g. awaiting the token mint) is now stale —
     // its post-await resume checks this and bails. See callGen at startCall.
     callGen += 1;
@@ -3540,6 +3568,11 @@
     dropEffect();
     anYou = anDj = null; djEl = null; djTrack = null;
     djOnAir = false; djHasSpoken = false;
+    // Reset the on-air hold state too, or a call that hung up while its hold
+    // had already expired left holdExpired stale-true, and the NEXT call's
+    // on-air mic-lock (open && djOnAir && !holdExpired) was defeated — the
+    // caller could talk over the broadcast (top-down review, 2026-08-28).
+    clearTimeout(holdTimer); holdExpired = false; wasLiveBeforeHold = false;
     document.querySelector('.card').classList.remove('onair');
     clearMeters();
     $('djAvatar').classList.remove('talking');
@@ -4118,7 +4151,9 @@
     return ((live && live.limits && live.limits.voicemailMaxSeconds) || 30);
   }
 
-  function vmKeyHeaders(extra) {
+  function keyHeaders(extra) {
+    // One X-Call-Key header builder (Batch 7): copy form, so a caller's
+    // object is never mutated. Was vmKeyHeaders + an identical plKeyHeaders.
     const h = Object.assign({}, extra || {});
     if (callKey()) h['X-Call-Key'] = callKey();
     return h;
@@ -4240,7 +4275,7 @@
     // never outlives the caller's decision to replace it.
     if (vmDraft) {
       fetch('/voicemail/draft/' + vmDraft.id,
-            { method: 'DELETE', headers: vmKeyHeaders() }).catch(() => {});
+            { method: 'DELETE', headers: keyHeaders() }).catch(() => {});
       vmDraft = null;
     }
     if (vmPlayer) { vmPlayer.pause(); vmPlayer = null; }
@@ -4321,7 +4356,7 @@
     try {
       const resp = await fetch('/voicemail/draft', {
         method: 'POST',
-        headers: vmKeyHeaders({ 'Content-Type': 'audio/wav' }),
+        headers: keyHeaders({ 'Content-Type': 'audio/wav' }),
         body: vmClip,
       });
       const data = await resp.json().catch(() => ({}));
@@ -4357,7 +4392,7 @@
     setStatus('', 'connecting');
     try {
       const resp = await fetch('/voicemail/draft/' + vmDraft.id + '/send',
-                               { method: 'POST', headers: vmKeyHeaders() });
+                               { method: 'POST', headers: keyHeaders() });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok || !data.ok) {
         throw new Error(data.receipt || data.error || 'that didn’t go out');
@@ -4439,7 +4474,7 @@
         const ctl = new AbortController();
         const cap = setTimeout(() => ctl.abort(), 20000);
         const r = await fetch('/vm-greeting',
-                              { headers: vmKeyHeaders(), signal: ctl.signal });
+                              { headers: keyHeaders(), signal: ctl.signal });
         clearTimeout(cap);
         if (!r.ok) return { url: '', text: '' };
         let text = '';
@@ -4525,7 +4560,7 @@
     if (vmGreet) { vmGreet.pause(); vmGreet = null; }
     if (vmDraft) {
       fetch('/voicemail/draft/' + vmDraft.id,
-            { method: 'DELETE', headers: vmKeyHeaders() }).catch(() => {});
+            { method: 'DELETE', headers: keyHeaders() }).catch(() => {});
       vmDraft = null;
     }
     $('vmStudio').hidden = true;
@@ -4630,7 +4665,17 @@
     vmPlayer = new Audio(URL.createObjectURL(vmClip));
     vmPlayer.play().catch(() => {});
   };
-  $('vmRerecBtn').onclick = () => { if (!vmBusy) vmStartRec(); };
+  $('vmRerecBtn').onclick = () => {
+    if (vmBusy) return;
+    // Clear any stale abort flag first: a take that auto-stopped at the
+    // ceiling while the finger was still down set vmAbortStart=true on the
+    // eventual release, and rerec bypasses the pointerdown/keydown resets —
+    // so the fresh take instantly aborted and recorded nothing (top-down
+    // review, 2026-08-28). This is a deliberate new recording, not a
+    // cancelled one.
+    vmAbortStart = false;
+    vmStartRec();
+  };
   $('vmSendBtn').onclick = vmSend;
   $('vmCloseBtn').onclick = () => vmCloseStudio(false);
   $('vmCancelBtn').onclick = () => vmCloseStudio(false);
@@ -5117,7 +5162,7 @@
       try {
         const r = await fetch('/open-lines/open', {
           method: 'POST',
-          headers: vmKeyHeaders({ 'Content-Type': 'application/json' }),
+          headers: keyHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             source: $('plSegSource').value,
             minutes: Number($('plSegMins').value) || 0,
@@ -5364,18 +5409,13 @@
   // track change between paint and press gets the station's 409 instead of
   // the wrong record getting the heart.
   let plLiked = false, plLikeSong = null, plHeartFor = '';
-  function plKeyHeaders(extra) {
-    const h = extra || {};
-    if (callKey()) h['X-Call-Key'] = callKey();
-    return h;
-  }
   async function refreshHeart(trackKey) {
     const b = $('plHeartBtn');
     if (!b || !playerOpen) return;
     if (trackKey === plHeartFor) return;   // same record, nothing to re-ask
     plHeartFor = trackKey;
     try {
-      const r = await fetch('/player/like', { headers: plKeyHeaders() });
+      const r = await fetch('/player/like', { headers: keyHeaders() });
       const d = await r.json();
       if (!r.ok || d.enabled === false) { b.hidden = true; return; }
       plLiked = !!d.liked; plLikeSong = d.songId || null;
@@ -5397,7 +5437,7 @@
     try {
       const r = await fetch('/player/like', {
         method: 'POST',
-        headers: plKeyHeaders({ 'Content-Type': 'application/json' }),
+        headers: keyHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(plLikeSong ? { songId: plLikeSong } : {}),
       });
       const d = await r.json().catch(() => ({}));
@@ -5418,7 +5458,7 @@
     try {
       const r = await fetch('/player/request', {
         method: 'POST',
-        headers: plKeyHeaders({ 'Content-Type': 'application/json' }),
+        headers: keyHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ text }),
       });
       const d = await r.json().catch(() => ({}));

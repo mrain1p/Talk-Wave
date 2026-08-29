@@ -104,19 +104,3 @@ class CallArc:
         return ""
 
 
-def attach_arc_watch(session, arc: CallArc) -> None:
-    """Watch the DJ's lines so the arc knows a farewell was said.
-
-    Same shape as door.attach_door_watch, for the same reason: the event is
-    the only place that knows what actually went out.
-    """
-
-    def _on_said(ev) -> None:
-        item = getattr(ev, "item", None)
-        if getattr(item, "role", None) != "assistant":
-            return
-        text = str(getattr(item, "text_content", "") or "").strip()
-        if text:
-            arc.dj_said(text)
-
-    session.on("conversation_item_added", _on_said)

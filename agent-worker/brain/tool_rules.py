@@ -599,11 +599,26 @@ Use your tools mid-conversation, the way a DJ works while talking:
         # description contains the words "the track playing right now") and
         # subwave_now_playing not once. Every routing surface pointed the
         # wrong way; this is the row that was missing.
-        parts.append("""- **What's on right now.** The track in your briefing above is LIVE — it is
-  refreshed for you when the station moves on mid-call, so "what's this?",
-  "who is this?", "what's it called?" you can simply ANSWER, in your own
-  voice, without reaching for anything.
-    * Want to be certain, or been talking a while -> subwave_now_playing.
+        # The "refreshed for you" promise is only TRUE when the on-air guard
+        # is running — that watch loop is the one thing that re-stages the
+        # track note mid-call, and it runs only under avoid_on_air_overlap.
+        # With the toggle off the briefing is frozen at pickup, so the prompt
+        # must not claim it stays live (top-down review, 2026-08-28): it says
+        # the track is from pickup and steers to subwave_now_playing instead.
+        if cfg.get("avoid_on_air_overlap"):
+            _now_line = (
+                "The track in your briefing above is LIVE — it is refreshed "
+                "for you when the station moves on mid-call, so \"what's "
+                "this?\", \"who is this?\", \"what's it called?\" you can "
+                "simply ANSWER, in your own voice, without reaching for "
+                "anything.\n    * Want to be certain, or been talking a while")
+        else:
+            _now_line = (
+                "The track in your briefing above is what was playing when "
+                "this call CONNECTED — it does not refresh, so once a few "
+                "minutes have passed it may be a record or two stale. For "
+                "\"what's this?\", \"who is this?\", \"what's it called?\"")
+        parts.append(f"""- **What's on right now.** {_now_line} -> subwave_now_playing.
       That is the tool for what is ON, and it is the ONLY one that answers
       what a record IS.
     * subwave_current_lyrics is for the WORDS — what the song says, what a

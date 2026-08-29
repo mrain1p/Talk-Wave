@@ -1,7 +1,122 @@
 # Changelog
 
-Release notes for operators. One entry per push to `main`; the full
-commit-by-commit detail is in git history.
+Release notes for operators. One entry per release to `main`; work in flight on
+`dev` sits under Unreleased until then, and the version bumps once at release
+(the full commit-by-commit detail is in git history).
+
+## 0.99.10
+
+The maintainability review, released. Seven batches of consolidation — one source of truth for every rule that had been written down more than once — grounded in a full architecture recon and gated by a new set of guards (a linter, a per-function complexity ceiling, an import-layering test) plus a committed architecture doc. Every change is behaviour-preserving and was verified by an adversarial pre-release pass; the two bugs it turned up along the way were latent, not introduced. Batches 0 and 1 shipped as 0.99.8/0.99.9 below; this release brings them and batches 2–7 to `main` together, alongside the security and review work of 0.99.2–0.99.7. Decisions and deferrals live in docs/adr/review-ledger.md.
+
+- **Batch 2 — the api edge.** The call-record and log readback handlers (`/calls`, `/logs`) moved out of the 1,583-line `diagnostics.py` into a new `api/readback.py`, leaving diagnostics as purely the `/test/*` probes — two different jobs (does it work vs. what happened) that had cohabited. And the guest-door rule — whether the guest tier is reachable — is now one function (`guest_door_open`) instead of two spellings that the code's own comment warned would drift apart; a truth-table test pins it.
+- **Batch 7 — the widget.** The browser code has no automated test harness, so this was deliberately conservative: delete only what's provably dead, and merge only what's provably identical. Gone: an orphaned open-lines function whose comment described a rule the server no longer uses, and two retired blocks of settings-page CSS. Merged: one header-building helper that had been written twice. The two big files stay whole — their pieces are genuinely intertwined, and with no way to catch a regression, splitting them would be a gamble, not a cleanup. Checked by loading both pages live and confirming they render with no errors.
+- **Batch 6 — chat, on-air, open-lines, voicemail.** The same little routine for saving a JSON file to disk safely — write to a temporary file beside the real one, set its permissions (a NAS share hands new files no permissions at all), then swap it into place — had been rewritten nine times across the settings store, the secrets store, voicemail, open-lines and voice-effects. It's now one helper (`jsonstore.write_atomic`), with the two things that genuinely differ between them (the file's permissions, and whether the folder is set too) as options. The security-sensitive stores were deliberately checked one by one and their exact permissions preserved; a couple of stores whose reads must tell "missing" apart from "corrupt" were left alone on purpose.
+- **Batch 5 — the brain.** Mostly a clean bill: the prompt-assembly code already keeps one copy of every rule that's truly shared, and the passages that look duplicated are deliberately reworded for their context (and never appear in the same prompt), so there was nothing safe to merge without changing what the DJ is told. One tidy: a shared helper that decides which feed lines are spoken lost its "private" underscore, since the open-lines quiz was already using it — the coupling is now honest.
+- **Batch 4 — the call tools.** The refusal-card idiom — the block every station-refusing tool runs to card the refusal and tell the DJ not to claim it worked — was written fourteen times, each reading the station's reason twice and some drifting to a different wording. It's now one `CallActions.station_refused` method; and that fixed a real latent bug — the queue-cancel tool had drifted to a wording the refusal grader didn't recognise, so a genuine cancel refusal wasn't being graded as one, which the single pinned tail now fixes. Separately, three generic string helpers moved out of `albums.py` (which the queue and shows tools had been reaching into like a utility library) to their proper home in `rows.py`.
+- **Batch 3 — the call core.** The event-unwrap the call guards share — "a DJ line is an assistant item's stripped text, a caller line is a final transcript" — was written six times across the guard modules; it now lives once in `call/watch.py` and each guard delegates, with two dead watcher functions removed. Three more inline duplications collapsed to one home each: the spoken-length estimate in the on-air verdict, and the 240-second on-air window shared by the DJ's promise and the relay's deadline. A test now pins the hush-marker's exactly-once removal. No behaviour change; the two call-core god-objects (`session.py`, `air.py`) were left for a later, harness-backed pass.
+
+## 0.99.9
+
+The maintainability plan, Batch 1 — the platform hubs. No behaviour change; every move is verified byte-identical by the suite.
+
+- **settings.py peeled from 3,169 to ~1,450 lines.** The panel/vocab presentation data (SCHEMA/GROUPS/SUPERGROUPS + the provider and vocab tables) moved to a new `settings_schema.py`, and the caller-tier security ladder — the fail-closed permission code that was buried between the field table and 1,300 lines of UI copy — to `caller_tiers.py`. Both are pure leaves, re-exported so `settings_store.<anything>` stays byte-identical for all 31 callers; the resolver functions that read the tables stayed put so the dependency runs one way.
+- **station.py's docstring stops lying.** It called itself a "slim read-only client" whose actions "go through MCP" over "public reads, no auth" — none of which survived the admin-gated write wrappers landing there. Rewritten to name both halves honestly; the one-class-per-service shape was right, so no split.
+- **A regression test pins the station's DJ model.** The blind depth-first search for the station's model skips the embedding/tagger subtrees that also carry a `model` key; nothing pinned that it works, so a reshuffle could have silently reported the wrong model as the DJ's. Now it can't.
+- **Smaller fixes:** tts_adapter fails loudly at load if an adapter config is missing `endpoint_path` (instead of a KeyError mid-call), station_config drops a docstring line for an endpoint it never reads and cleans three private-alias re-imports, and both files' docstrings gained the halves they had grown but never described.
+
+## 0.99.8
+
+The maintainability plan's first slice (Batch 0): mechanical guards that keep the code's structure from eroding, plus a committed home for the invariants. No behaviour change — this is tooling, tests, and docs.
+
+- **Ruff lints every push, gated on the bug-classes only.** A new CI step (and `agent-worker/ruff.toml`) runs ruff before the suite, selecting the pyflakes families that flag a real runtime defect — undefined names, format-string bugs, dead variables, genuine shadowing — and staying silent about style. The app tree was already clean of all of them; ten redundant duplicate imports and one duplicate set entry were removed so the shadowing check (F811) stays a live guard rather than an ignored one.
+- **A complexity ceiling, ratcheted like the size ledger.** `TestNoFunctionGrowsTooComplex` measures cyclomatic complexity per function and holds it to a ceiling the same way file size is held — over the line is a written decision. Its ledger doubles as a map into the review: every over-limit function names the batch that will simplify it.
+- **An import-layering test.** `TestTheImportLayeringHolds` encodes the whole layer map (entrypoints → api → surfaces → call/tools → brain → transport → platform) and fails on any import against the grain, with seven deliberate, mostly-deferred exceptions each recorded with its reason. The repo already asserted one such boundary; this generalises it to the whole tree.
+- **`docs/architecture.md`** — the committed home for the thirteen cross-cutting invariants (settings precedence, secrets never returning, the tool allowlist, the two-page split, and the rest) and the layer map. The standards-review skill and `agent-worker/CLAUDE.md` now point at it instead of the operator's private, machine-local root notes.
+
+## 0.99.7
+
+Regression pins for three of the 0.99.6 review's fixes, and one small refactor to make them possible. No behaviour change.
+
+- **Three fixes now fail loudly if they regress.** The on-air card decision (a station reads "on air" only with a real DJ, not merely because it answered), the no-op curation guard (an already-liked or already-banned track bills nothing and prints no receipt), and the webhook re-registration when this box's own receiver address drifts each gain a dedicated test — the kind that survives a refactor because it says why it exists.
+- **The on-air decision is a named helper.** It was three inline booleans in the `/live` handler; it is now `_reachability(health, persona, now)`, which is what the new test pins. Same answer as 0.99.6, now nameable and testable on its own.
+
+## 0.99.6
+
+A top-down review of the call and chat paths — thirty confirmed findings across seven subsystems, every one reproduced before it was touched and re-checked after. The headline is a "more like this" that seeded its search from nothing on a real station; the rest close a scatter of paper-cuts in what gets logged, what a tool charges for, what the prompt may claim, and what a hung-up call leaves running.
+
+- **"More like this" reads the record that is actually playing.** `subwave_more_like_this` looked for the now-playing track under `track`/`current` and never under `nowPlaying`, the key a real station sends — so on air it seeded its search from an empty record every time. Same missing-key class as the un-like bug 0.98 closed, now fixed for discovery too.
+- **The day-log records the actions callers actually take.** Its kind filter listed a phantom `queue` no tool emits and was missing `album`, `mix` and `never-play lifted` — so an album add or a lifted ban never reached the 48-hour ledger the next call reads. The filter now matches the tools one-for-one, and a test holds the two in step.
+- **A text exchange leaves the same diagnosis notes a call does.** Chat now writes the shared post-mortem — did the caller repeat themselves, correct the DJ, leave an ask open, or ask for a lookup — so a text session that went wrong is as legible after the fact as a phone call. A caller contradicting the DJ is its own recorded problem, separate from repeating.
+- **A no-op tool doesn't charge or print a receipt.** Liking an already-liked track, banning an already-banned one, or lifting a ban that was never set changed nothing at the station but still spent a budget slot and fired a "done" receipt card. The idempotency check now runs first, so a non-event bills nothing and cards nothing.
+- **The prompt stops claiming things it cannot know.** The show-listing table is told never to invent a time or a DJ for a show it only knows the name of; the "briefing is LIVE" line forks on whether the station holds for callers (a station that doesn't is told the briefing shows what played when the call connected); a 0° temperature is no longer dropped as if it were missing; and a momentum block keeps the DJ off the caller's private life.
+- **A hung-up or unconfigured call cleans up after itself.** The time-limit sign-off takes the floor before it speaks (it used to race another speaker), a hush sweep can't fire before the session it sweeps exists, the come-back task an open ask arms is cancelled at shutdown, and a disabled on-air guard never sticks the station in a hold it cannot leave.
+- **The card tells the truth about an empty box.** A station with no real persona configured now reads as off-air rather than "on air" on the strength of being merely reachable.
+- **The webhook registration stops fighting itself.** The station is re-registered when the box's LAN address drifts, one lock serialises the two register call sites so a warm-ping can't double-register, and a station that keeps refusing the key is retried on a cooldown instead of hammered.
+- **The phone card survives a fast second tap.** Ending a call is guarded against firing twice, hold timers and their flags reset between calls, a re-record clears the aborted-start flag, and the ask-list popup wires its document listeners once instead of stacking a new pair each call.
+
+## 0.99.5
+
+Two independent reviews of the 0.99.4 work — a cloud reviewer and a seven-subsystem top-down pass — landed together. This closes the cloud reviewer's five findings, led by a real regression in 0.99.4's own path-traversal fix.
+
+- **The path quoter now encodes dots, not just slashes.** 0.99.4's `_seg` percent-encoded `/` but left `.` alone (it is unreserved), so a bare `..` id still collapsed through httpx's path normalization and re-targeted the request — the exact traversal the fix was billed to close, reopened for the one input the new test didn't cover. Dots encode to `%2E` now (a station still decodes them back to a literal dot), and the test exercises `.`/`..`/`...` end to end.
+- **The settings-manifest test stops over-excluding.** Its file filter matched `api/settings.py` as well as the intended declaration table, silencing 13 real `cfg.get()` sites; it now excludes only the one file it means to.
+- **The rating correlation reads the archive even when the live window is empty** — the case weekly `save` exists for. **The widget harness accepts `[::1]`** it already listed as local (an IPv6 URL parsed to host `[`). **The chat stuck-flag reads a stable key, not a prose substring** — a reword of the shared state's log line can no longer silently drop the Needs-attention entry that move 3 wired.
+
+## 0.99.4
+
+A formal security sitting, the two mouths finally sharing one guard, and three more audit items closed.
+
+### The security pass
+
+A five-surface adversarial review — caller-influenced tool arguments, station data reaching the prompt, the widget DOM, the HTTP edge, and secrets at rest — with every finding verified before it was acted on. The widget DOM came back clean (the pre-split "everything goes through textContent" bill of health still holds across all five JS files), and the HTTP edge, webhook auth, and credential-egress guards held. Six real fixes landed:
+
+- **Path-traversal closed on three station calls.** A track id relayed by the model or typed by a caller was interpolated raw into a station URL on cancel, un-block, and neighbours lookups, while two sibling calls correctly escaped theirs — a crafted `../` id could re-target the request at a station endpoint whose own tool the operator had disabled. Every id now routes through one quoter, so a new path-building call cannot forget again.
+- **Uncapped station fields into the prompt, capped.** The now-playing context block (mood, weather, clock, daypart) and the short identity strings (DJ name, station name, show name) rode the system prompt on every turn without the length cap their siblings had — a hostile or corrupt station value could balloon a prompt that is re-paid each turn. All now pass the same junk-guard.
+- **The day-log stops keeping a caller's words.** The request fallback logged the caller's own phrase (a dedication naming a person) into the 48-hour cross-call log that is read back to later callers — against that log's own no-caller-content contract. It notes a neutral label now.
+- **The voicemail store goes owner-only**, mirroring the call-transcript store it sits beside — a stranger's spoken message is the same private content, and it was world-readable on the shared volume.
+- **The player relay forwards the address it observed**, not the caller's spoofable `X-Forwarded-For`, so a caller can't forge the listener IP the station throttles.
+- **The proxy-trust guidance is fixed** so an operator behind the bundled reverse proxy knows to set `CALLIN_TRUSTED_PROXIES` — without it the brute-force lockout collapses to one shared bucket (it fails safe, but a griefer could lock everyone out).
+
+### The two mouths share one conversation state
+
+- **The text line adopts the phone's ConversationState** (NORTH STAR move 3). Chat built its guards a while ago but consulted them by hand in a shorter order — it had the repeated-ask and withheld-capability guards but never the door (a typed DJ can ask "anything else?" too) or the open-ask comeback. Both arrive now, through the same `call/state.py` the phone runs, in the same standing order; the end-of-call arc stays out by design, since a text line has no call to end. Proven at the seam: a door-holding line now yields the door hint on chat's own state.
+
+### More audit items closed
+
+- **Open Lines strips markdown before the station reads it aloud** — an operator's `*emphasis*` in a premise no longer airs as spoken asterisks (single underscores survive, so snake_case is safe).
+- **A settings manifest test** now fails if code asks for an undeclared setting or a declared setting reaches no consumer — worth more at 204 settings than when it was first sketched.
+- **The records tool learns to correlate ratings** (`corr`): up- vs down-rated calls compared on problems, duration, and refused actions, so a caller's thumb stops being a number with no cause attached. Wired into the weekly check-in.
+
+## 0.99.3
+
+The widget gets its first executable check, and four long-standing audit items close with answers instead of activity.
+
+### The widget renders, and something can finally say so
+
+- **`tools/widget_check.py`** — both pages plus the embed's compact frame in a real headless browser (Playwright for Python: no npm, no build step, dev-box only — the image and CI need nothing). It fails on what the suite's text checks are structurally blind to: a page that throws on load, and CSS that parsed but died — the class of bug that once re-inflated every embed and once ate a rule with the whole suite green. Proven on adoption day by recreating that incident: the suite stayed green, the harness failed on the exact dead rule. Localhost-only with no override flag, pinned like the call harness.
+
+### Audit items closed by reading, not writing
+
+- **The deployed STT is local Whisper by stored choice** — the settings read the plan waited weeks for. The env's Deepgram/nova-3 sits provisioned but dormant under it, which means the 8–11-second per-turn transcription tax measured in the latency audit has a one-toggle fix waiting whenever the operator wants it. `max_concurrent_calls` resolves to the shipped default of 2 — the old "currently 0" worry is moot.
+- **There is no break-glass key to rotate**: `CALLIN_ADMIN_KEY` is empty on the live box, the once-disclosed placeholder is long gone, and the panel password is the only admin credential — the strongest posture the item could have closed in.
+- **The floor's collision counter reads zero** across every surviving record, but the window only reaches two days back — kept, with the read folded into the weekly check-in now that the records tool can archive before rotation.
+- **Two stale claims fixed at the source**: the voicemail mastering chain's docstring now tells the truth about running on the live on-air path per caller turn, and the web process stops importing the LiveKit SDK for one duck-pad constant — it comes from the timing leaf built for exactly that.
+
+## 0.99.2
+
+The master plan's last earmarked phase reviewed and closed — and the review found the real problem living where the plan never looked.
+
+### Embeds stop downloading the operator's page
+
+- **The panel-only half of style.css moves to panel.css, loaded by the operator's page alone.** The old plan worried about panel JavaScript reaching embeds; that split actually happened at 0.9.105. What nobody re-measured was the stylesheet: ~3,200 of style.css's 6,473 lines — the settings run, the preview stage, the Players page, the whole panelpage newspaper redesign — were panel-only while the file's own header claimed 193, and every caller and every embed downloaded and parsed all of it. Unlike the JS split, CSS has no name imports, so this cut costs nothing: one extra link tag on the panel page, and the boundary is held both ways by a token-audited leak check and a standing test.
+
+### The panel's never-frameable rule becomes enforceable fact
+
+- **/settings (and the raw panel.html) now send X-Frame-Options DENY and frame-ancestors 'none'.** The rule that the operator's page must never render inside a frame has stood since the pages split — as prose, with no header and no test. Now it is both, and the test asserts the other direction just as hard: the call page stays frameable forever, because embeds are an iframe onto it.
+
+### The plan's ledger closes
+
+- Phase 5 — the last earmarked structural phase — is retired in MASTER-PLAN: the JS half shipped long ago, the 2026-08-05 case against the remainder held on re-review, and the CSS cut above is what the review actually surfaced. Every structural phase in the plan is now done or deliberately closed.
 
 ## 0.99.1
 

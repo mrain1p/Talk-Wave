@@ -384,40 +384,56 @@ def attach_time_limit(ctx: JobContext, session: AgentSession, cfg: dict,
             return
 
         log.info("call hit the %ss limit — signing off", max_seconds)
+
+        async def _sign_off() -> bool:
+            """Speak the goodbye. Returns False only when cancelled (the one
+            case that must NOT fall through to end_call)."""
+            try:
+                # The goodbye waits for the broadcast, like every other
+                # generated turn. It did not, and the timer is indifferent to
+                # what the station is doing — so on a call that ran its full
+                # length while the on-air DJ was mid-link, the sign-off went
+                # out on top of it and the last thing the audience heard was
+                # two of the same voice. Bounded by MAX_HOLD inside
+                # wait_until_clear: the call still ends.
+                if air is not None:
+                    waited = await air.wait_until_clear()
+                    if waited > 0.5:
+                        log.info("held the time-limit sign-off %.1fs for the "
+                                 "on-air DJ", waited)
+                await _say_something(
+                    session,
+                    "You're out of time. Thank the caller warmly, in one "
+                    "short line, and say goodbye. Do not ask a question.",
+                    "That's my time — thanks for calling in.",
+                    what="time-limit sign-off",
+                )
+                await await_sign_off(session, "the time-limit sign-off")
+            except asyncio.CancelledError:
+                return False
+            except Exception as e:
+                # The session may already be closing; end the call regardless
+                # rather than leaving an unhandled task exception behind.
+                log.warning("sign-off before the time limit failed: %s", e)
+            return True
+
         # The third turn that can start while another is generating — see
-        # call/floor.py. If it cannot get the floor the call still ends;
-        # what is skipped is the spoken sign-off, not the hang-up.
+        # call/floor.py. The sign-off must SPEAK while holding the floor, not
+        # merely acquire and release it before speaking: releasing first let a
+        # come_back task (spawned by the same air-clear event) grab the free
+        # floor and generate a second turn on top of the goodbye — the exact
+        # collision the floor exists to prevent (top-down review, 2026-08-28).
+        # If it cannot get the floor the call still ends; only the spoken
+        # sign-off is skipped, not the hang-up.
         if floor is not None:
             async with floor.take("the time-limit sign-off") as mine:
                 if not mine:
                     await end_call(ctx, "call time limit reached")
                     return
-        try:
-            # The goodbye waits for the broadcast, like every other generated
-            # turn. It did not, and the timer is indifferent to what the
-            # station is doing — so on a call that ran its full length while
-            # the on-air DJ was mid-link, the sign-off went out on top of it
-            # and the last thing the audience heard was two of the same voice.
-            # Bounded by MAX_HOLD inside wait_until_clear: the call still ends.
-            if air is not None:
-                waited = await air.wait_until_clear()
-                if waited > 0.5:
-                    log.info("held the time-limit sign-off %.1fs for the "
-                             "on-air DJ", waited)
-            await _say_something(
-                session,
-                "You're out of time. Thank the caller warmly, in one short "
-                "line, and say goodbye. Do not ask a question.",
-                "That's my time — thanks for calling in.",
-                what="time-limit sign-off",
-            )
-            await await_sign_off(session, "the time-limit sign-off")
-        except asyncio.CancelledError:
+                if not await _sign_off():
+                    return
+        elif not await _sign_off():
             return
-        except Exception as e:
-            # The session may already be closing; end the call regardless
-            # rather than leaving an unhandled task exception behind.
-            log.warning("sign-off before the time limit failed: %s", e)
 
         await end_call(ctx, "call time limit reached")
 

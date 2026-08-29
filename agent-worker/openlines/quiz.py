@@ -109,7 +109,7 @@ def facts_from(snapshot: dict, show: dict, persona: dict) -> list[str]:
     facts = []
 
     # What it actually said on air, from the station's own record of it.
-    from brain.briefing import _is_spoken, clip, demojibake
+    from brain.briefing import is_spoken, clip, demojibake
 
     import station as station_mod
 
@@ -122,7 +122,7 @@ def facts_from(snapshot: dict, show: dict, persona: dict) -> list[str]:
         # never matched live — the station coerces our kinds to 'dj-speak'
         # (see brain/briefing._PRIVATE_KINDS) — so `said_by_us` is the check
         # that fires.
-        if not text or not _is_spoken(message) or kind in {"callin", "caller"}:
+        if not text or not is_spoken(message) or kind in {"callin", "caller"}:
             continue
         if station_mod.said_by_us(text):
             continue

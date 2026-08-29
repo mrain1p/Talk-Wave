@@ -3144,16 +3144,6 @@
     return day + ' ' + h + ':' + String(d.getMinutes()).padStart(2, '0') + ampm;
   }
 
-  // Least recently used goes up next — the same rule the server picks by, so
-  // the row the panel marks is the row that will actually air.
-  function olNextUpId() {
-    if (!olShelf.length) return '';
-    const sorted = [...olShelf].sort((a, b) =>
-      String(a.last_used || '').localeCompare(String(b.last_used || ''))
-      || (a.used || 0) - (b.used || 0));
-    return sorted[0].id;
-  }
-
   // The shelf. Five columns: grip, topic, used, last aired, actions. "Who
   // asks" is not among them — assignment lives in the edit sheet, where a
   // topic can name SEVERAL DJs rather than the one a table select could hold.

@@ -14,6 +14,8 @@ invalidates that persona's clip and nothing else.
 
 from __future__ import annotations
 
+from jsonstore import write_atomic
+
 import hashlib
 import json
 import logging
@@ -74,16 +76,8 @@ def set_override(persona_id: str, text: str) -> None:
         overrides[pid] = str(text).strip()[:400]
     else:
         overrides.pop(pid, None)
-    VOICEMAIL_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = _overrides_path().with_suffix(".json.tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(overrides, f, indent=1, sort_keys=True)
-    for path, mode in ((VOICEMAIL_DIR, 0o755), (tmp, 0o644)):
-        try:
-            os.chmod(path, mode)
-        except OSError:
-            pass
-    tmp.replace(_overrides_path())
+    write_atomic(_overrides_path(), overrides, dir_mode=0o755,
+                 indent=1, sort_keys=True)
 
 
 def greeting_text_for(persona_id: str, cfg: dict, station_name: str,
@@ -166,16 +160,8 @@ def read_index() -> dict:
 
 
 def _write_index(index: dict) -> None:
-    VOICEMAIL_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = _index_path().with_suffix(".json.tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(index, f, indent=1, sort_keys=True)
-    for path, mode in ((VOICEMAIL_DIR, 0o755), (tmp, 0o644)):
-        try:
-            os.chmod(path, mode)
-        except OSError:
-            pass
-    tmp.replace(_index_path())
+    write_atomic(_index_path(), index, dir_mode=0o755,
+                 indent=1, sort_keys=True)
 
 
 # Spoken after a message lands. Staged with the greeting, same voice — a

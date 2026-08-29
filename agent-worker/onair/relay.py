@@ -83,6 +83,15 @@ MAX_CONSECUTIVE_FAILURES = 2
 MAX_HELD_SECS = 6.0
 
 
+def on_air_window_secs(cfg) -> float:
+    """How long a call may stay on air — the DJ's promised window and the
+    relay's enforced deadline, which must be the SAME number. The 240s default
+    was written inline in three places (both here and the session's prompt);
+    this is its one home (Batch 3). Callers that display it as whole minutes
+    cast to int themselves."""
+    return float(cfg.get("on_air_max_seconds") or 0) or 240.0
+
+
 class CallRelay:
     """One call's on-air feed. Built armed-but-idle; open() starts the
     broadcast, feed() takes finished clips, close() ends it. Every method is
@@ -193,7 +202,7 @@ class CallRelay:
             await asyncio.sleep(SAY_POLL_SECS)
         else:
             self._problem("the on-air intro failed; the call aired without one")
-        window = float(self.cfg.get("on_air_max_seconds") or 0) or 240.0
+        window = on_air_window_secs(self.cfg)
         self._deadline = time.time() + window
         self._live = True
         self._tool(f"on air: window open ({window:.0f}s max)")
@@ -233,7 +242,7 @@ class CallRelay:
                 # reel in both uses, so a marathon call cannot tape an hour
                 # of broadcast; what falls off the end is reported the same
                 # way every unaired turn is.
-                window = float(self.cfg.get("on_air_max_seconds") or 0) or 240.0
+                window = on_air_window_secs(self.cfg)
                 if self._reel_secs + seconds > window:
                     wav.unlink(missing_ok=True)
                     self.dropped(kind, ("the tape is full " if self.tape else

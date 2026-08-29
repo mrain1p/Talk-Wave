@@ -31,12 +31,47 @@ def write_notes(call, duration: float, final: list) -> None:
     """
     _note_if_the_door_was_held_open(call)
     _note_if_the_goodbyes_had_to_be_finished(call)
+    _note_if_the_caller_repeated_or_corrected(call)
     _note_if_two_turns_wanted_the_floor(call)
     _note_if_an_ask_went_unanswered(call)
     _note_if_a_lookup_was_never_read_out(call)
     _note_if_nothing_was_heard(call, duration, final)
     _note_if_the_model_kept_the_caller_waiting(call)
     _note_if_the_voice_fell_behind(call)
+
+
+#: The checks a text chat runs too — everything that reads only a guard the
+#: chat also wires (door, stuck, asks) or the finished record, and nothing
+#: that needs the phone-only floor, audio, TTS pace or model-wait. The text
+#: line ran these guards live but recorded none of them (top-down review,
+#: 2026-08-28), so an unanswered ask or a held door left a chat looking clean
+#: while the identical phone call was flagged. chat/session.py calls this.
+def write_shared_notes(call) -> None:
+    _note_if_the_door_was_held_open(call)
+    _note_if_the_caller_repeated_or_corrected(call)
+    _note_if_an_ask_went_unanswered(call)
+    _note_if_a_lookup_was_never_read_out(call)
+
+
+def _note_if_the_caller_repeated_or_corrected(call) -> None:
+    """Say so when the caller had to repeat a question, or corrected the DJ.
+
+    Read off the stuck guard's two counters — kept since 0.98.22 and, until
+    now, read by nothing on the call path, so a phone caller who asked five
+    times left a clean record while the identical text exchange was flagged
+    (top-down review, 2026-08-28). Repeats and contradictions are DISTINCT and
+    get distinct lines: a contradiction was being mislabelled as a repeat on
+    chat, which reads to the operator as an event that did not happen.
+    """
+    stuck = getattr(call, "stuck", None) or getattr(
+        getattr(call, "state", None), "stuck", None)
+    if not call.record or stuck is None:
+        return
+    from promises import PROBLEMS
+    if getattr(stuck, "repeats", 0):
+        call.record.problem(PROBLEMS["stuck"])
+    if getattr(stuck, "contradictions", 0):
+        call.record.problem(PROBLEMS["contradiction"])
 
 
 def _note_if_the_door_was_held_open(call) -> None:

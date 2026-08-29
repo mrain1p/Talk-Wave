@@ -224,13 +224,8 @@ class OpenAskComeback:
 
 
 def attach_ask_watch(session, asks: Asks) -> None:
-    """Listen to the caller, and only to the caller."""
+    """Listen to the caller, and only to the caller. The final/non-empty
+    caller-line unwrap lives once in watch.on_caller_line now."""
+    from . import watch
 
-    def _on_caller(ev) -> None:
-        if not getattr(ev, "is_final", True):
-            return
-        text = str(getattr(ev, "transcript", "") or "").strip()
-        if text:
-            asks.heard(text)
-
-    session.on("user_input_transcribed", _on_caller)
+    watch.on_caller_line(session, asks.heard)

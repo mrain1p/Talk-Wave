@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import unittest
 from pathlib import Path
 import settings as settings_store
@@ -500,7 +501,6 @@ class TestTurnTakingSettingsReachTheCall(unittest.TestCase):
     """
 
     def _resolved(self, cfg: dict):
-        import asyncio
         import warnings
 
         from livekit.agents import AgentSession
@@ -825,6 +825,79 @@ class TestACommentedEnvValueIsNamedAtBoot(_TempStores):
                 os.environ.pop("SUBWAVE_MCP_URL", None)
             else:
                 os.environ["SUBWAVE_MCP_URL"] = old
+
+
+class TestTheJsonStoreIdiom(unittest.TestCase):
+    """jsonstore.write_atomic / read_or — the atomic-write idiom nine stores
+    (settings, secrets, voicemail, open-lines, voice-effects) once hand-rolled,
+    consolidated at Batch 6. Pins the atomicity, the file mode, the `.json.tmp`
+    temp name the voicemail sweep skips, and read_or's absent/corrupt/wrong-type
+    -> seed behaviour that admin_auth deliberately does NOT use."""
+
+    def setUp(self):
+        import tempfile
+
+        self._d = tempfile.TemporaryDirectory()
+        self.addCleanup(self._d.cleanup)
+
+    def _p(self, name):
+        return Path(self._d.name) / name
+
+    def test_write_is_atomic_and_leaves_no_json_tmp(self):
+        import jsonstore
+
+        p = self._p("store.json")
+        jsonstore.write_atomic(p, {"a": 1})
+        self.assertEqual(jsonstore.read_or(p, {}), {"a": 1})
+        # the temp name is <name>.tmp = .json.tmp (what the sweep skips), and it
+        # is gone after the replace.
+        self.assertFalse(self._p("store.json.tmp").exists())
+
+    def test_read_or_seeds_on_absent_corrupt_and_wrong_type(self):
+        import jsonstore
+
+        self.assertEqual(jsonstore.read_or(self._p("nope.json"), {"s": 1}), {"s": 1})
+        bad = self._p("bad.json")
+        bad.write_text("{not json", encoding="utf-8")
+        self.assertEqual(jsonstore.read_or(bad, []), [])
+        wrong = self._p("wrong.json")
+        jsonstore.write_atomic(wrong, [1, 2, 3])
+        self.assertEqual(jsonstore.read_or(wrong, {}), {})
+
+    def test_the_file_mode_is_applied_where_chmod_takes(self):
+        import os
+        import stat
+
+        import jsonstore
+        if os.name != "posix":
+            self.skipTest("chmod is a no-op off POSIX")
+        p = self._p("secret.json")
+        jsonstore.write_atomic(p, {"k": "v"}, file_mode=0o600)
+        self.assertEqual(stat.S_IMODE(p.stat().st_mode), 0o600)
+
+
+class TestTheGuestDoorRuleHasOneSpelling(unittest.TestCase):
+    """Whether the guest tier is reachable is ONE rule, consolidated into
+    settings_store.guest_door_open at Batch 2 (2026-08-29). It was spelled out
+    in both auth.caller_tier and the /live card, and the two once drifted so the
+    card and the panel disagreed by accident. This pins the truth table so a
+    re-spelling that got it subtly wrong would fail here rather than on air."""
+
+    def test_the_truth_table(self):
+        f = settings_store.guest_door_open
+        # Admin-only admits nobody under admin, so no guest can exist -
+        # whatever the code or guest_tier say.
+        self.assertFalse(f("admin", True, True))
+        # A code-gated door IS the guest tier: reachable iff a code is set,
+        # regardless of guest_tier.
+        self.assertTrue(f("guest", True, False))
+        self.assertFalse(f("guest", False, True))
+        # An open line (auto / open / blank / unset): reachable only with a
+        # code AND guest_tier on.
+        for mode in ("auto", "open", "", None):
+            self.assertTrue(f(mode, True, True), mode)
+            self.assertFalse(f(mode, True, False), mode)
+            self.assertFalse(f(mode, False, True), mode)
 
 
 class TestAnUpgradeClosesNoDoorAndHandsOutNoPower(_TempStores):
@@ -1221,6 +1294,72 @@ class TestTheMapTheOperatorNavigatesBy(_TempStores):
         for gid in settings_store.GROUP_ALIASES:
             self.assertIn(gid, {g for g, *_ in settings_store.GROUPS},
                           f"GROUP_ALIASES names a section that does not exist: {gid}")
+
+
+class TestEverySettingIsRealAndEveryKeyIsDeclared(unittest.TestCase):
+    """The manifest the plan asked for, sized to what actually bites
+    (2026-08-28, 204 settings). Two directions:
+
+    A `cfg.get("typo")` returns None and every falsy default reads as
+    "off" — a misspelled key is a setting that silently never arrives.
+    So every key the code asks for must be declared in FIELDS.
+
+    And a FIELDS key nothing consumes is a row the panel renders and the
+    operator tunes to no effect. Consumption has three channels: a python
+    read (cfg.get or subscript), or the browser (the widget reads config
+    fields by name in its own JS/HTML). At adoption, all 204 keys were
+    consumed and exactly one phantom existed — a docstring example — which
+    is why settings.py itself is excluded from the typo scan."""
+
+    _GET = re.compile(
+        r"""(?:\bcfg|self\.cfg|self\._cfg)\.get\(\s*["']([a-z0-9_]+)["']""")
+
+    def _python_sources(self):
+        for p in AGENT_WORKER.rglob("*.py"):
+            s = str(p)
+            # Exclude ONLY the FIELDS declaration file — its table names
+            # every key by construction. `endswith("settings.py")` also
+            # swallowed api/settings.py, a normal handler with 13 real
+            # cfg.get() sites the scan is meant to cover (cloud review,
+            # 2026-08-28).
+            if ("tests" in s or "scripted_call" in s or ".venv" in s
+                    or p == AGENT_WORKER / "settings.py"):
+                continue
+            yield p.read_text(encoding="utf-8", errors="replace")
+
+    def test_no_code_asks_for_an_undeclared_setting(self):
+        # "allow_x" is prose — two comments describe the gate PATTERN with a
+        # placeholder name. A comment cannot silently return None.
+        prose = {"allow_x"}
+        unknown = {}
+        for src in self._python_sources():
+            for key in self._GET.findall(src):
+                if key not in settings_store.FIELDS and key not in prose:
+                    unknown[key] = True
+        self.assertEqual(
+            sorted(unknown), [],
+            "cfg.get() on keys FIELDS never declared — each one silently "
+            "returns None wherever it is read")
+
+    def test_no_setting_is_declared_that_nothing_consumes(self):
+        # settings.py itself is NOT consumption — the FIELDS table names
+        # every key by definition, and counting it would make this vacuous.
+        py = "\n".join(self._python_sources())
+        web = ""
+        widget = REPO / "web-widget"
+        for p in list(widget.glob("*.js")) + [widget / "panel.html"]:
+            web += p.read_text(encoding="utf-8", errors="replace")
+        dead = []
+        for key in settings_store.FIELDS:
+            if re.search(r"""[."'\[]""" + key + r"""["'\]]""", py):
+                continue
+            if key in web:
+                continue
+            dead.append(key)
+        self.assertEqual(
+            sorted(dead), [],
+            "declared in FIELDS but consumed by neither the python nor the "
+            "widget — the panel offers a dial wired to nothing")
 
 
 class TestTheThinkingSoundShipsOff(unittest.TestCase):

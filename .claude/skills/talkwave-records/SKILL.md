@@ -26,6 +26,10 @@ TALKWAVE_ADMIN_KEY=<key> python tools/fetch_records.py --base http://$NAS:8100 l
   runs merged in time order, failed tools marked `TOOL!`. Add `--id <id>` for a specific one.
 - `save` — archive all 20 to `tools/livecall/records-archive/` (gitignored — records
   hold caller words and must NEVER reach the public repo), skipping ids already there.
+- `corr` — what a caller's thumb travels with: up- vs down-rated calls compared on
+  average problems, duration, and whether a station action was refused, reading the
+  archive alongside the live window. The weekly-check-in read for "did anything the
+  caller disliked share a cause". Run `save` first so rated calls survive the window.
 
 **One 401 means stop.** A wrong key counts toward the server's 5-strike per-IP
 lockout (5 minutes, then banned until restart); an absent key is refused for free.

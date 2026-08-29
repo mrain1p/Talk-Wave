@@ -21,10 +21,11 @@ and clearing it falls back to .env.
 
 from __future__ import annotations
 
+from jsonstore import write_atomic
+
 import json
 import logging
 import os
-import stat
 import threading
 from pathlib import Path
 
@@ -139,15 +140,9 @@ def _read() -> dict:
 
 
 def _write(data: dict) -> None:
-    SECRETS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = SECRETS_PATH.with_suffix(".json.tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, sort_keys=True)
-    try:
-        os.chmod(tmp, stat.S_IRUSR | stat.S_IWUSR)  # 0600
-    except OSError:
-        pass  # best effort; Windows ACLs don't map cleanly
-    tmp.replace(SECRETS_PATH)
+    # Owner-only: an API key is the one thing here that must never be
+    # world-readable on the shared volume.
+    write_atomic(SECRETS_PATH, data, file_mode=0o600, indent=2, sort_keys=True)
 
 
 def get(field: str) -> str:

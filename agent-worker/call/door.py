@@ -149,17 +149,3 @@ class Door:
             return ""
         self.corrections += 1
         return HINT
-
-
-def attach_door_watch(session, door: Door) -> None:
-    """Watch what the DJ says so the next turn knows how the last one ended."""
-
-    def _on_said(ev) -> None:
-        item = getattr(ev, "item", None)
-        if getattr(item, "role", None) != "assistant":
-            return
-        text = str(getattr(item, "text_content", "") or "").strip()
-        if text:
-            door.dj_said(text)
-
-    session.on("conversation_item_added", _on_said)

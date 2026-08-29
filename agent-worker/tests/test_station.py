@@ -40,6 +40,35 @@ class TestStationConfig(unittest.TestCase):
         self.assertNotIn("p_empty0", m)
 
 
+class TestTheStationModelIsTheDJModelNotTheEmbedder(unittest.TestCase):
+    """The station's settings payload has no documented shape, so station_config
+    finds the DJ's model by a depth-first search for a `model`-ish key. The trap
+    (station_config._SKIP_SUBTREES): the embedding, search and tagger configs
+    ALSO carry a `model` key, and a blind DFS was seen reporting the embedding
+    model as the DJ model — which the sidecar then defaults its own DJ to. The
+    skip existed but nothing pinned that it works, so a reshuffle could silently
+    start returning the wrong model. This is that pin (Batch 1, 2026-08-29)."""
+
+    def test_a_sibling_embedding_model_does_not_win(self):
+        import station_config
+        payload = {
+            "embedding": {"model": "text-embedding-3-small"},
+            "tagger": {"model": "gpt-tagger-mini"},
+            "dj": {"llmModel": "claude-opus-4-8"},
+        }
+        self.assertEqual(
+            station_config._find_first(payload, station_config._MODEL_KEYS),
+            "claude-opus-4-8",
+            "the DFS returned a non-DJ model — a skip-subtree stopped skipping")
+
+    def test_a_top_level_dj_model_still_resolves(self):
+        import station_config
+        payload = {"llmModel": "claude-opus-4-8", "embedding": {"model": "emb"}}
+        self.assertEqual(
+            station_config._find_first(payload, station_config._MODEL_KEYS),
+            "claude-opus-4-8")
+
+
 class TestTuneIn(unittest.TestCase):
     """Where the caller's browser pulls the broadcast from.
 
@@ -294,6 +323,95 @@ class TestTheDJKnowsWhoIsInTheBoothAndWhatTheShowPlays(unittest.TestCase):
         self.assertEqual(_fmt_show_shape({"genres": [], "moods": []}), "")
 
 
+class TestNoIdEscapesItsPathSegment(unittest.TestCase):
+    """The security sitting, 2026-08-28. Every id these tools drop into a
+    station URL arrives from the station via a tool result the MODEL relayed,
+    or from a caller's words — never ours to trust as a path. Three DELETE/GET
+    builders interpolated it raw while two siblings quoted; a crafted
+    "../../schedule/override" id re-targeted the request at another station
+    endpoint under the admin credentials, reaching routes whose tools the
+    operator had disabled. _seg quotes every one now."""
+
+    def _capture(self, method_name, coro_factory):
+        from station import StationClient
+
+        seen = {}
+
+        class _FakeResp:
+            status_code = 200
+            content = b"{}"
+            headers = {"content-type": "application/json"}
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"ok": True}
+
+        class _FakeClient:
+            async def request(self, method, url, **kw):
+                seen["path"] = url
+                return _FakeResp()
+
+            async def get(self, url, **kw):
+                seen["path"] = url
+                return _FakeResp()
+
+            async def delete(self, url, **kw):
+                seen["path"] = url
+                return _FakeResp()
+
+            async def aclose(self):
+                pass
+
+        from unittest import mock
+
+        async def _run():
+            client = StationClient(base_url="http://station.invalid")
+            client._client = _FakeClient()
+            try:
+                with mock.patch("station_config.admin_credentials",
+                                return_value=("u", "p")):
+                    await coro_factory(client)
+            finally:
+                await client.aclose()
+
+        asyncio.run(_run())
+        return seen.get("path", "")
+
+    def test_a_traversal_id_is_percent_encoded_not_a_separator(self):
+        import httpx
+
+        import station
+
+        # Every dangerous shape: the slash-carrying one the first fix covered,
+        # AND the bare dot-segments the cloud review caught — quote() leaves
+        # `.`/`..` untouched (dots are unreserved), so without the %2E encoding
+        # httpx would still collapse `/dj/queue/..` to `/dj`.
+        for evil in ("../../schedule/override", "..", ".", "...", "../foo"):
+            seg = station._seg(evil)
+            with self.subTest(id=evil):
+                self.assertNotIn("/", seg)
+                self.assertNotIn("..", seg, "a bare dot-segment survived")
+                # Prove httpx cannot normalise it back into a new segment.
+                c = httpx.Client(base_url="http://station.invalid")
+                built = str(c.build_request(
+                    "DELETE", f"/dj/queue/{seg}").url)
+                c.close()
+                self.assertTrue(built.endswith(f"/dj/queue/{seg}"),
+                                f"{evil!r} re-targeted to {built}")
+
+        # And end to end through a tool that was unquoted: the crafted id
+        # cannot introduce a new path segment.
+        for label, factory in (
+            ("cancel_queued_track", lambda c: c.cancel_queued_track("..")),
+        ):
+            with self.subTest(tool=label):
+                path = self._capture(label, factory)
+                self.assertTrue(path.endswith("/dj/queue/%2E%2E"),
+                                f"{label} let the id escape: {path}")
+
+
 class TestTheStationLogSaysWhatWasSaid(unittest.TestCase):
     """The djLog records when an utterance STARTED and what was said — never
     when it ended. The guard sizes the end of its hold from the words, so the
@@ -485,6 +603,44 @@ class TestARefusalNamesItsRule(unittest.TestCase):
     def test_it_is_bounded(self):
         said = self._words({"message": "x" * 5000})
         self.assertLessEqual(len(said), 240)
+
+
+class TestTheCardOnlyClaimsOnAirWithARealDJ(unittest.TestCase):
+    """The /live card used to read "on air" for any station that merely
+    answered, because resolve_live_persona falls back to id "default" on every
+    path — so `persona.get("id")` was always truthy and the widget's "cannot
+    reach the station" branch was dead code. on_air now needs a REAL persona
+    (top-down review, 2026-08-28)."""
+
+    def _reach(self, health, persona, now):
+        from api.live import _reachability
+        return _reachability(health, persona, now)
+
+    def test_a_default_persona_is_not_on_air(self):
+        # A reachable box that nobody has configured: health answers, but the
+        # persona is the sentinel. Reachable, yes; on air, no.
+        reachable, on_air = self._reach({"ok": True}, {"id": "default"},
+                                        {"nowPlaying": {"title": "Filler"}})
+        self.assertTrue(reachable)
+        self.assertFalse(on_air, "an unconfigured box read as on air")
+
+    def test_a_real_persona_is_on_air(self):
+        reachable, on_air = self._reach({"ok": True}, {"id": "midnight-jane"}, {})
+        self.assertTrue(reachable)
+        self.assertTrue(on_air)
+
+    def test_a_real_persona_alone_makes_a_silent_station_reachable(self):
+        # No health, nothing playing, but a real DJ resolved: still reachable.
+        reachable, on_air = self._reach(None, {"id": "midnight-jane"}, {})
+        self.assertTrue(reachable)
+        self.assertTrue(on_air)
+
+    def test_an_unreachable_station_is_neither(self):
+        # The dead-code branch this fix revived: no health, nothing playing,
+        # and only the fallback persona.
+        reachable, on_air = self._reach(None, {"id": "default"}, {})
+        self.assertFalse(reachable)
+        self.assertFalse(on_air)
 
 
 class TestTheCardCacheHasOneHome(unittest.TestCase):

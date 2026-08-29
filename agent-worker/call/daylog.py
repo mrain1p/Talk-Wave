@@ -34,12 +34,19 @@ from pathlib import Path
 log = logging.getLogger("callin.daylog")
 
 #: The action kinds worth remembering across calls — the ones that CHANGE
-#: what the station will do. Reads, announcements and likes stay out: the
-#: question this answers is "who moved the machinery", not "who spoke".
+#: what the station will do. Reads, announcements, segments and likes stay
+#: out: the question this answers is "who moved the machinery", not "who
+#: spoke". This MUST track the kinds the tools actually emit (CallActions.note
+#: -> daylog.note): it had drifted to two dead strings ("queue", "allowed
+#: again" — nothing emits either) while missing "album", "mix" and
+#: "never-play lifted", so a caller who queued a whole album was told, on
+#: ringing back, that nothing was queued — the exact per-call evasion this
+#: module was built to kill (Casino night, 2026-08-26; caught by the
+#: 2026-08-28 top-down review). test_the_daylog_kinds_match_the_tools pins it.
 KINDS = frozenset((
-    "request", "queue", "clear", "cancel", "skip", "takeover",
+    "request", "clear", "cancel", "skip", "album", "mix", "takeover",
     "takeover lifted", "genre lock", "genre lock lifted", "never-play",
-    "allowed again",
+    "never-play lifted",
 ))
 
 MAX_ENTRIES = 400

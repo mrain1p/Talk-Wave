@@ -27,7 +27,6 @@ from api.wire import _cors
 
 log = logging.getLogger("callin.token")
 
-from collections import deque
 
 # Our row's identity on the station, and the only thing that makes
 # registration idempotent. Sending no id means the station mints a fresh one

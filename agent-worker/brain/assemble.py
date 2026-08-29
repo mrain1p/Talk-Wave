@@ -78,7 +78,15 @@ async def build_system_prompt(
     facts = await station_context(station, cfg, snap, show,
                                   speak_clock=speak_clock)
 
-    name = persona.get("name", "the DJ")
+    # NAME_BUDGET: identity strings ride the opening line of the prompt on
+    # every turn, and while soul/topic are clipped to CARD_BUDGET their short
+    # siblings — the DJ name, the station name, the show name — were
+    # interpolated raw (security sitting, 2026-08-28). A real name is a
+    # handful of words; the cap only bites a corrupt or hostile /dj or
+    # /schedule value, the same junk-guard briefing._fld applies to the
+    # track fields.
+    NAME_BUDGET = 120
+    name = clip(str(persona.get("name", "the DJ")), NAME_BUDGET)
     # The station's own name, not ours. This line used to say "the SUB/WAVE
     # radio station" for everybody, so a DJ on Yosemite FM told callers they
     # were live on SUB/WAVE — the software's name, which no listener has ever
@@ -87,10 +95,10 @@ async def build_system_prompt(
     # the last-known-good record when the live read timed out — otherwise a
     # station-wide timeout put a caller through to "SUB/WAVE" instead of the
     # real station name); the generic name only when nothing else is known.
-    station_name = demojibake(
+    station_name = clip(demojibake(
         str((snap.get("dj") or {}).get("station")
             or persona.get("station") or "").strip()
-    ) or "the SUB/WAVE radio station"
+    ), NAME_BUDGET) or "the SUB/WAVE radio station"
     dj_card = clip(persona.get("soul", ""), CARD_BUDGET)
     # The station's own answer to "what language does this DJ work in", mirrored
     # rather than guessed — free text there, empty meaning English. Stated as
@@ -98,7 +106,13 @@ async def build_system_prompt(
     # briefing, and the briefing is full of whatever the station happens to be
     # playing. See station.persona_from for the call that went out in the wrong
     # language.
-    dj_language = demojibake(str(persona.get("language") or "").strip())
+    # Capped like every sibling identity field — name, station and show all
+    # take the same cap. dj_language is uncapped station free text that rides
+    # the system prompt on every turn, so a corrupt or hostile /dj value
+    # balloons time-to-first-token — the exact junk it was the only one of the
+    # group to slip (top-down review, 2026-08-28).
+    dj_language = clip(demojibake(str(persona.get("language") or "").strip()),
+                       NAME_BUDGET)
     # Only when the station named one. Empty means English there, and asserting
     # "you speak English" at every DJ on every call would be a sentence bought
     # on every turn to say what the prompt is already written in.
@@ -106,7 +120,7 @@ async def build_system_prompt(
         f"\nYou work in {dj_language} — that is the language you open in and "
         "come back to. Match a caller who brings another one.\n"
     ) if dj_language else ""
-    show_name = demojibake(show.get("name", ""))
+    show_name = clip(demojibake(show.get("name", "")), NAME_BUDGET)
     show_card = clip(show.get("topic", ""), CARD_BUDGET)
 
     show_block = ""

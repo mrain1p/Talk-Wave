@@ -1,7 +1,7 @@
 # agent-worker
 
-The Python half. Two entrypoints, one package. See the root [CLAUDE.md](../CLAUDE.md) for how
-the pieces fit together and for the invariants that hold across both processes.
+The Python half. Two entrypoints, one package. See [docs/architecture.md](../docs/architecture.md)
+for how the pieces fit together, the layer map, and the invariants that hold across both processes.
 
 ## Where things live
 

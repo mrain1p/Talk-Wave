@@ -15,7 +15,7 @@ as a DJ who doesn't know its own station. `_show_miss` is the difference.
 
 from __future__ import annotations
 
-from .albums import _squash
+from .rows import _squash
 
 
 def _name(thing: dict) -> str:
