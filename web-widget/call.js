@@ -816,12 +816,12 @@
       // the station's own current-track fallback applies.
       let song = null;
       try {
-        const s = await fetch('/player/like', { headers: plKeyHeaders() });
+        const s = await fetch('/player/like', { headers: keyHeaders() });
         if (s.ok) song = (await s.json()).songId || null;
       } catch (e) { /* fall through to the current-track like */ }
       const r = await fetch('/player/like', {
         method: 'POST',
-        headers: plKeyHeaders({ 'Content-Type': 'application/json' }),
+        headers: keyHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(song ? { songId: song } : {}),
       });
       if (!r.ok) throw new Error('refused');
@@ -4151,7 +4151,9 @@
     return ((live && live.limits && live.limits.voicemailMaxSeconds) || 30);
   }
 
-  function vmKeyHeaders(extra) {
+  function keyHeaders(extra) {
+    // One X-Call-Key header builder (Batch 7): copy form, so a caller's
+    // object is never mutated. Was vmKeyHeaders + an identical plKeyHeaders.
     const h = Object.assign({}, extra || {});
     if (callKey()) h['X-Call-Key'] = callKey();
     return h;
@@ -4273,7 +4275,7 @@
     // never outlives the caller's decision to replace it.
     if (vmDraft) {
       fetch('/voicemail/draft/' + vmDraft.id,
-            { method: 'DELETE', headers: vmKeyHeaders() }).catch(() => {});
+            { method: 'DELETE', headers: keyHeaders() }).catch(() => {});
       vmDraft = null;
     }
     if (vmPlayer) { vmPlayer.pause(); vmPlayer = null; }
@@ -4354,7 +4356,7 @@
     try {
       const resp = await fetch('/voicemail/draft', {
         method: 'POST',
-        headers: vmKeyHeaders({ 'Content-Type': 'audio/wav' }),
+        headers: keyHeaders({ 'Content-Type': 'audio/wav' }),
         body: vmClip,
       });
       const data = await resp.json().catch(() => ({}));
@@ -4390,7 +4392,7 @@
     setStatus('', 'connecting');
     try {
       const resp = await fetch('/voicemail/draft/' + vmDraft.id + '/send',
-                               { method: 'POST', headers: vmKeyHeaders() });
+                               { method: 'POST', headers: keyHeaders() });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok || !data.ok) {
         throw new Error(data.receipt || data.error || 'that didn’t go out');
@@ -4472,7 +4474,7 @@
         const ctl = new AbortController();
         const cap = setTimeout(() => ctl.abort(), 20000);
         const r = await fetch('/vm-greeting',
-                              { headers: vmKeyHeaders(), signal: ctl.signal });
+                              { headers: keyHeaders(), signal: ctl.signal });
         clearTimeout(cap);
         if (!r.ok) return { url: '', text: '' };
         let text = '';
@@ -4558,7 +4560,7 @@
     if (vmGreet) { vmGreet.pause(); vmGreet = null; }
     if (vmDraft) {
       fetch('/voicemail/draft/' + vmDraft.id,
-            { method: 'DELETE', headers: vmKeyHeaders() }).catch(() => {});
+            { method: 'DELETE', headers: keyHeaders() }).catch(() => {});
       vmDraft = null;
     }
     $('vmStudio').hidden = true;
@@ -5160,7 +5162,7 @@
       try {
         const r = await fetch('/open-lines/open', {
           method: 'POST',
-          headers: vmKeyHeaders({ 'Content-Type': 'application/json' }),
+          headers: keyHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             source: $('plSegSource').value,
             minutes: Number($('plSegMins').value) || 0,
@@ -5407,18 +5409,13 @@
   // track change between paint and press gets the station's 409 instead of
   // the wrong record getting the heart.
   let plLiked = false, plLikeSong = null, plHeartFor = '';
-  function plKeyHeaders(extra) {
-    const h = extra || {};
-    if (callKey()) h['X-Call-Key'] = callKey();
-    return h;
-  }
   async function refreshHeart(trackKey) {
     const b = $('plHeartBtn');
     if (!b || !playerOpen) return;
     if (trackKey === plHeartFor) return;   // same record, nothing to re-ask
     plHeartFor = trackKey;
     try {
-      const r = await fetch('/player/like', { headers: plKeyHeaders() });
+      const r = await fetch('/player/like', { headers: keyHeaders() });
       const d = await r.json();
       if (!r.ok || d.enabled === false) { b.hidden = true; return; }
       plLiked = !!d.liked; plLikeSong = d.songId || null;
@@ -5440,7 +5437,7 @@
     try {
       const r = await fetch('/player/like', {
         method: 'POST',
-        headers: plKeyHeaders({ 'Content-Type': 'application/json' }),
+        headers: keyHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(plLikeSong ? { songId: plLikeSong } : {}),
       });
       const d = await r.json().catch(() => ({}));
@@ -5461,7 +5458,7 @@
     try {
       const r = await fetch('/player/request', {
         method: 'POST',
-        headers: plKeyHeaders({ 'Content-Type': 'application/json' }),
+        headers: keyHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ text }),
       });
       const d = await r.json().catch(() => ({}));

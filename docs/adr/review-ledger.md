@@ -252,3 +252,40 @@ the shipped prompt for one path and trip the byte-identity guards. Left as-is.
   `Path(__file__).parent` walk that has miscounted before.
 - The **cross-process `data/` seam** (onair/chunks, hush, openlines/state) is
   **accepted** as sound architecture, documented, not a fix.
+
+---
+
+## Batch 7 — the widget (2026-08-29)
+
+The hard constraint: `web-widget/` has **no JS test harness** by design — only
+Python text-contract tests (`TestWidgetServerContract`: DOM ids per page, scripts
+per page, fetch presence) and the Playwright driver. So a big god-file split has
+nothing to catch a regression and is out of scope. Only the provably-safe wins:
+
+- **Deleted dead code.** `olNextUpId()` in `panel.js` — defined, never called
+  (reference count = 1, its own definition), and carrying a comment that
+  contradicted current server behaviour (it claimed an LRU "next up" rule the
+  shelf abandoned for "one at random"). And two grep-proven-dead CSS clusters in
+  `panel.css`: the retired first-run `.banner.setup`/`#firstPwMsg` form and the
+  retired Open-Lines `.oleyebrow` — both absent from `panel.html` and every
+  panel JS.
+- **One header builder, not two.** `vmKeyHeaders` and `plKeyHeaders` in `call.js`
+  were the same `X-Call-Key` builder written twice (copy-form vs mutate-form);
+  all 11 call sites pass a fresh object, so the difference was dead. Collapsed to
+  one `keyHeaders` (the copy form, which can never mutate a caller's object).
+- Verified: `node --check` (syntax), `test_widget` + the full suite (the DOM-id /
+  script / fetch contract), grep-proven-dead for the deletions, and a live driver
+  smoke — both pages load, the panel renders its full structure, no JS errors.
+
+### Accepted / deferred (the no-test-harness bar)
+- **The god-files stay whole.** `call.js`'s voicemail-studio cluster is
+  bidirectionally coupled to the call core (`startTimer`/`setCardMode` in, the
+  `vmCall` flag straddling the boundary out) — the CLAUDE.md "coupled both ways"
+  pattern; not separable. `panel.js` measured the same. Accept-exempt.
+- **Deferred (unprovable without a manual listen/send):** merging
+  `playPcm`/`playPcmWithEffect`'s shared PCM-decode prefix (WebAudio, no driver
+  coverage, silent-failure risk) and `mmss`/`fmt` (they diverge on fractional
+  input, which is untested).
+- **Accepted:** both CSS design eras are live (bare-class selectors still resolve
+  to real markup); the `callinTheme`/`callinPalette` three-file writers are the
+  deliberate "apply the theme before /live arrives" pattern, not a drift to fold.

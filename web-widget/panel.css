@@ -440,10 +440,6 @@
     flex: 0 0 auto;
   }
   .oldot[data-on="1"] { background: var(--ok); }
-  .oleyebrow {
-    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
-    text-transform: uppercase; color: var(--coral);
-  }
   /* Beside the dot since the eyebrow retired (2026-08-24) — the state IS
      the bar's left side now; margin-right:auto pushes the buttons to the
      right edge whichever of them is hidden (a first-of-type margin landed
@@ -1395,16 +1391,6 @@
     margin-bottom: 14px;
   }
   .banner.ok { border-color: var(--ok); color: var(--ok); }
-  /* First run: the one banner that is a form rather than a sentence. It is
-     asking for something, so it gets room to ask. */
-  .banner.setup { color: var(--text); border-color: var(--accent); }
-  .banner.setup strong { color: var(--accent); display: block; margin-bottom: 5px; }
-  .banner.setup p { margin: 0 0 10px; color: var(--dim); font-size: 11.5px; }
-  .banner.setup .loginrow { display: inline-flex; gap: 8px; margin: 0; }
-  .banner.setup input { width: 220px; }
-  .banner.setup #firstPwMsg { display: block; margin-top: 7px; font-size: 11.5px;
-                              color: var(--accent); }
-  .banner.setup #firstPwMsg:empty { display: none; }
   /* Buttons created from JS use these instead of inline colors. */
   .btnaccent { background: var(--accent); color: #fff; }
   .btnquiet { flex: 0 0 auto; background: transparent; color: var(--dim);
