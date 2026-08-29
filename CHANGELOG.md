@@ -4,6 +4,10 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+- **Per-persona skill limits are honoured again on a nested station.** A DJ can be assigned a subset of the station's segments; the reader that fetches that assignment looked only at the top level of the station's settings payload, but a real SUB/WAVE station nests its persona roster one level down — the same nesting the DJ-voice reader was already fixed for, with the skills reader missed at the time. The effect was silent: every DJ ran the whole catalogue regardless of the limits set. Now the roster is found whether it sits at the top level or nested (the operator's real personas always winning over the factory defaults), so a persona restricted to a few segments stays restricted. A test pins both shapes.
+
 ## 0.99.11
 
 The maintainability review's safe deferred backlog, worked to done. No behaviour change — each item is a verified consolidation or a privacy tightening, and the full suite holds them in step. What's still deferred (the two call-core god-objects, the TTS discovery seam, a couple of harness-gated widget merges) stays deferred on purpose: those need the operator's environment or a manual listen, and a blind pass is exactly what this review set out to avoid.

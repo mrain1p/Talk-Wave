@@ -39,6 +39,60 @@ class TestStationConfig(unittest.TestCase):
         self.assertEqual(m.get("p_def456"), "-VoiceB")
         self.assertNotIn("p_empty0", m)
 
+    def test_reads_persona_skills_from_the_nested_shape(self):
+        # Same nesting the voice reader above had to learn: a real SUB/WAVE
+        # station keeps its roster at values.personas[], not the top level.
+        # The skills reader used to look only at the top level, so a nested
+        # station read as "every DJ runs everything" — the assigned segment
+        # list was silently dropped, unrestricting a persona the operator had
+        # restricted. On-air path, hit every call.
+        import station_config
+
+        nested = {
+            "values": {
+                "personas": [
+                    {"id": "p_abc123", "name": "A", "skills": ["news", "weather"]},
+                    {"id": "p_def456", "name": "B"},  # no skills key -> "all"
+                ]
+            },
+            # Factory seeds must never answer: they'd narrow a DJ the operator
+            # never narrowed.
+            "defaults": {
+                "personas": [
+                    {"id": "p_abc123", "name": "A", "skills": ["nothing"]},
+                ]
+            },
+        }
+        self.assertEqual(
+            station_config._persona_skills_from(nested, "p_abc123"),
+            ["news", "weather"])
+        # Absent skills key still means "all", not "none".
+        self.assertIsNone(
+            station_config._persona_skills_from(nested, "p_def456"))
+        # An unknown persona is "all", and defaults never restricts anyone.
+        self.assertIsNone(
+            station_config._persona_skills_from(nested, "p_missing"))
+
+    def test_persona_skills_top_level_shape_still_reads(self):
+        # The simpler top-level shape other readers/snapshots use must keep
+        # working unchanged, and keep precedence over any nested copy.
+        import station_config
+
+        payload = {
+            "personas": [
+                {"id": "p_abc123", "name": "A", "skills": ["news"]},
+            ],
+            "values": {
+                "personas": [
+                    {"id": "p_abc123", "name": "A", "skills": ["weather"]},
+                ]
+            },
+        }
+        # Top level wins the tie, so behaviour on a top-level payload is exactly
+        # what it was before nesting-awareness was added.
+        self.assertEqual(
+            station_config._persona_skills_from(payload, "p_abc123"), ["news"])
+
 
 class TestTheStationModelIsTheDJModelNotTheEmbedder(unittest.TestCase):
     """The station's settings payload has no documented shape, so station_config

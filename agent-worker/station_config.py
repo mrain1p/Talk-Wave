@@ -223,6 +223,25 @@ def _extract_persona_voices(settings: dict) -> dict[str, str]:
     return found
 
 
+def _persona_rosters(settings: dict):
+    """The persona roster, wherever the payload keeps it. A real SUB/WAVE
+    station nests it under `values.personas[]`, not at the top level — the same
+    nesting `_find_voice` had to learn (see its note above); the voice mirror
+    was fixed for it and the skills reader was not, so a nested station read as
+    "every DJ runs everything". Top level is yielded first so it keeps
+    precedence, and the `defaults` subtree is never yielded: those are factory
+    seeds, and letting them answer would narrow a DJ the operator never narrowed.
+    """
+    top = settings.get("personas")
+    if isinstance(top, list):
+        yield top
+    values = settings.get("values")
+    if isinstance(values, dict):
+        nested = values.get("personas")
+        if isinstance(nested, list):
+            yield nested
+
+
 def _persona_skills_from(settings: dict, persona_id: str) -> list[str] | None:
     """Which segment slugs a persona is assigned, or None for "all of them".
 
@@ -234,13 +253,14 @@ def _persona_skills_from(settings: dict, persona_id: str) -> list[str] | None:
     """
     if not persona_id:
         return None
-    for persona in (settings.get("personas") or []):
-        if not isinstance(persona, dict) or persona.get("id") != persona_id:
-            continue
-        assigned = persona.get("skills")
-        if not isinstance(assigned, list):
-            return None
-        return [str(s) for s in assigned if isinstance(s, str)]
+    for roster in _persona_rosters(settings):
+        for persona in roster:
+            if not isinstance(persona, dict) or persona.get("id") != persona_id:
+                continue
+            assigned = persona.get("skills")
+            if not isinstance(assigned, list):
+                return None
+            return [str(s) for s in assigned if isinstance(s, str)]
     return None
 
 

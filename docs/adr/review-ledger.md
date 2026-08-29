@@ -357,23 +357,65 @@ Working through the review's deferred backlog, doing only the safe/verifiable on
   (`{stamp}-{room[-12:]}.json`) was re-typed in `write()` and `rate()`; it now has
   one owner (`_record_path` / `_find_by_room`).
 
-### Still deferred (deliberately — need the operator's environment or more care)
-- **`session.py` / `air.py` god-object splits** — need a live-call harness; a
-  blind split of timing-sensitive on-air code is exactly what this review avoided.
-- **`station_config._extract_persona_voices` reshape** — needs a real live-station
-  `/settings` payload to validate against (the NAS).
+### Rejected — genuinely different or a coupling relocation, not "deferred" (reclassified 2026-08-29 after a code-grounded re-assessment)
 - **The divergent watchers** (lifecycle card-flush, clocks idle, promise_guard,
-  think_pace) — need per-handler predicates + their own proof before joining
-  `watch.py`.
+  think_pace) — NOT a hidden shared abstraction: they need the OPPOSITE of the
+  consolidated watcher. `test_call_flow.py:2787` pins that `on_caller_line`
+  ignores an empty final and a partial — exactly what promise_guard (needs the
+  empty final) and idle (needs the partial) require. Same category as the
+  station_config `_walk` and tool-availability belt-and-braces rejections: they
+  stay separate. Not "pending proof" — the proof that they must diverge exists.
+- **`tts_voices.py` split** — discovery and synthesis make zero cross-calls, but
+  both sit on the same config foundation (`load_adapter`/`adapter_headers`/
+  `adapter_api_key`); a clean split can't assign that shared middle and forces a
+  THIRD module, relocating the coupling behind a new import edge rather than
+  reducing it. The "needs a manual listen" premise was also wrong — discovery is
+  pure voice-string/endpoint-path selection, already value- and identity-pinned
+  by `test_voice.py`. Leave `tts_adapter.py` whole.
+
+### Still deferred (need the operator's environment or more care)
+- **`session.py` / `air.py` god-object splits** — god-objects by breadth, not
+  duplication; the peelable parts already left (`air_verdict`, `comeback`,
+  `air_log`, and session's delegations). What remains reads nearly the whole
+  object, so any split relocates coupling. The live-call harness does NOT unblock
+  this — it validates timing CHANGES, and a behaviour-preserving move makes none.
+  Leaning reject; the size ledger already ratchets these files down as features
+  consolidate.
+- **`station_config._extract_persona_voices` reshape** — LEAVE: the extractor
+  already returns the correct map on the real nested shape (`test_station.py:16`),
+  so anchoring-first is churn on the known shape with a wrong-voice-on-air
+  downside on unknown ones. (The re-assessment DID find a real bug next door in
+  the SKILLS reader, now fixed — see below.)
 - **The widget audio merges** (`playPcm`/`playPcmWithEffect`, `mmss`/`fmt`) —
-  unprovable without a manual TTS listen; no JS harness.
-- **`tts_voices.py` split** — a real consolidation, but it touches a
-  behaviour-sensitive TTS seam and deserves its own focused, measured pass
-  rather than riding a cleanup batch. (The other seam that sat here, the
-  `stream_reply` LLM primitive, got its measured pass — see below.)
-- **`settings.data_dir()`** — only pays off if the ~10 import-time store-path
-  constants route through it, which is a risky import-time/test-reassignment
-  change; its own pass.
+  LEAVE: `mmss`→`fmt` is NOT behaviour-preserving (flips `3:32.48`→`3:32` on a
+  sub-second station duration), unpinned by any test, in the most incident-scarred
+  region of `call.js`; no JS harness to catch a regression.
+- **`settings.data_dir()`** — still LEAVE (a risky import-time/test-reassignment
+  change for low payoff), but its prerequisite guard now EXISTS:
+  `TestEveryStoreDefaultsToTheOneDataDir` (test_house_rules.py) runs a clean
+  subinterpreter with the path env cleared and pins that all five store defaults
+  land in one shared `data/` dir — the default branch the suite otherwise never
+  exercises. A future consolidation now has cover.
+
+## The persona-skills nesting bug — `_persona_skills_from` (2026-08-29, → 0.99.12)
+
+The deferred-backlog re-assessment (six items, all LEAVE — the two that looked
+like wins were overturned on an adversarial pass) surfaced one thing that was
+NOT a refactor: a live latent bug. The SUB/WAVE `/settings` payload nests its
+roster under `values.personas[]`, not the top level. `_find_voice` was fixed for
+that nesting (station_config.py:179 — "checking only the top level made mirroring
+silently find nothing"); the SKILLS reader `_persona_skills_from` was missed and
+still did a top-level-only `settings.get("personas")`. Fed the same raw payload
+(`persona_skills()` → `settings()`), it returned `None` on the real nested shape
+→ **every DJ silently "runs everything,"** ignoring the operator's per-persona
+segment restrictions, on a path hit every call (session.py:411, assemble.py:56).
+
+Fix: a `_persona_rosters` helper yields the roster wherever it lives — top level
+first (so any existing top-level payload is byte-for-byte unchanged), then
+`values.personas`, never the `defaults` factory subtree. Behaviour-preserving on
+every payload that already worked; only ADDS reachability on the nested one.
+Pinned by `test_station.py` (nested reads the skills; top-level keeps precedence;
+defaults never restrict; absent skills still means "all").
 
 ## The off-turn LLM drain — `stream_reply` (2026-08-29, → 0.99.11)
 
