@@ -351,26 +351,36 @@ class TestNoIdEscapesItsPathSegment(unittest.TestCase):
         return seen.get("path", "")
 
     def test_a_traversal_id_is_percent_encoded_not_a_separator(self):
+        import httpx
+
         import station
 
-        evil = "../../schedule/override"
-        # The unit that every path builder now routes through.
-        self.assertNotIn("/", station._seg(evil))
-        self.assertIn("%2F", station._seg(evil))
+        # Every dangerous shape: the slash-carrying one the first fix covered,
+        # AND the bare dot-segments the cloud review caught — quote() leaves
+        # `.`/`..` untouched (dots are unreserved), so without the %2E encoding
+        # httpx would still collapse `/dj/queue/..` to `/dj`.
+        for evil in ("../../schedule/override", "..", ".", "...", "../foo"):
+            seg = station._seg(evil)
+            with self.subTest(id=evil):
+                self.assertNotIn("/", seg)
+                self.assertNotIn("..", seg, "a bare dot-segment survived")
+                # Prove httpx cannot normalise it back into a new segment.
+                c = httpx.Client(base_url="http://station.invalid")
+                built = str(c.build_request(
+                    "DELETE", f"/dj/queue/{seg}").url)
+                c.close()
+                self.assertTrue(built.endswith(f"/dj/queue/{seg}"),
+                                f"{evil!r} re-targeted to {built}")
 
-        # And end to end through the tools that were unquoted: the crafted id
+        # And end to end through a tool that was unquoted: the crafted id
         # cannot introduce a new path segment.
-        from station_config import admin_credentials  # noqa: F401
-
         for label, factory in (
-            ("cancel_queued_track",
-             lambda c: c.cancel_queued_track(evil)),
+            ("cancel_queued_track", lambda c: c.cancel_queued_track("..")),
         ):
             with self.subTest(tool=label):
                 path = self._capture(label, factory)
-                self.assertNotIn("/schedule/override", path,
-                                 f"{label} let the id escape its segment")
-                self.assertIn("%2F", path)
+                self.assertTrue(path.endswith("/dj/queue/%2E%2E"),
+                                f"{label} let the id escape: {path}")
 
 
 class TestTheStationLogSaysWhatWasSaid(unittest.TestCase):

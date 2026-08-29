@@ -3,6 +3,14 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.99.5
+
+Two independent reviews of the 0.99.4 work — a cloud reviewer and a seven-subsystem top-down pass — landed together. This closes the cloud reviewer's five findings, led by a real regression in 0.99.4's own path-traversal fix.
+
+- **The path quoter now encodes dots, not just slashes.** 0.99.4's `_seg` percent-encoded `/` but left `.` alone (it is unreserved), so a bare `..` id still collapsed through httpx's path normalization and re-targeted the request — the exact traversal the fix was billed to close, reopened for the one input the new test didn't cover. Dots encode to `%2E` now (a station still decodes them back to a literal dot), and the test exercises `.`/`..`/`...` end to end.
+- **The settings-manifest test stops over-excluding.** Its file filter matched `api/settings.py` as well as the intended declaration table, silencing 13 real `cfg.get()` sites; it now excludes only the one file it means to.
+- **The rating correlation reads the archive even when the live window is empty** — the case weekly `save` exists for. **The widget harness accepts `[::1]`** it already listed as local (an IPv6 URL parsed to host `[`). **The chat stuck-flag reads a stable key, not a prose substring** — a reword of the shared state's log line can no longer silently drop the Needs-attention entry that move 3 wired.
+
 ## 0.99.4
 
 A formal security sitting, the two mouths finally sharing one guard, and three more audit items closed.

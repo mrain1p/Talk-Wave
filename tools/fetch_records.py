@@ -165,12 +165,17 @@ def main() -> None:
     args = ap.parse_args()
 
     calls = fetch(args.base, args.key)
-    if not calls:
-        print("No records on the server (it returns the newest 20).")
+
+    # corr reads the ARCHIVE alongside the live window, so it must run even
+    # when the server's 20-record window has rotated past every rated call —
+    # which is exactly the case `save`-weekly exists for (cloud review,
+    # 2026-08-28). The other commands genuinely need a live record.
+    if args.command == "corr":
+        correlate(calls or [])
         return
 
-    if args.command == "corr":
-        correlate(calls)
+    if not calls:
+        print("No records on the server (it returns the newest 20).")
         return
 
     if args.command == "list":

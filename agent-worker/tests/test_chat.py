@@ -823,7 +823,7 @@ class TestChatActionCardsFollowTheLine(_TempStores):
         self.assertEqual(hints, [], "a goodbye must clear the door, not nag")
         # A non-goodbye continuation gets the door note.
         chat.state.dj_said(line)
-        notes = [note for _log, note in chat.state.hints_for("hmm")]
+        notes = [t[-1] for t in chat.state.hints_for("hmm")]
         self.assertIn(HINT, notes)
 
     def test_after_is_the_default_and_the_card_lands_behind_the_line(self):

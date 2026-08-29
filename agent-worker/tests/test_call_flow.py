@@ -3104,7 +3104,7 @@ class TestOneStateObjectFeedsTheReplyPath(unittest.TestCase):
         arc.dj_said("Take care — goodbye!")
         st = ConversationState(door=door, stuck=_AlwaysFires("[stuck]"),
                                withheld=_AlwaysFires("[withheld]"), arc=arc)
-        notes = [n for _, n in st.hints_for("")]
+        notes = [t[-1] for t in st.hints_for("")]
         self.assertEqual(4, len(notes))
         self.assertEqual("[stuck]", notes[0])
         self.assertEqual("[withheld]", notes[1])
@@ -3177,7 +3177,7 @@ class TestAnOpenAskComesBackWithoutReasking(unittest.TestCase):
         arc.dj_said("Take care now — goodbye!")
         st = ConversationState(arc=arc, asks=asks)
         # The arc's end-call steer may fire; the ask comeback must not.
-        notes = [n for _, n in st.hints_for("bye then")]
+        notes = [t[-1] for t in st.hints_for("bye then")]
         self.assertFalse(any("has not happened yet" in n for n in notes))
 
     def test_the_hold_return_carries_the_open_task(self):

@@ -50,10 +50,17 @@ LOCAL = ("localhost", "127.0.0.1", "::1")
 
 
 def refuse_remote(base: str) -> str:
-    host = base.split("//", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+    # urlparse().hostname, not a naive colon-split: the split parsed
+    # http://[::1]:8123 as host "[" (the first colon sits inside the IPv6
+    # brackets), rejecting the very ::1 the allowlist names (cloud review,
+    # 2026-08-28). hostname normalises bracketed and bare IPv6 to "::1".
+    from urllib.parse import urlparse
+
+    parsed = urlparse(base if "//" in base else "//" + base)
+    host = (parsed.hostname or "").lower()
     if host not in LOCAL:
         sys.exit(f"widget_check drives {LOCAL} only — never a deployment. "
-                 f"Got: {host}")
+                 f"Got: {host!r}")
     return base
 
 

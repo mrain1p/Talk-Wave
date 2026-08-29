@@ -70,8 +70,17 @@ def _seg(value) -> str:
     (security sitting, 2026-08-28). One quoter now, so a new path-building
     call cannot forget again. `safe=''` leaves a slash as %2F, not a
     separator.
+
+    Dots are ALSO encoded — the subtle half, caught by the cloud review the
+    same day. `.` is unreserved per RFC 3986, so `quote('..')` returns `'..'`
+    unchanged, and httpx's build-time dot-segment collapse still fires on a
+    bare `..` id: `/dj/queue/..` becomes `/dj`. Only the slash-carrying input
+    the first test used was actually neutralised; a plain `..` still
+    traversed. Encoding dots to %2E defeats the collapse (httpx removes the
+    literal `..` before decoding, never the encoded form), and a station
+    decodes %2E back to `.` so a legitimate dotted id still resolves.
     """
-    return _quote(str(value), safe="")
+    return _quote(str(value), safe="").replace(".", "%2E")
 
 _AIRED_BY_US: _deque = _deque(maxlen=80)
 _AIRED_TTL_SECS = 2 * 3600.0

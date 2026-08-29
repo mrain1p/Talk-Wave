@@ -1004,7 +1004,7 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 705: vet-before-show (2026-08-28) - the held round, the one
         # rewrite, and the honest release, all in the ChatSession half
         # the recorded seam already names.
-        "agent-worker/chat/session.py": (726, "the one-conversation half "
+        "agent-worker/chat/session.py": (729, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "

@@ -716,8 +716,8 @@ class CallAgent(Agent):
         # caller's own message: that text reaches the written transcript, and
         # a note from us inside their line would be a record of something
         # they never said.
-        for log_line, note in (self._state.hints_for(said)
-                               if self._state is not None else []):
+        for _kind, log_line, note in (self._state.hints_for(said)
+                                      if self._state is not None else []):
             turn_ctx.add_message(role="system", content=note)
             log.info(log_line)
         # The staged track note, consumed on the same Gemini-safe insertion

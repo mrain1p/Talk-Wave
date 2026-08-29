@@ -1245,8 +1245,13 @@ class TestEverySettingIsRealAndEveryKeyIsDeclared(unittest.TestCase):
     def _python_sources(self):
         for p in AGENT_WORKER.rglob("*.py"):
             s = str(p)
+            # Exclude ONLY the FIELDS declaration file — its table names
+            # every key by construction. `endswith("settings.py")` also
+            # swallowed api/settings.py, a normal handler with 13 real
+            # cfg.get() sites the scan is meant to cover (cloud review,
+            # 2026-08-28).
             if ("tests" in s or "scripted_call" in s or ".venv" in s
-                    or s.endswith("settings.py")):
+                    or p == AGENT_WORKER / "settings.py"):
                 continue
             yield p.read_text(encoding="utf-8", errors="replace")
 

@@ -368,9 +368,12 @@ class ChatSession:
             # message after the caller's line, never inside it. The stuck note
             # still earns its Needs-attention entry; it is the first in the
             # order, so its log line names it.
-            for log_line, note in self.state.hints_for(text):
+            for kind, _log_line, note in self.state.hints_for(text):
                 ctx.add_message(role="system", content=note)
-                if "asked this before" in log_line:
+                # A stable kind, not a prose substring: the stuck hit earns
+                # the Needs-attention entry, and a reword of state.py's log
+                # line can no longer silently drop it (cloud review).
+                if kind == "stuck":
                     self.problems.append(PROBLEMS["stuck"])
 
             self.remember("caller", text)
