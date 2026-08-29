@@ -410,18 +410,7 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             )
             if not res.get("ok"):
                 # The refusal as a CARD as well as a receipt: the caller sees
-                # the station's own reason in a channel the persona cannot
-                # spin, so a DJ that dresses it up contradicts a fact already
-                # on screen. See CallActions.denied.
-                actions.denied("refused",
-                               res.get("error") or "the station refused it")
-                return (
-                    f"That didn't go into the queue: "
-                    f"{res.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked. The "
-                    "caller has been shown the station's refusal on a card, "
-                    "so the reason is already public."
-                )
+                return actions.station_refused(res, "That didn't go into the queue") + " The caller has been shown the station's refusal on a card, so the reason is already public."
             actions.queued_ids.add(str(id))
             actions.note("request", _fmt_track({"title": title, "artist": artist}))
             return (

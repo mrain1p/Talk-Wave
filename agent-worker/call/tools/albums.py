@@ -42,7 +42,7 @@ import time
 from station import StationClient
 
 from ..actions import CallActions
-from .rows import _drop_blocked, era_year
+from .rows import _BATCH_BUDGET_SECS, _drop_blocked, _squash, _txt, era_year
 
 log = logging.getLogger("callin.agent")
 
@@ -56,25 +56,8 @@ MIX_MAX_PICKS = 8
 # track in the library, and the album's own rows are scattered through them).
 _SEARCH_PAGE = 100
 _SEARCH_PAGES = 4
-# Wall clock for the queue fan-out. Each POST is ~100ms against a healthy
-# station, so this is never felt — it exists for the unhealthy one, where
-# thirty sequential 45s timeouts would otherwise be the caller's evening.
-_BATCH_BUDGET_SECS = 25.0
 # On a shelf listing, how many albums to read down a phone line.
 _SHELF_MAX = 10
-
-
-def _txt(value, limit: int = 120) -> str:
-    return str(value or "").strip()[:limit]
-
-
-def _squash(value) -> str:
-    """A name as a caller says it: lowercased, punctuation dropped. "Sgt.
-    Pepper's" and "sgt peppers" must meet in the middle, because one side of
-    every comparison here is a music tag and the other came off a phone line
-    through STT."""
-    text = re.sub(r"['’]", "", str(value or "").casefold())
-    return " ".join(re.sub(r"[\W_]+", " ", text).split())
 
 
 # What a failed READ must say, in one place so neither tool can soften it.

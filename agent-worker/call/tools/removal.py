@@ -25,7 +25,7 @@ import time
 from station import StationClient
 
 from ..actions import CallActions
-from .albums import _BATCH_BUDGET_SECS, _squash, _txt
+from .rows import _BATCH_BUDGET_SECS, _squash, _txt
 
 log = logging.getLogger("callin.agent")
 
@@ -88,15 +88,7 @@ def build_removal_tools(cfg: dict, station: StationClient,
                 "cuts it off for everyone listening."
             )
         if not res.get("ok"):
-            # The receipt channel's refusal half: the caller sees the
-            # card whatever the DJ's prose does with it.
-            actions.denied("refused",
-                           res.get("error") or "the station refused it")
-            return (
-                f"That didn't come out of the queue: "
-                f"{res.get('error') or 'the station refused it'}. Tell the "
-                "caller plainly — do NOT claim it's gone."
-            )
+            return actions.station_refused(res, "That didn't come out of the queue")
         actions.note("cancel", f"\"{named}\"")
         return (
             f"\"{named}\" is out of the queue — it will not play. Say so, and "

@@ -314,9 +314,11 @@ class TestALineIsGradedByWhatKindOfWrongItIs(unittest.TestCase):
         """
         import inspect
 
-        from call.tools import broadcast, music
+        # Batch 4 folded the refusal idiom onto CallActions.station_refused, so
+        # the graders' tail now lives in ONE place instead of being scraped from
+        # each tool module — which is what this pin always wanted.
+        from call import actions
 
-        for mod in (broadcast, music):
-            self.assertIn("do not claim it worked", inspect.getsource(mod),
-                          f"{mod.__name__} no longer ends a refusal the way "
-                          "the graders read it")
+        self.assertIn("do not claim it worked", inspect.getsource(actions),
+                      "the refusal tail the graders read is no longer pinned in "
+                      "CallActions.station_refused")

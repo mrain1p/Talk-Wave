@@ -150,3 +150,36 @@ surfaces and dead code.
   this batch to the call-guard consolidation.
 - **The divergent watchers** (above) — need per-handler predicates before they
   can share the `watch.py` plumbing.
+
+---
+
+## Batch 4 — the call tools (2026-08-29)
+
+- **The refusal-card idiom — 14 sites → one method.** Every station-refusal site
+  read the station's reason TWICE (once for the `denied()` card, once inside the
+  return string) and had drifted on the tail ("don't" vs "do not"). They now
+  call `CallActions.station_refused(result, said)`, which reads the reason once,
+  cards once, and returns the pinned house prose; each site passes only its own
+  lead ("That didn't go out", "That segment didn't run"). **This fixed a latent
+  bug**: two curation sites spelled "don't", which `spoken_rules.reads_as_a_refusal`
+  and the refusals ablation do NOT recognise — so their refusals weren't being
+  graded as refusals. The other 9 sites (batch queue/album refusals, the two
+  "unavailable" capability gaps, and the request-song rate-gate relay) have
+  genuinely different shapes and stay as they are. Two tests updated: the
+  speech-filter grader pin now reads the phrase from its ONE home (`call.actions`),
+  and a cancel test matches the normalized tail.
+- **albums.py stops being a utility hub.** The three generic helpers
+  (`_txt`, `_squash`, `_BATCH_BUDGET_SECS`) that `removal.py` and `shows.py`
+  reached into `albums.py` for moved to `rows.py` — the pure-leaf formatter home
+  its own docstring already describes ("two of them were importing the tool
+  module purely to borrow a formatter"). albums/removal/shows now import them
+  from rows.
+
+### Deferred / rejected
+- **Tool availability derived in two places** — **rejected** as a consolidation:
+  the registry (declarative catalogue) and each builder's imperative gate are
+  deliberate belt-and-braces, reconciled by `test_tools_surface.py`. Documented
+  as intentional; not a drift to fix.
+- **CallActions dead getattr-defaults** (2 sites) and **reads.py import hygiene**
+  — low-value polish, deferred; the untyped-bus reads that have real `__init__`
+  defaults are already fine.

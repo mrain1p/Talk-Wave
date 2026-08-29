@@ -97,15 +97,7 @@ def build_curation_tools(cfg: dict, station: StationClient,
                 actions.last_liked = (song_id, track)
             res = await station.like_track(song_id)
             if not res.get("ok"):
-                # The receipt channel's refusal half: the caller sees the card
-                # whatever the DJ's prose does with it.
-                actions.denied("refused",
-                               res.get("error") or "the station refused it")
-                return (
-                    f"That like didn't go through: "
-                    f"{res.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — don't claim it worked."
-                )
+                return actions.station_refused(res, "That like didn't go through")
             name = _fmt_track(track) if track.get("title") else "the current track"
             # The no-op check FIRST: an already-liked track changed nothing,
             # so it must not spend a budget slot or fire a "Liked" receipt
@@ -148,15 +140,7 @@ def build_curation_tools(cfg: dict, station: StationClient,
                 )
             res = await station.unlike_track(song_id)
             if not res.get("ok"):
-                # The receipt channel's refusal half: the caller sees the card
-                # whatever the DJ's prose does with it.
-                actions.denied("refused",
-                               res.get("error") or "the station refused it")
-                return (
-                    f"That didn't go through: "
-                    f"{res.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — don't claim it worked."
-                )
+                return actions.station_refused(res, "That didn't go through")
             name = _fmt_track(track) if track.get("title") else "the current track"
             actions.note("unlike", name)
             return f"Done — took the heart off {name}. Say it back in your own voice."
@@ -194,15 +178,7 @@ def build_curation_tools(cfg: dict, station: StationClient,
             name = _fmt_track(track) if track.get("title") else "the current track"
             res = await station.block_track(song_id)
             if not res.get("ok"):
-                # The receipt channel's refusal half: the caller sees the card
-                # whatever the DJ's prose does with it.
-                actions.denied("refused",
-                               res.get("error") or "the station refused it")
-                return (
-                    f"That didn't go on the never-play list: "
-                    f"{res.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
-                )
+                return actions.station_refused(res, "That didn't go on the never-play list")
             if res.get("already"):
                 # No-op — don't charge or card it (see like_track above).
                 return (
@@ -248,13 +224,7 @@ def build_curation_tools(cfg: dict, station: StationClient,
                 return actions.refusal()
             res = await station.unblock_track(track_id)
             if not res.get("ok"):
-                actions.denied("refused",
-                               res.get("error") or "the station refused it")
-                return (
-                    f"That didn't come off the list: "
-                    f"{res.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
-                )
+                return actions.station_refused(res, "That didn't come off the list")
             if res.get("already"):
                 # No-op — don't charge or card it (see like_track above).
                 return (

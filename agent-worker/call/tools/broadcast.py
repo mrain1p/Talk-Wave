@@ -118,15 +118,7 @@ def build_on_air_tools(
             waited = await wait_for_clear_air()
             result = await station.dj_say(message, mode=mode, kind="callin")
             if not result.get("ok"):
-                # Card the refusal — see CallActions.denied: the reason on
-                # screen is the reason the persona cannot rewrite.
-                actions.denied("refused",
-                               result.get("error") or "the station refused it")
-                return (
-                    f"That didn't go out: {result.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked. The "
-                    "caller has been shown the refusal on a card."
-                )
+                return actions.station_refused(result, "That didn't go out") + " The caller has been shown the refusal on a card."
             actions.note("announcement", message[:120])
             # The gate closes now, not when the station log catches up — and
             # stays closed for as long as the station will actually be talking.
@@ -201,15 +193,7 @@ def build_on_air_tools(
             waited = await wait_for_clear_air()
             result = await station.run_skill(name)
             if not result.get("ok"):
-                # The receipt channel's refusal half: the caller sees the card
-                # whatever the DJ's prose does with it.
-                actions.denied("refused",
-                               result.get("error") or "the station refused it")
-                return (
-                    f"That segment didn't run: "
-                    f"{result.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
-                )
+                return actions.station_refused(result, "That segment didn't run")
             if result.get("aired") is False:
                 # Station 1.8's stand-down (their #1416): the skill ran, looked
                 # at what it fetched, and had nothing worth saying — a 200 with
@@ -266,15 +250,7 @@ def build_on_air_tools(
             waited = await wait_for_clear_air()
             result = await station.dj_segment(type)
             if not result.get("ok"):
-                # The receipt channel's refusal half: the caller sees the card
-                # whatever the DJ's prose does with it.
-                actions.denied("refused",
-                               result.get("error") or "the station refused it")
-                return (
-                    f"That segment didn't fire: "
-                    f"{result.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
-                )
+                return actions.station_refused(result, "That segment didn't fire")
             actions.note("segment", type)
             secs = speaking_secs(result.get("spoken"), 30)
             guard.mark_on_air(secs, spoken=result.get("spoken") or "")
@@ -294,15 +270,7 @@ def build_on_air_tools(
                 return actions.refusal()
             result = await station.skip_track()
             if not result.get("ok"):
-                # The receipt channel's refusal half: the caller sees the card
-                # whatever the DJ's prose does with it.
-                actions.denied("refused",
-                               result.get("error") or "the station refused it")
-                return (
-                    f"That didn't skip: "
-                    f"{result.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
-                )
+                return actions.station_refused(result, "That didn't skip")
             actions.note("skip", "current track")
             # No hold: skipping makes no speech of its own, so the DJ can keep
             # talking. The next track simply starts.
@@ -363,15 +331,7 @@ def build_on_air_tools(
                          min(StationClient.TAKEOVER_MAX_MINUTES, asked))
             result = await station.pin_show(picked.get("id"), window)
             if not result.get("ok"):
-                # The receipt channel's refusal half: the caller sees the card
-                # whatever the DJ's prose does with it.
-                actions.denied("refused",
-                               result.get("error") or "the station refused it")
-                return (
-                    f"That takeover didn't go through: "
-                    f"{result.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
-                )
+                return actions.station_refused(result, "That takeover didn't go through")
             name = str(picked.get("name") or "that show").strip()
             actions.note("takeover", f"{name} for {window} min")
             # Said out loud because the caller will otherwise be told the show
@@ -420,15 +380,7 @@ def build_on_air_tools(
                 return actions.refusal()
             result = await station.clear_pinned_show()
             if not result.get("ok"):
-                # The receipt channel's refusal half: the caller sees the card
-                # whatever the DJ's prose does with it.
-                actions.denied("refused",
-                               result.get("error") or "the station refused it")
-                return (
-                    f"That didn't cancel: "
-                    f"{result.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
-                )
+                return actions.station_refused(result, "That didn't cancel")
             actions.note("takeover lifted", "back to the weekly schedule")
             return (
                 "Done — the takeover is off and the weekly schedule is back. Like "
@@ -479,15 +431,7 @@ def build_on_air_tools(
                     "queue records in that style one at a time."
                 )
             if not result.get("ok"):
-                # The receipt channel's refusal half: the caller sees the card
-                # whatever the DJ's prose does with it.
-                actions.denied("refused",
-                               result.get("error") or "the station refused it")
-                return (
-                    f"That genre lock didn't go through: "
-                    f"{result.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
-                )
+                return actions.station_refused(result, "That genre lock didn't go through")
             locked = result.get("genres") or wanted
             spoken = ", ".join(str(g) for g in locked)
             actions.note("genre lock", f"{spoken} for {window} min")
@@ -538,15 +482,7 @@ def build_on_air_tools(
                 )
             result = await station.clear_pinned_show()
             if not result.get("ok"):
-                # The receipt channel's refusal half: the caller sees the card
-                # whatever the DJ's prose does with it.
-                actions.denied("refused",
-                               result.get("error") or "the station refused it")
-                return (
-                    f"That didn't lift: "
-                    f"{result.get('error') or 'the station refused it'}. "
-                    "Tell the caller plainly — do not claim it worked."
-                )
+                return actions.station_refused(result, "That didn't lift")
             actions.note("genre lock lifted", "the station can play anything again")
             return (
                 "Done — the genre lock is off and the station can play anything "
