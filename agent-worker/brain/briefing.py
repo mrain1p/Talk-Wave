@@ -134,8 +134,12 @@ def _fmt_now_playing(np: dict, speak_clock: bool = True) -> str:
     elif isinstance(time_ctx, str) and time_ctx:
         where.append(_fld(time_ctx, 40))
     if isinstance(weather, dict) and weather.get("condition"):
+        # `is not None`, not truthiness: a numeric temp of exactly 0 (freezing
+        # C, bitter F) is a real reading the station sends, and `if temp`
+        # silently dropped it — a caller asking how cold it is got the
+        # condition with no number (top-down review, 2026-08-28).
         temp = (f", {_fld(weather['temp'], 12)}{_fld(weather.get('tempUnit', ''), 4)}"
-                if weather.get("temp") else "")
+                if weather.get("temp") is not None else "")
         where.append(f"{_fld(weather['condition'], 40)}{temp}")
     elif isinstance(weather, str) and weather:
         where.append(_fld(weather, 40))

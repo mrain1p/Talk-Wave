@@ -232,7 +232,13 @@ class OnAirGuard(AirVerdict):
         if spoken:
             self.aired_text = str(spoken)
         self.stepped_away = True
-        if self._clear.is_set():
+        # Only ENGAGE the hold when the guard is actually running: the watch
+        # loop is the one thing that ever clears on_air, and it returns early
+        # when disabled (an on-air relay call sets enabled=False). Setting the
+        # flag anyway left it stuck True for the rest of the call after any
+        # announce — freezing the idle watch, the working line and the pacing
+        # meter (top-down review, 2026-08-28). Disabled = no overlap to manage.
+        if self.enabled and self._clear.is_set():
             self._clear.clear()
             self.on_air = True
             self._publish(True)
@@ -343,7 +349,9 @@ class OnAirGuard(AirVerdict):
         if spoken:
             self.aired_text = str(spoken)
         self.stepped_away = True
-        if self._clear.is_set():
+        # Same enabled-gate as mark_on_air: never hold on a guard that has no
+        # watch loop to lift the hold.
+        if self.enabled and self._clear.is_set():
             self._clear.clear()
             self.on_air = True
             self._publish(True)

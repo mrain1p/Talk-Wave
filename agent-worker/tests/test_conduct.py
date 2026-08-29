@@ -123,6 +123,22 @@ class TestActionBulletsRideTheirOwnSwitch(unittest.TestCase):
         self.assertIn("never the answer to what the song IS", bare)
         self.assertIn("they are the one hearing it", bare)
 
+    def test_the_briefing_is_only_called_live_when_it_refreshes(self):
+        # The "briefing is LIVE, refreshed for you" promise is only true under
+        # avoid_on_air_overlap (the watch loop is what re-stages the track).
+        # With the toggle off the briefing is frozen at pickup, so the prompt
+        # must not claim it stays live, or the DJ reads a stale track from
+        # memory (top-down review, 2026-08-28).
+        from brain import conduct
+
+        live = conduct.rules({"avoid_on_air_overlap": True})
+        self.assertIn("is LIVE", live)
+        frozen = conduct.rules({"avoid_on_air_overlap": False})
+        self.assertNotIn("is LIVE", frozen)
+        self.assertIn("when this call CONNECTED", frozen)
+        # Either way, now_playing is the certain read.
+        self.assertIn("subwave_now_playing", frozen)
+
     def test_whats_off_is_said_out_loud_not_just_omitted(self):
         # Absence wasn't enough: with the shoutout bullet merely missing, the
         # DJ still said "that shoutout's in the air now" (refusal sweep,

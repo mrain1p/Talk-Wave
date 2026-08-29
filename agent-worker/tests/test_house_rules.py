@@ -888,7 +888,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # seam again.
         # 668: the earlier-call bullet learns the booth log by name (the
         # day-log's reader, decision 3) — same rule-builders half.
-        "agent-worker/brain/tool_rules.py": (668, "the declarations at the top "
+        # 683 at 0.99.6 (top-down review, 2026-08-28): the "briefing is LIVE"
+        # line now forks on avoid_on_air_overlap — a station that doesn't hold
+        # for callers is told the briefing shows what played when the call
+        # CONNECTED, not what is live now. Fifteen lines, all in the rule
+        # builders half this seam already names; the split is no harder.
+        "agent-worker/brain/tool_rules.py": (683, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
         # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —
@@ -918,7 +923,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # are: the answer depends on the tier, and the shared payload is
         # cached across every caller. Eleven lines, eight of them the note
         # saying why the shelf itself is never published with it.
-        "agent-worker/api/live.py": (646, "the shared payload build split "
+        # 654 at 0.99.6 (top-down review, 2026-08-28): on_air now requires a
+        # REAL persona, not merely a reachable station — an unconfigured box
+        # with a default persona reads as off-air, so the widget stops claiming
+        # a DJ is on when none is. Eight lines on the shared-build side of the
+        # seam, where the card payload is assembled.
+        "agent-worker/api/live.py": (654, "the shared payload build split "
                                           "from the per-caller resolve"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
         # snapshot head start, the MCP warm-up, the join riding prepare). The
@@ -974,7 +984,13 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # toolset) and the optional thinking-sound player — both belong in
         # start() beside the session they configure; the recorded split is
         # still the right one and neither piece moves it.
-        "agent-worker/call/session.py": (896, "the ringing half (prepare, "
+        # 918 at 0.99.6 (top-down review, 2026-08-28): a _started flag guards
+        # the hush sweep from firing before the session exists (a fast hang-up
+        # during ringing used to raise on a half-built call), and the arc's
+        # come-back task now has a shutdown callback that cancels it. Both are
+        # on the LIVE half — start and shutdown ordering — where the seam
+        # already puts them; twenty-two lines, none of it across the cut.
+        "agent-worker/call/session.py": (918, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -1004,7 +1020,14 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 705: vet-before-show (2026-08-28) - the held round, the one
         # rewrite, and the honest release, all in the ChatSession half
         # the recorded seam already names.
-        "agent-worker/chat/session.py": (729, "the one-conversation half "
+        # 762 at 0.99.6 (top-down review, 2026-08-28): chat now writes the
+        # shared postmortem notes on a SimpleNamespace view (repeat/correct,
+        # door, ask, lookup — the same record a call leaves), the vet-before-
+        # show path suppresses a held round WITHOUT dropping its tool calls,
+        # the sweep skips a locked conversation before the idle check, and the
+        # opener/nudge tell the shared state what the DJ said. All in the
+        # ChatSession half; thirty-three lines, none across the seam.
+        "agent-worker/chat/session.py": (762, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "
@@ -1016,6 +1039,24 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
                                               "consultation but the holder + "
                                               "its comment grew the file; the "
                                               "recorded split is unaffected"),
+        # Over the ceiling at 631 at 0.99.6 (top-down review, 2026-08-28),
+        # from 597. The three fixes all land on the REGISTRATION side: the
+        # station is re-registered when the receiver URL drifts (a container
+        # that moved LAN address kept pushing to the old one), a single
+        # asyncio.Lock serialises the two register call sites so a warm-ping
+        # race can't double-register, and the mis-keyed re-key is cooldown-
+        # gated so a station that never accepts the key isn't hammered. The
+        # seam the file has carried all along is the REGISTRATION state machine
+        # (_registration_due, _mis_keyed, _stand_down, register_station_webhook)
+        # against the WARM-PING / TEST loop (keep_station_warm, fire_test_hook,
+        # handle_hooks_test); they meet only at the shared _hook_state and the
+        # admin-client helpers. Deliberately NOT cut in the change that grew
+        # it — the registration path is exactly what these fixes touched, and a
+        # regression in it should have one candidate cause, not two. The same
+        # deferral call/air.py records.
+        "agent-worker/api/hooks.py": (631, "the registration state machine "
+                                           "split from the warm-ping / test "
+                                           "loop"),
         # Back over the ceiling at 630 with the tape-mode class (0.98.5); its
         # earlier entry (676) was rightly deleted when a split took it under.
         # The seam is the same one it has always had: the chunk-store half

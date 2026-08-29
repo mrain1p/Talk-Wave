@@ -106,7 +106,13 @@ async def build_system_prompt(
     # briefing, and the briefing is full of whatever the station happens to be
     # playing. See station.persona_from for the call that went out in the wrong
     # language.
-    dj_language = demojibake(str(persona.get("language") or "").strip())
+    # Capped like every sibling identity field — name, station and show all
+    # take the same cap. dj_language is uncapped station free text that rides
+    # the system prompt on every turn, so a corrupt or hostile /dj value
+    # balloons time-to-first-token — the exact junk it was the only one of the
+    # group to slip (top-down review, 2026-08-28).
+    dj_language = clip(demojibake(str(persona.get("language") or "").strip()),
+                       NAME_BUDGET)
     # Only when the station named one. Empty means English there, and asserting
     # "you speak English" at every DJ on every call would be a sentence bought
     # on every turn to say what the prompt is already written in.

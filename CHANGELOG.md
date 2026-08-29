@@ -3,6 +3,20 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.99.6
+
+A top-down review of the call and chat paths — thirty confirmed findings across seven subsystems, every one reproduced before it was touched and re-checked after. The headline is a "more like this" that seeded its search from nothing on a real station; the rest close a scatter of paper-cuts in what gets logged, what a tool charges for, what the prompt may claim, and what a hung-up call leaves running.
+
+- **"More like this" reads the record that is actually playing.** `subwave_more_like_this` looked for the now-playing track under `track`/`current` and never under `nowPlaying`, the key a real station sends — so on air it seeded its search from an empty record every time. Same missing-key class as the un-like bug 0.98 closed, now fixed for discovery too.
+- **The day-log records the actions callers actually take.** Its kind filter listed a phantom `queue` no tool emits and was missing `album`, `mix` and `never-play lifted` — so an album add or a lifted ban never reached the 48-hour ledger the next call reads. The filter now matches the tools one-for-one, and a test holds the two in step.
+- **A text exchange leaves the same diagnosis notes a call does.** Chat now writes the shared post-mortem — did the caller repeat themselves, correct the DJ, leave an ask open, or ask for a lookup — so a text session that went wrong is as legible after the fact as a phone call. A caller contradicting the DJ is its own recorded problem, separate from repeating.
+- **A no-op tool doesn't charge or print a receipt.** Liking an already-liked track, banning an already-banned one, or lifting a ban that was never set changed nothing at the station but still spent a budget slot and fired a "done" receipt card. The idempotency check now runs first, so a non-event bills nothing and cards nothing.
+- **The prompt stops claiming things it cannot know.** The show-listing table is told never to invent a time or a DJ for a show it only knows the name of; the "briefing is LIVE" line forks on whether the station holds for callers (a station that doesn't is told the briefing shows what played when the call connected); a 0° temperature is no longer dropped as if it were missing; and a momentum block keeps the DJ off the caller's private life.
+- **A hung-up or unconfigured call cleans up after itself.** The time-limit sign-off takes the floor before it speaks (it used to race another speaker), a hush sweep can't fire before the session it sweeps exists, the come-back task an open ask arms is cancelled at shutdown, and a disabled on-air guard never sticks the station in a hold it cannot leave.
+- **The card tells the truth about an empty box.** A station with no real persona configured now reads as off-air rather than "on air" on the strength of being merely reachable.
+- **The webhook registration stops fighting itself.** The station is re-registered when the box's LAN address drifts, one lock serialises the two register call sites so a warm-ping can't double-register, and a station that keeps refusing the key is retried on a cooldown instead of hammered.
+- **The phone card survives a fast second tap.** Ending a call is guarded against firing twice, hold timers and their flags reset between calls, a re-record clears the aborted-start flag, and the ask-list popup wires its document listeners once instead of stacking a new pair each call.
+
 ## 0.99.5
 
 Two independent reviews of the 0.99.4 work — a cloud reviewer and a seven-subsystem top-down pass — landed together. This closes the cloud reviewer's five findings, led by a real regression in 0.99.4's own path-traversal fix.

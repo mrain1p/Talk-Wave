@@ -1598,7 +1598,12 @@ class TestASegmentThatStoodDownIsNotReportedAsAiring(unittest.TestCase):
         from call.tools.broadcast import build_on_air_tools
 
         station = self._Station(result)
-        guard = OnAirGuard(station, {})
+        # Enabled: on_air is only set on a guard that manages overlap (a
+        # disabled guard has no watch loop to lift it — top-down review,
+        # 2026-08-28), so the aired-vs-stood-down distinction these tests
+        # check is only observable here. A disabled guard would leave on_air
+        # False for both and pass the stand-down assertion trivially.
+        guard = OnAirGuard(station, {"avoid_on_air_overlap": True})
         tools = {t.info.name: t for t in build_on_air_tools(
             {"allow_skills": True}, station, CallActions(5), guard,
             guarded=False, skills=["news"])}

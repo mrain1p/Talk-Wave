@@ -312,6 +312,35 @@ class TestSilentCallIsRecorded(unittest.TestCase):
         postmortem._note_if_nothing_was_heard(s, 90.0, [("caller", "hello"), ("dj", "hi")])
         self.assertEqual(s.record.data["problems"], [])
 
+    def test_a_repeat_and_a_contradiction_get_distinct_records(self):
+        # The phone recorded neither; and a contradiction was landing under
+        # the repeat-phrased line (top-down review, 2026-08-28). Now both the
+        # phone (this postmortem check) and chat read the stuck counters and
+        # write distinct problems.
+        from call import postmortem
+        from call.stuck import Stuck
+
+        s = self._session(heard=1)
+        s.stuck = Stuck()
+        # A real repeat, then a real contradiction.
+        s.stuck.hint_for("what song is this")
+        s.stuck.hint_for("what song is this")            # repeat -> repeats=1
+        s.stuck.hint_for("no, you're wrong, it has lyrics")   # contradiction
+        postmortem._note_if_the_caller_repeated_or_corrected(s)
+        whats = " ".join(p["what"] for p in s.record.data["problems"])
+        self.assertIn("had to ask the same thing again", whats)   # stuck
+        self.assertIn("told the DJ it had something wrong", whats)  # contradiction
+
+    def test_a_quiet_call_records_no_stuck_problem(self):
+        from call import postmortem
+        from call.stuck import Stuck
+
+        s = self._session(heard=1)
+        s.stuck = Stuck()
+        s.stuck.hint_for("play some jazz")
+        postmortem._note_if_the_caller_repeated_or_corrected(s)
+        self.assertEqual(s.record.data["problems"], [])
+
     def test_it_records_whether_the_dj_spoke_at_all(self):
         # A DJ that never spoke points at the pipeline; one that did points at
         # the caller's side. The record has to keep them apart.
@@ -3743,9 +3772,35 @@ class TestAHoldAlwaysEnds(unittest.TestCase):
         g._assumed_until = 0.0
         g._pending_until = 0.0
         g.on_air = False
+        # __new__ skips __init__: this fixture exercises the ENABLED guard (a
+        # real hold), so enabled must be set — mark_on_air/mark_pending_air
+        # engage the hold only when it is (top-down review, 2026-08-28).
+        g.enabled = True
         # __new__ skips __init__, so the duck's close has to be set by hand.
         g.duck_pad = OnAirGuard.__dict__.get("duck_pad", DUCK_PAD_SECS)
         return g
+
+    def test_a_disabled_guard_never_sticks_on_air(self):
+        # An on-air relay call disables the guard (no overlap to manage), and
+        # the watch loop that clears on_air returns early — so engaging the
+        # hold there left on_air stuck True for the rest of the call after any
+        # announce, freezing the idle watch and the pacing meter (top-down
+        # review, 2026-08-28). A disabled guard must not hold.
+        import asyncio
+
+        from call.air import OnAirGuard
+
+        g = self._guard()
+        g.enabled = False
+        g._clear = asyncio.Event()
+        g._clear.set()
+        g.room = None
+        g.stepped_away = False
+        g.aired_text = ""
+        OnAirGuard.mark_on_air(g, seconds=10.0)
+        self.assertFalse(g.on_air, "a disabled guard engaged a hold nothing "
+                                   "will ever lift")
+        self.assertTrue(g._clear.is_set(), "the gate was shut with no watcher")
 
     def test_the_unconfirmed_window_is_survivable(self):
         # 90s of a muted caller is not a hold, it is a dropped call that has
@@ -3863,6 +3918,7 @@ class TestTheDuckWritesDownWhatItDid(_TempStores):
         g._clear = __import__("asyncio").Event()
         g._clear.set()
         g.on_air = False
+        g.enabled = True   # the enabled guard: mark_on_air engages the hold
         g.room = None
         g.duck_pad = 4.5
         g._last_buf = 22.0

@@ -46,6 +46,20 @@ from station import StationClient
 
 log = logging.getLogger("callin.token")
 
+# Serialises registration: startup fires two register_station_webhook() calls
+# (the warm loop's first tick and a standalone task), and without this they
+# raced load->mint->store on the shared secret, leaving the station holding
+# one secret and disk another until the next re-key (top-down review,
+# 2026-08-28). Serialised, the second caller reads the first's stored secret
+# and the settled short-circuit skips a redundant re-POST.
+_register_lock = asyncio.Lock()
+
+
+async def _register_once() -> None:
+    """register_station_webhook under the serialising lock."""
+    async with _register_lock:
+        await register_station_webhook()
+
 
 # The id this app registered under before the 0.10.52 rename, recognised as
 # ours forever. The rename shipped claiming "nothing behaves differently" and
@@ -173,6 +187,14 @@ def _registration_due() -> bool:
         return False
     station = settings_store.station_base_url()
     if _hook_state.get("registered") and _hook_state.get("station") == station:
+        # Our OWN callback address can move too — a non-container box whose
+        # DHCP lease changes mid-process keeps the station pushing to the old,
+        # now-dead URL, silently (received frozen, rejected 0, so _mis_keyed
+        # stays False). Re-register to repoint it (top-down review,
+        # 2026-08-28). The station-moved case is handled below; this is the
+        # receiver-moved mirror it was missing.
+        if _hook_state.get("url") and _hook_state["url"] != _receiver_url():
+            return True
         # …unless the station is pushing with a header we cannot verify, which
         # is a registration that succeeded and achieved nothing. Being due is
         # what gets the row re-keyed; see _mis_keyed.
@@ -216,12 +238,20 @@ def _mis_keyed() -> bool:
     run = int(_hook_state.get("rejected") or 0)
     if not run:
         return False
+    last = float(_hook_state.get("rekeyed_at") or 0)
+    cooled = (time.time() - last) > _REKEY_COOLDOWN
     if not _hook_state.get("received"):
-        return True
+        # Never worked. The cooldown gates this too, or a proxy stripping the
+        # Authorization header (received stays 0 for ever) makes us re-mint
+        # and re-POST the row with admin creds every warm tick indefinitely —
+        # the admin-lockout pattern this module guards its other paths against
+        # (top-down review, 2026-08-28). rekeyed_at starts 0, so the FIRST
+        # re-key still fires at once and fixes a genuine secret mismatch; only
+        # the runaway loop is stopped.
+        return cooled
     if run < _BREAK_RUN:
         return False
-    last = float(_hook_state.get("rekeyed_at") or 0)
-    return (time.time() - last) > _REKEY_COOLDOWN
+    return cooled
 
 
 def _stand_down(detail: str, *, permanent: bool) -> None:
@@ -583,15 +613,19 @@ async def keep_station_warm(app: web.Application) -> None:
             # up together (2026-08-16, 01:32:54).
             try:
                 if _registration_due():
-                    await register_station_webhook()
+                    await _register_once()
             except Exception as e:                            # noqa: BLE001
                 log.debug("registration retry failed: %s", describe(e))
             await asyncio.sleep(interval)
 
     task = asyncio.create_task(loop())
     app["warm_task"] = task
-    app["hook_task"] = asyncio.create_task(register_station_webhook())
+    hook_task = asyncio.create_task(_register_once())
+    app["hook_task"] = hook_task
     try:
         yield
     finally:
         task.cancel()
+        # Was never cancelled — a fast restart abandoned an in-flight
+        # registration, leaving a pending-task warning (top-down review).
+        hook_task.cancel()

@@ -551,9 +551,10 @@ class TestEveryMouthSpeaksAsTheSameDJ(unittest.TestCase):
 
         src = inspect.getsource(assemble.build_system_prompt)
         self.assertIn("NAME_BUDGET = 120", src)
-        # Every one of the three identity strings goes through clip(...,
-        # NAME_BUDGET) — the name, the station name, the show name.
-        self.assertEqual(src.count("NAME_BUDGET)"), 3)
+        # Every short identity string goes through clip(..., NAME_BUDGET) —
+        # the DJ name, the station name, the show name, and (since the
+        # top-down review) the persona language.
+        self.assertEqual(src.count("NAME_BUDGET)"), 4)
 
 
 class TestTheConductHarnessCannotReachTheRealStation(unittest.TestCase):

@@ -30,6 +30,7 @@ import asyncio
 import json
 import logging
 import time
+import types
 import uuid
 
 import settings as settings_store
@@ -153,7 +154,6 @@ class ChatSession:
         # WRITE time, so a whole conversation shared one timestamp and the
         # pacing — the thing you read a bad chat back to see — was gone.
         self.turn_at: list[float] = []
-        self.actions_log: list[tuple[str, str]] = []   # (tool, receipt)
         # Every tool the model actually called, with what came back:
         # (when, name, result, failed). The action ledger above is only the
         # SUCCESSES, because that is what a receipt card is for — so a chat
@@ -368,13 +368,14 @@ class ChatSession:
             # message after the caller's line, never inside it. The stuck note
             # still earns its Needs-attention entry; it is the first in the
             # order, so its log line names it.
-            for kind, _log_line, note in self.state.hints_for(text):
+            for _kind, _log_line, note in self.state.hints_for(text):
                 ctx.add_message(role="system", content=note)
-                # A stable kind, not a prose substring: the stuck hit earns
-                # the Needs-attention entry, and a reword of state.py's log
-                # line can no longer silently drop it (cloud review).
-                if kind == "stuck":
-                    self.problems.append(PROBLEMS["stuck"])
+            # The stuck/contradiction Needs-attention entry is written at the
+            # END now, off the guard's own counters, by the shared postmortem
+            # check — the same one the phone runs. The per-turn append here
+            # tagged every "stuck" kind as a repeat, so a caller who CORRECTED
+            # the DJ once (times==1) got a false "asked the same thing again"
+            # problem (top-down review, 2026-08-28). See write_record.
 
             self.remember("caller", text)
             self.messages += 1
@@ -395,8 +396,6 @@ class ChatSession:
             # the assistant turn; the typed loop has the reply in hand and
             # feeds it directly. See call/state.py dj_said.
             self.state.dj_said(reply)
-            self.actions_log.extend(
-                (kind, detail) for kind, detail in actions.taken)
             self.last_active = time.time()
             on_event({"type": "done", "text": reply,
                       "dj": self.persona_name})
@@ -464,25 +463,35 @@ class ChatSession:
                         on_event({"type": "delta", "text": delta.content})
                 if delta.tool_calls:
                     calls.extend(delta.tool_calls)
-            if hold_stream and text_out.strip():
-                if check_after_failure(text_out):
-                    vet_left = 0
-                    self.problems.append(PROBLEMS["claims-again"])
-                    ctx.add_message(role="assistant", content=text_out)
-                    ctx.add_message(role="user", content=(
-                        "[Your reply claims the refused thing happened. It "
-                        "did NOT — the station said no and the caller has "
-                        "been shown that on a card. Rewrite the reply: say "
-                        "plainly it didn't go through, then move on. Do not "
-                        "mention this note.]"))
-                    # The held text was never shown and never reaches
-                    # `reply` — the accumulation below is skipped by this
-                    # continue, so the record keeps only what the caller saw.
+            suppressed = False
+            if hold_stream and text_out.strip() and check_after_failure(text_out):
+                vet_left = 0
+                self.problems.append(PROBLEMS["claims-again"])
+                ctx.add_message(role="assistant", content=text_out)
+                ctx.add_message(role="user", content=(
+                    "[Your reply claims the refused thing happened. It "
+                    "did NOT — the station said no and the caller has "
+                    "been shown that on a card. Rewrite the reply: say "
+                    "plainly it didn't go through, then move on. Do not "
+                    "mention this note.]"))
+                # The lying text is never shown and never reaches `reply`.
+                suppressed = True
+                if not calls:
+                    # Nothing else happened this round — discard and rewrite.
+                    await stream.aclose()
                     continue
+                # But the round ALSO called a tool. That is a real follow-up
+                # action — queueing a DIFFERENT track the caller asked for —
+                # and dropping it with the lie silently vanished the caller's
+                # second request (top-down review, 2026-08-28). Fall through
+                # so the tool runs; only the lying summary is suppressed, and
+                # the rewrite note steers the next round to correct it.
+            elif hold_stream and text_out.strip():
                 # Honest — release the held text as one delta.
                 on_event({"type": "delta", "text": text_out})
             await stream.aclose()
-            reply += text_out
+            if not suppressed:
+                reply += text_out
             if not calls:
                 # A promise with no tool call behind it is the one shape
                 # this loop used to ship as a finished answer. The chat
@@ -665,6 +674,23 @@ class ChatSession:
                 rec.tool(name, detail, at=at, failed=failed)
             for what in self.problems:
                 rec.problem(what)
+            # The end-of-call checks the phone runs, on the guards the text
+            # line also wires — door, stuck, asks — and the finished record.
+            # The chat ran these guards live and recorded none of them, so an
+            # unanswered ask or a held door left a chat looking clean (top-down
+            # review, 2026-08-28). A thin view presents chat's state as the
+            # shape postmortem reads; rec is a real CallRecord, so its
+            # .problem/.data already fit.
+            from call import postmortem
+
+            view = types.SimpleNamespace(
+                record=rec, door=self.state.door, stuck=self.stuck,
+                arc=None, asks=self.asks, actions=self.actions,
+                state=self.state)
+            try:
+                postmortem.write_shared_notes(view)
+            except Exception as e:                             # noqa: BLE001
+                log.warning("chat postmortem notes failed (%s)", e)
             rec.write(reason=reason, keep=int(cfg.get("record_keep") or 0))
         except Exception as e:                                 # noqa: BLE001
             log.warning("could not write chat record %s: %s", self.id, e)
@@ -704,6 +730,13 @@ class ChatShelf:
         age_cap = 60 * int(cfg.get("chat_max_minutes") or 10)
         msg_cap = int(cfg.get("chat_max_messages") or 0)
         for chat_id, chat in list(self.chats.items()):
+            # Never close a chat with a turn in flight: the lock is held for
+            # exactly the streaming window, and closing there aborts the
+            # model mid-stream and finalizes a record missing the erroring
+            # turn (top-down review, 2026-08-28). It ages out on the next
+            # sweep, a heartbeat later, once the turn is done.
+            if chat.lock.locked():
+                continue
             over = (now - chat.last_active > idle_cap
                     or now - chat.started > age_cap
                     or (msg_cap and chat.messages >= msg_cap))

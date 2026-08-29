@@ -118,11 +118,17 @@ class TestFindingMusicByHowItSounds(unittest.TestCase):
     def test_more_like_this_falls_back_to_the_track_on_air(self):
         # "More like this" is what a caller actually says; they never have an
         # id. If the tool needed one it would go unused.
+        #
+        # The fixture nests under `nowPlaying` — the key the REAL station
+        # sends. It used to say `track`, a key no station uses, so this test
+        # passed green while the tool failed 100% on air, telling callers the
+        # record plainly playing wasn't identifiable (top-down review,
+        # 2026-08-28).
         station = _Station(
             neighbours=[{"id": "n1", "title": "Hammer Orchid",
                          "artist": "Will Slater", "bpm": 152,
                          "musicalKey": "Am"}],
-            now={"track": {"subsonic_id": "onair", "title": "Firestone"}})
+            now={"nowPlaying": {"subsonic_id": "onair", "title": "Firestone"}})
         tools = _build(ALL_ON, station)
         out = asyncio.run(tools["subwave_more_like_this"]())
 

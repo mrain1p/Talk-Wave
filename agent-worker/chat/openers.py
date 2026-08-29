@@ -107,6 +107,12 @@ async def greet(chat, cfg: dict, on_event) -> None:
             return
         on_event({"type": "delta", "text": text})
         chat.remember("dj", text)
+        # Feed the door too, like the reply path does: a greeting that ends
+        # "...anything I can spin?" held the door open, and without this the
+        # next caller turn had no memory of it, so the door hint never fired
+        # (top-down review, 2026-08-28). The phone's greeting reaches the door
+        # via the SDK turn event; chat has the text in hand.
+        chat.state.dj_said(text)
         chat.last_active = time.time()
         on_event({"type": "done", "text": text, "dj": chat.persona_name})
     finally:
@@ -141,6 +147,9 @@ async def nudge(chat, cfg: dict, on_event) -> None:
             on_delta=lambda t: on_event({"type": "delta", "text": t}))
         if out:
             chat.remember("dj", out)
+            # The nudge can hold the door open too — feed it to the door so
+            # the next turn can catch a repeated "anything else?".
+            chat.state.dj_said(out)
             chat.last_active = time.time()
         on_event({"type": "done", "text": out, "dj": chat.persona_name})
     finally:

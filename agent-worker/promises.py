@@ -125,6 +125,17 @@ PROBLEMS = {
         "2026-08-20 chat that prompted this asked seven times and was told the wrong thing "
         "every time, because a 404 was being reported as a fact about the record."
     ),
+    # Distinct from "stuck": the caller did not REPEAT, they told the DJ it
+    # had something wrong. Split out because a contradiction was being
+    # recorded under the repeat-phrased "stuck" line above, which reads as a
+    # different (and untrue) event to the operator (top-down review,
+    # 2026-08-28). Also written by call/stuck.py.
+    "contradiction": (
+        "The caller told the DJ it had something wrong — a fact about a track, what they "
+        "could hear — rather than merely asking again. Believe them and go and look: the "
+        "person hearing it is the better witness. Several on one call means the DJ kept "
+        "restating its own answer against the caller instead of checking."
+    ),
     "claim": (
         "The DJ told the caller something had ALREADY been done and ran no tool, so it had "
         "not been. It was given one more turn to make the claim true. This is the shape that "

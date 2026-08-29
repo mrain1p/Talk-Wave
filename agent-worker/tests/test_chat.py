@@ -268,8 +268,13 @@ class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
             text = conduct_chat.rules(cfg)
             self.assertIn("# When they ask what's on", text)
             self.assertIn("Markdown table", text)
-            # The example table proves the exact shape the widget parses.
-            self.assertIn("| Time", text)
+            # The example table proves the shape the widget parses — a Show
+            # column. It must NOT demand Time/DJ, which chat cannot source
+            # (its briefing gives names only), or the DJ fabricates them to
+            # square the grid (top-down review, 2026-08-28).
+            self.assertIn("| Show", text)
+            self.assertIn("A single Show column is a fine table", text)
+            self.assertIn("square off the grid", text)
 
     def test_typed_rules_drop_the_spoken_physics(self):
         from brain import conduct_chat

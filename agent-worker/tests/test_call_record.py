@@ -1267,10 +1267,10 @@ class TestTheDayLogRemembersActionsNotPeople(unittest.TestCase):
     def test_station_changing_kinds_land_and_speech_does_not(self):
         from call import daylog
 
-        daylog.note("queue", "Gimme Shelter", tier="open")
+        daylog.note("album", "Rumours", tier="open")
         daylog.note("announcement", "a shoutout", tier="open")
         daylog.note("skip", "Solar", tier="admin")
-        self.assertEqual(["skip", "queue"],
+        self.assertEqual(["skip", "album"],
                          [e["kind"] for e in daylog.recent()])
 
     def test_no_tier_means_no_entry(self):
@@ -1278,8 +1278,21 @@ class TestTheDayLogRemembersActionsNotPeople(unittest.TestCase):
         # without a door; their notes must never read as a caller's.
         from call import daylog
 
-        daylog.note("queue", "phantom", tier="")
+        daylog.note("album", "phantom", tier="")
         self.assertEqual([], daylog.recent())
+
+    def test_the_daylog_kinds_match_the_tools(self):
+        # KINDS drifted (top-down review, 2026-08-28): it carried two dead
+        # strings and missed three kinds the bulk-queue and un-ban tools
+        # emit, so a whole album a caller queued left NO trace and the DJ
+        # denied it on the ring-back. This pins the door both ways: the
+        # bulk actions ARE remembered, and a kind nothing emits is gone.
+        from call import daylog
+
+        for live in ("album", "mix", "never-play lifted"):
+            self.assertIn(live, daylog.KINDS, f"{live} would be dropped")
+        for dead in ("queue", "allowed again"):
+            self.assertNotIn(dead, daylog.KINDS, f"{dead} is emitted by no tool")
 
     def test_a_request_fallback_logs_no_caller_words(self):
         # Security sitting, 2026-08-28: the request_song fallback paths
@@ -1332,10 +1345,10 @@ class TestTheDayLogRemembersActionsNotPeople(unittest.TestCase):
         from call import daylog
 
         old = [{"t": time.time() - 3 * 24 * 3600, "tier": "open",
-                "kind": "queue", "what": "ancient"}]
+                "kind": "album", "what": "ancient"}]
         daylog._path().parent.mkdir(parents=True, exist_ok=True)
         daylog._path().write_text(json.dumps(old), encoding="utf-8")
-        daylog.note("queue", "fresh", tier="open")
+        daylog.note("album", "fresh", tier="open")
         self.assertEqual(["fresh"], [e["what"] for e in daylog.recent()])
 
     def test_a_note_rides_the_actions_ledger(self):
@@ -1346,6 +1359,6 @@ class TestTheDayLogRemembersActionsNotPeople(unittest.TestCase):
         from call.actions import CallActions
 
         a = CallActions(5, tier="open")
-        a.note("queue", "Africa")
+        a.note("album", "Africa")
         self.assertEqual("Africa", daylog.recent()[0]["what"])
 

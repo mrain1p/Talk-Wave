@@ -199,7 +199,18 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                 )
             if not track_id:
                 now = await station.now_playing()
-                track = now.get("track") or now.get("current") or now
+                # `nowPlaying` FIRST: that is the key the real station nests
+                # the current record under (curation.py and reads.py both
+                # read it, with the 2026-08-16 incident behind them). Without
+                # it, "more like this" with no id — the docstring's primary
+                # path, "what 'this' almost always means on a call" — falls to
+                # `or now`, the whole envelope, whose top-level keys carry no
+                # subsonic_id, and the DJ tells a caller the record plainly
+                # playing "isn't identifiable". Found by the 2026-08-28
+                # top-down review; the one test fed `track`, a key no real
+                # station sends.
+                track = (now.get("nowPlaying") or now.get("track")
+                         or now.get("current") or now)
                 if isinstance(track, dict):
                     track_id = str(track.get("subsonic_id")
                                    or track.get("id") or "")

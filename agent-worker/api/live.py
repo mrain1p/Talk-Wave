@@ -305,8 +305,16 @@ async def handle_live(request: web.Request) -> web.Response:
         # "On air" needs to be a real, distinguishable state. Previously the
         # card just showed whatever came back, so a station that answered but
         # had nobody on air looked identical to one that was live.
-        reachable = bool(health) or bool(now) or bool(persona.get("id"))
-        on_air = reachable and bool(persona.get("id")) and persona["id"] != "default"
+        #
+        # `persona.get("id")` alone was ALWAYS truthy — resolve_live_persona
+        # falls back to id "default" on every path, including when the station
+        # is unreachable — so reachable was a constant True and the widget's
+        # "cannot reach the station" branch was dead code (top-down review,
+        # 2026-08-28). Exclude the sentinel, matching the on_air line just
+        # below: a real persona id, or actual health/now-playing data.
+        real_persona = persona.get("id") not in (None, "", "default")
+        reachable = bool(health) or bool(now) or real_persona
+        on_air = reachable and real_persona
 
         cfg = settings_store.load()
         sound_pack = cfg.get("sound_pack") or "classic"
