@@ -1747,7 +1747,9 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         # Batch 3 — the call core
         "agent-worker/call/air.py::OnAirGuard.watch": (47, "Batch 3 — the on-air watch loop"),
         "agent-worker/call/providers.py::build_llm": (34, "Batch 3 — multi-provider LLM constructor"),
-        "agent-worker/call/air_verdict.py::AirVerdict._push_verdict": (26, "Batch 3 — verdict phase branches"),
+        # air_verdict._push_verdict was here at 26; Batch 3 folded its three
+        # speaking_secs copies into AirVerdict._spoken_secs, dropping it under
+        # the ceiling — row removed, per the ratchet.
         # Batch 4 — the call tools
         "agent-worker/call/tools/removal.py::build_removal_tools.clear_from_queue": (58, "Batch 4 — queue-clear matcher"),
         "agent-worker/call/tools/discovery.py::build_discovery_tools.browse_library": (37, "Batch 4 — library browse"),

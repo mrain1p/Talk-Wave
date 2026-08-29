@@ -81,8 +81,13 @@ class AirVerdict:
         # call that has not seen one yet. The word count is the fallback and
         # only the fallback.
         lag = self.caller_lag()
-        words = speaking_secs(text, int(self.quiet_secs) or 30)
+        words = self._spoken_secs(text)
         return lag - self.handover_secs <= since < lag + words + self.duck_pad
+
+    def _spoken_secs(self, text: str) -> float:
+        """How long `text` takes to say at this guard's floor rate — the one
+        expression the three word-count verdict paths shared."""
+        return speaking_secs(text, int(self.quiet_secs) or 30)
 
     def audible_window(self, state: dict | None = None) -> tuple[float, float]:
         """When the caller STARTS and STOPS hearing the station's newest
@@ -254,7 +259,7 @@ class AirVerdict:
                 return ("busy", text,
                         "Hold that thought — I've got to go on air for a second.")
             audible_to = audible_from + (
-                dur or speaking_secs(text, int(self.quiet_secs) or 30))
+                dur or self._spoken_secs(text))
             if now < audible_from - self.handover_secs:
                 return None      # the call keeps flowing; they cannot hear it yet
             if now < audible_to + tail:
@@ -265,7 +270,7 @@ class AirVerdict:
             # Measured start, and measured length when the station sends one.
             # Both are encoder-side, so the whole window slides by the lag.
             audible_to = audible_from + (
-                dur or speaking_secs(text, int(self.quiet_secs) or 30))
+                dur or self._spoken_secs(text))
             if now < audible_from - self.handover_secs:
                 return None
             if now < audible_to + tail:

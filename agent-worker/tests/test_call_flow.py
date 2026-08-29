@@ -1553,6 +1553,38 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
         self.assertIn("Dave", said[0])
 
 
+class TestTheHushMarkerHasAnOwnerEvenWhenStartRaised(unittest.TestCase):
+    """The hush marker quiets the station during a call and must be removed
+    exactly once. _hush_sweep is the EARLY-DEATH half: a start() that raised
+    after `session` was assigned but before _on_shutdown was registered would
+    otherwise leave the marker with neither owner. The guard is `_started`, and
+    that correctness lived only in comments until this pin (Batch 3)."""
+
+    def test_the_sweep_removes_the_marker_only_when_start_never_finished(self):
+        import asyncio
+
+        from call.session import CallSession
+        from onair import hush
+
+        calls = []
+        real, hush.call_ended = hush.call_ended, lambda room: calls.append(room)
+        try:
+            s = CallSession.__new__(CallSession)
+            s.room_name = "room-x"
+            # start() never finished (_started stays False) -> the sweep owns it.
+            s._started = False
+            asyncio.run(s._hush_sweep())
+            self.assertEqual(calls, ["room-x"])
+            # a call that fully started -> _on_shutdown's tail owns removal, and
+            # the sweep must NOT double-remove.
+            calls.clear()
+            s._started = True
+            asyncio.run(s._hush_sweep())
+            self.assertEqual(calls, [])
+        finally:
+            hush.call_ended = real
+
+
 class TestTheStationClientOutlivesTheShutdownWork(unittest.TestCase):
     """The SDK runs shutdown callbacks CONCURRENTLY, and station.aclose was
     registered as its own — so the first tape soak (callin-ol-cd4e089a2eb0,

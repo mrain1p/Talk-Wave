@@ -43,14 +43,11 @@ MAX_WAIT_SECS = 8.0
 
 
 def attach_floor_watch(session, floor: "Floor") -> None:
-    """Tell the floor when the caller speaks, so it can drop stale turns."""
+    """Tell the floor when the caller speaks, so it can drop stale turns. The
+    final/non-empty caller-line unwrap lives once in watch.on_caller_line."""
+    from . import watch
 
-    def _on_caller(ev) -> None:
-        if getattr(ev, "is_final", True) and str(
-                getattr(ev, "transcript", "") or "").strip():
-            floor.caller_spoke()
-
-    session.on("user_input_transcribed", _on_caller)
+    watch.on_caller_line(session, lambda _t: floor.caller_spoke())
 
 
 class Floor:

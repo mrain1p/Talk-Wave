@@ -9,6 +9,7 @@ Release notes for operators. One entry per release to `main`; work in flight on
 The maintainability plan, landing on `dev` with the version held steady (see docs/adr/review-ledger.md); this becomes the next `0.99.N` heading at the next release to `main`. No behaviour change in any of it.
 
 - **Batch 2 — the api edge.** The call-record and log readback handlers (`/calls`, `/logs`) moved out of the 1,583-line `diagnostics.py` into a new `api/readback.py`, leaving diagnostics as purely the `/test/*` probes — two different jobs (does it work vs. what happened) that had cohabited. And the guest-door rule — whether the guest tier is reachable — is now one function (`guest_door_open`) instead of two spellings that the code's own comment warned would drift apart; a truth-table test pins it.
+- **Batch 3 — the call core.** The event-unwrap the call guards share — "a DJ line is an assistant item's stripped text, a caller line is a final transcript" — was written six times across the guard modules; it now lives once in `call/watch.py` and each guard delegates, with two dead watcher functions removed. Three more inline duplications collapsed to one home each: the spoken-length estimate in the on-air verdict, and the 240-second on-air window shared by the DJ's promise and the relay's deadline. A test now pins the hush-marker's exactly-once removal. No behaviour change; the two call-core god-objects (`session.py`, `air.py`) were left for a later, harness-backed pass.
 
 ## 0.99.9
 

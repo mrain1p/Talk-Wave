@@ -103,19 +103,9 @@ class ConversationState:
 
 
 def attach_state_watch(session, state: ConversationState) -> None:
-    """One watcher on the DJ's lines, where there used to be one per guard.
+    """One watcher on the DJ's lines, fanning to every guard through
+    ConversationState.dj_said. The event unwrap lives once in watch.on_dj_line
+    now; this is the wiring that used to be a copy per guard."""
+    from . import watch
 
-    Same shape as the watchers it replaces (door.attach_door_watch,
-    arc.attach_arc_watch), for the same reason: the event is the only place
-    that knows what actually went out.
-    """
-
-    def _on_said(ev) -> None:
-        item = getattr(ev, "item", None)
-        if getattr(item, "role", None) != "assistant":
-            return
-        text = str(getattr(item, "text_content", "") or "").strip()
-        if text:
-            state.dj_said(text)
-
-    session.on("conversation_item_added", _on_said)
+    watch.on_dj_line(session, state.dj_said)

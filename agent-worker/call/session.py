@@ -43,7 +43,7 @@ from station_config import StationConfig
 from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
 
 from onair import hush
-from onair.relay import CallRelay
+from onair.relay import CallRelay, on_air_window_secs
 
 from . import (arc as arc_mod, asks as asks_mod, background, clocks, comeback,
                door, floor as floor_mod, greeting, handoff, heard as heard_mod,
@@ -570,7 +570,7 @@ class CallSession:
                 # window is enforced regardless, so without this a live
                 # phone-in simply stopped mid-thought whenever the clock ran
                 # out. Radio does not end a segment that way.
-                window = int(self.cfg.get("on_air_max_seconds") or 0) or 240
+                window = int(on_air_window_secs(self.cfg))
                 # The on_air scope's moment: the relay is armed, this call IS
                 # going to broadcast. (The "all" scope engaged back in
                 # prepare(), where the greeting is still ahead.)

@@ -167,6 +167,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestAnOpenAskComesBackWithoutReasking,
     TestOneStateObjectFeedsTheReplyPath,
     TestTheLabelJudgesWhatTheLexiconsCannot,
+    TestTheHushMarkerHasAnOwnerEvenWhenStartRaised,
     TestTheStationClientOutlivesTheShutdownWork,
     TestRingingRidesTheMintsHeadStart,
     TestTheBriefingStopsBeingWrongWhenTheStationMovesOn,

@@ -102,3 +102,51 @@ split (Batch 2 file, but the payload assembly is its own large job), the
 diagnostics probe helpers' shared error-shaping, and the several api/ modules'
 in-memory usage-ledger duplication — none blocking, recorded for when those
 files are the subject.
+
+---
+
+## Batch 3 — the call core (2026-08-29)
+
+The theme was **consolidation**, not god-object surgery: the two big objects
+(`session.py`, `air.py`) are timing-sensitive and their correctness lives in
+ordering comments, so their splits are deferred. What shipped removes drift
+surfaces and dead code.
+
+- **`call/watch.py` — the event-unwrap has one home.** "A committed DJ line is
+  an assistant item's stripped `text_content`" was written four times (door,
+  arc, state, comeback) and the caller-line unwrap twice (floor, asks). It now
+  lives once (`dj_line`/`caller_line`/`on_dj_line`/`on_caller_line`); the four
+  live watchers delegate, keeping their `attach_*` names and the session.py
+  wiring byte-identical. Two dead functions (`attach_door_watch`,
+  `attach_arc_watch` — orphaned when `state.py`'s consolidated watcher landed)
+  were deleted. **Kept OUT deliberately** (they diverge and would silently
+  break): `lifecycle.attach_card_flush` (fires on an empty assistant item),
+  `clocks` idle (resets on partial transcripts), `promise_guard._on_caller`
+  (resets on an empty final), `think_pace` (reads metrics, not text). Folding
+  those needs per-handler predicates and their own proof — a deliberate
+  follow-on, not this batch's clean win.
+- **`AirVerdict._spoken_secs` — 3 copies → 1.** `speaking_secs(text,
+  int(self.quiet_secs) or 30)` was inline at three verdict sites; one method
+  now. It dropped `_push_verdict` under the complexity ceiling, so its ledger
+  row was removed in the same commit.
+- **`onair.relay.on_air_window_secs(cfg)` — one home for the 240s window.** The
+  DJ's promised on-air window and the relay's enforced deadline are the SAME
+  number, written inline three times; now one helper. The session prompt casts
+  it to `int` so its "About N minute(s)" display is unchanged.
+- **A pin for the hush-marker owner.** `TestTheHushMarkerHasAnOwnerEvenWhenStartRaised`
+  fixes the exactly-once removal correctness that had lived only in `_started`'s
+  comments.
+
+### Deferred (with reason)
+- **session.py god-object split** — the file is long-but-FLAT (breadth of
+  wiring, not depth), and correctness is ordering across concurrent shutdown
+  callbacks. A split relocates coupling rather than reducing it; revisit only
+  after the ordering is test-pinned. The size ledger keeps ratcheting it down as
+  features consolidate.
+- **air.py / clocks.py god-objects** — incident-scarred, timing-sensitive (the
+  duck, the idle watch). Seams recorded; do not cut without a live-call harness.
+- **record.py builder/store split + the `_record_path`/`_find_by_room` path
+  consolidation** — genuinely safe but its own focused pass; deferred to keep
+  this batch to the call-guard consolidation.
+- **The divergent watchers** (above) — need per-handler predicates before they
+  can share the `watch.py` plumbing.
