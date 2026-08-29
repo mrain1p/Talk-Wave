@@ -13,6 +13,8 @@ how loud a costume may be, not part of any one character.
 
 from __future__ import annotations
 
+from jsonstore import write_atomic
+
 import json
 import os
 from pathlib import Path
@@ -51,16 +53,4 @@ def set_effect(persona_id: str, effect: str) -> None:
         data[pid] = str(effect).strip()
     else:
         data.pop(pid, None)
-    target = _path()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(".json.tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=1, sort_keys=True)
-    # Synology creates files with mode 000 and root never noticed; the
-    # non-root container did. Same self-chmod every store here performs.
-    for path, mode in ((target.parent, 0o755), (tmp, 0o644)):
-        try:
-            os.chmod(path, mode)
-        except OSError:
-            pass
-    tmp.replace(target)
+    write_atomic(_path(), data, dir_mode=0o755, indent=1, sort_keys=True)

@@ -14,6 +14,8 @@ One line at a time, by design. Opening a new one replaces whatever was there.
 
 from __future__ import annotations
 
+from jsonstore import write_atomic
+
 import json
 import logging
 import os
@@ -67,15 +69,8 @@ def write(record: dict | None) -> None:
         except OSError as e:
             log.warning("could not clear the open line: %s", e)
         return
-    tmp = path.with_suffix(".json.tmp")
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(record, f, indent=1, sort_keys=True)
-        try:
-            os.chmod(tmp, 0o644)
-        except OSError:
-            pass
-        tmp.replace(path)
+        write_atomic(path, record, indent=1, sort_keys=True)
     except OSError as e:
         log.warning("could not write the open line: %s", e)
 

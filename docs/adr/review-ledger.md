@@ -217,3 +217,38 @@ the shipped prompt for one path and trip the byte-identity guards. Left as-is.
 - `assemble.build_system_prompt`'s re-resolution — deliberate preview-vs-call
   divergence (the preview resolves at admin tier to show the fullest capability
   set); all three re-resolves are fallbacks the call path never hits.
+
+---
+
+## Batch 6 — chat / onair / openlines / voicemail (2026-08-29)
+
+- **The atomic-JSON-store idiom — 9 sites → one helper.** The same shape (make
+  the parent, write JSON through a `.json.tmp` neighbour, best-effort chmod for
+  the Synology mode-000 share, then `os.replace`) had grown independently in nine
+  write blocks. New platform module `jsonstore.py` owns it (`write_atomic`,
+  `read_or`, `store_path`), with the only two axes that genuinely differ — the
+  file mode and whether the dir is chmod'd — as parameters. Adopted at all nine:
+  openlines/state + premises, voicemail/greetings (×2) + review + deliver
+  (0700/0600 private), settings.save (0644, inside its lock), secrets_store
+  (0600), voice_effects. A direct test (`TestTheJsonStoreIdiom`) pins the
+  atomicity, the mode, the temp name, and read_or's seed behaviour. Full suite
+  green — the fold is behaviour-preserving at every site.
+- **Deliberately left out of the fold** (the review's per-site call): admin_auth
+  — its read must keep absent-vs-corrupt APART (fail-closed: unreadable ⇒ "a
+  password IS set"), which `read_or` would erase (a security regression);
+  settings._stored's read — it runs `_migrate({})` on absent, not a bare seed, so
+  folding would apply old-default stamps to a fresh store; call/record's three
+  writes (different temp name + split dir-chmod — a real fold but not
+  byte-identical); daylog/stats/prefetch (a leaner no-chmod sub-idiom — folding
+  would ADD a chmod they don't have).
+
+### Deferred follow-ons (safe, not done this batch)
+- **The "one LLM pass" ×4** — only the *un-tooled single pass* (~7 sites) is truly
+  identical; a `stream_reply` primitive in `call/providers.py` would fold those.
+  The tooled loops diverge. Worth a focused pass.
+- **Two call/ privates crossing into voicemail** — `_query_variants` and
+  `_match_show` → public (the Batch-5 `is_spoken` move). Cheap honest-coupling.
+- **`settings.data_dir()`** — expose `SETTINGS_PATH.parent` to kill a hand-counted
+  `Path(__file__).parent` walk that has miscounted before.
+- The **cross-process `data/` seam** (onair/chunks, hush, openlines/state) is
+  **accepted** as sound architecture, documented, not a fix.

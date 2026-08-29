@@ -14,6 +14,8 @@ The use count and last-aired are still kept, they just no longer decide.
 
 from __future__ import annotations
 
+from jsonstore import write_atomic
+
 import json
 import logging
 import os
@@ -115,16 +117,8 @@ def _mark_shipped(items: list[dict]) -> list[dict]:
 
 
 def _write(items: list[dict]) -> None:
-    PREMISES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = PREMISES_PATH.with_suffix(".json.tmp")
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"items": items}, f, indent=1)
-        try:
-            os.chmod(tmp, 0o644)
-        except OSError:
-            pass
-        tmp.replace(PREMISES_PATH)
+        write_atomic(PREMISES_PATH, {"items": items}, indent=1)
     except OSError as e:
         log.warning("could not write the premise shelf: %s", e)
 

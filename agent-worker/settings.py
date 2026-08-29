@@ -18,6 +18,8 @@ field is how you go back to the env/default rather than setting empty string.
 
 from __future__ import annotations
 
+from jsonstore import write_atomic
+
 import json
 import logging
 import os
@@ -1410,22 +1412,10 @@ def save(patch: dict) -> dict:
         # default moved (the 0.10.80 stamps read this).
         current["_rev"] = STORE_REV
 
-        SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = SETTINGS_PATH.with_suffix(".json.tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(current, f, indent=2, sort_keys=True)
-        # Set the mode explicitly rather than inheriting whatever the
-        # filesystem hands out. On a Synology share the default for a newly
-        # created file is 000 — no bits at all — which root ignores and a
-        # normal user cannot read past. secrets.json and admin-auth.json were
-        # only ever spared that because they chmod themselves; this file did
-        # not, and it is why a non-root container could not read its own
-        # settings. 0644: config, safe to copy or diff, unlike the other two.
-        try:
-            os.chmod(tmp, 0o644)
-        except OSError:
-            pass  # best effort; Windows ACLs don't map cleanly
-        tmp.replace(SETTINGS_PATH)
+        # 0644 (the write_atomic default): config, safe to copy or diff,
+        # unlike secrets/admin-auth. On a Synology share a new file arrives
+        # mode 000, so this SETS the mode rather than merely tightening it.
+        write_atomic(SETTINGS_PATH, current, indent=2, sort_keys=True)
 
     log.info("settings updated: %s", ", ".join(sorted(patch)) or "(none)")
     return load()

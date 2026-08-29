@@ -827,6 +827,55 @@ class TestACommentedEnvValueIsNamedAtBoot(_TempStores):
                 os.environ["SUBWAVE_MCP_URL"] = old
 
 
+class TestTheJsonStoreIdiom(unittest.TestCase):
+    """jsonstore.write_atomic / read_or — the atomic-write idiom nine stores
+    (settings, secrets, voicemail, open-lines, voice-effects) once hand-rolled,
+    consolidated at Batch 6. Pins the atomicity, the file mode, the `.json.tmp`
+    temp name the voicemail sweep skips, and read_or's absent/corrupt/wrong-type
+    -> seed behaviour that admin_auth deliberately does NOT use."""
+
+    def setUp(self):
+        import tempfile
+
+        self._d = tempfile.TemporaryDirectory()
+        self.addCleanup(self._d.cleanup)
+
+    def _p(self, name):
+        return Path(self._d.name) / name
+
+    def test_write_is_atomic_and_leaves_no_json_tmp(self):
+        import jsonstore
+
+        p = self._p("store.json")
+        jsonstore.write_atomic(p, {"a": 1})
+        self.assertEqual(jsonstore.read_or(p, {}), {"a": 1})
+        # the temp name is <name>.tmp = .json.tmp (what the sweep skips), and it
+        # is gone after the replace.
+        self.assertFalse(self._p("store.json.tmp").exists())
+
+    def test_read_or_seeds_on_absent_corrupt_and_wrong_type(self):
+        import jsonstore
+
+        self.assertEqual(jsonstore.read_or(self._p("nope.json"), {"s": 1}), {"s": 1})
+        bad = self._p("bad.json")
+        bad.write_text("{not json", encoding="utf-8")
+        self.assertEqual(jsonstore.read_or(bad, []), [])
+        wrong = self._p("wrong.json")
+        jsonstore.write_atomic(wrong, [1, 2, 3])
+        self.assertEqual(jsonstore.read_or(wrong, {}), {})
+
+    def test_the_file_mode_is_applied_where_chmod_takes(self):
+        import os
+        import stat
+
+        import jsonstore
+        if os.name != "posix":
+            self.skipTest("chmod is a no-op off POSIX")
+        p = self._p("secret.json")
+        jsonstore.write_atomic(p, {"k": "v"}, file_mode=0o600)
+        self.assertEqual(stat.S_IMODE(p.stat().st_mode), 0o600)
+
+
 class TestTheGuestDoorRuleHasOneSpelling(unittest.TestCase):
     """Whether the guest tier is reachable is ONE rule, consolidated into
     settings_store.guest_door_open at Batch 2 (2026-08-29). It was spelled out
