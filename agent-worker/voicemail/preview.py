@@ -131,7 +131,7 @@ async def _capture_tool_call(cfg: dict, text: str, tools: list):
     """
     from livekit.agents.llm import ChatContext
 
-    from call.providers import build_llm
+    from call.providers import build_llm, stream_reply
 
     llm = build_llm(cfg)
     ctx = ChatContext.empty()
@@ -143,12 +143,7 @@ async def _capture_tool_call(cfg: dict, text: str, tools: list):
     ctx.add_message(role="user", content=text[:600])
     calls: list = []
     try:
-        stream = llm.chat(chat_ctx=ctx, tools=tools)
-        async for chunk in stream:
-            delta = getattr(chunk, "delta", None)
-            if delta and getattr(delta, "tool_calls", None):
-                calls.extend(delta.tool_calls)
-        await stream.aclose()
+        _, calls = await stream_reply(llm, ctx, tools=tools)
     except Exception as e:                                    # noqa: BLE001
         log.warning("draft tool triage failed (%s) — no action previewed", e)
         return None

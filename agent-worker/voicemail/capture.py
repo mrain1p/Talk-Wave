@@ -183,7 +183,7 @@ async def _fresh_greeting(cfg: dict, persona: dict) -> tuple[bytes, int] | None:
     but the template is the fallback for a model that answers strangely, and
     the caller of this owns the clock.
     """
-    from call.providers import build_llm, build_tts
+    from call.providers import build_llm, build_tts, stream_reply
     from station_config import StationConfig
 
     text = greetings.greeting_text_for(
@@ -207,14 +207,9 @@ async def _fresh_greeting(cfg: dict, persona: dict) -> tuple[bytes, int] | None:
                 "booth could not take live. One spoken line, under 25 words, "
                 "in your own voice, ending by telling them to leave a "
                 "message after the beep. The line only — no quotes."))
-            chunks = []
-            async with llm.chat(chat_ctx=chat_ctx) as st:
-                async for chunk in st:
-                    delta = getattr(chunk, "delta", None)
-                    if delta and getattr(delta, "content", None):
-                        chunks.append(delta.content)
+            content, _ = await stream_reply(llm, chat_ctx)
             await llm.aclose()
-            line = " ".join("".join(chunks).split())
+            line = " ".join(content.split())
             if 8 <= len(line) <= 300:
                 text = line
         except Exception as e:                                # noqa: BLE001

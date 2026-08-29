@@ -367,10 +367,40 @@ Working through the review's deferred backlog, doing only the safe/verifiable on
   `watch.py`.
 - **The widget audio merges** (`playPcm`/`playPcmWithEffect`, `mmss`/`fmt`) —
   unprovable without a manual TTS listen; no JS harness.
-- **`tts_voices.py` split** and the **`stream_reply` LLM primitive** — real
-  consolidations, but each touches a behaviour-sensitive seam (TTS / LLM
-  streaming) and deserves its own focused, measured pass rather than riding a
-  cleanup batch.
+- **`tts_voices.py` split** — a real consolidation, but it touches a
+  behaviour-sensitive TTS seam and deserves its own focused, measured pass
+  rather than riding a cleanup batch. (The other seam that sat here, the
+  `stream_reply` LLM primitive, got its measured pass — see below.)
 - **`settings.data_dir()`** — only pays off if the ~10 import-time store-path
   constants route through it, which is a risky import-time/test-reassignment
   change; its own pass.
+
+## The off-turn LLM drain — `stream_reply` (2026-08-29, → 0.99.11)
+
+The one behaviour-sensitive LLM seam the review had deferred (above), done as
+its own measured pass. Eight callers each ask the model for one thing away from
+the call's main turn and hand-rolled the same open/drain/close loop:
+
+- **Shape A (content, 7):** `chat/openers.py:_one_line`, `openlines/premise.py`,
+  `openlines/followup.py`, `openlines/quiz.py`, `call/handoff.py:_compose`,
+  `voicemail/deliver.py:_triage`, `voicemail/capture.py:_fresh_greeting`.
+- **Shape B (tool_calls, 1):** `voicemail/preview.py:_capture_tool_call` — reads
+  the tool the model *would* call off the stream and runs nothing.
+
+Folded onto one `call/providers.py:stream_reply(model, ctx, *, tools, on_delta)`
+returning `(content, calls)`. The load-bearing safety property: **it closes only
+the stream, never the model.** The callers do not agree on model ownership —
+`handoff._compose` *borrows* the live session's `llm` and must hand it back
+open; `openers` and `capture` build-and-close their own; the rest close in a
+`finally`. Putting `model.aclose()` in the primitive would have closed the live
+session's model out from under the on-air handoff. So each caller keeps its own
+`build_llm`, error policy, `model.aclose` (or deliberate non-close), and parse;
+only the mechanical drain moved.
+
+Deliberately NOT folded (different shapes on purpose): `chat/session.py`'s
+multi-round tool loop, and `/test/llm`'s probe that mirrors the drain to *show*
+the operator the raw stream.
+
+Verified: full suite 32/32, ruff clean. No behaviour change — the primitive
+reproduces each site's accumulate-and-close exactly, including on_delta
+streaming (openers) and tool_calls accumulation (preview).

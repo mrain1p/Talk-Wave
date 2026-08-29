@@ -267,6 +267,43 @@ def llm_conn_options(cfg: dict) -> APIConnectOptions:
     return APIConnectOptions(timeout=timeout, max_retry=retries)
 
 
+async def stream_reply(model, ctx, *, tools=None, on_delta=None):
+    """Drain ONE `model.chat` pass: accumulate the content (and the tool calls,
+    when `tools` is given), then close the STREAM. Returns `(content, calls)`.
+
+    The single-pass drain seven off-turn callers hand-rolled — greetings,
+    premises, follow-ups, the quiz, voicemail triage/greeting, the on-air
+    handoff — plus the tool-call read the voicemail draft preview does. It
+    closes only the stream, NEVER the model: some callers BORROW an existing
+    llm (the handoff uses the live session's) and must close it themselves, or
+    not at all. Each caller keeps its own build_llm, error policy, `model.aclose`
+    and parse — only the mechanical open/drain/close lives here now. (Not for
+    chat/session's multi-round tool loop, nor /test/llm's deliberate mirror —
+    those are different shapes on purpose.)
+    """
+    content = ""
+    calls: list = []
+    stream = (model.chat(chat_ctx=ctx, tools=tools) if tools
+              else model.chat(chat_ctx=ctx))
+    try:
+        async for chunk in stream:
+            delta = getattr(chunk, "delta", None)
+            if not delta:
+                continue
+            piece = getattr(delta, "content", None)
+            if piece:
+                content += piece
+                if on_delta:
+                    on_delta(piece)
+            if tools:
+                tc = getattr(delta, "tool_calls", None)
+                if tc:
+                    calls.extend(tc)
+    finally:
+        await stream.aclose()
+    return content, calls
+
+
 def build_tts(cfg: dict, voice: str) -> AdapterTTS:
     # Blank since 0.10.85's defaults review, like the LLM: nothing is picked
     # until the operator picks it. Refusing with the fix beats limping into
