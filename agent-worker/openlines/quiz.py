@@ -230,7 +230,7 @@ async def resolve(cfg: dict, station, persona: dict, snapshot: dict,
     from livekit.agents import llm as lk_llm
 
     from brain.assemble import build_system_prompt
-    from call.providers import build_llm
+    from call.providers import build_llm, stream_reply
 
     facts = facts_from(snapshot or {}, show or {}, persona or {})
 
@@ -244,12 +244,7 @@ async def resolve(cfg: dict, station, persona: dict, snapshot: dict,
     model = build_llm(cfg)
     out = ""
     try:
-        stream = model.chat(chat_ctx=ctx)
-        async for chunk in stream:
-            delta = getattr(chunk, "delta", None)
-            if delta and delta.content:
-                out += delta.content
-        await stream.aclose()
+        out, _ = await stream_reply(model, ctx)
     except Exception as e:                                     # noqa: BLE001
         # Nothing has aired, so the director simply tries again next pass.
         log.info("could not set a quiz: %s", e)

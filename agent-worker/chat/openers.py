@@ -39,7 +39,7 @@ async def _one_line(cfg: dict, station, persona, instruction: str,
     from livekit.agents import llm as lk_llm
 
     from brain.assemble import build_system_prompt
-    from call.providers import build_llm
+    from call.providers import build_llm, stream_reply
 
     prompt = await build_system_prompt(station, persona, cfg=cfg, mode="chat")
     ctx = lk_llm.ChatContext.empty()
@@ -52,14 +52,7 @@ async def _one_line(cfg: dict, station, persona, instruction: str,
     model = build_llm(cfg)
     out = ""
     try:
-        stream = model.chat(chat_ctx=ctx)
-        async for chunk in stream:
-            delta = getattr(chunk, "delta", None)
-            if delta and delta.content:
-                out += delta.content
-                if on_delta:
-                    on_delta(delta.content)
-        await stream.aclose()
+        out, _ = await stream_reply(model, ctx, on_delta=on_delta)
     finally:
         try:
             await model.aclose()

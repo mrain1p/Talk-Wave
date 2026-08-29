@@ -140,14 +140,12 @@ async def send_on_air_callback(
 
             model = build_llm(cfg)
 
+        from .providers import stream_reply
+
         async def _compose() -> str:
-            out = ""
-            stream = model.chat(chat_ctx=ctx)
-            async for chunk in stream:
-                delta = getattr(chunk, "delta", None)
-                if delta and getattr(delta, "content", None):
-                    out += delta.content
-            await stream.aclose()
+            # Borrows the live session's llm — close only the stream, never
+            # the model. stream_reply does exactly that.
+            out, _ = await stream_reply(model, ctx)
             return out
 
         # Capped so a stalled provider can't eat the whole shutdown budget.

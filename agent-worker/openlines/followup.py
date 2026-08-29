@@ -110,7 +110,7 @@ async def line_for(cfg: dict, station, persona: dict, premise: str,
     from livekit.agents import llm as lk_llm
 
     from brain.assemble import build_system_prompt
-    from call.providers import build_llm
+    from call.providers import build_llm, stream_reply
     from openlines.premise import _clean
 
     transcript = _transcript(record)
@@ -126,12 +126,7 @@ async def line_for(cfg: dict, station, persona: dict, premise: str,
     model = build_llm(cfg)
     out = ""
     try:
-        stream = model.chat(chat_ctx=ctx)
-        async for chunk in stream:
-            delta = getattr(chunk, "delta", None)
-            if delta and delta.content:
-                out += delta.content
-        await stream.aclose()
+        out, _ = await stream_reply(model, ctx)
     except Exception as e:                                     # noqa: BLE001
         # Nothing has aired, so this is not worth waking anyone for. The
         # conversation is marked seen by the caller either way — retrying a

@@ -76,7 +76,7 @@ def set_override(persona_id: str, text: str) -> None:
         overrides[pid] = str(text).strip()[:400]
     else:
         overrides.pop(pid, None)
-    write_atomic(_overrides_path(), overrides, dir_mode=0o755,
+    write_atomic(_overrides_path(), overrides, dir_mode=0o700,
                  indent=1, sort_keys=True)
 
 
@@ -160,7 +160,7 @@ def read_index() -> dict:
 
 
 def _write_index(index: dict) -> None:
-    write_atomic(_index_path(), index, dir_mode=0o755,
+    write_atomic(_index_path(), index, dir_mode=0o700,
                  indent=1, sort_keys=True)
 
 

@@ -15,7 +15,7 @@ import asyncio
 import unittest
 
 from call.actions import CallActions
-from call.tools.broadcast import _match_show, build_on_air_tools
+from call.tools.broadcast import match_show, build_on_air_tools
 from station import StationClient
 
 
@@ -85,25 +85,25 @@ class TestNamingAShowTheCallerSaid(unittest.TestCase):
 
     def test_an_exact_id_wins(self):
         self.assertEqual(
-            _match_show(_Station.SHOWS, "s-break")["id"], "s-break")
+            match_show(_Station.SHOWS, "s-break")["id"], "s-break")
 
     def test_a_name_matches_whatever_the_caller_capitalised(self):
         for said in ("The Late Show", "the late show", "  THE LATE SHOW  "):
-            self.assertEqual(_match_show(_Station.SHOWS, said)["id"], "s-late", said)
+            self.assertEqual(match_show(_Station.SHOWS, said)["id"], "s-late", said)
 
     def test_part_of_a_name_is_enough_when_only_one_show_has_it(self):
-        self.assertEqual(_match_show(_Station.SHOWS, "breakfast")["id"], "s-break")
+        self.assertEqual(match_show(_Station.SHOWS, "breakfast")["id"], "s-break")
 
     def test_an_ambiguous_word_matches_nothing_rather_than_guessing(self):
         # "night" is in both The Late Show's stablemate and Night Owls here by
         # design. Picking the first would put a show nobody asked for on air —
         # station-wide, for an hour, on a coin toss.
         shows = [{"id": "a", "name": "Night Owls"}, {"id": "b", "name": "Late Night"}]
-        self.assertIsNone(_match_show(shows, "night"))
+        self.assertIsNone(match_show(shows, "night"))
 
     def test_nothing_asked_for_matches_nothing(self):
         for said in ("", "   ", None):
-            self.assertIsNone(_match_show(_Station.SHOWS, said), repr(said))
+            self.assertIsNone(match_show(_Station.SHOWS, said), repr(said))
 
 
 class TestPinningAShow(unittest.TestCase):
@@ -368,9 +368,9 @@ class TestADJsNameResolvesToTheirShow(unittest.TestCase):
     ]
 
     def _match(self, wanted):
-        from call.tools.broadcast import _match_show
+        from call.tools.broadcast import match_show
 
-        return _match_show(self.SHOWS, wanted, self.PEOPLE)
+        return match_show(self.SHOWS, wanted, self.PEOPLE)
 
     def test_the_full_name_finds_the_show(self):
         self.assertEqual(self._match("Duke Sterling")["id"], "s1")
@@ -391,10 +391,10 @@ class TestADJsNameResolvesToTheirShow(unittest.TestCase):
         self.assertIsNone(self._match("Bananaman"))
 
     def test_no_personas_supplied_behaves_exactly_as_before(self):
-        from call.tools.broadcast import _match_show
+        from call.tools.broadcast import match_show
 
-        self.assertIsNone(_match_show(self.SHOWS, "duke"))
-        self.assertEqual(_match_show(self.SHOWS, "Late Feels")["id"], "s4")
+        self.assertIsNone(match_show(self.SHOWS, "duke"))
+        self.assertEqual(match_show(self.SHOWS, "Late Feels")["id"], "s4")
 
 
 class TestTheDJDoesNotBlameTheWeatherForItsOwnMiss(unittest.TestCase):
@@ -625,11 +625,11 @@ class TestAShowIsReachableHoweverItIsSpelled(unittest.TestCase):
     def test_the_strapline_is_not_part_of_the_name_a_caller_says(self):
         for said in ("Up Stream", "up stream", "upstream", "UPSTREAM",
                      "Up Stream · Deep Cuts"):
-            self.assertEqual(_match_show(self.SHOWS, said)["id"], "s1", said)
+            self.assertEqual(match_show(self.SHOWS, said)["id"], "s1", said)
 
     def test_punctuation_a_caller_never_says_is_not_required(self):
         for said in ("donovans pub", "Donovan's Pub", "DONOVANS PUB"):
-            self.assertEqual(_match_show(self.SHOWS, said)["id"], "s3", said)
+            self.assertEqual(match_show(self.SHOWS, said)["id"], "s3", said)
 
     def test_the_overlook_still_answers_to_its_own_head(self):
-        self.assertEqual(_match_show(self.SHOWS, "overlook")["id"], "s2")
+        self.assertEqual(match_show(self.SHOWS, "overlook")["id"], "s2")

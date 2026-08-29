@@ -55,7 +55,9 @@ def audio_path(draft_id: str) -> Path:
 
 
 def _write_sidecar(draft_id: str, data: dict) -> None:
-    write_atomic(_sidecar(draft_id), data, dir_mode=0o755, indent=1)
+    # 0600: a draft is a stranger's in-progress voicemail, the same private
+    # content deliver.py keeps at 0600 (was world-readable at 0644).
+    write_atomic(_sidecar(draft_id), data, file_mode=0o600, dir_mode=0o700, indent=1)
 
 
 def get(draft_id: str) -> dict | None:

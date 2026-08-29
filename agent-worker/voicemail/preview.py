@@ -131,7 +131,7 @@ async def _capture_tool_call(cfg: dict, text: str, tools: list):
     """
     from livekit.agents.llm import ChatContext
 
-    from call.providers import build_llm
+    from call.providers import build_llm, stream_reply
 
     llm = build_llm(cfg)
     ctx = ChatContext.empty()
@@ -143,12 +143,7 @@ async def _capture_tool_call(cfg: dict, text: str, tools: list):
     ctx.add_message(role="user", content=text[:600])
     calls: list = []
     try:
-        stream = llm.chat(chat_ctx=ctx, tools=tools)
-        async for chunk in stream:
-            delta = getattr(chunk, "delta", None)
-            if delta and getattr(delta, "tool_calls", None):
-                calls.extend(delta.tool_calls)
-        await stream.aclose()
+        _, calls = await stream_reply(llm, ctx, tools=tools)
     except Exception as e:                                    # noqa: BLE001
         log.warning("draft tool triage failed (%s) — no action previewed", e)
         return None
@@ -241,7 +236,7 @@ async def stage_music_action(station, cfg: dict, query: str) -> dict:
     action asked for" the old named-track-only prompt read it as (RID 280,
     2026-08-17).
     """
-    from call.tools.rows import _query_variants, looks_like_a_vibe
+    from call.tools.rows import query_variants, looks_like_a_vibe
 
     query = " ".join(str(query or "").split())
     if not query:
@@ -255,7 +250,7 @@ async def stage_music_action(station, cfg: dict, query: str) -> dict:
         # Fleetwood Mac" — the way a caller actually says it — returns nothing;
         # the variants strip the "by" the same way the live wrapper does.
         hits = []
-        for variant in _query_variants(query):
+        for variant in query_variants(query):
             try:
                 hits = await station.search_library(variant)
             except Exception as e:                            # noqa: BLE001
@@ -290,14 +285,14 @@ async def _resolve_takeover(station, who: str) -> dict:
     so the caller sees the miss before they send, not after.
     """
     try:
-        from call.tools.broadcast import _match_show
+        from call.tools.broadcast import match_show
 
         shows = (await station.schedule()).get("shows") or []
         personas = await station.personas()
     except Exception as e:                                    # noqa: BLE001
         log.warning("draft takeover resolve failed: %s", e)
         return dict(NO_ACTION)
-    picked = _match_show(shows, who, personas)
+    picked = match_show(shows, who, personas)
     if not picked:
         return {"kind": "none",
                 "label": f"No station action — couldn’t match “{who}” to a "

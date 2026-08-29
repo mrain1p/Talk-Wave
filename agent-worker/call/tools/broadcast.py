@@ -14,7 +14,7 @@ from station import StationClient, booth_spoken_text
 
 from ..actions import CallActions
 from ..air import OnAirGuard, speaking_secs
-from .shows import _match_show, _show_miss
+from .shows import match_show, _show_miss
 
 log = logging.getLogger("callin.agent")
 
@@ -309,7 +309,7 @@ def build_on_air_tools(
             # The people as well as the programmes: a caller naming a DJ is
             # the commonest way this is asked, and it used to miss entirely.
             personas = await station.personas()
-            picked = _match_show(shows, show, personas)
+            picked = match_show(shows, show, personas)
             if not picked:
                 # Both rosters still reach the model on a real miss — a DJ
                 # told only the show names invents a roster from them, which
@@ -350,7 +350,7 @@ def build_on_air_tools(
             # name it had picked itself (THE OVERLOOK — Cliff's), the pin
             # worked exactly as asked, and the DJ then told the caller "Duke
             # is taking over with The Overlook". Nothing in the loop could
-            # catch it: the argument was a real show, so `_match_show` was
+            # catch it: the argument was a real show, so `match_show` was
             # right to resolve it, and the receipt only ever said which SHOW
             # was pinned. The station knows who presents it, so say so here
             # and the model can check its own work against the thing it was

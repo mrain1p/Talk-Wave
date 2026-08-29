@@ -19,9 +19,7 @@ session, which would put two tools on one name.
 
 from __future__ import annotations
 
-from livekit.agents import llm as lk_llm
-
-from call.actions import CallActions
+from ..actions import CallActions
 from station import StationClient
 
 from .music import _when_it_plays
@@ -37,6 +35,7 @@ def build_read_tools(cfg: dict, station: StationClient,
     nothing teaches the DJ the station is empty."""
     if library_search_needs_mcp():
         return []
+    from livekit.agents import llm as lk_llm
 
     tools = []
 

@@ -34,7 +34,7 @@ def _squash(value) -> str:
 
 
 
-def _query_variants(q: str) -> list[str]:
+def query_variants(q: str) -> list[str]:
     """The station's search requires EVERY word to match, so the natural
     phrase "Let It Be by The Beatles" returns nothing — "by" appears in no
     title or artist. Try as given, then with the last " by " connector

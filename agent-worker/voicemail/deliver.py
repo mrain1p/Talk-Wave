@@ -84,7 +84,7 @@ async def _triage(station, cfg: dict, text: str) -> tuple[str, str]:
     """
     import json as _json
 
-    from call.providers import build_llm
+    from call.providers import build_llm, stream_reply
     from call.tools.registry import mcp_allowlist  # noqa: F401  (documented gate)
 
     # Requests ride allow_requests, the same master switch the live line and
@@ -123,17 +123,12 @@ async def _triage(station, cfg: dict, text: str) -> tuple[str, str]:
         + '  {"action": "hold"}  when none of those fit.'
     )
     try:
-        chunks = []
         from livekit.agents.llm import ChatContext
 
         chat_ctx = ChatContext()
         chat_ctx.add_message(role="user", content=prompt)
-        async with llm.chat(chat_ctx=chat_ctx) as st:
-            async for chunk in st:
-                delta = getattr(chunk, "delta", None)
-                if delta and getattr(delta, "content", None):
-                    chunks.append(delta.content)
-        raw = "".join(chunks).strip()
+        content, _ = await stream_reply(llm, chat_ctx)
+        raw = content.strip()
         raw = raw[raw.index("{"):raw.rindex("}") + 1]
         verdict = _json.loads(raw)
     except Exception as e:                                    # noqa: BLE001
