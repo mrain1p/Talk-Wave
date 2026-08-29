@@ -483,6 +483,7 @@ from tests.test_house_rules import (  # noqa: F401
     TestNoFileGrowsWithoutSomebodyDeciding,
     TestNoFunctionGrowsTooComplex,
     TestTheImportLayeringHolds,
+    TestEveryStoreDefaultsToTheOneDataDir,
     TestTheCallHarnessOnlyDialsLocal,
     TestTheDrillHarnessTracksTheModulesItDrives,
     TestTheDrillBuildsEveryToolTheCallDoes,

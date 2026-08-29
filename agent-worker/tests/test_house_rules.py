@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 import settings as settings_store
@@ -136,6 +138,71 @@ class TestTheRoutingTableIsInOnePlace(unittest.TestCase):
         back = sorted(p.name for p in self.modules
                       if "import token_server" in p.read_text(encoding="utf-8"))
         self.assertEqual(back, [], f"api/ must not depend on its caller: {back}")
+
+
+class TestEveryStoreDefaultsToTheOneDataDir(unittest.TestCase):
+    """With no `*_PATH` env set, every on-disk store must resolve its default
+    to the ONE shared `data/` dir. The suite overrides each path into a temp
+    dir, so the default branch of each store constant — the
+    `Path(__file__).parent.parent[.parent] / "data" / ...` in settings,
+    secrets, admin-auth, call records and the listener log — is otherwise
+    never exercised. A file moved to a new depth without fixing its `.parent`
+    chain would ship a store writing somewhere else, silently, and nothing in
+    the suite would see it (every test sets the path). This runs a clean
+    subinterpreter with the path env cleared and pins where each default lands.
+    It is also the guard a future `settings.data_dir()` consolidation would
+    need before it could safely route these constants through one helper.
+    """
+
+    # module attribute -> the basename it must own under the shared data/ dir.
+    STORES = {
+        "settings.SETTINGS_PATH": "settings.json",
+        "secrets_store.SECRETS_PATH": "secrets.json",
+        "admin_auth.AUTH_PATH": "admin-auth.json",
+        "call.record.CALLS_DIR": "calls",
+        "api.stats.LISTENERS_PATH": "listeners.json",
+    }
+
+    def test_all_store_defaults_share_one_data_dir(self):
+        probe = (
+            "import json\n"
+            "import settings, secrets_store, admin_auth\n"
+            "from call import record\n"
+            "from api import stats\n"
+            "print(json.dumps({\n"
+            "  'settings.SETTINGS_PATH': str(settings.SETTINGS_PATH),\n"
+            "  'secrets_store.SECRETS_PATH': str(secrets_store.SECRETS_PATH),\n"
+            "  'admin_auth.AUTH_PATH': str(admin_auth.AUTH_PATH),\n"
+            "  'call.record.CALLS_DIR': str(record.CALLS_DIR),\n"
+            "  'api.stats.LISTENERS_PATH': str(stats.LISTENERS_PATH),\n"
+            "}))\n"
+        )
+        # Clear the five overrides the suite sets; keep the rest of the env (a
+        # subprocess still needs PATH etc.). LOG_TO_FILE off so an import can't
+        # touch data/logs.
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("SETTINGS_PATH", "SECRETS_PATH", "ADMIN_AUTH_PATH",
+                            "CALLS_PATH", "LISTENERS_PATH")}
+        env["LOG_TO_FILE"] = "0"
+        out = subprocess.run(
+            [sys.executable, "-c", probe],
+            cwd=str(AGENT_WORKER), env=env,
+            capture_output=True, text=True, timeout=60)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        # Logs go to stderr; the last stdout line is the JSON regardless.
+        resolved = json.loads(out.stdout.strip().splitlines()[-1])
+
+        parents = set()
+        for attr, basename in self.STORES.items():
+            p = Path(resolved[attr])
+            self.assertEqual(p.name, basename,
+                             f"{attr} default basename changed: {p}")
+            self.assertEqual(p.parent.name, "data",
+                             f"{attr} default is not under a data/ dir: {p}")
+            parents.add(str(p.parent))
+        self.assertEqual(
+            len(parents), 1,
+            f"store defaults scattered, not one data/ dir: {sorted(parents)}")
 
 
 class TestTheParallelRunnerRunsTheSameSuite(unittest.TestCase):
