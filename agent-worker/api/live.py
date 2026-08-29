@@ -7,7 +7,6 @@ that stales it reaches. This one builds it.
 from __future__ import annotations
 
 import logging
-import re
 import time
 
 import httpx
@@ -250,14 +249,11 @@ def _for_this_caller(request: web.Request, payload: dict) -> dict:
 
     admin_set = admin_auth.is_set()
     guest_set = admin_auth.guest_is_set()
-    mode = str(settings_store.load().get("front_access") or "auto").lower()
-    # Same rule as auth.caller_tier, and it has to stay the same rule — a
-    # fourth spelling of it is how the card and the panel disagreed by
-    # accident before. Admin-only has no guest; a code-gated door IS the guest
-    # tier; an open line elevates only while `guest_tier` is on.
-    guest_door = guest_set and (
-        mode == "guest" or (mode != "admin"
-                            and bool(settings_store.load().get("guest_tier", True))))
+    # The one guest-door rule, shared with auth.caller_tier through
+    # settings_store.guest_door_open (Batch 2) — no fourth spelling to drift.
+    guest_door = settings_store.guest_door_open(
+        cfg_now.get("front_access"), guest_set,
+        bool(cfg_now.get("guest_tier", True)))
     out["signinAvailable"] = (
         (tier == "open" and (guest_door or admin_set))
         or (tier == "guest" and admin_set)

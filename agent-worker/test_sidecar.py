@@ -17,6 +17,7 @@ import tests  # noqa: F401
 
 from tests.test_settings import (  # noqa: F401
     TestEverySettingIsRealAndEveryKeyIsDeclared,
+    TestTheGuestDoorRuleHasOneSpelling,
     TestTheThinkingSoundShipsOff,
     TestTheMapTheOperatorNavigatesBy,
     TestTheOnAirDelayIsTheOperatorsDial,

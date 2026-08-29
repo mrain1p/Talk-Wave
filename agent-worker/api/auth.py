@@ -220,21 +220,12 @@ def caller_tier(request: web.Request) -> str:
     # The guest pathway is switched off by not having a code, which is the rule
     # this had before 0.10.66 and the one the panel now states.
     cfg = settings_store.load()
-    mode = str(cfg.get("front_access") or "auto").lower()
-    # Admin-only admits nobody under admin, so no guest can exist. A
-    # CODE-GATED door is itself the guest tier — everyone inside typed the
-    # code, and treating them as strangers would be incoherent whatever the
-    # switch says. Only on an OPEN line is it a real choice, and there it is
-    # `guest_tier`: "anyone can ring" and "code-holders are their own tier"
-    # are two decisions, and inferring the second from whether a code happens
-    # to exist made deleting the code the only way to say no.
-    if mode == "admin":
-        guest_door = False
-    elif mode == "guest":
-        guest_door = admin_auth.guest_is_set()
-    else:
-        guest_door = (admin_auth.guest_is_set()
-                      and bool(cfg.get("guest_tier", True)))
+    # Whether the guest tier is reachable is ONE rule, and it lives in
+    # settings_store.guest_door_open — consolidated at Batch 2 from the two
+    # spellings (here and the call card) the old comment warned would drift.
+    guest_door = settings_store.guest_door_open(
+        cfg.get("front_access"), admin_auth.guest_is_set(),
+        bool(cfg.get("guest_tier", True)))
     for header in ("X-Call-Key", "X-Admin-Key"):
         key = request.headers.get(header, "")
         if not key:

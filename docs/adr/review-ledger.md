@@ -67,3 +67,38 @@ fail-closed behaviour — was buried between the field table and the UI copy.
 - tts_adapter discovery → `tts_voices.py` split.
 - station.py `self._admin()` helper to dedupe ~20 credential prologues — optional; only if station.py is touched again.
 - station_config `_walk` consolidation — **rejected**: three genuinely different yield types make it over-abstraction.
+
+---
+
+## Batch 2 — the api edge (2026-08-29)
+
+### api/diagnostics.py — **peel-a-seam → done**
+Two jobs cohabited: the `/test/*` probes ("does the configuration work") and the
+`/calls` + `/logs` readback ("what already happened").
+
+- **Fixed:** split the 6 readback handlers (`handle_calls`, `handle_clear_calls`,
+  `handle_delete_call`, `handle_mark_call`, `handle_logs`, `handle_clear_logs`)
+  into a new **`api/readback.py`**. diagnostics.py went 1,583 → 1,437; readback
+  is 170. The routing table (`token_server.build_app`) now imports the 6 from
+  readback. They share only the admin gate and CORS edge with the probes, so the
+  seam is clean. Two dead imports (`time`, and `_mint_info` once its readers
+  left) removed from diagnostics.
+
+### The door/tier rule — **duplication → consolidated**
+The guest-door rule (whether the guest tier is reachable, given front_access
+mode + a guest code + `guest_tier`) was spelled out in **two** places —
+`auth.caller_tier` and the `/live` card — and the code's own comment warned that
+"a fourth spelling of it is how the card and the panel disagreed by accident".
+
+- **Fixed:** one spelling now — `caller_tiers.guest_door_open(front_access,
+  guest_is_set, guest_tier)`, re-exported through `settings_store` like the other
+  tier functions. Both sites call it; the truth table is pinned by
+  `TestTheGuestDoorRuleHasOneSpelling`. The recon's "5 copies" was an overcount:
+  the other tier/door consultations already route through `caller_tier()`, so
+  there was one rule in two spellings, not five.
+
+Deferred to later batches (their own findings): the `/live` payload god-dict
+split (Batch 2 file, but the payload assembly is its own large job), the
+diagnostics probe helpers' shared error-shaping, and the several api/ modules'
+in-memory usage-ledger duplication — none blocking, recorded for when those
+files are the subject.

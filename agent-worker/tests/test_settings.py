@@ -827,6 +827,30 @@ class TestACommentedEnvValueIsNamedAtBoot(_TempStores):
                 os.environ["SUBWAVE_MCP_URL"] = old
 
 
+class TestTheGuestDoorRuleHasOneSpelling(unittest.TestCase):
+    """Whether the guest tier is reachable is ONE rule, consolidated into
+    settings_store.guest_door_open at Batch 2 (2026-08-29). It was spelled out
+    in both auth.caller_tier and the /live card, and the two once drifted so the
+    card and the panel disagreed by accident. This pins the truth table so a
+    re-spelling that got it subtly wrong would fail here rather than on air."""
+
+    def test_the_truth_table(self):
+        f = settings_store.guest_door_open
+        # Admin-only admits nobody under admin, so no guest can exist -
+        # whatever the code or guest_tier say.
+        self.assertFalse(f("admin", True, True))
+        # A code-gated door IS the guest tier: reachable iff a code is set,
+        # regardless of guest_tier.
+        self.assertTrue(f("guest", True, False))
+        self.assertFalse(f("guest", False, True))
+        # An open line (auto / open / blank / unset): reachable only with a
+        # code AND guest_tier on.
+        for mode in ("auto", "open", "", None):
+            self.assertTrue(f(mode, True, True), mode)
+            self.assertFalse(f(mode, True, False), mode)
+            self.assertFalse(f(mode, False, True), mode)
+
+
 class TestAnUpgradeClosesNoDoorAndHandsOutNoPower(_TempStores):
     """0.10.80 changed the fresh-install defaults: front_access became
     admin-only and the permission grants became a real tier ladder. The

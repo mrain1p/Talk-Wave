@@ -154,3 +154,28 @@ def permissions_for(cfg: dict, tier: str) -> dict:
     for field in TIERED_PERMISSIONS:
         out[field] = permission_reaches(cfg.get(field), tier)
     return out
+
+
+def guest_door_open(front_access, guest_is_set: bool, guest_tier: bool) -> bool:
+    """Whether the guest tier is reachable — the ONE rule the tier resolver, the
+    call card and the panel must all agree on.
+
+    Admin-only admits nobody under admin, so no guest can exist. A CODE-GATED
+    door is itself the guest tier — everyone inside typed the code, and treating
+    them as strangers would be incoherent whatever the switch says. Only on an
+    OPEN line is it a real choice, and there it is `guest_tier`: "anyone can
+    ring" and "code-holders are their own tier" are two decisions, and inferring
+    the second from whether a code happens to exist made deleting the code the
+    only way to say no.
+
+    Consolidated at Batch 2 (2026-08-29): auth.caller_tier and live's card each
+    spelled this out, and the comment there warned in so many words that "a
+    fourth spelling of it is how the card and the panel disagreed by accident".
+    One spelling now — pass the three inputs, get the one answer.
+    """
+    mode = str(front_access or "auto").lower()
+    if mode == "admin":
+        return False
+    if mode == "guest":
+        return guest_is_set
+    return guest_is_set and guest_tier

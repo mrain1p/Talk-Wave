@@ -487,7 +487,7 @@ class TestTheCallRecordSaysWhoRang(_TempStores):
         import admin_auth
         import call.record
         from api import auth as api_auth
-        from api import diagnostics as api_diagnostics
+        from api import readback
         from api import tokens as api_tokens
 
         api_tokens._mint_info["room-x"] = {
@@ -502,7 +502,7 @@ class TestTheCallRecordSaysWhoRang(_TempStores):
         real = call.record.recent
         call.record.recent = lambda n: [{"room": "room-x"}, {"room": "room-y"}]
         try:
-            resp = asyncio.run(api_diagnostics.handle_calls(_FakeRequest()))
+            resp = asyncio.run(readback.handle_calls(_FakeRequest()))
         finally:
             call.record.recent = real
             admin_auth.AUTH_PATH = old_auth
@@ -742,14 +742,14 @@ class TestStaleRecordsCanBeThrownAway(unittest.TestCase):
 
         import admin_auth
         from api import auth as api_auth
-        from api import diagnostics as api_diagnostics
+        from api import readback
         from api import tokens as api_tokens
 
         api_tokens._mint_info["room-gone"] = {"client": "x", "network": "y", "ip": "z"}
         old_auth, admin_auth.AUTH_PATH = admin_auth.AUTH_PATH, Path(self._tmp.name) / "a.json"
         old_key, api_auth.ADMIN_KEY = api_auth.ADMIN_KEY, ""
         try:
-            resp = asyncio.run(api_diagnostics.handle_clear_calls(_FakeRequest()))
+            resp = asyncio.run(readback.handle_clear_calls(_FakeRequest()))
         finally:
             admin_auth.AUTH_PATH = old_auth
             api_auth.ADMIN_KEY = old_key

@@ -34,7 +34,7 @@ from typing import Any
 from caller_tiers import (  # noqa: F401
     TIERS, TIER_OFF, TIERED_PERMISSIONS, TIER_CHOICES,
     tier_reaches, normalise_tier, permission_reaches,
-    tier_from_room, on_air_from_room, permissions_for,
+    tier_from_room, on_air_from_room, permissions_for, guest_door_open,
 )
 from settings_schema import (  # noqa: F401
     NAV_EXTRA_PAGES, SUPERGROUPS, GROUPS, GROUP_ALIASES, SCHEMA,

@@ -688,15 +688,22 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "scatter one form the operator reads top to bottom.",
         "agent-worker/api/diagnostics.py":
             "one module per job, and /test/* is genuinely one job: eight probes "
-            "that all answer 'can this box reach that thing'. Splitting them "
-            "would scatter one answer across eight files.",
+            "that all answer 'can this box reach that thing', plus the prompt "
+            "preview. The call-record and log readback handlers — a DIFFERENT "
+            "job (reading back what happened, not probing whether it works) — "
+            "were split to api/readback.py at Batch 2 (2026-08-29). Splitting "
+            "the probes from each other would scatter one answer across eight "
+            "files.",
         "agent-worker/station.py":
-            "the read-only SUB/WAVE REST client — one method per station "
-            "endpoint plus the persona/show resolution that stitches several "
-            "reads into one answer. It grows a method when the station gains "
-            "an endpoint, the same declarative-surface reason settings.py is "
-            "exempt; splitting it scatters one client across files that all "
-            "hold the same httpx session and the same last-known-good caches.",
+            "the SUB/WAVE REST client — reads that assemble the prompt plus the "
+            "admin-gated write wrappers behind the DJ's tools (one class per "
+            "external service; the 'read-only' claim was corrected at Batch 1). "
+            "One method per station endpoint plus the persona/show resolution "
+            "that stitches several reads into one answer. It grows a method "
+            "when the station gains an endpoint, the same declarative-surface "
+            "reason settings.py is exempt; splitting it scatters one client "
+            "across files that all hold the same httpx session and the same "
+            "last-known-good caches.",
         "web-widget/panel.js":
             "measured again after the 0.10.85 split took the sound board out "
             "(4481 → 3715): the regions left are the settings form, the "
