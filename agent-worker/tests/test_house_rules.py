@@ -1617,3 +1617,327 @@ class TestEveryScenarioIsWellFormedBeforeItCostsAnything(unittest.TestCase):
             len(lyrics), 3,
             "the reads scenarios are gone: nothing grades 'what song is this' "
             f"any more. Names present: {names}")
+
+
+# --- the complexity ceiling: the size ledger's missing half ------------------
+# Added 2026-08-29 (the maintainability plan, Batch 0). TestNoFileGrowsWithout-
+# SomebodyDeciding stops a FILE growing past 600 lines, but a file can sit under
+# that ceiling and still be a knot of deeply nested functions — which is exactly
+# where a regression ends up with "two candidate causes". This measures
+# cyclomatic complexity per function and holds it the same way: over the line is
+# a written decision, and a recorded number is a ceiling of its own.
+
+def _cyclomatic_over(root):
+    """Every function in agent-worker/ (tests excluded) keyed
+    "agent-worker/rel::Qualified.name" -> cyclomatic complexity.
+
+    complexity = 1 + decision points (if / for / while / each with-item /
+    except / each boolean operand beyond the first / ternary / comprehension-if
+    / assert / match-case), counted over each function's OWN body — a nested def
+    is its own entry, not folded into its encloser. The LEDGER below records the
+    numbers this produces, so the two can never disagree.
+    """
+    import ast
+
+    decision = (ast.If, ast.For, ast.AsyncFor, ast.While,
+                ast.ExceptHandler, ast.IfExp, ast.Assert)
+
+    def score(body):
+        total, stack = 0, list(body)
+        while stack:
+            n = stack.pop()
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue  # scored as its own entry
+            if isinstance(n, decision):
+                total += 1
+            elif isinstance(n, ast.BoolOp):
+                total += len(n.values) - 1
+            elif isinstance(n, (ast.With, ast.AsyncWith)):
+                total += len(n.items)
+            elif isinstance(n, ast.comprehension):
+                total += len(n.ifs)
+            elif isinstance(n, ast.match_case):
+                total += 1
+            stack.extend(ast.iter_child_nodes(n))
+        return total
+
+    scores = {}
+    for path in sorted(Path(root).rglob("*.py")):
+        parts = path.parts
+        if "tests" in parts or "__pycache__" in parts or ".pytest_cache" in parts:
+            continue
+        rel = "agent-worker/" + str(path.relative_to(root)).replace("\\", "/")
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+
+        def visit(node, prefix):
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    name = prefix + child.name
+                    scores["%s::%s" % (rel, name)] = 1 + score(child.body)
+                    visit(child, name + ".")
+                elif isinstance(child, ast.ClassDef):
+                    visit(child, prefix + child.name + ".")
+                else:
+                    visit(child, prefix)
+
+        visit(tree, "")
+    return scores
+
+
+class TestNoFunctionGrowsTooComplex(unittest.TestCase):
+    """Cyclomatic complexity has a ceiling, ratcheted like file size.
+
+    The LEDGER doubles as a map into the review batches (the maintainability
+    plan): every entry names the batch that owns the eventual simplification, so
+    a walk through the plan and a walk down this list are the same walk. The
+    drill harness (scripted_call.py) is here too — it is not shipped, but it is
+    scanned like everything else and its branchy dispatch is recorded honestly.
+    """
+
+    CEILING = 25
+
+    # "file::qualified.name" -> (recorded complexity, owning batch / reason).
+    # Recorded numbers are ceilings: a function may shrink freely, but growing
+    # past its number needs a decision in the same commit.
+    LEDGER = {
+        # scripted_call.py — the drill harness (test tooling, not shipped);
+        # scenario dispatch and grading are inherently branchy.
+        "agent-worker/scripted_call.py::run_scenario": (75, "harness — scenario runner"),
+        "agent-worker/scripted_call.py::summarise": (36, "harness — result summary"),
+        "agent-worker/scripted_call.py::main": (35, "harness — arg/lever dispatch"),
+        "agent-worker/scripted_call.py::grade_scenario": (33, "harness — grading"),
+        # Batch 1 — platform hubs
+        "agent-worker/settings.py::_migrate": (33, "Batch 1 — settings migration ladder"),
+        # Batch 2 — the api edge
+        "agent-worker/api/live.py::handle_live": (55, "Batch 2 — the /live god-dict assembler"),
+        "agent-worker/api/diagnostics.py::handle_speed_test": (47, "Batch 2 — diagnostics god-module"),
+        "agent-worker/api/chat.py::handle_chat_ws": (46, "Batch 2 — the chat websocket loop"),
+        "agent-worker/api/hooks.py::register_station_webhook": (44, "Batch 2 — webhook reconcile"),
+        "agent-worker/api/tokens.py::handle_token": (41, "Batch 2 — mint + usage-ceiling ladder"),
+        "agent-worker/api/hook_receiver.py::_remember_air": (34, "Batch 2 — two-generation air merge"),
+        "agent-worker/api/diagnostics.py::handle_test_env": (33, "Batch 2 — diagnostics god-module"),
+        "agent-worker/api/diagnostics.py::handle_test_llm": (32, "Batch 2 — diagnostics god-module"),
+        "agent-worker/api/voicemail.py::handle_voicemail_status": (27, "Batch 2 — voicemail status handler"),
+        "agent-worker/api/voicemail.py::handle_voicemail_stage": (27, "Batch 2 — voicemail stage handler"),
+        "agent-worker/api/settings.py::handle_settings_options": (25, "Batch 2 — provider-discovery gather"),
+        # Batch 3 — the call core
+        "agent-worker/call/air.py::OnAirGuard.watch": (47, "Batch 3 — the on-air watch loop"),
+        "agent-worker/call/providers.py::build_llm": (34, "Batch 3 — multi-provider LLM constructor"),
+        "agent-worker/call/air_verdict.py::AirVerdict._push_verdict": (26, "Batch 3 — verdict phase branches"),
+        # Batch 4 — the call tools
+        "agent-worker/call/tools/removal.py::build_removal_tools.clear_from_queue": (58, "Batch 4 — queue-clear matcher"),
+        "agent-worker/call/tools/discovery.py::build_discovery_tools.browse_library": (37, "Batch 4 — library browse"),
+        "agent-worker/call/tools/albums.py::build_album_tools.queue_album": (32, "Batch 4 — album queue"),
+        "agent-worker/call/tools/albums.py::build_album_tools.queue_mix": (25, "Batch 4 — mix queue"),
+        # Batch 5 — the brain
+        "agent-worker/brain/briefing.py::_fmt_now_playing": (32, "Batch 5 — now-playing formatter"),
+        "agent-worker/brain/assemble.py::build_system_prompt": (27, "Batch 5 — prompt assembler entry"),
+        "agent-worker/brain/tool_rules.py::_tools": (27, "Batch 5 — the prompt god-function"),
+        # Batch 6 — chat / onair / openlines / voicemail
+        "agent-worker/voicemail/capture.py::answer": (45, "Batch 6 — voicemail answer pipeline"),
+        "agent-worker/openlines/director.py::open_now": (38, "Batch 6 — premise-source ladder"),
+        "agent-worker/chat/session.py::ChatSession._tool_loop": (33, "Batch 6 — hand-rolled chat tool loop"),
+        "agent-worker/voicemail/deliver.py::_triage": (32, "Batch 6 — voicemail triage dispatch"),
+        "agent-worker/openlines/quiz.py::facts_from": (28, "Batch 6 — quiz fact extraction"),
+        "agent-worker/voicemail/air.py::deliver": (25, "Batch 6 — voicemail delivery branches"),
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        cls.scores = _cyclomatic_over(AGENT_WORKER)
+
+    def test_the_scan_found_the_functions(self):
+        self.assertGreater(len(self.scores), 400,
+                           "the function scan has stopped finding the tree")
+
+    def test_no_complex_function_is_unaccounted(self):
+        over = sorted("%s (%d)" % (k, c) for k, c in self.scores.items()
+                      if c >= self.CEILING and k not in self.LEDGER)
+        self.assertEqual(
+            over, [],
+            "these functions are at or over the complexity ceiling of "
+            f"{self.CEILING} and nobody decided that was right. Simplify them, "
+            "or add each to LEDGER with the review batch that will: %r" % (over,))
+
+    def test_no_ledgered_function_grew(self):
+        grown = sorted("%s was %d, is now %d" % (k, was, self.scores[k])
+                       for k, (was, _) in self.LEDGER.items()
+                       if k in self.scores and self.scores[k] > was)
+        self.assertEqual(
+            grown, [],
+            "recorded complexity is a ceiling of its own. Simplify, or raise "
+            "the number in the same commit and say why that was right: %r" % (grown,))
+
+    def test_no_ledger_entry_outlives_its_complexity(self):
+        stale = sorted(k for k in self.LEDGER
+                       if k not in self.scores or self.scores[k] < self.CEILING)
+        self.assertEqual(
+            stale, [],
+            "these ledger rows were simplified under the ceiling (or the "
+            "function was renamed/removed) — drop the row so it stops masking a "
+            "future regression behind an old allowance: %r" % (stale,))
+
+
+# --- the import-layering guard: an AST sibling of the routing-table test ------
+# Added 2026-08-29 (the maintainability plan, Batch 0). The repo already
+# AST-asserts one boundary (nothing under api/ imports token_server); this
+# encodes the whole layer map so the clean structure can't erode silently.
+
+def _layer_backedges(root):
+    """Every cross-layer import in agent-worker/ that runs AGAINST the intended
+    dependency direction, as (from_module, to_module, from_layer, to_layer).
+
+    The intended order (an importer may only reach a STRICTLY LOWER layer):
+      entrypoints > api > surfaces > call_tools > call > brain > transport > platform
+    call and call.tools are a co-recursive PAIR (session builds tools; tools
+    reach call helpers), so both directions between them are forward. onair/*
+    and voicemail/master are pure low-level transports that depend only on
+    platform. Sanctioning happens in the test, not here — this reports the raw
+    backward edges so a sanction can't outlive the import it excuses.
+    """
+    import ast
+
+    order = ["entrypoints", "api", "surfaces", "call_tools", "call",
+             "brain", "transport", "platform"]
+    rank = {n: i for i, n in enumerate(order)}
+    peers = {frozenset({"call", "call_tools"})}
+
+    root = Path(root)
+    known, internal = set(), set()
+    for path in root.rglob("*.py"):
+        if "__pycache__" in path.parts or ".pytest_cache" in path.parts:
+            continue
+        dotted = str(path.relative_to(root))[:-3].replace("\\", "/").replace("/", ".")
+        if dotted.endswith(".__init__"):
+            dotted = dotted[:-len(".__init__")]
+        known.add(dotted)
+        internal.add(dotted.split(".")[0])
+
+    def layer(mod):
+        p = mod.split(".")
+        top = p[0]
+        if top in ("token_server", "main"):
+            return "entrypoints"
+        if top == "api":
+            return "api"
+        if top == "call":
+            return "call_tools" if len(p) >= 2 and p[1] == "tools" else "call"
+        if top == "brain":
+            return "brain"
+        if top == "onair":
+            return "transport"
+        if top == "voicemail":
+            return "transport" if (len(p) >= 2 and p[1] == "master") else "surfaces"
+        if top in ("chat", "openlines"):
+            return "surfaces"
+        if top in internal:
+            return "platform"
+        return None
+
+    def targets_of(tree, pkg):
+        found = []
+
+        def add_from(base, names):
+            subs = [base + "." + n for n in names if (base + "." + n) in known]
+            if subs:
+                found.extend(subs)
+                if any((base + "." + n) not in known for n in names):
+                    found.append(base)
+            else:
+                found.append(base)
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                found.extend(a.name for a in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                names = [a.name for a in node.names]
+                if node.level == 0:
+                    if node.module:
+                        add_from(node.module, names)
+                else:
+                    base = ".".join(pkg[:len(pkg) - (node.level - 1)]
+                                    + ([node.module] if node.module else []))
+                    add_from(base, names)
+        return found
+
+    edges = []
+    for path in sorted(root.rglob("*.py")):
+        parts = path.parts
+        if "tests" in parts or "__pycache__" in parts or ".pytest_cache" in parts:
+            continue
+        rel = str(path.relative_to(root)).replace("\\", "/")
+        if rel == "scripted_call.py":
+            continue  # the drill harness imports product modules to inject them
+        from_mod = rel[:-3].replace("/", ".")
+        pkg = from_mod.split(".")[:-1]
+        fl = layer(from_mod)
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+        for tm in targets_of(tree, pkg):
+            tl = layer(tm)
+            if tl is None or tl == fl:
+                continue
+            if rank[tl] > rank[fl] or frozenset({fl, tl}) in peers:
+                continue
+            edges.append((from_mod, tm, fl, tl))
+    return sorted(set(edges))
+
+
+class TestTheImportLayeringHolds(unittest.TestCase):
+    """No module imports against the grain of the layer map, except the few
+    deliberate, mostly-deferred back-edges recorded here with their reason.
+
+    The five original exceptions were named in the architecture recon; the two
+    open-lines ones are the additive greeting/prompt clause that keeps the DJ
+    byte-identical when no line is up. A sanction is scoped to the exact (from,
+    to) modules so it excuses that import and nothing broader.
+    """
+
+    # (from_module_prefix, to_module_prefix) -> both matched by startswith.
+    SANCTIONED = {
+        ("settings", "call.air_timing"),       # platform -> call: DUCK_PAD default at load, guarded
+        ("settings", "call.tools.registry"),   # platform -> call_tools: the MCP allowlist is derived there
+        ("openlines.air", "api.env"),          # surfaces -> api: the public dial-in URL
+        ("openlines.director", "api.stats"),   # surfaces -> api: the "nobody listening" gate
+        ("voicemail.capture", "api.sounds"),   # surfaces -> api: the uploaded custom-beep path
+        ("call.greeting", "openlines.prompt"),  # call -> surfaces: additive open-lines greeting clause
+        ("brain.assemble", "openlines.prompt"),  # brain -> surfaces: additive open-lines prompt block
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        cls.back = _layer_backedges(AGENT_WORKER)
+
+    def _sanctioned(self, fm, tm):
+        return any(fm.startswith(sf) and tm.startswith(st)
+                   for sf, st in self.SANCTIONED)
+
+    def test_the_scan_saw_the_tree(self):
+        # A model that matched nothing would pass the grain check forever; the
+        # known back-edges are the proof it is still reading real imports.
+        self.assertGreaterEqual(
+            len(self.back), len(self.SANCTIONED),
+            "the import scan stopped finding the known back-edges")
+
+    def test_no_module_imports_against_the_grain(self):
+        bad = sorted("%s -> %s (%s -> %s)" % (fm, tm, fl, tl)
+                     for fm, tm, fl, tl in self.back if not self._sanctioned(fm, tm))
+        self.assertEqual(
+            bad, [],
+            "these imports run against the layer order (entrypoints > api > "
+            "surfaces > call_tools > call > brain > transport > platform; "
+            "call <-> call.tools are peers). Move the code to a lower layer, or "
+            "— if it is a deliberate, usually deferred exception like the seven "
+            "already sanctioned — add the (from, to) pair to SANCTIONED with a "
+            "reason: %r" % (bad,))
+
+    def test_no_sanctioned_exception_outlives_its_import(self):
+        present = {(fm, tm) for fm, tm, _, _ in self.back}
+        stale = sorted(
+            "%s -> %s" % (sf, st) for sf, st in self.SANCTIONED
+            if not any(fm.startswith(sf) and tm.startswith(st)
+                       for fm, tm in present))
+        self.assertEqual(
+            stale, [],
+            "these sanctioned back-edges no longer correspond to a real import "
+            "(the code moved) — drop the row so the exception list stays "
+            "honest: %r" % (stale,))

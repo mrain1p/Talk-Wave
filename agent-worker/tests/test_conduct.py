@@ -48,7 +48,6 @@ class TestThePromptNeverPromisesATakeoverItCannotDo(unittest.TestCase):
     def test_the_request_tool_says_music_only(self):
         # The tool description carries the boundary too — the model reads it
         # at the moment of choice, which the prompt may be 18k chars behind.
-        import inspect
 
         from call.tools import music
 

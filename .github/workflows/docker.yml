@@ -54,6 +54,15 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r agent-worker/requirements.txt
+      # Lint before the suite so a shadowed name or undefined reference fails in
+      # a second rather than after the full run. Gates only the bug-classes
+      # (see agent-worker/ruff.toml); pinned so a ruff release can't add a rule
+      # that reds the build without anyone choosing it.
+      - name: Lint (ruff)
+        working-directory: agent-worker
+        run: |
+          pip install ruff==0.16.5
+          ruff check .
       - name: Unit tests
         working-directory: agent-worker
         env:

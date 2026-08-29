@@ -501,7 +501,6 @@ class TestTurnTakingSettingsReachTheCall(unittest.TestCase):
     """
 
     def _resolved(self, cfg: dict):
-        import asyncio
         import warnings
 
         from livekit.agents import AgentSession

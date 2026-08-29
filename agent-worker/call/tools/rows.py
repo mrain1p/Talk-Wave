@@ -41,7 +41,7 @@ _VIBE_WORDS = {
     # The station's own request-slip vocabulary, so the two agree on what
     # counts as a description.
     "sustained", "surprise", "random", "afternoon", "evening", "late-night",
-    "latenight", "upbeat", "downbeat", "banger", "bangers", "classic",
+    "latenight", "downbeat", "banger", "bangers", "classic",
     "classics", "oldies", "newer", "older", "similar", "this", "that",
 }
 # Filler that shouldn't count either way when judging a query.

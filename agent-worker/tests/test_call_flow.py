@@ -261,7 +261,6 @@ class TestCallStructure(unittest.TestCase):
 
         # It is a cue, not words put in the caller's mouth — and bracketed
         # text can never reach the voice.
-        import speech_filter
         self.assertEqual(
             speech_filter.strip_stage_directions(seen["user_input"]), "")
 

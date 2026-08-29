@@ -33,13 +33,13 @@ comparison point is wrong, not that the change is clean.
 
 ## 2. The standards axis
 
-The written standards live in `CLAUDE.md`, `agent-worker/CLAUDE.md` and `web-widget/CLAUDE.md`.
-Read the ones covering the changed files, then check the diff against them. In this repo that
-means, concretely:
+The written standards live in `docs/architecture.md` (the cross-cutting invariants and the layer
+map), `agent-worker/CLAUDE.md` and `web-widget/CLAUDE.md` (per-subsystem detail). Read the ones
+covering the changed files, then check the diff against them. In this repo that means, concretely:
 
-- **Invariants** (root `CLAUDE.md`): settings precedence, secrets never making the return trip,
-  passwords hashed, the MCP allowlist keeping destructive tools off a call line, settings re-read
-  every call, `version.py` as the single source of the build number.
+- **Invariants** (`docs/architecture.md`): settings precedence, secrets never making the return
+  trip, passwords hashed, the MCP allowlist keeping destructive tools off a call line, settings
+  re-read every call, `version.py` as the single source of the build number, the layering order.
 - **Test house style**: stdlib only, no network, `_TempStores` for anything writable, class names
   that state the claim they defend.
 - **No JS toolchain.** A diff that adds `package.json`, a bundler, or `node_modules` to

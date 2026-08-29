@@ -3,6 +3,15 @@
 Release notes for operators. One entry per push to `main`; the full
 commit-by-commit detail is in git history.
 
+## 0.99.8
+
+The maintainability plan's first slice (Batch 0): mechanical guards that keep the code's structure from eroding, plus a committed home for the invariants. No behaviour change — this is tooling, tests, and docs.
+
+- **Ruff lints every push, gated on the bug-classes only.** A new CI step (and `agent-worker/ruff.toml`) runs ruff before the suite, selecting the pyflakes families that flag a real runtime defect — undefined names, format-string bugs, dead variables, genuine shadowing — and staying silent about style. The app tree was already clean of all of them; ten redundant duplicate imports and one duplicate set entry were removed so the shadowing check (F811) stays a live guard rather than an ignored one.
+- **A complexity ceiling, ratcheted like the size ledger.** `TestNoFunctionGrowsTooComplex` measures cyclomatic complexity per function and holds it to a ceiling the same way file size is held — over the line is a written decision. Its ledger doubles as a map into the review: every over-limit function names the batch that will simplify it.
+- **An import-layering test.** `TestTheImportLayeringHolds` encodes the whole layer map (entrypoints → api → surfaces → call/tools → brain → transport → platform) and fails on any import against the grain, with seven deliberate, mostly-deferred exceptions each recorded with its reason. The repo already asserted one such boundary; this generalises it to the whole tree.
+- **`docs/architecture.md`** — the committed home for the thirteen cross-cutting invariants (settings precedence, secrets never returning, the tool allowlist, the two-page split, and the rest) and the layer map. The standards-review skill and `agent-worker/CLAUDE.md` now point at it instead of the operator's private, machine-local root notes.
+
 ## 0.99.7
 
 Regression pins for three of the 0.99.6 review's fixes, and one small refactor to make them possible. No behaviour change.

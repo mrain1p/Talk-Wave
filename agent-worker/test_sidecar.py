@@ -477,6 +477,8 @@ from tests.test_house_rules import (  # noqa: F401
     TestNewCodeDoesNotArriveUntested,
     TestTheParallelRunnerRunsTheSameSuite,
     TestNoFileGrowsWithoutSomebodyDeciding,
+    TestNoFunctionGrowsTooComplex,
+    TestTheImportLayeringHolds,
     TestTheCallHarnessOnlyDialsLocal,
     TestTheDrillHarnessTracksTheModulesItDrives,
     TestTheDrillBuildsEveryToolTheCallDoes,

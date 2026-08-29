@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import settings as settings_store
-from openlines import air, director, followup, premise, premises, prompt, state
+from openlines import air, director, followup, premises, prompt, state
 from openlines import schedule as schedule_mod
 
 from tests.support import _TempStores

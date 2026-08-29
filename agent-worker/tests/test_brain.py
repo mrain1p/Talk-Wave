@@ -334,7 +334,6 @@ class TestCallerContext(unittest.TestCase):
         # than "both sides of the conversation". Tested on what is actually
         # written, not on the source text — an earlier version grepped the
         # module and matched "ip" inside "description".
-        import json
 
         from call import record
 
