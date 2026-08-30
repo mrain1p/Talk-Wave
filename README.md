@@ -105,12 +105,12 @@ copy livekit.example.yaml livekit.yaml
 - Entered by the operator into their **own self-hosted instance**.
 - Stored server-side and **write-only** — the panel shows a fixed mask, never the value, never its length.
 - Kept behind the instance's own admin password.
-- Every caller-facing action they unlock is **off by default**, and individually permission-gated.
+- Every caller-facing action they unlock ships **admin-only** — yours at the admin door, nobody else's until you say otherwise — and each is individually permission-gated.
 
 **Two things worth knowing as an operator:**
 
 - **Caller audio** is processed by whichever speech and AI providers *you* configure — fully local with Ollama and the bundled Whisper, or on your own cloud keys.
-- **Calls can be transcribed and stored** on your own server, with configurable retention. The card shows a Recording indicator whenever that is on.
+- **Calls are transcribed and stored** on your own server by default, with configurable retention — *Keep transcripts* in the settings panel turns it off or bounds how many are kept. Transcript only — a call's audio is never written to disk. (The one exception is the voicemail soundbite, which holds a caller's clip just long enough to air it, then deletes it.)
 
 And no caller reaches the broadcast stream unless you open the [on-air doors](docs/on-air.md) — shipped shut, chosen per caller, running a turn behind the room, with a pull-off-air button in your hand.
 

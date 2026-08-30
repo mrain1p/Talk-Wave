@@ -125,6 +125,23 @@ def tier_from_room(room_name: str) -> str:
     return "open"
 
 
+def tier_from_vm_room(room_name: str) -> str:
+    """The same reading for a voicemail room: `vm-<o|g|a>-<12 hex>`.
+
+    Its own spelling rather than a branch inside tier_from_room, because the
+    two families are minted apart (api/tokens.py) and only a live call carries
+    the on-air letter. Same fail-closed doctrine, for the same reason: an
+    unrecognised name comes back as the LEAST trusted tier, since the
+    alternative is a stranger's message inheriting the operator's permissions.
+    """
+    parts = str(room_name or "").split("-")
+    if len(parts) >= 3 and parts[0] == "vm":
+        for tier in TIERS:
+            if parts[1] == tier[0]:
+                return tier
+    return "open"
+
+
 def on_air_from_room(room_name: str) -> bool:
     """Whether this call was minted as a live-on-air call.
 

@@ -47,8 +47,7 @@ def write_call_entry(room: str, persona: dict, cfg: dict, message: str,
     try:
         from call.record import CallRecord
 
-        tier = {"o": "open", "g": "guest", "a": "admin"}.get(
-            (room.split("-") + [""])[1][:1], "open")
+        tier = settings_store.tier_from_vm_room(room)
         rec = CallRecord(room, persona, cfg, tier=tier, started=started)
         rec.data["kind"] = "voicemail"
         rec.turn("dj", "[answering machine] "
@@ -391,8 +390,9 @@ async def answer(ctx: JobContext) -> None:
     receipt = "nothing said — nothing delivered"
     if message:
         try:
-            receipt = await vm_deliver.deliver(station, cfg, message,
-                                               persona.get("name") or "")
+            receipt = await vm_deliver.deliver(
+                station, cfg, message, persona.get("name") or "",
+                tier=settings_store.tier_from_vm_room(ctx.room.name))
         except Exception as e:                                # noqa: BLE001
             vm_deliver.hold(message, persona.get("name") or "",
                             note=f"delivery crashed: {e}")

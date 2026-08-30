@@ -89,15 +89,16 @@ async def _triage(station, cfg: dict, text: str) -> tuple[str, str]:
 
     # Requests ride allow_requests, the same master switch the live line and
     # the soundbite studio gate on — a line that takes no requests holds the
-    # message rather than pushing it down the request pipe regardless. Default
-    # "open" (the shipped default), so only an operator who set it "off" loses
-    # the request path here.
+    # message rather than pushing it down the request pipe regardless. These
+    # are the tier-resolved bools deliver() collapsed for this caller, so a
+    # plain truth test is the whole rule: an action the tiers would not grant
+    # this caller is not on the list the model gets to pick from.
     allowed = []
-    if str(cfg.get("allow_requests") or "open").lower() != "off":
+    if cfg.get("allow_requests"):
         allowed.append("request")
-    if str(cfg.get("allow_announcements") or "off") != "off":
+    if cfg.get("allow_announcements"):
         allowed.append("air")
-    if str(cfg.get("allow_skills") or "off") != "off":
+    if cfg.get("allow_skills"):
         try:
             skills = [str(s.get("kind") or s.get("name") or "")
                       for s in await station.list_skills()]
@@ -152,9 +153,26 @@ async def _triage(station, cfg: dict, text: str) -> tuple[str, str]:
     return "hold", ""
 
 
-async def deliver(station, cfg: dict, text: str, persona_name: str) -> str:
+async def deliver(station, cfg: dict, text: str, persona_name: str,
+                  tier: str = "open") -> str:
     """Send one message where the operator chose. Returns a one-line receipt
-    for the log and the panel entry."""
+    for the log and the panel entry.
+
+    The tier is resolved HERE, not trusted from the caller. Both sibling paths
+    resolve at their own call site (air.py, preview.py) and this one did not,
+    so on the shipped defaults — allow_announcements and allow_skills are both
+    "guest" — an anonymous message reached actions the same stranger is
+    refused on the phone: "off" is the only string that fails a `!= "off"`
+    test, and "guest" is not it. permissions_for collapses each field to a
+    plain bool for THIS caller, which is also why the reads in _triage are
+    plain truth tests now: against a resolved cfg, `str(False or "open")` is
+    "open" and the old spelling would have failed OPEN. Resolving inside
+    means a future caller cannot forget to, and the default is the least
+    trusted tier rather than the raw store.
+    """
+    import settings as settings_store
+
+    cfg = settings_store.permissions_for(cfg, tier)
     mode = str(cfg.get("voicemail_destination") or "hold").lower()
     text = str(text or "").strip()
     if not text:
@@ -185,6 +203,13 @@ async def deliver(station, cfg: dict, text: str, persona_name: str) -> str:
             result = await station.submit_request(text)
             note = str(result.get("message") or result.get("status") or "sent")
             hold(text, persona_name, delivered="request", note=note)
+            # The cross-call ledger the live line writes for the same action.
+            # Without it a caller who left a message queuing a track is told,
+            # on ringing back, that nothing was queued — the per-call evasion
+            # call/daylog.py was built to kill (Casino night, 2026-08-26).
+            from call import daylog
+
+            daylog.note("request", text, tier=tier)
             return f"sent as a request — {note}"
         except Exception as e:                                # noqa: BLE001
             # The station refusing is a real outcome, not a crash: the
