@@ -21,11 +21,20 @@ docker compose pull && docker compose up -d
 ```
 
 Then confirm **both** Python containers report the same version — they ship as one image but run
-as two containers, and a redeploy that recreates one and not the other leaves them skewed:
+as two containers, and a redeploy that recreates one and not the other leaves them skewed. Their
+numbers come from **two different places**: `/health` is served by the web half only (that
+container is the one running `token_server.py`; the worker publishes no port at all), so the
+worker's version comes from the first line it prints at boot:
 
 ```bash
 curl -s http://<host>:8100/health
+docker logs talkwave-worker 2>&1 | grep 'talk-wave worker' | tail -1
 ```
+
+Curling `/health` twice is not a skew check — it is the same process answering twice, and the
+half it cannot reach is the worker, which is the half most likely to be stale. Both containers
+have printed a boot banner since 0.97.25; a worker that prints none is older than that, which is
+itself the answer.
 
 **Then confirm the worker actually registered.** A container that started is not a stack that
 works — see the bind-mount trap below:

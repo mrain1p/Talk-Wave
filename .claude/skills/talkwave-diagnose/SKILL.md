@@ -39,8 +39,11 @@ receipt. The **config line** ties a bad call to the setting that caused it.
   break. Run this before theorising.
 - **Server logs** — recent activity. The live log carries `heard:` / `said:` / `tool:` lines
   now, not just `heard:`.
-- **`/health`** — running version. Check **both** containers; they ship as one image but run as
-  two, and version skew has been invisible before.
+- **`/health`** — the **web** container's running version, and only that one: the worker
+  publishes no port, so its version comes from its boot banner (`docker logs talkwave-worker
+  2>&1 | grep 'talk-wave worker' | tail -1`) or from the panel's own "the two containers
+  disagree" notice, which fires once a call has been answered since the panel booted. They ship
+  as one image but run as two, and version skew has been invisible before.
 
 ## Probing a live deployment
 
