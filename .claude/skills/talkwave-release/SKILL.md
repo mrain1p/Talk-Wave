@@ -90,5 +90,15 @@ indistinguishable from a broken fix.
 ## After a pull, check for version skew
 
 The worker and the token server are the **same image in two containers**. A redeploy that
-recreates one and not the other leaves them skewed, and it has happened. `/health` reports the
-running version — check both, not one.
+recreates one and not the other leaves them skewed, and it has happened. Check both — but they
+answer in different places, since `/health` is served by the web half alone and the worker
+publishes no port:
+
+```bash
+curl -s http://<host>:8100/health
+docker logs talkwave-worker 2>&1 | grep 'talk-wave worker' | tail -1
+```
+
+The panel raises "The two containers disagree" on its own, but only once a call has been
+answered since the panel's process booted — an older record is evidence about the past, not
+about what is running now (2026-08-16).

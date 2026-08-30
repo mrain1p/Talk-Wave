@@ -105,7 +105,7 @@ The other rows under *Diagnostics*:
 
 Local runs write rotating logs to `data/logs/`. Under Docker the same lines go to container stdout, where the worker logs its version at startup and every call as `heard:` / `said:` / `tool:` lines.
 
-`/health` reports the running version — **check both containers match**, since they ship as one image but run as two.
+`/health` reports the **web** container's running version. The worker publishes no port, so its version is the startup line above — `docker logs talkwave-worker 2>&1 | grep 'talk-wave worker' | tail -1`. **Check both match**, since they ship as one image but run as two; curling `/health` twice only asks the same process twice.
 
 ```bash
 cd agent-worker && LOG_TO_FILE=0 SETTINGS_PATH=/tmp/t.json SECRETS_PATH=/tmp/s.json ADMIN_AUTH_PATH=/tmp/a.json CALLS_PATH=/tmp/calls LISTENERS_PATH=/tmp/l.json LISTENER_SAMPLE_INTERVAL=0 python -m unittest test_sidecar
