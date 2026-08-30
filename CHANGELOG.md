@@ -4,6 +4,15 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.13
+
+A security sitting at the voicemail door, and the operator-facing documents corrected against the code they describe. Nothing on the live call path changes — every fix here is on the answering machine's side of the line, or in a document an operator makes decisions from.
+
+- **A message now gets exactly what its caller would get on the phone.** The machine's triage picks one action from what that caller's tier allows; that was always the design, and the code said so in its own words. But the delivery path was handed the raw settings while both of its sibling paths resolved the tier first — and `"off"` is the only value that fails a not-`"off"` test, so on the shipped defaults (announcements and skills both at guest) an anonymous message reached actions the same stranger is refused on the line. The tier now travels with the message and is resolved once, inside delivery, where a later caller cannot forget to; the permission reads are plain truth tests, the one spelling that is correct both before and after resolution. Tests pin both directions — the stranger refused, the code-holder still served.
+- **A soundbite draft's audio is as private as the words beside it.** 0.99.11 tightened an in-progress draft to owner-only and said so here. That was true of the transcript sidecar and not of the `.wav` next to it, which stayed world-readable on the shared volume. Both halves are owner-only now; nothing ever read the clip off disk, since the mixer is handed a minted URL.
+- **A voicemail request shows up when its caller rings back.** A request left on the machine went to the station without a line in the day-log — the cross-call ledger that exists precisely so the DJ cannot tell a caller nothing was queued. It writes one now, carrying the caller's tier, and only when the station actually took the request.
+- **The security checklist and the README stop disagreeing with the code.** Four rows of the permissions table in `docs/security.md` read "off" against defaults that ship at guest, at admin, and — for the library's sound search — at *anyone*; the table is now read from the code and says which it is. The README's promise that the caller's card shows a Recording indicator described something that has never existed: transcripts are kept by default, and the panel is where that is turned off, which is what it says now. And the container-skew check in three skills and the troubleshooting guide told operators to compare both containers on an endpoint only one of them serves.
+
 ## 0.99.12
 
 One on-air correctness fix that the deferred-backlog re-assessment turned up (the review's remaining refactors all came back "leave well alone"). No other behaviour change.

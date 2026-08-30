@@ -91,7 +91,12 @@ def create(mastered_wav: Path, stats: dict, tier: str) -> dict:
     # test had passed on a machine where both paths share a device.
     shutil.move(str(mastered_wav), str(audio_path(draft_id)))
     try:
-        os.chmod(audio_path(draft_id), 0o644)
+        # 0600, like the sidecar beside it and the delivered message: this is
+        # a stranger's recorded voice, and nothing reads it off disk — air.py
+        # hands the mixer a minted URL, never a path. It shipped 0644 while
+        # its own transcript was 0600 (0.99.11 fixed the sidecar and missed
+        # the audio, though the CHANGELOG claimed both).
+        os.chmod(audio_path(draft_id), 0o600)
     except OSError:
         pass
     data = {

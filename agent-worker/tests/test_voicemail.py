@@ -199,6 +199,118 @@ class TestAMessageIsNeverLost(_VmDirs):
         self.assertEqual(f"m{self.deliver.MAX_MESSAGES + 24}", msgs[-1]["text"])
 
 
+class TestAnAnonymousMessageGetsNoMoreThanAnAnonymousCaller(_VmDirs):
+    """_triage's own docstring is the claim: "an action the tiers would not
+    grant an open caller is not available to an anonymous message either."
+    It was not true. deliver() was handed the raw store while air.py and
+    preview.py both resolved, and the reads tested `!= "off"` — so the
+    shipped defaults (allow_announcements and allow_skills are "guest")
+    passed for a stranger, who is refused the same actions on the phone.
+    """
+
+    def _cfg_seen_by_triage(self, tier):
+        seen = {}
+
+        async def fake_triage(station, cfg, text):
+            seen.update(cfg)
+            return "hold", ""
+
+        real = self.deliver._triage
+        self.deliver._triage = fake_triage
+        try:
+            asyncio.run(self.deliver.deliver(
+                _FakeStation(),
+                {"voicemail_destination": "triage",
+                 "allow_announcements": "guest", "allow_skills": "guest"},
+                "play some Bowie", "Danny", tier=tier))
+        finally:
+            self.deliver._triage = real
+        return seen
+
+    def test_a_stranger_does_not_inherit_a_guest_permission(self):
+        seen = self._cfg_seen_by_triage("open")
+        self.assertIs(seen["allow_announcements"], False)
+        self.assertIs(seen["allow_skills"], False)
+
+    def test_a_guest_who_typed_the_code_still_gets_theirs(self):
+        seen = self._cfg_seen_by_triage("guest")
+        self.assertIs(seen["allow_announcements"], True)
+        self.assertIs(seen["allow_skills"], True)
+
+    def test_the_reads_are_plain_truth_tests_not_string_compares(self):
+        # Pinned at the source because the failure is silent both ways: a raw
+        # tier name is truthy so `!= "off"` reads "guest" as ON, and against
+        # a RESOLVED cfg `str(False or "open")` is "open", which reads as ON
+        # too. Only a plain truth test is right in both worlds.
+        import inspect
+
+        src = inspect.getsource(self.deliver._triage)
+        self.assertNotIn('or "off"', src)
+        self.assertIn("cfg.get(\"allow_announcements\")", src)
+
+    def test_the_room_name_is_where_a_voicemail_tier_travels(self):
+        import settings as settings_store
+
+        self.assertEqual(settings_store.tier_from_vm_room("vm-o-0123456789ab"), "open")
+        self.assertEqual(settings_store.tier_from_vm_room("vm-g-0123456789ab"), "guest")
+        self.assertEqual(settings_store.tier_from_vm_room("vm-a-0123456789ab"), "admin")
+        # Fails closed on anything else, including a LIVE call's room: the
+        # two families are minted apart and only this one is a voicemail.
+        for room in ("", None, "vm-x-0123456789ab", "callin-a-0123456789ab",
+                     "something-else"):
+            with self.subTest(room=room):
+                self.assertEqual(settings_store.tier_from_vm_room(room), "open")
+
+
+class TestAVoicemailRequestIsVisibleWhenTheCallerRingsBack(_VmDirs):
+    """The day-log is the cross-call ledger: what the station did, and for
+    whom, beyond the call it happened on. A live caller's request writes one;
+    a voicemail request wrote nothing, so the DJ would tell the same caller on
+    ringing back that nothing was queued — the per-call evasion call/daylog.py
+    was built to kill (Casino night, 2026-08-26).
+    """
+
+    def setUp(self):
+        super().setUp()
+        import os
+
+        self._old_daylog = os.environ.get("DAYLOG_PATH")
+        os.environ["DAYLOG_PATH"] = str(self.tmp / "day-log.json")
+
+    def tearDown(self):
+        import os
+
+        if self._old_daylog is None:
+            os.environ.pop("DAYLOG_PATH", None)
+        else:
+            os.environ["DAYLOG_PATH"] = self._old_daylog
+        super().tearDown()
+
+    def test_a_delivered_request_lands_in_the_ledger_with_its_tier(self):
+        from call import daylog
+
+        station = _FakeStation()
+        asyncio.run(self.deliver.deliver(
+            station, {"voicemail_destination": "request"},
+            "play some Bowie", "Danny", tier="guest"))
+        entries = daylog.recent()
+        self.assertEqual(1, len(entries), "a queued voicemail request left no "
+                                          "trace for the caller who rings back")
+        self.assertEqual("request", entries[0]["kind"])
+        self.assertEqual("guest", entries[0]["tier"])
+        self.assertIn("Bowie", entries[0]["what"])
+
+    def test_a_refused_request_writes_nothing(self):
+        from call import daylog
+
+        asyncio.run(self.deliver.deliver(
+            _FakeStation(fail=True), {"voicemail_destination": "request"},
+            "play some Bowie", "Danny", tier="guest"))
+        self.assertEqual([], daylog.recent(),
+                         "the ledger records what the station DID, never what "
+                         "was attempted — a refusal is not a queued track")
+
+
 class TestTheMachineAnswersThroughTheRightRefusals(unittest.TestCase):
     """Voicemail exists FOR the refusals a live call meets: lines-busy must
     not close it, while the kill switch, the caller cooldown and the daily
@@ -918,6 +1030,26 @@ class TestADraftIsHeldBrieflyAndLeavesNoOrphans(unittest.TestCase):
         back = self.review.get(d["id"])
         self.assertEqual(back["transcript"], "play landslide")
         self.assertEqual(back["action"]["trackId"], "abc")
+
+    def test_the_draft_audio_is_owner_only(self):
+        # The sidecar beside it has been 0600 since the 2026-08-28 sitting,
+        # and 0.99.11 said the draft was "no longer readable by anyone but
+        # the box's own user" — true of the transcript, false of the audio,
+        # which stayed 0644 on the shared volume. The clip IS the stranger's
+        # voice; nothing reads it off disk (air.py hands the mixer a minted
+        # URL). Both halves, one mode. (Skipped where the OS has no POSIX
+        # mode bits.)
+        import os
+        import stat
+
+        if os.name != "posix":
+            self.skipTest("POSIX mode bits are not enforced on this OS")
+        d = self._draft()
+        for path in (self.review.audio_path(d["id"]),
+                     self.review._sidecar(d["id"])):
+            mode = stat.S_IMODE(os.stat(path).st_mode)
+            self.assertEqual(mode & 0o077, 0,
+                             f"{path.name} is group/other-readable: {oct(mode)}")
 
     def test_every_exit_deletes_both_files(self):
         d = self._draft()
