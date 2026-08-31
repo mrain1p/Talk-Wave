@@ -51,6 +51,10 @@
     const set = (id, on) => { const b = $(id); if (b) b.hidden = !on; };
     set('helpBtn', c.help !== false && !!(d && d.canAsk));
     set('themeBtn', c.theme !== false && !themeForcedByHost);
+    // The player header carries its own copy of the theme toggle (operator's
+    // ask, 2026-08-31): the sheet covers the card's corner, and reaching the
+    // toggle meant leaving the player. Offered exactly when the card's is.
+    set('plThemeBtn', c.theme !== false && !themeForcedByHost);
     // Admin only. `isAdmin` rides the per-request half of /live, so an
     // older worker that does not send it leaves this exactly as it was —
     // `!== false` rather than a truthy test, deliberately.
@@ -212,6 +216,10 @@
                 '': framed ? 'match the page' : 'follow the device' };
     btn.innerHTML = G[next];
     btn.title = 'Theme — tap for ' + T[next];
+    // The player header's copy wears the same glyph and forwards its press —
+    // one cycle, two doors.
+    const pl = $('plThemeBtn');
+    if (pl) { pl.innerHTML = G[next]; pl.title = btn.title; }
   }
 
   (function bindThemeCycle() {
@@ -225,6 +233,8 @@
       else localStorage.removeItem('callinTheme');
       applyThemeChoice(next);
     };
+    const pl = $('plThemeBtn');
+    if (pl) pl.onclick = () => btn.onclick();
   })();
 
   // "The station's own colours" follow the PROGRAMME — the server resolves
@@ -4895,6 +4905,34 @@
   }
 
   let playerStopped = false;
+  // A live stream resumed from the PHONE's own pause — audio focus lost to
+  // another app, the lock screen, a notification — carries on from its
+  // buffer: seconds to minutes behind the broadcast. The caller then hears
+  // one record while the card names another, because the card follows the
+  // station's live edge (the operator heard Placebo under a card that said
+  // Such Great Heights, 2026-08-31). Our own buttons already rebuild fresh;
+  // this covers the resumes that never pass through them. Reloading the SAME
+  // element keeps its play-activation (the parking lesson) and reconnects at
+  // the live edge. The threshold is generous: our own duck/park pauses ride
+  // through here too, and coming back at the live edge is right for those as
+  // well — it is a broadcast, not a podcast.
+  let plPausedAt = 0;
+  function watchLiveDrift(el) {
+    if (el.dataset.driftWatched) return;
+    el.dataset.driftWatched = '1';
+    el.addEventListener('pause', () => { plPausedAt = Date.now(); });
+    el.addEventListener('playing', () => {
+      const gap = plPausedAt ? (Date.now() - plPausedAt) / 1000 : 0;
+      plPausedAt = 0;
+      if (gap > 5 && playerEl === el && !playerStopped) {
+        try {
+          const url = el.currentSrc || el.src;
+          if (url) { el.src = url; el.load(); el.play().catch(() => {}); }
+        } catch (e) { /* stale audio beats no audio */ }
+      }
+    });
+  }
+
   function startPlayerAudio() {
     if (playerEl) return;
     const s = ((shown || live || {}).stream) || {};
@@ -4913,6 +4951,7 @@
           return;
         }
         playerEl = el;
+        if (el) watchLiveDrift(el);
       },
       level: playerLevel,
       onPlaying: () => { playerDead = false; paintPlayerButtons(); feedMediaSession(); },

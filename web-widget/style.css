@@ -980,10 +980,18 @@
      info panels, then the docked action bar. -------------------------- */
   .plhead {
     flex: none; width: 100%; display: flex; align-items: center; gap: 8px;
-    padding: 14px 16px 12px; border-bottom: 1px solid var(--hairline);
+    /* The same 38px band as the card's eyebrow — the two headers used to be
+       different heights and the page-wipe between them jumped (operator's
+       phone, 2026-08-31). Height, not padding, so they cannot drift apart
+       again. */
+    height: 38px; padding: 0 16px; border-bottom: 1px solid var(--hairline);
     font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--coral);
   }
+  /* The header's own theme toggle — the sheet covers the card's corner, so
+     the cycle gets a second door here, wearing the same glyph. */
+  .plhead .gear { margin-left: 4px; flex: none; }
+  .plhead .gear[hidden] { display: none; }
   .plhead .pip { width: 8px; height: 8px; background: var(--coral);
                  border-radius: 0; display: block; }
   /* The segment button on the player's own ribbon, and its sheet. Shown only
@@ -1054,7 +1062,9 @@
      share. Width-driven with the aspect ratio deriving height — the
      height-driven direction does not reliably transfer in Chromium. */
   .plartwrap { position: relative;
-               width: min(240px, 62cqw, var(--plart-cap, 999px));
+               /* 200, down from 240 (operator's phone, 2026-08-31): the
+                  sleeve was crowding the three panels out of the stack. */
+               width: min(200px, 54cqw, var(--plart-cap, 999px));
                aspect-ratio: 1; flex: none; }
   .plglow {
     position: absolute; left: -10px; top: -6px;
@@ -1073,8 +1083,10 @@
   }
   .plart img[hidden], .plmono[hidden], .plglow[hidden] { display: none; }
   .pltrack {
-    margin-top: 16px;
-    font: 800 clamp(22px, 8cqw, 30px)/1.1 var(--font-body);
+    margin-top: 12px;
+    /* A step down from the 30px mockup size — the title's room belongs to
+       the panels now (same operator note as the smaller sleeve). */
+    font: 800 clamp(19px, 6.5cqw, 25px)/1.1 var(--font-body);
     letter-spacing: .05em; text-transform: uppercase;
   }
   .plalbum { font-size: 13px; color: var(--sage); margin-top: 4px; }
@@ -1112,19 +1124,14 @@
        own scrollbar when the sheet is squeezed. */
     display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0;
   }
-  /* Up next and Just played share ONE row on every width — a third panel
-     stacked full-width squeezed the booth into a clipped line on a phone,
-     and the sheet's rule is that the middle fits. Two lists of title +
-     artist read fine at half width; with no history yet the wrapper's one
-     visible panel takes the whole row. */
-  /* flex + min-height:0 keep the column's squeeze reaching the panels: the
-     wrapper compresses exactly as its panels did when they stood alone, and
-     their bodies give height back through their own scrollbars. */
-  .plduo { display: flex; gap: 6px; width: 100%; margin-top: 14px;
-           flex: 0 1 auto; min-height: 0; }
-  .plduo .plpanel,
-  .plscroll .plduo .plpanel:first-of-type { margin-top: 0; flex: 1 1 0;
-                                            min-width: 0; }
+  /* On the phone the three panels STACK as full-width rows (operator's
+     phone, 2026-08-31 — the side-by-side pair was cramped and clipped its
+     own first entry; the room comes from the smaller sleeve and title).
+     display:contents makes the pair plain flex children of the column
+     again, so the squeeze-and-scroll behaviour is exactly the single
+     panels'. The desktop card, whose height is pinned, keeps the pair on
+     one row — see the media block below. */
+  .plduo { display: contents; }
   .plduo .plpanel[hidden] { display: none; }
   .plscroll .plpanel:first-of-type { margin-top: 14px; }
   .plpanelhead {
@@ -1282,10 +1289,15 @@
     .plprog { grid-column: 1 / -1; margin-top: 10px; }
     .plpanel { grid-column: 1 / -1; margin-top: 6px; padding: 7px 10px; }
     .plscroll .plpanel:first-of-type { margin-top: 8px; }
-    /* The pair rides the grid as one full-width item; the row itself is
-       the same flex pairing as the phone's. */
-    .plduo { grid-column: 1 / -1; margin-top: 6px; }
-    .plduo .plpanel { grid-column: auto; }
+    /* The pinned-height card seats Up next and Just played on ONE row, so
+       the third panel costs no vertical room here; a hidden panel leaves
+       its partner the whole row. */
+    .plduo { display: flex; gap: 6px; grid-column: 1 / -1; margin-top: 6px;
+             flex: 0 1 auto; min-height: 0; }
+    .plduo .plpanel,
+    .plscroll .plduo .plpanel:first-of-type { margin-top: 0; flex: 1 1 0;
+                                              min-width: 0;
+                                              grid-column: auto; }
     /* A shorter window on the short card; the body scrolls past it.
        82px = two whole queue entries — 64 cut the second one mid-row. */
     .plpanelbody { max-height: 82px; }
