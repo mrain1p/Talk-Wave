@@ -218,6 +218,86 @@ class TestWhatTheDJIsToldAboutTheTopic(_OnDisk):
         self.assertIn("typing", self.build_prompt(mode="chat"))
 
 
+class TestTheDirectionsDeck(unittest.TestCase):
+    """The targeted call-in angles — a catalogue like the station's skills,
+    built after the operator's verdict on the invented premises (2026-08-31):
+    'too much, and always very nebulous'."""
+
+    def test_the_catalogue_is_disciplined(self):
+        from openlines import directions
+
+        ids = [d for d, _, _ in directions.CATALOGUE]
+        self.assertEqual(len(ids), len(set(ids)), "duplicate direction ids")
+        self.assertGreaterEqual(len(ids), 10)
+        for did, label, brief in directions.CATALOGUE:
+            with self.subTest(direction=did):
+                self.assertTrue(label and brief)
+                # A brief is one producer's sentence, not a paragraph — the
+                # premise budget belongs to the DJ's own writing.
+                self.assertLess(len(brief), 180)
+
+    def test_blank_means_the_whole_deck(self):
+        from openlines import directions
+
+        self.assertEqual(len(directions.enabled({})),
+                         len(directions.CATALOGUE))
+
+    def test_the_list_narrows_by_id_or_label_word(self):
+        from openlines import directions
+
+        got = directions.enabled(
+            {"open_lines_directions": "night-drive, Guilty"})
+        self.assertEqual({d for d, _, _ in got},
+                         {"night-drive", "guilty-pleasure"})
+
+    def test_a_typo_list_falls_back_to_everything(self):
+        # A list that matches nothing is a typo, not a decision to run the
+        # feature against an empty deck — the persona allowlist taught this.
+        from openlines import directions
+
+        self.assertEqual(len(directions.enabled(
+            {"open_lines_directions": "zzz nothing"})),
+            len(directions.CATALOGUE))
+
+    def test_pick_only_ever_deals_from_the_enabled_deck(self):
+        from openlines import directions
+
+        cfg = {"open_lines_directions": "dream-duet"}
+        for _ in range(6):
+            self.assertEqual(directions.pick(cfg)[0], "dream-duet")
+
+    def test_the_direction_reaches_the_producers_note(self):
+        # The angle is folded into the invent note itself — the DJ writes
+        # INSIDE it, in persona; without one the note is unchanged.
+        import asyncio
+        from unittest import mock
+
+        from openlines import directions, premise
+
+        captured = {}
+
+        async def _fake_stream(model, ctx):
+            captured["note"] = ctx.items[-1].content[0]
+            return "A subject.", None
+
+        row = next(d for d in directions.CATALOGUE if d[0] == "night-drive")
+        with mock.patch("call.providers.stream_reply", _fake_stream), \
+                mock.patch("call.providers.build_llm",
+                           lambda cfg: mock.AsyncMock()), \
+                mock.patch("brain.assemble.build_system_prompt",
+                           mock.AsyncMock(return_value="SYSTEM")):
+            asyncio.run(premise.invent({}, None, {}, direction=row))
+        self.assertIn("Night drive", captured["note"])
+        self.assertIn("after midnight", captured["note"])
+        self.assertIn("yours are the words", captured["note"])
+
+    def test_the_source_is_offered_in_the_dropdown(self):
+        self.assertIn(
+            "directions",
+            [v for v, _ in settings_store.schema_payload()["fields"]
+             ["open_lines_source"]["choices"]])
+
+
 class TestTheDJAllowlistActuallyMatches(_OnDisk):
     """Who may open a line, and the bug that made it nobody."""
 
@@ -890,12 +970,20 @@ class TestOpenLinesRefusesOutLoud(_OnDisk):
                                       {"listeners": {"current": 0}})
         self.assertTrue(ok)
 
-    def test_a_station_that_never_reports_listeners_is_not_shut_out(self):
-        # Silence is not proof of an empty room, and the alternative disables
-        # the whole feature with nothing on screen to explain why.
+    def test_no_reported_count_counts_as_nobody(self):
+        # The old stance — silence is not proof of an empty room — meant a
+        # cold station that had not reported a count yet ALWAYS opened a line
+        # to nobody the moment it loaded (operator, 2026-08-31). A floor
+        # above zero now means what it says: no count, no open; a station
+        # that genuinely never reports listeners sets the floor to 0, and
+        # the help text names that trade.
         ok, count = director.listeners_ok({"open_lines_min_listeners": 2}, {})
-        self.assertTrue(ok)
+        self.assertFalse(ok)
         self.assertIsNone(count)
+
+    def test_a_floor_of_zero_still_opens_with_no_count(self):
+        ok, _ = director.listeners_ok({"open_lines_min_listeners": 0}, {})
+        self.assertTrue(ok)
 
 
 class TestTheStationIsNeverReconfigured(_OnDisk):

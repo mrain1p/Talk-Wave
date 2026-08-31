@@ -326,6 +326,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # list below, in order, so a station can put up exactly the topics it
     # wants and nothing else.
     "open_lines_source":          (None, "dj"),
+    # Which targeted directions the "directions" source may draw from.
+    # Comma-separated ids or label words from openlines/directions.py's
+    # catalogue; blank = the whole catalogue. A list that matches nothing
+    # falls back to everything rather than going silent.
+    "open_lines_directions":      (None, ""),
     # Where to reach the booth, said on air. Blank = the DJ opens the topic
     # and names no address, which is right when the audience is already
     # looking at the card. Talk Wave supplies this at compose time, so what

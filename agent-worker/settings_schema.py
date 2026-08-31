@@ -1067,10 +1067,19 @@ SCHEMA: dict[str, dict] = {
     "open_lines_source": dict(group="openlines", kind="select",
         label="Where the topic comes from", alias="premise",
         needs=("open_lines_enabled", True),
-        help="The DJ invents one from the same material a station segment "
-             "uses — who is on air, the show, tonight's episode, what has "
-             "just played. Or it takes the next one off your shelf below — "
-             "the choice if you want to know the question in advance."),
+        help="The DJ invents one from tonight's show; a targeted direction "
+             "hands it a named angle at random (guilty pleasure, night "
+             "drive, cover verdict…) and it writes inside that — like a "
+             "station skill; or take the next one off your shelf below if "
+             "you want the question known in advance."),
+    "open_lines_directions": dict(group="openlines", kind="text",
+        label="Directions to draw from", alias="angles",
+        needs=("open_lines_source", ["directions"]),
+        placeholder="default: all of them",
+        help="Comma-separated names to narrow the deck: guilty pleasure, "
+             "first record, night drive, cover verdict, the skip, one lyric, "
+             "live moment, got them through, undiscovered, hometown sound, "
+             "dream duet, tonight's thread."),
     "open_lines_address": dict(group="openlines", kind="text",
         label="Call-in line", alias="url phone number address reach where",
         placeholder="leave blank to name no address",
@@ -1116,7 +1125,10 @@ SCHEMA: dict[str, dict] = {
         needs=("open_lines_enabled", True),
         help="Checked when a line opens and before each reminder, never in "
              "the middle — a topic that vanished because somebody closed a tab "
-             "would strand whoever was already typing. 0 = open regardless."),
+             "would strand whoever was already typing. No reported count "
+             "counts as nobody: a cold station no longer solicits an empty "
+             "room. 0 = open regardless (also the setting for a station that "
+             "never reports its listeners)."),
     # kind="picks": a text-valued field whose control is drawn, like "order"
     # and "emoji". It saves, loads and diffs as a text field (panel.js folds it
     # into TEXT_FIELDS); the ticks beside it write the comma-separated ids. Not
@@ -1359,6 +1371,7 @@ RANDOM_PERSONA = "__random__"
 STATIC_CHOICES = {
     "open_lines_source": [
         ("dj", "The DJ decides — invents a topic from tonight's show"),
+        ("directions", "Targeted directions — a random named angle each time"),
         ("shelf", "Off the shelf — the topics you wrote below"),
         ("quiz", "A quiz — the DJ sets a question it can mark"),
     ],

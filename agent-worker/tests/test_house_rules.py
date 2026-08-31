@@ -1857,7 +1857,9 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         "agent-worker/brain/tool_rules.py::_tools": (28, "Batch 5 — the prompt god-function; +1 2026-08-31: the tool_speakfirst gate, so chat can drop the dead-air rule"),
         # Batch 6 — chat / onair / openlines / voicemail
         "agent-worker/voicemail/capture.py::answer": (45, "Batch 6 — voicemail answer pipeline"),
-        "agent-worker/openlines/director.py::open_now": (38, "Batch 6 — premise-source ladder"),
+        # 41 (2026-08-31): the "directions" source branch — a random targeted
+        # angle per open, the operator's skills-shaped ask.
+        "agent-worker/openlines/director.py::open_now": (41, "Batch 6 — premise-source ladder"),
         "agent-worker/chat/session.py::ChatSession._tool_loop": (33, "Batch 6 — hand-rolled chat tool loop"),
         "agent-worker/voicemail/deliver.py::_triage": (32, "Batch 6 — voicemail triage dispatch"),
         "agent-worker/openlines/quiz.py::facts_from": (28, "Batch 6 — quiz fact extraction"),

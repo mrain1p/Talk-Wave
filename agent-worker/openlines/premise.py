@@ -78,20 +78,35 @@ def take_from_shelf(persona_id: str) -> dict:
     return {**item, "text": _clean(item.get("text"))}
 
 
-async def invent(cfg: dict, station, persona: dict) -> str:
+async def invent(cfg: dict, station, persona: dict,
+                 direction: tuple[str, str, str] | None = None) -> str:
     """One subject, in the DJ's own head, from the station context it already
     has. Same brain and the same full prompt a reply uses — a premise written
     against half the persona is a premise in somebody else's voice.
+
+    `direction` is a (id, label, brief) row from openlines.directions: the
+    producer hands the DJ a targeted ANGLE and the DJ still writes the actual
+    subject in persona. Without one, the note is the old open brief — which
+    the operator measured as producing the same nebulous shape every time.
     """
     from livekit.agents import llm as lk_llm
 
     from brain.assemble import build_system_prompt
     from call.providers import build_llm, stream_reply
 
+    note = INVENT
+    if direction:
+        _, label, brief = direction
+        note = INVENT.rstrip("]") + (
+            f"\nTonight's angle, from the producer: {label} — {brief} "
+            "Set your subject INSIDE that angle; the angle is the shape, "
+            "yours are the words.]"
+        )
+
     prompt = await build_system_prompt(station, persona, cfg=cfg, mode="chat")
     ctx = lk_llm.ChatContext.empty()
     ctx.add_message(role="system", content=prompt)
-    ctx.add_message(role="user", content=INVENT)
+    ctx.add_message(role="user", content=note)
 
     model = build_llm(cfg)
     out = ""
