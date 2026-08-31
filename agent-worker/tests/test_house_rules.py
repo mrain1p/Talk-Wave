@@ -708,6 +708,15 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
     # Long on purpose. Not measured — only required to still exist and still
     # say why.
     EXEMPT = {
+        "web-widget/skins.css":
+            "nineteen skins, one self-contained token block each, and a test "
+            "(TestASkinCannotReachPastItsTokens) that already forbids any "
+            "block from reaching another's scope — the failure mode a size "
+            "ceiling exists to catch cannot happen here. Splitting means "
+            "nineteen stylesheet fetches on the public call page for zero "
+            "isolation gained. Crossed the ceiling at 0.99.13+ when the "
+            "operator's slapped-together verdict rebuilt the weak skins with "
+            "real multi-layer drawings (2026-08-31).",
         "agent-worker/scripted_call.py":
             "the conduct harness, and it cannot be split: it is DELIVERED by "
             "stdin — `docker exec -i <worker> python - < scripted_call.py` — "

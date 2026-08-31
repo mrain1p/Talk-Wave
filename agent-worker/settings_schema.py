@@ -1476,7 +1476,7 @@ STATIC_CHOICES = {
         ("rack", "Rack unit — brushed steel and vents"),
         ("console", "Console strip — one channel of the desk"),
         ("shortwave", "Shortwave — wood and a lit dial"),
-        ("tape", "Tape deck — the platter turns between calls"),
+        ("tape", "Turntable — the platter spins between calls"),
         ("terminal", "Terminal — green phosphor"),
         ("amber", "Amber CRT — the other phosphor"),
         ("datastream", "Datastream — phosphor, raining"),

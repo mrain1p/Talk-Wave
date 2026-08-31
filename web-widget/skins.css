@@ -36,9 +36,11 @@
        the box. `--skin-art-pos` defaults low; a drawing that sits in the centre has to
        be one that FRAMES the text (a reticle, a gauge), or it reads as a circle resting
        on the words for no reason.
-     * ANYTHING THAT MOVES uses one of the five keyframes style.css defines — skinspin,
-       skinblink, skinpulse, skinbouncex, skinbouncey — because a skin cannot declare a
-       @keyframes of its own here either. A rotation must be centred (`--skin-art-pos:
+     * ANYTHING THAT MOVES uses one of the keyframes style.css defines — skinspin,
+       skinblink, skinpulse, skinbouncex, skinbouncey, skinfall (travel by
+       --skin-fall, seamless when every moving layer's period divides it), and
+       skinflicker (a neon stutter) — because a skin cannot declare a @keyframes of
+       its own here either. A rotation must be centred (`--skin-art-pos:
        center`) or it orbits the middle of the box instead of turning on the spot.
 
    `--skin-word-display: block` turns on the WORD instead — the station's programme
@@ -63,18 +65,43 @@
   --skin-well-bg: linear-gradient(180deg, rgba(0,0,0,.4), transparent 55%);
   --skin-ctl-bg: linear-gradient(180deg, rgba(255,224,170,.05), rgba(0,0,0,.15));
   --skin-glow: 0 0 10px rgba(232,145,58,.45);
-  /* A jackfield: six sockets in a row with two of them patched and lit, and a
-     strip label rule under them like a real panel. */
+  /* A jackfield that owns its panel: two rows of four sockets, one line
+     PATCHED — a cord running from a lit jack in the top row to a lit jack in
+     the bottom row, with a plug boss at each end. The cord is the whole
+     point: without it the first pass was "random dot brightness", not a
+     switchboard. An engraved rule with per-socket ticks sits under the field
+     like a real strip label. The first pass also hugged the foot of the box
+     and ended up ON the headline once the board moved down; the field now
+     sits in the drawing's own upper two-thirds. */
   --skin-art-bg:
-    radial-gradient(circle 7px at 50% 50%, transparent 50%, rgba(232,145,58,.6) 53%, transparent 76%) 30% 80% / 18px 18px no-repeat,
-    radial-gradient(circle 3px at 50% 50%, rgba(232,145,58,.95) 62%, transparent 64%) 30% 80% / 18px 18px no-repeat,
-    radial-gradient(circle 7px at 50% 50%, transparent 50%, rgba(168,151,124,.32) 53%, transparent 76%) 38% 80% / 18px 18px no-repeat,
-    radial-gradient(circle 7px at 50% 50%, transparent 50%, rgba(168,151,124,.32) 53%, transparent 76%) 46% 80% / 18px 18px no-repeat,
-    radial-gradient(circle 7px at 50% 50%, transparent 50%, rgba(232,145,58,.6) 53%, transparent 76%) 54% 80% / 18px 18px no-repeat,
-    radial-gradient(circle 3px at 50% 50%, rgba(232,145,58,.95) 62%, transparent 64%) 54% 80% / 18px 18px no-repeat,
-    radial-gradient(circle 7px at 50% 50%, transparent 50%, rgba(168,151,124,.32) 53%, transparent 76%) 62% 80% / 18px 18px no-repeat,
-    radial-gradient(circle 7px at 50% 50%, transparent 50%, rgba(168,151,124,.32) 53%, transparent 76%) 70% 80% / 18px 18px no-repeat,
-    linear-gradient(90deg, rgba(168,151,124,.22) 0 100%) 50% 92% / 46% 1px no-repeat;
+    /* the patch cord: straight down column 2, top-row jack to the jack
+       below it. Vertical on purpose — a diagonal drawn as a gradient band
+       tapers off before it reaches its tile's corners, which is why two
+       passes of this cord floated near the jacks instead of plugging in.
+       A vertical stroke has no corners to miss. The plug bosses cap it. */
+    linear-gradient(180deg, rgba(232,145,58,.5) 0 100%) 42.2% 40% / 3px 49px no-repeat,
+    radial-gradient(circle 6px at 50% 50%, rgba(232,145,58,.9) 70%, transparent 76%) 42% 22% / 26px 26px no-repeat,
+    radial-gradient(circle 6px at 50% 50%, rgba(232,145,58,.9) 70%, transparent 76%) 42% 62% / 26px 26px no-repeat,
+    /* top row */
+    radial-gradient(circle 10px at 50% 50%, transparent 52%, rgba(168,151,124,.4) 56%, transparent 74%) 26% 22% / 26px 26px no-repeat,
+    radial-gradient(circle 10px at 50% 50%, transparent 52%, rgba(232,145,58,.7) 56%, transparent 74%) 42% 22% / 26px 26px no-repeat,
+    radial-gradient(circle 4.5px at 50% 50%, rgba(232,145,58,.95) 60%, transparent 64%) 42% 22% / 26px 26px no-repeat,
+    radial-gradient(circle 10px at 50% 50%, transparent 52%, rgba(168,151,124,.4) 56%, transparent 74%) 58% 22% / 26px 26px no-repeat,
+    radial-gradient(circle 10px at 50% 50%, transparent 52%, rgba(168,151,124,.4) 56%, transparent 74%) 74% 22% / 26px 26px no-repeat,
+    /* bottom row — the patched line is column 2, straight under its mate */
+    radial-gradient(circle 10px at 50% 50%, transparent 52%, rgba(168,151,124,.4) 56%, transparent 74%) 26% 62% / 26px 26px no-repeat,
+    radial-gradient(circle 10px at 50% 50%, transparent 52%, rgba(232,145,58,.7) 56%, transparent 74%) 42% 62% / 26px 26px no-repeat,
+    radial-gradient(circle 10px at 50% 50%, transparent 52%, rgba(168,151,124,.4) 56%, transparent 74%) 58% 62% / 26px 26px no-repeat,
+    radial-gradient(circle 10px at 50% 50%, transparent 52%, rgba(168,151,124,.4) 56%, transparent 74%) 74% 62% / 26px 26px no-repeat,
+    /* the strip label: engraved rule, a tick under each socket column */
+    linear-gradient(90deg, rgba(168,151,124,.4) 0 100%) 50% 88% / 56% 2px no-repeat,
+    repeating-linear-gradient(90deg, rgba(168,151,124,.38) 0 1px, transparent 1px 33%) 50% 95% / 50% 6px no-repeat;
+  /* The station's own name as the panel's engraved designation plate — type
+     is what a strip label carries, and the word slot is exactly that. */
+  --skin-word-display: block;
+  --skin-word-size: 10px;
+  --skin-word-ink: var(--sage-dim);
+  --skin-word-inset: auto auto 8px 14px;
 }
 
 /* Rack unit — 1U of brushed steel: a vent panel between two rack screws. */
@@ -82,27 +109,39 @@
   --pine: #0e0f10; --granite: #1a1c1e; --granite-hi: #131517;
   --alpenglow: #e8ecef; --sage: #98a1a8; --sage-dim: #6b747b;
   --coral: #4fb0c9; --amber: #d2a63f;
-  --hairline: #2a2e32; --edge: #3a4046;
+  --hairline: #343a40; --edge: #4a525a;
   /* clear green, well clear of the cyan accent */
   --ok: #6ecf72; --cool: #4fb0c9;
-  --shadow: 0 1px 0 rgba(255,255,255,.06), 0 3px 8px rgba(0,0,0,.5);
+  --shadow: 0 1px 0 rgba(255,255,255,.1), 0 3px 8px rgba(0,0,0,.5);
   --skin-radius: 3px; --skin-radius-ctl: 2px; --skin-border: 1px;
-  /* Brushed metal is a very fine vertical grain, not a gradient. */
+  /* Brushed metal is a very fine vertical grain — and it has to be VISIBLE:
+     the first pass ground it at .035 alpha and the card came out flat matte
+     charcoal, indistinguishable from a default dark theme. */
   --skin-card-bg:
     repeating-linear-gradient(90deg,
-      rgba(255,255,255,.035) 0 1px, transparent 1px 3px),
-    linear-gradient(180deg, rgba(255,255,255,.07), transparent 55%);
-  --skin-well-bg: linear-gradient(180deg, rgba(0,0,0,.4), transparent 60%);
-  --skin-ctl-bg: linear-gradient(180deg, rgba(255,255,255,.07), rgba(0,0,0,.18));
-  /* A vent panel with a rack screw either side. The screws are what say "1U of
-     steel" rather than "some horizontal lines". */
-  --skin-art-bg:
-    radial-gradient(circle 6px at 50% 50%, rgba(255,255,255,.18) 56%, transparent 58%) 24% 82% / 14px 14px no-repeat,
-    linear-gradient(45deg, transparent 43%, rgba(0,0,0,.6) 43% 57%, transparent 57%) 24% 82% / 14px 14px no-repeat,
-    radial-gradient(circle 6px at 50% 50%, rgba(255,255,255,.18) 56%, transparent 58%) 76% 82% / 14px 14px no-repeat,
-    linear-gradient(45deg, transparent 43%, rgba(0,0,0,.6) 43% 57%, transparent 57%) 76% 82% / 14px 14px no-repeat,
+      rgba(255,255,255,.1) 0 1px, transparent 1px 2px),
+    linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.03) 35%, rgba(0,0,0,.2));
+  /* The transcript box IS the vent panel now — full-width slots rather than
+     a 40%-wide smudge floating in dead space. Dim enough to sit under the
+     idle words. */
+  --skin-well-bg:
     repeating-linear-gradient(180deg,
-      transparent 0 4px, rgba(255,255,255,.11) 4px 7px, transparent 7px 11px) 50% 82% / 40% 40px no-repeat;
+      transparent 0 7px, rgba(255,255,255,.05) 7px 10px, transparent 10px 14px),
+    linear-gradient(180deg, rgba(0,0,0,.45), transparent 55%);
+  --skin-ctl-bg: linear-gradient(180deg, rgba(255,255,255,.07), rgba(0,0,0,.18));
+  /* Four rack screws at the panel's own corners — the thing that says "1U
+     bolted into a rack" — sized to be seen, slots at opposing angles the
+     way real screws never line up. Full frame: the screws mark the box. */
+  --skin-art-clear: 0;
+  --skin-art-bg:
+    radial-gradient(circle 9px at 50% 50%, rgba(255,255,255,.45) 55%, transparent 60%) 3% 7% / 20px 20px no-repeat,
+    linear-gradient(45deg, transparent 42%, rgba(0,0,0,.85) 42% 58%, transparent 58%) 3% 7% / 22px 22px no-repeat,
+    radial-gradient(circle 9px at 50% 50%, rgba(255,255,255,.45) 55%, transparent 60%) 97% 7% / 20px 20px no-repeat,
+    linear-gradient(-30deg, transparent 42%, rgba(0,0,0,.85) 42% 58%, transparent 58%) 97% 7% / 22px 22px no-repeat,
+    radial-gradient(circle 9px at 50% 50%, rgba(255,255,255,.45) 55%, transparent 60%) 3% 94% / 20px 20px no-repeat,
+    linear-gradient(80deg, transparent 42%, rgba(0,0,0,.85) 42% 58%, transparent 58%) 3% 94% / 22px 22px no-repeat,
+    radial-gradient(circle 9px at 50% 50%, rgba(255,255,255,.45) 55%, transparent 60%) 97% 94% / 20px 20px no-repeat,
+    linear-gradient(45deg, transparent 42%, rgba(0,0,0,.85) 42% 58%, transparent 58%) 97% 94% / 22px 22px no-repeat;
 }
 
 /* Console strip — one channel of the desk: a fader beside its LED ladder. */
@@ -116,19 +155,29 @@
   --shadow: 0 2px 6px rgba(0,0,0,.45);
   --skin-radius: 2px; --skin-radius-ctl: 1px; --skin-border: 1px;
   --skin-card-bg: linear-gradient(180deg, rgba(255,255,255,.05), transparent 30%);
-  --skin-well-bg: linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.12));
+  /* The desk's channel seams run the whole box — one hairline every strip
+     width, which is what says "one channel OF a desk" instead of a gadget
+     floating in a void. */
+  --skin-well-bg:
+    repeating-linear-gradient(90deg, transparent 0 79px, rgba(255,255,255,.035) 79px 80px),
+    linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,.12));
   --skin-ctl-bg: linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.2));
-  /* The fader in its slot with the cap just above unity, and a six-LED ladder
-     beside it reading about two thirds. A channel strip, at a glance. */
+  /* The channel strip proper: a recessed slot with scale ticks beside it,
+     the cap just above unity, and the LED ladder as a tight stack in its
+     own meter well — co-registered with the fader's travel, because the
+     first pass scattered the LEDs and they read as hyphens in the dark. */
   --skin-art-bg:
-    linear-gradient(180deg, rgba(255,255,255,.16) 0 100%) 78% 62% / 2px 84px no-repeat,
-    linear-gradient(180deg, rgba(238,241,244,.9) 0 100%) 78% 52% / 22px 7px no-repeat,
-    linear-gradient(90deg, rgba(95,201,138,.9) 0 100%) 88% 96% / 14px 4px no-repeat,
-    linear-gradient(90deg, rgba(95,201,138,.85) 0 100%) 88% 84% / 14px 4px no-repeat,
-    linear-gradient(90deg, rgba(239,199,94,.85) 0 100%) 88% 72% / 14px 4px no-repeat,
-    linear-gradient(90deg, rgba(239,199,94,.7) 0 100%) 88% 60% / 14px 4px no-repeat,
-    linear-gradient(90deg, rgba(224,79,106,.3) 0 100%) 88% 48% / 14px 4px no-repeat,
-    linear-gradient(90deg, rgba(224,79,106,.22) 0 100%) 88% 36% / 14px 4px no-repeat;
+    /* fader slot, rail, ticks, cap */
+    linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,.28)) 64% 42% / 10px 96px no-repeat,
+    linear-gradient(180deg, rgba(255,255,255,.14) 0 100%) 64% 42% / 2px 96px no-repeat,
+    repeating-linear-gradient(180deg, rgba(147,160,173,.32) 0 1px, transparent 1px 11px) 58% 42% / 6px 89px no-repeat,
+    linear-gradient(180deg, rgba(238,241,244,.95) 0 100%) 64% 31% / 24px 8px no-repeat,
+    /* meter well */
+    linear-gradient(180deg, rgba(0,0,0,.5), rgba(0,0,0,.25)) 76% 42% / 24px 96px no-repeat,
+    /* the ladder, bottom-up: three green, two amber, two dim red */
+    repeating-linear-gradient(180deg, rgba(95,201,138,.85) 0 5px, transparent 5px 10px) 76% 56% / 16px 25px no-repeat,
+    repeating-linear-gradient(180deg, rgba(239,199,94,.8) 0 5px, transparent 5px 10px) 76% 36% / 16px 15px no-repeat,
+    repeating-linear-gradient(180deg, rgba(224,79,106,.3) 0 5px, transparent 5px 10px) 76% 20% / 16px 15px no-repeat;
 }
 
 /* Shortwave — wood and cream, and a lit dial with the needle on a band. */
@@ -142,21 +191,30 @@
   --shadow: 0 2px 5px rgba(80,60,30,.25);
   --font-body: "Iowan Old Style", Georgia, "Times New Roman", serif;
   --skin-radius: 12px; --skin-radius-ctl: 3px; --skin-border: 2px;
-  --skin-card-bg: linear-gradient(180deg, rgba(255,255,255,.55), transparent 42%);
+  /* Wood as well as cream: a faint diagonal grain under the cabinet's sheen,
+     which is the half of the name the first pass never delivered. */
+  --skin-card-bg:
+    repeating-linear-gradient(94deg, rgba(122,84,16,.05) 0 2px, transparent 2px 9px),
+    linear-gradient(180deg, rgba(255,255,255,.55), transparent 42%);
   --skin-well-bg: linear-gradient(180deg, rgba(255,255,255,.6), rgba(255,255,255,.15));
   --skin-ctl-bg: linear-gradient(180deg, rgba(255,255,255,.5), transparent);
-  /* A real dial: the baseline, short ticks with a tall one every fifth, and
-     the needle in the station's red with its pointer above it. */
+  /* A LIT dial now: a warm lamp band glows behind the scale, the ticks read
+     against it, and the needle crosses the whole band. The first pass drew
+     the scale at the foot of the box, which — once the idle board moved down
+     — struck the ticks straight through the headline; the dial lives in the
+     drawing's own upper region instead. */
   --skin-art-bg:
-    linear-gradient(180deg, rgba(43,32,22,.45) 0 100%) 50% 92% / 62% 1px no-repeat,
-    repeating-linear-gradient(90deg, rgba(43,32,22,.4) 0 1px, transparent 1px 9px) 50% 92% / 62% 7px no-repeat,
-    repeating-linear-gradient(90deg, rgba(43,32,22,.55) 0 1px, transparent 1px 45px) 50% 92% / 62% 13px no-repeat,
-    linear-gradient(180deg, rgba(168,68,42,.95) 0 100%) 56% 88% / 2px 26px no-repeat,
-    linear-gradient(180deg, transparent 45%, rgba(168,68,42,.95) 45%) 56% 74% / 9px 9px no-repeat;
+    linear-gradient(180deg, rgba(255,196,90,0), rgba(255,196,90,.3) 50%, rgba(255,196,90,0)) 50% 30% / 66% 38px no-repeat,
+    linear-gradient(180deg, rgba(43,32,22,.5) 0 100%) 50% 37% / 62% 1px no-repeat,
+    repeating-linear-gradient(90deg, rgba(43,32,22,.42) 0 1px, transparent 1px 9px) 50% 33% / 62% 8px no-repeat,
+    repeating-linear-gradient(90deg, rgba(43,32,22,.6) 0 1px, transparent 1px 45px) 50% 32% / 62% 14px no-repeat,
+    linear-gradient(180deg, rgba(168,68,42,.95) 0 100%) 57% 27% / 2px 34px no-repeat,
+    linear-gradient(180deg, transparent 45%, rgba(168,68,42,.95) 45%) 57% 16% / 9px 9px no-repeat;
 }
 
-/* Tape deck — the platter, and it turns. The operator's own example: it is there
-   between calls and gone the moment somebody is on the line. */
+/* Turntable — the platter, and it turns. The operator's own example: it is
+   there between calls and gone the moment somebody is on the line. (The id
+   stays `tape` — it is a stored settings value on real decks.) */
 :root[data-skin="tape"] {
   --pine: #17161a; --granite: #201e24; --granite-hi: #2a272f;
   --alpenglow: #ece7dd; --sage: #a49d92; --sage-dim: #77716a;
@@ -168,20 +226,26 @@
   --skin-radius: 8px; --skin-radius-ctl: 2px; --skin-border: 1px;
   --skin-card-bg: linear-gradient(180deg, rgba(255,255,255,.05), transparent 35%);
   --skin-well-bg: radial-gradient(120% 100% at 50% 0%, rgba(255,255,255,.05), transparent);
-  --skin-ctl-bg: linear-gradient(180deg, rgba(255,255,255,.04), rgba(0,0,0,.12));   /* it TURNS, so it has to turn about its own middle */
-  /* A record: rim, grooves, label, spindle — and ONE radial mark, because
-     without it a rotating disc is indistinguishable from a still one. */
-  /* Its own box — the bottom half of the transcript area — so it turns on its
-     own centre and still leaves the headline alone. */
-  --skin-art-inset: 46% 0 0 0;
+  --skin-ctl-bg: linear-gradient(180deg, rgba(255,255,255,.04), rgba(0,0,0,.12));
+  /* A record at record size: rim, grooves, label, spindle — and ONE radial
+     mark, because without it a rotating disc is indistinguishable from a
+     still one. The first pass squeezed a 68px disc into a leftover band and
+     it landed tiny, on the headline. The drawing's box is the art frame
+     itself now (the base sheet already keeps that clear of the board's
+     text), the disc turns about the frame's centre, and at 128px it reads as
+     the object the skin is named for. The mark is an ellipse dash drawn off
+     the tile's centre, so the spin carries it round the label. */
+  --skin-art-anim: skinspin 5.5s linear infinite;
   --skin-art-bg:
-    linear-gradient(90deg, rgba(236,231,221,.5) 0 100%) 50% 32% / 1.5px 15px no-repeat,
-    radial-gradient(circle 2.5px at 50% 50%, rgba(23,22,26,.95) 62%, transparent 64%) center / 68px 68px no-repeat,
-    radial-gradient(circle 13px at 50% 50%, rgba(217,112,74,.55) 95%, transparent 96%) center / 68px 68px no-repeat,
-    radial-gradient(circle 20px at 50% 50%, transparent 94%, rgba(236,231,221,.16) 95%, transparent 97%) center / 68px 68px no-repeat,
-    radial-gradient(circle 26px at 50% 50%, transparent 95%, rgba(236,231,221,.14) 96%, transparent 98%) center / 68px 68px no-repeat,
-    radial-gradient(circle 31px at 50% 50%, transparent 95%, rgba(236,231,221,.42) 96%, transparent 99%) center / 68px 68px no-repeat;
-  --skin-art-anim: skinspin 9s linear infinite;
+    radial-gradient(ellipse 2px 8px at 50% 21%, rgba(236,231,221,.6) 60%, transparent 72%) center / 128px 128px no-repeat,
+    radial-gradient(circle 3px at 50% 50%, rgba(23,22,26,.95) 62%, transparent 66%) center / 128px 128px no-repeat,
+    radial-gradient(circle 22px at 50% 50%, rgba(217,112,74,.6) 94%, transparent 96%) center / 128px 128px no-repeat,
+    radial-gradient(circle 34px at 50% 50%, transparent 94%, rgba(236,231,221,.15) 95%, transparent 97%) center / 128px 128px no-repeat,
+    radial-gradient(circle 43px at 50% 50%, transparent 95%, rgba(236,231,221,.13) 96%, transparent 98%) center / 128px 128px no-repeat,
+    radial-gradient(circle 52px at 50% 50%, transparent 95%, rgba(236,231,221,.14) 96%, transparent 98%) center / 128px 128px no-repeat,
+    radial-gradient(circle 60px at 50% 50%, transparent 96%, rgba(236,231,221,.45) 97%, transparent 99%) center / 128px 128px no-repeat,
+    /* the platter's sheen: a soft top light the disc sits in */
+    radial-gradient(circle 70px at 50% 42%, rgba(255,255,255,.05), transparent 75%) center / 160px 160px no-repeat;
 }
 
 /* --- screen and terminal ----------------------------------------------------------
@@ -203,13 +267,22 @@
   --skin-texture: repeating-linear-gradient(180deg,
     rgba(0,0,0,.32) 0 1px, transparent 1px 3px);
   --skin-glow: 0 0 9px rgba(77,255,155,.55);
-  /* A PROMPT, not a floating block: a chevron and the cursor beside it, down
-     in the corner where a prompt actually sits. */
+  /* The tube breathes at its edges: a vignette on the well so the box reads
+     as glass with phosphor behind it, not a flat dark rectangle. */
+  --skin-well-bg: radial-gradient(130% 140% at 50% 50%, transparent 52%, rgba(0,0,0,.5));
+  /* A session, not a floating glyph: the prompt sits at the TOP LEFT where a
+     terminal actually starts, and it has printed something — the station's
+     own programme name, via the word slot, like an echoed command. The
+     cursor blinks on the line below it. */
   --skin-art-bg:
-    linear-gradient(45deg, transparent 40%, rgba(77,255,155,.8) 40% 60%, transparent 60%) 8% 86% / 9px 9px no-repeat,
-    linear-gradient(-45deg, transparent 40%, rgba(77,255,155,.8) 40% 60%, transparent 60%) 8% 94% / 9px 9px no-repeat,
-    linear-gradient(90deg, rgba(77,255,155,.85) 0 100%) 12% 90% / 9px 17px no-repeat;
+    linear-gradient(45deg, transparent 40%, rgba(77,255,155,.8) 40% 60%, transparent 60%) 4.5% 8% / 8px 8px no-repeat,
+    linear-gradient(-45deg, transparent 40%, rgba(77,255,155,.8) 40% 60%, transparent 60%) 4.5% 13% / 8px 8px no-repeat,
+    linear-gradient(90deg, rgba(77,255,155,.85) 0 100%) 4.5% 28% / 9px 16px no-repeat;
   --skin-art-anim: skinblink 1.15s steps(1, end) infinite;
+  --skin-word-display: block;
+  --skin-word-size: 12px;
+  --skin-word-ink: var(--sage);
+  --skin-word-inset: 12px auto auto 42px;
 }
 
 /* Amber CRT — the same tube, the other phosphor, and a curved glass. */
@@ -230,12 +303,20 @@
     radial-gradient(135% 135% at 50% 50%, transparent 62%, rgba(0,0,0,.55)),
     repeating-linear-gradient(180deg, rgba(0,0,0,.34) 0 1px, transparent 1px 3px);
   --skin-glow: 0 0 10px rgba(255,176,46,.55);
-  /* The same prompt, in the other phosphor. */
+  /* Not the green terminal with the hue swapped any more: this tube's tell
+     is the RETRACE — a soft bright band sweeping slowly down the glass, the
+     way a tired CRT actually looked. The band underlays the whole box (no
+     clear zone), repeats on the exact distance the fall travels, and the
+     drawing starts a full period above the frame so the loop's seam never
+     shows. */
+  --skin-art-clear: 0;
+  --skin-art-inset: -160px 0 0 0;
+  --skin-fall: 160px;
+  --skin-art-anim: skinfall 6.5s linear infinite;
   --skin-art-bg:
-    linear-gradient(45deg, transparent 40%, rgba(255,176,46,.8) 40% 60%, transparent 60%) 8% 86% / 9px 9px no-repeat,
-    linear-gradient(-45deg, transparent 40%, rgba(255,176,46,.8) 40% 60%, transparent 60%) 8% 94% / 9px 9px no-repeat,
-    linear-gradient(90deg, rgba(255,176,46,.85) 0 100%) 12% 90% / 9px 17px no-repeat;
-  --skin-art-anim: skinblink 1.15s steps(1, end) infinite;
+    linear-gradient(180deg,
+      transparent 0 30px, rgba(255,176,46,.09) 42px, rgba(255,176,46,.26) 50px,
+      rgba(255,176,46,.09) 58px, transparent 70px 160px) 0 0 / 100% 160px repeat-y;
 }
 
 /* Datastream — the same tube with the rain coming down it. */
@@ -250,23 +331,36 @@
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   --font-body: ui-monospace, "Cascadia Mono", Consolas, monospace;
   --skin-radius: 0; --skin-radius-ctl: 0; --skin-border: 1px;
-  --skin-texture: repeating-linear-gradient(90deg,
-    rgba(87,255,106,.05) 0 1px, transparent 1px 4px);
+  /* Scanlines run ACROSS a tube; the first pass striped them vertically,
+     which no phosphor screen ever did. */
+  --skin-texture: repeating-linear-gradient(180deg,
+    rgba(0,0,0,.28) 0 1px, transparent 1px 3px);
   --skin-glow: 0 0 8px rgba(87,255,106,.5);
-  /* Six columns of glyph-height dashes, each a different length and
-     brightness, so it reads as rain at different depths rather than a comb.
-     Kept to the sides — the middle of the box belongs to the words. */
+  /* The rain actually FALLS now. Ten columns spanning the whole box, each a
+     vertically-repeating dash train — near columns brighter and coarser, far
+     ones dim and fine — kept quiet enough in the middle to sit UNDER the
+     idle words (the art keeps no clear zone here: rain behind text is the
+     whole picture). Every dash period divides the 88px travel, so the loop's
+     snap lands on identical pixels and the fall never visibly restarts; the
+     drawing's box starts 88px above the frame so its edge never enters. */
+  --skin-art-clear: 0;
+  --skin-art-inset: -88px 0 0 0;
+  --skin-fall: 88px;
+  --skin-art-anim: skinfall 2.6s linear infinite;
   --skin-art-bg:
-    repeating-linear-gradient(180deg, rgba(87,255,106,.6) 0 5px, transparent 5px 11px) 18% 30% / 3px 70px no-repeat,
-    repeating-linear-gradient(180deg, rgba(87,255,106,.34) 0 5px, transparent 5px 11px) 27% 76% / 3px 96px no-repeat,
-    repeating-linear-gradient(180deg, rgba(87,255,106,.55) 0 5px, transparent 5px 11px) 36% 14% / 3px 52px no-repeat,
-    repeating-linear-gradient(180deg, rgba(87,255,106,.3) 0 5px, transparent 5px 11px) 64% 84% / 3px 78px no-repeat,
-    repeating-linear-gradient(180deg, rgba(87,255,106,.5) 0 5px, transparent 5px 11px) 73% 40% / 3px 104px no-repeat,
-    repeating-linear-gradient(180deg, rgba(87,255,106,.36) 0 5px, transparent 5px 11px) 82% 66% / 3px 62px no-repeat;
-  --skin-art-anim: skinpulse 2.6s ease-in-out infinite;
+    repeating-linear-gradient(180deg, rgba(87,255,106,.32) 0 26px, transparent 26px 44px) 5% 0 / 3px 100% no-repeat,
+    repeating-linear-gradient(180deg, rgba(87,255,106,.14) 0 13px, transparent 13px 22px) 14% 0 / 2px 100% no-repeat,
+    repeating-linear-gradient(180deg, rgba(87,255,106,.26) 0 52px, transparent 52px 88px) 24% 0 / 3px 100% no-repeat,
+    repeating-linear-gradient(180deg, rgba(87,255,106,.1) 0 12px, transparent 12px 22px) 35% 0 / 2px 100% no-repeat,
+    repeating-linear-gradient(180deg, rgba(87,255,106,.08) 0 24px, transparent 24px 44px) 47% 0 / 2px 100% no-repeat,
+    repeating-linear-gradient(180deg, rgba(87,255,106,.09) 0 20px, transparent 20px 44px) 58% 0 / 2px 100% no-repeat,
+    repeating-linear-gradient(180deg, rgba(87,255,106,.22) 0 30px, transparent 30px 44px) 68% 0 / 3px 100% no-repeat,
+    repeating-linear-gradient(180deg, rgba(87,255,106,.12) 0 12px, transparent 12px 22px) 78% 0 / 2px 100% no-repeat,
+    repeating-linear-gradient(180deg, rgba(87,255,106,.36) 0 56px, transparent 56px 88px) 88% 0 / 3px 100% no-repeat,
+    repeating-linear-gradient(180deg, rgba(87,255,106,.16) 0 22px, transparent 22px 44px) 96% 0 / 2px 100% no-repeat;
 }
 
-/* Vault — green tube behind a heavy moulded frame, a gauge around the text. */
+/* Vault — green tube behind a heavy moulded frame, the door's wheel turning. */
 :root[data-skin="vault"] {
   --pine: #04140b; --granite: #071f10; --granite-hi: #0a2a16;
   --alpenglow: #6fffa8; --sage: #35c072; --sage-dim: #218a4d;
@@ -282,16 +376,25 @@
     radial-gradient(120% 120% at 50% 50%, transparent 55%, rgba(0,0,0,.65)),
     repeating-linear-gradient(180deg, rgba(0,0,0,.25) 0 1px, transparent 1px 3px);
   --skin-glow: 0 0 12px rgba(77,255,160,.5);
-  /* A dial gauge: a swept arc reading about two thirds, inside two rings, with
-     a hub. It FRAMES the board's text rather than sitting on it. */
-  --skin-art:
-    conic-gradient(from 208deg at 50% 50%,
-      rgba(77,255,160,.32) 0 96deg, transparent 96deg 152deg),
-    radial-gradient(circle 44px at 50% 50%, transparent 90%, rgba(77,255,160,.3) 91%, transparent 96%),
-    radial-gradient(circle 30px at 50% 50%, transparent 92%, rgba(77,255,160,.22) 93%, transparent 97%),
-    radial-gradient(circle 3.5px at 50% 50%, rgba(77,255,160,.55) 60%, transparent 62%);
-  --skin-art-size: 100px 100px;
-  --skin-art-pos: center;
+  /* The door's handwheel, slowly turning. The first pass tried a gauge and
+     shipped the trap this file's own header warns about — a multi-layer
+     --skin-art with ONE size, so the conic sweep painted at the size of the
+     whole box and the "arc" was a wedge across half the card. Rebuilt on the
+     full form, and as the honest object for the name: a four-spoke wheel —
+     rim, spokes, hub — because spokes run centre-to-rim, which is the one
+     radial drawing gradients can say without needing a punch-out. It turns
+     the way a vault wheel does: slowly. */
+  --skin-art-anim: skinspin 16s linear infinite;
+  --skin-art-bg:
+    radial-gradient(circle 52px at 50% 50%, transparent 94%, rgba(77,255,160,.5) 95%, transparent 98%) 50% 26% / 118px 118px no-repeat,
+    radial-gradient(circle 46px at 50% 50%, transparent 94%, rgba(77,255,160,.2) 95%, transparent 98%) 50% 26% / 118px 118px no-repeat,
+    /* the boss BEFORE the spokes — first layer paints on top, and a hub the
+       bars run straight over reads as a circle behind an X, not a wheel */
+    radial-gradient(circle 9px at 50% 50%, transparent 82%, rgba(77,255,160,.55) 86%, transparent 96%) 50% 26% / 118px 118px no-repeat,
+    radial-gradient(circle 5px at 50% 50%, rgba(7,31,16,.95) 80%, transparent 88%) 50% 26% / 118px 118px no-repeat,
+    radial-gradient(circle 3px at 50% 50%, rgba(77,255,160,.6) 60%, transparent 66%) 50% 26% / 118px 118px no-repeat,
+    linear-gradient(90deg, transparent 47.8%, rgba(77,255,160,.4) 48.4% 51.6%, transparent 52.2%) 50% 36% / 96px 96px no-repeat,
+    linear-gradient(180deg, transparent 47.8%, rgba(77,255,160,.4) 48.4% 51.6%, transparent 52.2%) 50% 36% / 96px 96px no-repeat;
 }
 
 /* Arcade — 8-bit. Hard pixels, no blur, and an invader on the way down. */
@@ -306,19 +409,34 @@
   --skin-radius: 0; --skin-radius-ctl: 0; --skin-border: 3px;
   --skin-ctl-bg: linear-gradient(180deg, rgba(255,255,255,.1), transparent);
   --skin-glow: 0 0 0 2px rgba(255,59,107,.35);
-  /* An invader out of hard blocks: head, body, two eyes punched back out in
-     the card's own ground, shoulders and legs. Pixel art is what 8-bit MEANS —
-     two crossed bars were not it. */
+  /* An invader out of hard blocks — antennae, head, body, punched eyes,
+     arms, legs — at a size that reads as a SPRITE, marching down the screen
+     in hard steps and snapping back for the next wave. The first pass was a
+     squat blob wearing the headline as its legs; this one lives in the
+     upper field and actually descends. */
+  --skin-fall: 24px;
+  --skin-art-anim: skinfall 2.8s steps(4, end) infinite;
   --skin-art-bg:
-    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 50% 72% / 14px 6px no-repeat,
-    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 50% 80% / 30px 14px no-repeat,
-    linear-gradient(0deg, #140831 0 100%) 47% 79% / 5px 5px no-repeat,
-    linear-gradient(0deg, #140831 0 100%) 53% 79% / 5px 5px no-repeat,
-    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 45.5% 84% / 6px 14px no-repeat,
-    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 54.5% 84% / 6px 14px no-repeat,
-    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 47.5% 94% / 6px 9px no-repeat,
-    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 52.5% 94% / 6px 9px no-repeat;
-  --skin-art-anim: skinpulse 2.2s steps(2, end) infinite;
+    /* antennae */
+    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 46.8% 8% / 6px 10px no-repeat,
+    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 53.2% 8% / 6px 10px no-repeat,
+    /* head */
+    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 50% 16% / 22px 8px no-repeat,
+    /* eyes, punched back to the ground — BEFORE the body in this list,
+       because the first background layer paints on top */
+    linear-gradient(0deg, #140831 0 100%) 47.2% 27% / 7px 7px no-repeat,
+    linear-gradient(0deg, #140831 0 100%) 52.8% 27% / 7px 7px no-repeat,
+    /* body */
+    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 50% 28% / 46px 16px no-repeat,
+    /* arms */
+    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 42.6% 30% / 7px 24px no-repeat,
+    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 57.4% 30% / 7px 24px no-repeat,
+    /* legs */
+    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 47.4% 42% / 7px 11px no-repeat,
+    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 52.6% 42% / 7px 11px no-repeat,
+    /* feet, turned out */
+    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 44.8% 46% / 8px 5px no-repeat,
+    linear-gradient(0deg, rgba(63,224,107,.95) 0 100%) 55.2% 46% / 8px 5px no-repeat;
 }
 
 /* --- screens that are not tubes ---------------------------------------------------- */
@@ -337,18 +455,26 @@
   --skin-glow: 0 0 10px rgba(53,224,255,.5);
   --skin-texture: repeating-linear-gradient(180deg,
     rgba(53,224,255,.04) 0 2px, transparent 2px 6px);
-  /* Four corner brackets and a ranging ring — a target box AROUND the words,
-     which is the one centred drawing that does not fight them. */
+  /* Four corner brackets locked around the words — the target box really
+     frames the headline and status now (the first pass framed the empty
+     upper region, and its ranging ring sat ON the text). The lock breathes
+     the way an acquiring HUD does. Full frame, because the thing being
+     framed is the board's own text zone. */
+  --skin-art-clear: 0;
+  --skin-art-anim: skinpulse 2.8s ease-in-out infinite;
   --skin-art-bg:
-    linear-gradient(0deg, rgba(53,224,255,.6) 0 100%) 14% 22% / 1px 18px no-repeat,
-    linear-gradient(0deg, rgba(53,224,255,.6) 0 100%) 14% 22% / 18px 1px no-repeat,
-    linear-gradient(0deg, rgba(53,224,255,.6) 0 100%) 86% 22% / 1px 18px no-repeat,
-    linear-gradient(0deg, rgba(53,224,255,.6) 0 100%) 86% 22% / 18px 1px no-repeat,
-    linear-gradient(0deg, rgba(53,224,255,.6) 0 100%) 14% 78% / 1px 18px no-repeat,
-    linear-gradient(0deg, rgba(53,224,255,.6) 0 100%) 14% 78% / 18px 1px no-repeat,
-    linear-gradient(0deg, rgba(53,224,255,.6) 0 100%) 86% 78% / 1px 18px no-repeat,
-    linear-gradient(0deg, rgba(53,224,255,.6) 0 100%) 86% 78% / 18px 1px no-repeat,
-    radial-gradient(circle 15px at 50% 50%, transparent 92%, rgba(53,224,255,.3) 93%, transparent 97%) 50% 88% / 34px 34px no-repeat;
+    linear-gradient(0deg, rgba(53,224,255,.65) 0 100%) 16% 40% / 1.5px 20px no-repeat,
+    linear-gradient(0deg, rgba(53,224,255,.65) 0 100%) 16% 38% / 20px 1.5px no-repeat,
+    linear-gradient(0deg, rgba(53,224,255,.65) 0 100%) 84% 40% / 1.5px 20px no-repeat,
+    linear-gradient(0deg, rgba(53,224,255,.65) 0 100%) 84% 38% / 20px 1.5px no-repeat,
+    linear-gradient(0deg, rgba(53,224,255,.65) 0 100%) 16% 84% / 1.5px 20px no-repeat,
+    linear-gradient(0deg, rgba(53,224,255,.65) 0 100%) 16% 87% / 20px 1.5px no-repeat,
+    linear-gradient(0deg, rgba(53,224,255,.65) 0 100%) 84% 84% / 1.5px 20px no-repeat,
+    linear-gradient(0deg, rgba(53,224,255,.65) 0 100%) 84% 87% / 20px 1.5px no-repeat,
+    /* the range readout: three ticks and a hairline, top centre, clear of
+       the lock */
+    linear-gradient(90deg, rgba(53,224,255,.4) 0 100%) 50% 10% / 120px 1px no-repeat,
+    repeating-linear-gradient(90deg, rgba(53,224,255,.5) 0 1.5px, transparent 1.5px 59px) 50% 13% / 120px 5px no-repeat;
 }
 
 /* Neon — after dark, wet pavement, and a tube sign that breathes. */
@@ -359,29 +485,41 @@
   --hairline: #2a1450; --edge: #3d1d72;
   --ok: #4dffc3; --cool: #47e8ff;
   --shadow: 0 0 24px rgba(255,62,165,.25);
-  --skin-radius: 14px; --skin-radius-ctl: 999px; --skin-border: 1px;
+  /* Soft lozenges, NOT full pills: the control radius also rounds the line
+     box's foot, and at 999px the box's own corners drew a giant dome around
+     the whole transcript (visible in every screenshot as a purple
+     superellipse nobody asked for). */
+  --skin-radius: 14px; --skin-radius-ctl: 12px; --skin-border: 1px;
   --skin-card-bg: linear-gradient(180deg, rgba(255,62,165,.09), transparent 45%);
   --skin-ctl-bg: linear-gradient(180deg, rgba(255,62,165,.07), transparent);
   --skin-glow: 0 0 14px rgba(255,62,165,.65);
-  /* A bent tube with its mounting pins: two arcs in two colours with a break
-     between them, which is what a neon sign is — not a plain ring. */
-  --skin-art:
-    conic-gradient(from 120deg at 50% 50%,
-      rgba(255,62,165,.8) 0 118deg, transparent 118deg 182deg,
-      rgba(71,232,255,.65) 182deg 298deg, transparent 298deg),
-    radial-gradient(circle 21px at 50% 50%, #120826 96%, transparent 97%),
-    radial-gradient(circle 3px at 50% 4%, rgba(246,233,255,.7) 60%, transparent 62%),
-    radial-gradient(circle 3px at 50% 96%, rgba(246,233,255,.7) 60%, transparent 62%);
-  --skin-art-size: 56px 56px;
-  --skin-art-pos: center 82%;
-  --skin-art-anim: skinpulse 3.2s ease-in-out infinite;
+  /* Wet pavement under the sign: the tube's two colours pooling faintly at
+     the foot of the box, the reflection every neon window owes the street. */
+  --skin-well-bg:
+    linear-gradient(180deg, transparent 58%, rgba(255,62,165,.05) 80%, rgba(71,232,255,.05) 100%);
+  /* The tube sign, rebuilt on the full form — the conic arcs were shipping
+     at the size of the whole box (the one-size-many-layers trap this file's
+     header warns about) and painted the card in giant triangles. Now: a
+     halo, the pink tube ring with its white-hot core, an inner cyan ring,
+     and the two mounting pins. It stutters like a tube warming up rather
+     than breathing like a lamp. */
+  --skin-art-anim: skinflicker 5.2s linear infinite;
+  --skin-art-bg:
+    radial-gradient(circle 36px at 50% 50%, rgba(255,62,165,.26), transparent 72%) 50% 28% / 96px 96px no-repeat,
+    radial-gradient(circle 30px at 50% 50%, transparent 90%, rgba(255,62,165,.85) 93%, transparent 98%) 50% 28% / 96px 96px no-repeat,
+    radial-gradient(circle 30px at 50% 50%, transparent 93%, rgba(255,255,255,.75) 94.5%, transparent 96%) 50% 28% / 96px 96px no-repeat,
+    radial-gradient(circle 21px at 50% 50%, transparent 88%, rgba(71,232,255,.7) 92%, transparent 97%) 50% 28% / 96px 96px no-repeat,
+    radial-gradient(circle 3px at 50% 17%, rgba(246,233,255,.8) 60%, transparent 68%) 50% 28% / 96px 96px no-repeat,
+    radial-gradient(circle 3px at 50% 83%, rgba(246,233,255,.8) 60%, transparent 68%) 50% 28% / 96px 96px no-repeat;
 }
 
 /* Glass — frosted and light, everything floating a little off the surface. */
 :root[data-skin="glass"] {
   --pine: #ccd5e3; --granite: #eef2f8; --granite-hi: #e2e8f2;
   --alpenglow: #16202c; --sage: #4a5a6c; --sage-dim: #74839a;
-  --coral: #2f6df0; --amber: #8a5100;
+  /* warm but clean — the old #8a5100 progress line read as mud on the pale
+     track */
+  --coral: #2f6df0; --amber: #9a6a00;
   --hairline: #c3cddb; --edge: #aebbcc;
   --ok: #16794a; --cool: #2f6df0;
   --shadow: 0 8px 26px rgba(30,50,80,.18), inset 0 1px 0 rgba(255,255,255,.9);
@@ -390,17 +528,23 @@
      and every surface catching a little of it. */
   --skin-card-bg:
     linear-gradient(155deg, rgba(255,255,255,.9) 0%, rgba(255,255,255,.18) 36%, transparent 60%);
+  /* Frost, carried into the box itself: the same top-left light falls across
+     the well, so the transcript area reads as a pane catching the window
+     rather than a flat grey slab. */
   --skin-well-bg:
-    linear-gradient(180deg, rgba(255,255,255,.75), rgba(255,255,255,.12));
+    linear-gradient(160deg, rgba(255,255,255,.7), rgba(255,255,255,.25) 42%, rgba(255,255,255,.06) 72%),
+    linear-gradient(180deg, rgba(255,255,255,.45), rgba(255,255,255,.1));
   --skin-ctl-bg: linear-gradient(180deg, rgba(255,255,255,.8), rgba(255,255,255,.25));
   --skin-glow: 0 4px 14px rgba(47,109,240,.35);
-  /* A lens streak rather than an object: light ON the glass, low and wide. */
+  /* The lens streak, wide and high where light actually crosses a pane —
+     the old one was a small white smudge hovering over the headline. It
+     breathes slowly, like the light moving. */
   --skin-art:
-    linear-gradient(102deg, transparent 28%, rgba(255,255,255,.9) 47%,
-                    rgba(255,255,255,.35) 54%, transparent 68%);
-  --skin-art-size: 280px 54px;
-  --skin-art-pos: center 84%;
-  --skin-art-anim: skinpulse 5s ease-in-out infinite;
+    linear-gradient(115deg, transparent 30%, rgba(47,109,240,.16) 46%,
+                    rgba(47,109,240,.06) 55%, transparent 68%);
+  --skin-art-size: 420px 110px;
+  --skin-art-pos: 18% 8%;
+  --skin-art-anim: skinpulse 6s ease-in-out infinite;
 }
 
 /* Screensaver — the logo goes round the box, and one day it will hit a corner.
@@ -415,15 +559,20 @@
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   --skin-radius: 0; --skin-radius-ctl: 0; --skin-border: 1px;
   --skin-glow: 0 0 18px rgba(123,92,255,.5);
-  /* No drawing at all — the artefact IS the word. Two sweeps on different
-     durations, both alternating, which is exactly how the real one worked and
-     why the corner is rare: the two axes rarely arrive together. */
+  /* No drawing at all — the artefact IS the word, and it is the BIGGEST
+     type on the screen, the way the real logo was: a 15px whisper bouncing
+     around read as a mislaid label. Pink, so it belongs to itself rather
+     than to the chrome's purple. Two sweeps on different durations, both
+     alternating, which is exactly how the real one worked and why the
+     corner is rare: the two axes rarely arrive together. */
   --skin-word-display: block;
-  --skin-word-size: 15px;
-  --skin-word-ink: var(--coral);
+  --skin-word-size: 26px;
+  --skin-word-ink: var(--amber);
   --skin-word-anim:
     skinbouncex 7.3s linear infinite alternate,
     skinbouncey 4.1s linear infinite alternate;
+  /* the tube's face, one shade off the void, so the box reads as a screen */
+  --skin-well-bg: linear-gradient(180deg, #0a0a11, #06060a);
 }
 
 /* --- paper, ink and old windows ---------------------------------------------------- */
@@ -442,15 +591,21 @@
   --skin-label-case: none;
   --skin-radius: 2px; --skin-radius-ctl: 2px; --skin-border: 1px;
   --skin-card-bg: linear-gradient(180deg, rgba(255,255,255,.5), transparent 30%);
-  --skin-well-bg: repeating-linear-gradient(180deg,
-    transparent 0 21px, rgba(33,29,23,.09) 21px 22px);
-  /* Off in the corner where a cup actually gets put down, not centred on the
-     page. Two overlapping rings, because one is a circle and two is a stain. */
-  --skin-art:
-    radial-gradient(circle 26px at 50% 50%, transparent 86%, rgba(120,80,40,.28) 88%, transparent 95%),
-    radial-gradient(circle 20px at 42% 58%, transparent 88%, rgba(120,80,40,.18) 90%, transparent 96%);
-  --skin-art-size: 66px 66px;
-  --skin-art-pos: 90% 24%;
+  /* Ruled lines AND the margin rule — the one vertical red-brown line down
+     the left edge is the cheapest cue ruled paper owns, and the first pass
+     left it off. */
+  --skin-well-bg:
+    linear-gradient(90deg, transparent 30px, rgba(156,59,35,.28) 30px 31px, transparent 31px),
+    repeating-linear-gradient(180deg,
+      transparent 0 21px, rgba(33,29,23,.09) 21px 22px);
+  /* ONE stain, in the corner where a cup actually gets put down. The first
+     pass fell into the one-size-many-layers trap and shipped two detached
+     ghost circles mid-page; the rings now share a single placed tile, over
+     a faint fill bleed, offset so it reads as a stain and not geometry. */
+  --skin-art-bg:
+    radial-gradient(circle 24px at 50% 50%, rgba(139,94,48,.06) 55%, rgba(120,80,40,.1) 80%, transparent 90%) 89% 12% / 70px 70px no-repeat,
+    radial-gradient(circle 25px at 50% 50%, transparent 84%, rgba(120,80,40,.3) 87%, rgba(120,80,40,.12) 92%, transparent 96%) 89% 12% / 70px 70px no-repeat,
+    radial-gradient(circle 20px at 43% 57%, transparent 86%, rgba(120,80,40,.18) 89%, transparent 94%) 89% 12% / 70px 70px no-repeat;
 }
 
 /* Blueprint — cyan on navy, drafting grid, one dimensioned line. */
@@ -469,16 +624,27 @@
     repeating-linear-gradient(180deg, rgba(127,212,255,.09) 0 1px, transparent 1px 12px),
     repeating-linear-gradient(90deg, rgba(127,212,255,.17) 0 1px, transparent 1px 60px),
     repeating-linear-gradient(180deg, rgba(127,212,255,.17) 0 1px, transparent 1px 60px);
-  --skin-well-bg: linear-gradient(180deg, rgba(0,0,0,.18), transparent 40%);
+  /* The grid reaches the drawing area too — a sheet's grid doesn't stop at
+     the title block — plus the usual darkening so the words stay first. */
+  --skin-well-bg:
+    repeating-linear-gradient(90deg, rgba(127,212,255,.06) 0 1px, transparent 1px 12px),
+    repeating-linear-gradient(180deg, rgba(127,212,255,.06) 0 1px, transparent 1px 12px),
+    linear-gradient(180deg, rgba(0,0,0,.18), transparent 40%);
   --skin-ctl-bg: linear-gradient(180deg, rgba(127,212,255,.06), transparent);
   /* A dimension line: extension lines at both ends, arrow ticks, one rule
-     between. That is what says "drafting" rather than "some lines". */
+     between — up in the sheet's own space now, where the first pass sat it
+     on the headline. The measured thing is the station: its name prints
+     under the line like a drawing label, via the word slot. */
   --skin-art-bg:
-    linear-gradient(90deg, rgba(127,212,255,.55) 0 100%) 50% 86% / 46% 1px no-repeat,
-    linear-gradient(180deg, rgba(127,212,255,.55) 0 100%) 27% 86% / 1px 22px no-repeat,
-    linear-gradient(180deg, rgba(127,212,255,.55) 0 100%) 73% 86% / 1px 22px no-repeat,
-    linear-gradient(45deg, transparent 43%, rgba(127,212,255,.75) 43% 57%, transparent 57%) 28% 86% / 10px 10px no-repeat,
-    linear-gradient(-45deg, transparent 43%, rgba(127,212,255,.75) 43% 57%, transparent 57%) 72% 86% / 10px 10px no-repeat;
+    linear-gradient(90deg, rgba(127,212,255,.55) 0 100%) 50% 14% / 46% 1px no-repeat,
+    linear-gradient(180deg, rgba(127,212,255,.55) 0 100%) 27% 14% / 1px 22px no-repeat,
+    linear-gradient(180deg, rgba(127,212,255,.55) 0 100%) 73% 14% / 1px 22px no-repeat,
+    linear-gradient(45deg, transparent 43%, rgba(127,212,255,.75) 43% 57%, transparent 57%) 28% 14% / 10px 10px no-repeat,
+    linear-gradient(-45deg, transparent 43%, rgba(127,212,255,.75) 43% 57%, transparent 57%) 72% 14% / 10px 10px no-repeat;
+  --skin-word-display: block;
+  --skin-word-size: 10px;
+  --skin-word-ink: var(--sage);
+  --skin-word-inset: 34px auto auto 28%;
 }
 
 /* E-ink — greyscale, no glow, nothing moving. The legible one. */
@@ -492,9 +658,13 @@
   --font-body: Charter, "Iowan Old Style", Georgia, serif;
   --skin-radius: 0; --skin-radius-ctl: 0; --skin-border: 2px;
   --skin-label-case: none;
-  /* Deliberately no art, no texture and no glow. Every other skin here is
-     allowed to be a costume; this is the one to pick when the card has to be
-     read rather than admired. */
+  /* The page is the BRIGHTEST surface — on a real e-reader the reading area
+     is the paper and the chrome sits back. The first pass had it inverted
+     (a grey slab darker than the frame), which read as a broken panel. */
+  --skin-well-bg: linear-gradient(0deg, #fbfbf8, #fbfbf8);
+  /* Deliberately no art, no texture and no glow beyond that. Every other
+     skin here is allowed to be a costume; this is the one to pick when the
+     card has to be read rather than admired. */
 }
 
 /* Classic Mac — 1-bit, dithered, with the title bar's lines across the top. */
@@ -510,13 +680,25 @@
   --skin-radius: 0; --skin-radius-ctl: 0; --skin-border: 2px;
   --skin-label-case: none;
   /* The title bar's stripes across the top of the card, which is the single
-     most recognisable thing about this interface. */
-  --skin-card-bg: repeating-linear-gradient(180deg,
-    rgba(0,0,0,.9) 0 1px, transparent 1px 3px) 0 0 / 100% 13px no-repeat;
-  /* The 50% dither at pixel scale, so it reads as a checker and not as grey —
-     a patch of desktop pattern, low and out of the headline's way. */
+     most recognisable thing about this interface. Spelled as one plain
+     gradient with explicit stops: this token feeds background-IMAGE, where a
+     position/size suffix is invalid and silently drops the whole layer — the
+     stripes had never actually rendered (probed 2026-08-31: the card's
+     computed background-image was `none`). */
+  --skin-card-bg: linear-gradient(180deg,
+    transparent 0 2px, #000 2px 3px, transparent 3px 5px, #000 5px 6px,
+    transparent 6px 8px, #000 8px 9px, transparent 9px 11px, #000 11px 12px,
+    transparent 12px);
+  /* The 50% dither at PIXEL scale — the desktop pattern peeking in along the
+     foot of the box. The first pass tiled a 104x26 checker over the whole
+     box (no no-repeat, cells 26x the real thing) and buried the headline in
+     a chessboard. Three repeat-x strips of 8px cells make a 24px band that
+     stays a texture, under everything, out of the words' way. */
+  --skin-art-clear: 0;
   --skin-art-bg:
-    repeating-conic-gradient(#000 0 25%, transparent 0 50%) 50% 88% / 104px 26px;
+    repeating-conic-gradient(rgba(0,0,0,.4) 0 25%, transparent 0 50%) left calc(100% - 0px) / 8px 8px repeat-x,
+    repeating-conic-gradient(rgba(0,0,0,.4) 0 25%, transparent 0 50%) left calc(100% - 8px) / 8px 8px repeat-x,
+    repeating-conic-gradient(rgba(0,0,0,.4) 0 25%, transparent 0 50%) left calc(100% - 16px) / 8px 8px repeat-x;
 }
 
 /* Windows 95 — outset bevels, system grey, and the grip in the corner. */
@@ -529,15 +711,30 @@
   --shadow: inset -1px -1px 0 #0a0a0a, inset 1px 1px 0 #ffffff,
             inset -2px -2px 0 #808080, inset 2px 2px 0 #dfdfdf;
   --font-body: "MS Sans Serif", "Segoe UI", Tahoma, sans-serif;
-  --font-mono: "Courier New", Courier, monospace;
+  /* The era's dialogs were set in the system sans, not in Courier — with
+     the mono token left on Courier every label read DOS-prompt, and the one
+     font choice was carrying the wrong decade. */
+  --font-mono: "Segoe UI", Tahoma, "MS Sans Serif", sans-serif;
   --skin-label-case: none;
   --skin-radius: 0; --skin-radius-ctl: 0; --skin-border: 2px;
-  --skin-ctl-bg: linear-gradient(180deg, #ffffff 0 2px, #c0c0c0 2px);
-  --skin-well-bg: linear-gradient(180deg, rgba(0,0,0,.14) 0 2px, transparent 2px);
+  /* A real bevel needs a lit top edge AND a shadowed foot, or the key reads
+     flat — the first pass had only the highlight. */
+  --skin-ctl-bg: linear-gradient(180deg,
+    #ffffff 0 2px, #c0c0c0 2px calc(100% - 2px), #6e6e6e calc(100% - 2px));
+  /* The transcript box is a SUNKEN WHITE FIELD — the one control this era
+     drew everywhere — instead of a slab of bare desktop teal that put navy
+     headline text on a teal ground at no contrast at all. The teal survives
+     as the page behind the card, where the desktop actually was. */
+  --skin-well-bg:
+    linear-gradient(180deg, rgba(0,0,0,.22) 0 2px, transparent 2px),
+    linear-gradient(90deg, rgba(0,0,0,.14) 0 2px, transparent 2px),
+    linear-gradient(0deg, #ffffff, #ffffff);
   /* The resize grip: three stepped diagonals of highlight and shadow, bottom
-     right, exactly where every window of this era had one. */
+     right, exactly where every window of this era had one — big enough to
+     see this time. */
+  --skin-art-clear: 0;
   --skin-art-bg:
-    linear-gradient(135deg, transparent 38%, #ffffff 38% 54%, #6e6e6e 54% 70%, transparent 70%) 97% 92% / 5px 5px no-repeat,
-    linear-gradient(135deg, transparent 38%, #ffffff 38% 54%, #6e6e6e 54% 70%, transparent 70%) 97% 92% / 10px 10px no-repeat,
-    linear-gradient(135deg, transparent 38%, #ffffff 38% 54%, #6e6e6e 54% 70%, transparent 70%) 97% 92% / 15px 15px no-repeat;
+    linear-gradient(135deg, transparent 38%, #ffffff 38% 54%, #6e6e6e 54% 70%, transparent 70%) 98.5% 96% / 8px 8px no-repeat,
+    linear-gradient(135deg, transparent 38%, #ffffff 38% 54%, #6e6e6e 54% 70%, transparent 70%) 98.5% 96% / 16px 16px no-repeat,
+    linear-gradient(135deg, transparent 38%, #ffffff 38% 54%, #6e6e6e 54% 70%, transparent 70%) 98.5% 96% / 24px 24px no-repeat;
 }
