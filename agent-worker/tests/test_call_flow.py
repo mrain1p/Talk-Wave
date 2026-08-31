@@ -311,6 +311,32 @@ class TestSilentCallIsRecorded(unittest.TestCase):
         postmortem._note_if_nothing_was_heard(s, 90.0, [("caller", "hello"), ("dj", "hi")])
         self.assertEqual(s.record.data["problems"], [])
 
+    def test_the_pages_own_report_names_the_cause(self):
+        # The call page posts its mic outcome and connection state at setup
+        # (attach_caller_note) — the two facts the three-way shrug could
+        # never see from the booth. With them present the guard NAMES the
+        # cause; the shrug survives for a page that never sent one (the 24%
+        # of archived records that carried it, brain review 2026-08-31).
+        from call import postmortem
+
+        cases = [
+            ("denied:NotAllowedError", "connected", "BLOCKED"),
+            ("granted", "connected", "genuinely said nothing"),
+            ("granted", "reconnecting", "media path"),
+        ]
+        for mic, conn, expect in cases:
+            with self.subTest(mic=mic, conn=conn):
+                s = self._session(heard=0)
+                s.record.setup_note("callerMic", mic)
+                s.record.setup_note("callerConn", conn)
+                postmortem._note_if_nothing_was_heard(
+                    s, 15.0, [("dj", "Evening.")])
+                problems = s.record.data["problems"]
+                self.assertEqual(len(problems), 1)
+                self.assertIn(expect, problems[0]["what"])
+                self.assertNotIn("Three things look like this",
+                                 problems[0]["what"])
+
     def test_a_repeat_and_a_contradiction_get_distinct_records(self):
         # The phone recorded neither; and a contradiction was landing under
         # the repeat-phrased line (top-down review, 2026-08-28). Now both the

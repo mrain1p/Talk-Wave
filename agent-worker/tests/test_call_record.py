@@ -1166,6 +1166,133 @@ class TestASearchNobodyHeardTheAnswerToIsWrittenDown(unittest.TestCase):
         self.assertEqual([], self._problems(types.SimpleNamespace(record=rec)))
 
 
+class TestAFabricatedQueueIdIsWrittenDown(unittest.TestCase):
+    """The DJ passed invented slug ids to subwave_queue_mix with no search
+    anywhere before them, the picks parser fell back to the title text, the
+    tool reported success — and the model learned that fabrication WORKS
+    (record 20260827-174809, 17:48:43, verified by hand in the 2026-08-31
+    brain review). An id is fabricated exactly when no earlier tool result of
+    the same call contains it, which is mechanical to check and was checked
+    by nothing."""
+
+    SEARCH = ('(q=\'Gimme Shelter\') -> 1 result(s):\n'
+              '"Gimme Shelter" by The Rolling Stones (Let It Bleed, 1969)'
+              '  [id: GO9zyAYwhmsdpCOvl0CEiB]')
+
+    def _call(self, tools):
+        import types
+
+        from call.record import CallRecord
+
+        rec = CallRecord.__new__(CallRecord)
+        rec.data = {"turns": [], "tools": list(tools), "problems": []}
+        return types.SimpleNamespace(record=rec)
+
+    def _problems(self, call):
+        from call import postmortem
+
+        postmortem._note_if_queued_ids_came_from_nowhere(call)
+        return call.record.data["problems"]
+
+    def test_the_real_incident_is_flagged(self):
+        # Verbatim shape from the record: a mix queued from ids that exist
+        # nowhere, before any search at all.
+        call = self._call([
+            {"t": "2026-08-27T17:48:43+00:00", "name": "subwave_queue_mix",
+             "result": "(label='Ambient electronica mix', picks='id-nils-"
+                       "frahm-1 Nils Frahm - Says\nid-kiasmos-1 Kiasmos - "
+                       "Looped') -> Queued 2 track(s)"},
+        ])
+        found = self._problems(call)
+        self.assertEqual(1, len(found))
+        self.assertIn("id-nils-frahm-1", found[0]["what"])
+        self.assertIn("made them up", found[0]["what"])
+
+    def test_an_id_from_a_search_result_is_honest(self):
+        call = self._call([
+            {"t": "2026-08-27T17:52:50+00:00",
+             "name": "subwave_search_library", "result": self.SEARCH},
+            {"t": "2026-08-27T17:52:53+00:00", "name": "subwave_queue_mix",
+             "result": "(picks='GO9zyAYwhmsdpCOvl0CEiB Gimme Shelter', "
+                       "label='Casino tracks') -> Queued 1 track(s)"},
+        ])
+        self.assertEqual([], self._problems(call))
+
+    def test_queue_track_ids_are_held_to_the_same_bar(self):
+        call = self._call([
+            {"t": "2026-08-31T12:54:00+00:00", "name": "subwave_queue_track",
+             "result": "(title='X', id='raEBK8a0HYd1sgUKTvZhJl') -> queued"},
+        ])
+        found = self._problems(call)
+        self.assertEqual(1, len(found))
+        self.assertIn("raEBK8a0HYd1sgUKTvZhJl", found[0]["what"])
+
+    def test_a_truncated_final_pick_is_not_read_as_fabricated(self):
+        # The record caps a tool row at 400 characters, so the picks arg can
+        # be cut mid-id — the last line of an UNCLOSED picks quote must not
+        # count. (The real record's third mix was cut exactly like this.)
+        call = self._call([
+            {"t": "2026-08-27T17:52:50+00:00",
+             "name": "subwave_search_library", "result": self.SEARCH},
+            {"t": "2026-08-27T17:56:00+00:00", "name": "subwave_queue_mix",
+             "result": "(picks='GO9zyAYwhmsdpCOvl0CEiB Gimme Shelter\n579SLFsZ"},
+        ])
+        self.assertEqual([], self._problems(call))
+
+
+class TestAFailedToolCallIsWrittenDown(unittest.TestCase):
+    """The record has carried a failed flag on tool rows since 0.10.104, and
+    nothing anywhere read it: a call where the model INVENTED a tool name
+    ('no such tool') carried seven problems, none of them about that (record
+    20260827-174809, brain review 2026-08-31)."""
+
+    def _call(self, tools):
+        import types
+
+        from call.record import CallRecord
+
+        rec = CallRecord.__new__(CallRecord)
+        rec.data = {"turns": [], "tools": list(tools), "problems": []}
+        return types.SimpleNamespace(record=rec)
+
+    def _problems(self, call):
+        from call import postmortem
+
+        postmortem._note_if_a_tool_call_failed(call)
+        return call.record.data["problems"]
+
+    def test_an_invented_tool_name_is_a_routing_failure(self):
+        call = self._call([
+            {"t": "2026-08-27T17:56:44+00:00", "name": "subwave_station_state",
+             "result": "no such tool", "failed": True},
+        ])
+        found = self._problems(call)
+        self.assertEqual(1, len(found))
+        self.assertIn("does not exist", found[0]["what"])
+        self.assertIn("subwave_station_state", found[0]["what"])
+
+    def test_an_errored_tool_is_named_with_its_result(self):
+        call = self._call([
+            {"t": "2026-08-27T17:56:44+00:00", "name": "subwave_queue_track",
+             "result": "raised TimeoutError: station gone", "failed": True},
+        ])
+        found = self._problems(call)
+        self.assertEqual(1, len(found))
+        self.assertIn("subwave_queue_track", found[0]["what"])
+
+    def test_a_refusal_is_not_a_failure(self):
+        # A station refusal comes back as a normal result with no failed
+        # flag — the system working. Only rows the tool layer marked failed
+        # land here.
+        call = self._call([
+            {"t": "2026-08-27T17:50:06+00:00",
+             "name": "subwave_clear_from_queue",
+             "result": "Nothing waiting in the queue matches — don't claim a "
+                       "clear-out."},
+        ])
+        self.assertEqual([], self._problems(call))
+
+
 class TestASwallowedRequestIsWrittenDown(unittest.TestCase):
     """The speech filter keeps a typed tool call off the air, but silently —
     and from the caller's side that is indistinguishable from the DJ agreeing

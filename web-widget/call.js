@@ -3102,6 +3102,20 @@
   };
   applyVolume();      // paint the fill at whatever volume we start on
 
+  // One small data message to the booth at setup: this page's mic outcome
+  // and connection state — the two facts the worker's no-audio postmortem
+  // can never see from its side. Caller-authored, so the worker treats it
+  // as untrusted and clamps it; best-effort here, the shrug still works.
+  function sendSetupNote(mic) {
+    if (!room) return;
+    try {
+      room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify(
+          { mic: mic, conn: (room.state || '') + '' })),
+        { reliable: true, topic: 'talkwave.setup-note' });
+    } catch (e) { /* the postmortem falls back to naming candidates */ }
+  }
+
   // Bumped on every startCall AND every endCall, so an async step that
   // resumes after the caller hung up can tell it is stale. The token mint is
   // an await with the Hang up button already live (the card flips to .oncall
@@ -3508,6 +3522,11 @@
       // from the media profile to hands-free — the beats below catch the
       // graph if that flip strands it. See the route-change recovery ladder.
       scheduleRecoveryChecks();
+      // Tell the booth what this side of the line looks like: the no-audio
+      // postmortem could never tell a blocked mic from a dead media path
+      // from a silent caller, because the distinction only exists HERE.
+      // One small message; the worker records it against the call.
+      sendSetupNote('granted');
 
       // Button stays on Ringing/Answering; setAgentState flips it to the
       // green On the line at the DJ's first word.
@@ -3523,9 +3542,13 @@
       // mic, typically). Without this the room stays joined and the agent
       // sits in an empty call.
       tuneOut();
-      if (room) { try { await room.disconnect(); } catch (e) {} }
       const denied = err && (err.name === 'NotAllowedError'
         || /permission|not allowed|denied/i.test(err.message || ''));
+      // Before the room goes: tell the booth WHY, so the record can name a
+      // blocked mic instead of shrugging at three candidates. Best-effort —
+      // a room that never joined has nowhere to send it.
+      if (denied) sendSetupNote('denied:' + ((err && err.name) || 'mic'));
+      if (room) { try { await room.disconnect(); } catch (e) {} }
       // Three failures wore the same "Could not connect" label, and the most
       // common one is the least obvious: the room is joined and signalling is
       // fine, but audio has no route — so it rings for ~15s and then dies.

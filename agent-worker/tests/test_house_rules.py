@@ -991,7 +991,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 712: the namesake rule (2026-08-31, the Ophelia exchange) — a title
         # hit by the wrong artist taught as a different song, in both finding
         # branches, with the real incident as the NO/YES. Rule-builders half.
-        "agent-worker/brain/tool_rules.py": (712, "the declarations at the top "
+        # 741: the brain review's Tier-1 rules (yes-is-the-submit, a
+        # repetition complaint is not a cancel, receipt position, relative
+        # asks read their anchor, the skip tiebreak) minus the soundtrack
+        # dedupe; the speak-first paragraph also became its own SECTION so
+        # the chat build can drop it instead of negating it.
+        "agent-worker/brain/tool_rules.py": (741, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
         # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —
@@ -1094,7 +1099,9 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # come-back task now has a shutdown callback that cancels it. Both are
         # on the LIVE half — start and shutdown ordering — where the seam
         # already puts them; twenty-two lines, none of it across the cut.
-        "agent-worker/call/session.py": (918, "the ringing half (prepare, "
+        # 919: one line — attach_caller_note wired beside the other
+        # lifecycle attachments (the setup-note data channel).
+        "agent-worker/call/session.py": (919, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -1847,7 +1854,7 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         # Batch 5 — the brain
         "agent-worker/brain/briefing.py::_fmt_now_playing": (32, "Batch 5 — now-playing formatter"),
         "agent-worker/brain/assemble.py::build_system_prompt": (27, "Batch 5 — prompt assembler entry"),
-        "agent-worker/brain/tool_rules.py::_tools": (27, "Batch 5 — the prompt god-function"),
+        "agent-worker/brain/tool_rules.py::_tools": (28, "Batch 5 — the prompt god-function; +1 2026-08-31: the tool_speakfirst gate, so chat can drop the dead-air rule"),
         # Batch 6 — chat / onair / openlines / voicemail
         "agent-worker/voicemail/capture.py::answer": (45, "Batch 6 — voicemail answer pipeline"),
         "agent-worker/openlines/director.py::open_now": (38, "Batch 6 — premise-source ladder"),

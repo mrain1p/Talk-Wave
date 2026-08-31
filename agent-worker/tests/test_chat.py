@@ -527,21 +527,22 @@ class TestTheTextLineFeelsLikeAConversation(_TempStores):
         self.assertIn("Reach for the TOOL first", text)
         self.assertIn("Never claim an outcome the tool has not given you", text)
 
-    def test_the_typed_line_takes_back_the_spoken_speak_first_rule(self):
-        # _tools is imported verbatim from the spoken conduct and tells the DJ
-        # to say a line BEFORE reaching for the tool — right on a phone call,
-        # where silence is dead air, and the exact instruction that broke the
-        # text line. The typed note must countermand it, or the prompt asks
-        # for both.
+    def test_the_typed_line_never_receives_the_speak_first_rule(self):
+        # The spoken conduct tells the DJ to say a line BEFORE reaching for
+        # the tool — right on a phone call, where silence is dead air, and
+        # the exact instruction that broke the text line. The typed build
+        # used to receive it and countermand it 12k characters later; a rule
+        # plus its negation is the one thing a weak model reliably gets wrong
+        # (2026-08-31 brain review), so the chat build now DROPS the section
+        # (tool_speakfirst) instead of overriding it.
         from brain import conduct, conduct_chat
 
         spoken = conduct.rules({"allow_requests": True})
         typed = conduct_chat.rules({"allow_requests": True})
         self.assertIn("BEFORE you reach for the tool", spoken)
-        # Wrapped at ~76 columns like the rest of the prompt, so match a
-        # fragment that cannot straddle the line break.
-        self.assertIn("does not apply", typed)
-        self.assertIn("Call the tool first", typed)
+        self.assertNotIn("BEFORE you reach for the tool", typed)
+        self.assertNotIn("does not apply", typed)
+        self.assertIn("call the tool first", typed.lower())
 
     def test_the_defaults_greet_and_time_out(self):
         # A silent line reads as broken, so greeting is ON by default —

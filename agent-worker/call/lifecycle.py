@@ -339,6 +339,42 @@ def attach_close_reason(session: AgentSession, ended: dict) -> None:
         log.debug("could not watch for the close reason: %s", e)
 
 
+def attach_caller_note(ctx: JobContext, record) -> None:
+    """The call page tells the booth what its side of the line looked like.
+
+    The no-audio postmortem has always had to shrug at three candidates —
+    media path, blocked mic, silent caller — because every one of them looks
+    identical from in here; the distinction only ever existed in the
+    caller's browser (their mic permission, their connection state). The
+    widget now posts exactly that as one small data message at setup, and
+    the record carries it, so the guard can NAME the cause instead of
+    listing suspects (2026-08-31 brain review, finding 14: 24% of archived
+    records carry the shrug).
+
+    The message is caller-authored and therefore untrusted: two known keys,
+    values clamped to short strings, everything else ignored.
+    """
+
+    def _on_note(packet) -> None:
+        if getattr(packet, "topic", "") != "talkwave.setup-note":
+            return
+        try:
+            import json
+
+            raw = bytes(getattr(packet, "data", b"") or b"")[:200]
+            note = json.loads(raw.decode("utf-8", "replace"))
+            if not isinstance(note, dict) or record is None:
+                return
+            for key, name in (("mic", "callerMic"), ("conn", "callerConn")):
+                value = note.get(key)
+                if isinstance(value, str) and value:
+                    record.setup_note(name, value[:40])
+        except Exception as e:                                # noqa: BLE001
+            log.debug("caller setup note unreadable: %s", e)
+
+    ctx.room.on("data_received", _on_note)
+
+
 # Split to call/clocks.py at 0.10.146 (the length ceiling), and re-exported
 # rather than repointed: `lifecycle.attach_idle_watch` is a name the session
 # and a dozen tests already reach for, and moving a module is not a reason to

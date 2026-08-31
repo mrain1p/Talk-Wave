@@ -112,6 +112,100 @@ class TestANamesakeIsNotTheSong(unittest.TestCase):
         self.assertNotIn("WRONG artist", conduct.rules({}))
 
 
+class TestTheBrainReviewTierOneRules(unittest.TestCase):
+    """Phase 2 of the call-orchestration stream (2026-08-31): the review's
+    Tier-1 conduct fixes, each anchored to a real record. One test per rule,
+    both mouths where the rule reaches both."""
+
+    CFG = {"allow_requests": True, "allow_library_search": True,
+           "allow_exact_queue": True, "allow_cancel_queue": True,
+           "allow_skip_track": True, "confirm_requests": True}
+
+    def _both(self):
+        from brain import conduct, conduct_chat
+
+        return (conduct.rules(self.CFG), conduct_chat.rules(self.CFG))
+
+    def test_their_yes_is_the_submit(self):
+        # Record ...174603: a genuine "yes those" got a re-narration and a
+        # second implicit confirm; the queue only went in after a second yes
+        # plus a promise-guard nudge — and every search was re-run from
+        # scratch on the way.
+        for text in self._both():
+            self.assertIn("their yes IS the submit", text)
+            self.assertIn("confirming does not reset the search", text)
+
+    def test_a_repetition_complaint_is_not_a_cancel(self):
+        # Record ...174809: "i didnt need you to queue up the same songs
+        # again" got the caller's three APPROVED picks pulled from the queue.
+        for text in self._both():
+            self.assertIn("complaint about your WORDS", text)
+            self.assertIn("answer it, touch nothing", text)
+
+    def test_the_receipts_position_is_the_truth_of_when(self):
+        # Record ...125306: "play it next" -> receipt says number three ->
+        # the DJ said both "lined up next" and "number three" in one breath.
+        from brain import conduct
+
+        for extra in ({}, {"single_lookup_tool": True}):
+            with self.subTest(**extra):
+                text = conduct.rules({**self.CFG, **extra})
+                self.assertIn("queue POSITION", text)
+                self.assertIn("is the truth of WHEN", text)
+                self.assertIn("never echo their \"next\"", text)
+
+    def test_a_relative_ask_reads_its_anchor_first(self):
+        # Record ...174809: "similar to my current queue" answered from a
+        # guess — ambient electronica against a Casino queue.
+        from brain import conduct
+
+        for extra in ({}, {"single_lookup_tool": True}):
+            with self.subTest(**extra):
+                text = conduct.rules({**self.CFG, **extra})
+                self.assertTrue("RELATIVE" in text or "relative ask" in text)
+                self.assertIn("anchor", text)
+
+    def test_a_bare_next_song_is_the_skip(self):
+        # Record ...204616: "Next song" was answered with a queue reading and
+        # two stacked questions; the caller had to ask again.
+        for text in self._both():
+            self.assertIn("bare \"next song\"", text)
+
+    def test_the_new_triage_bullets_reach_both_mouths(self):
+        for text in self._both():
+            self.assertIn("Two asks in one breath", text)
+            self.assertIn("\"No, I meant —\"", text)
+            self.assertIn("A music question you can answer", text)
+
+    def test_two_questions_covers_the_stack_inside_one_reply(self):
+        for text in self._both():
+            self.assertIn("never two stacked inside one reply", text)
+
+    def test_chat_never_receives_the_speak_first_rule(self):
+        # The chat prompt used to carry the speak-before-the-tool rule AND
+        # its negation 12k characters later; the record trail (…191051's
+        # fused narrate-then-report turns) shows the model obeying whichever
+        # it read last. The rule is now dropped at the build for chat and
+        # kept for the phone.
+        from brain import conduct, conduct_chat
+
+        call_text = conduct.rules(self.CFG)
+        chat_text = conduct_chat.rules(self.CFG)
+        for marker in ("BEFORE you reach for the tool", "BEFORE you go quiet"):
+            self.assertIn(marker, call_text)
+            self.assertNotIn(marker, chat_text)
+        # ...and the negation is gone with it.
+        self.assertNotIn("does not apply", chat_text)
+
+    def test_the_soundtrack_rule_is_told_once(self):
+        # The full telling (with the Casino worked example) lives in the
+        # finding table; tool_search keeps only a pointer. Two tellings in
+        # different words is the drift the one-source rule exists to stop.
+        for text in self._both():
+            self.assertEqual(text.count("Gimme Shelter"), 1)
+            self.assertIn("the one telling lives there", text)
+
+
 class TestActionBulletsRideTheirOwnSwitch(unittest.TestCase):
     """The generalisation of the takeover lesson, caught by the drill's
     refusal sweep the same day: with no announce tool the DJ "passed on" a

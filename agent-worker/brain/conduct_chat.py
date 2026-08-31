@@ -86,18 +86,11 @@ schedule, stay in prose.
 
 TYPED_TOOLS_NOTE = """\
 # Typed, not spoken
-Two differences from the phone line.
-
-Things you put ON AIR go out in your broadcast voice while you keep typing
-here — you CAN be in two places now, so don't go quiet after an announcement
-or a segment; tell them it's going out and carry on.
-
-And the rule about saying a line BEFORE you reach for a tool **does not apply
-here**. That one is about dead air: on a call, silence while you work sounds
-like the line dropped. A typed caller is looking at a typing cue and, the
-moment a tool runs, at a card naming what it did — so there is nothing to
-cover. Call the tool first and write once you know what happened. See Close
-the loop below, which is the rule that governs here.
+One difference from the phone line: things you put ON AIR go out in your
+broadcast voice while you keep typing here — you CAN be in two places now, so
+don't go quiet after an announcement or a segment; tell them it's going out
+and carry on. For everything else, call the tool first and write once you
+know what happened — Close the loop below is the rule that governs here.
 
 Everything else about the tools stands exactly as written."""
 
@@ -137,7 +130,7 @@ def blocks(cfg: dict, drop: set | None = None) -> list[tuple[str, str]]:
     out = [
         ("DOORWAY", DOORWAY),
         ("HOW_TO_TYPE", HOW_TO_TYPE + SPEAK_AS_YOURSELF),
-        ("running_the_call", running_the_call(cfg)),
+        ("running_the_call", running_the_call(cfg, spoken=False)),
         # The anti-interview guard. The phone's CALL_MOMENTUM carries this and
         # it was chat-absent, so the text DJ could stack "what are you up to
         # this weekend?" questions unchecked (top-down review, 2026-08-28).
@@ -152,8 +145,13 @@ def blocks(cfg: dict, drop: set | None = None) -> list[tuple[str, str]]:
     if cfg.get("context_schedule") or cfg.get("allow_takeover"):
         out.append(("LISTING_SHOWS", LISTING_SHOWS))
     out += [
-        # `drop` reaches inside this one — see conduct.blocks.
-        ("tool_rules", _tools(cfg, frozenset(drop or ()))),
+        # `drop` reaches inside this one — see conduct.blocks. The typed
+        # mouth ALWAYS drops tool_speakfirst: the speak-before-the-tool rule
+        # is dead-air cover, and a chat caller is looking at a typing cue —
+        # this used to be handed to chat and then negated 12k characters
+        # later, a rule plus its cancellation on a model weak enough to obey
+        # whichever it read last.
+        ("tool_rules", _tools(cfg, frozenset(drop or ()) | {"tool_speakfirst"})),
         ("TYPED_TOOLS_NOTE", TYPED_TOOLS_NOTE),
         ("REPORT_THE_OUTCOME", REPORT_THE_OUTCOME),
         # `drop` reaches INSIDE this one too, by TRUTH_CLAUSES name — the
@@ -170,9 +168,11 @@ def blocks(cfg: dict, drop: set | None = None) -> list[tuple[str, str]]:
 def rules(cfg: dict, drop: set | None = None) -> str:
     """The behavioural half of a chat prompt, in prompt order.
 
-    `_tools` is the spoken tool etiquette verbatim — the etiquette IS
-    medium-independent (receipts, no invented tracks, the stranger rule) —
-    and TYPED_TOOLS_NOTE overrides the single rule that isn't.
+    `_tools` is the spoken tool etiquette minus the one rule that isn't
+    medium-independent: the speak-before-the-tool paragraph (tool_speakfirst)
+    is dropped at the build, not overridden after — a rule plus its negation
+    is the one thing a weak model reliably gets wrong. Everything else
+    (receipts, no invented tracks, the stranger rule) travels verbatim.
 
     `drop` is the measurement lever; see `conduct.rules`.
     """
