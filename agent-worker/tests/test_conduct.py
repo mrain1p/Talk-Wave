@@ -79,6 +79,39 @@ class TestADoubtedActionIsCheckedNotExplainedAway(unittest.TestCase):
         self.assertIn("that never went out", text)      # the YES example
 
 
+class TestANamesakeIsNotTheSong(unittest.TestCase):
+    """The Ophelia exchange, 2026-08-31 (record ...125038): "a mix of taylor
+    swift, start with the song ophelia" got "Ophelia" by The Lumineers — the
+    title matched, the artist named in the same sentence was ignored, and
+    the wrong record was queued and announced as done. The library held "The
+    Fate of Ophelia" by Taylor Swift the whole time; the caller had to write
+    back and fix it themselves."""
+
+    def test_both_mouths_learn_the_artist_settles_the_record(self):
+        from brain import conduct, conduct_chat
+
+        cfg = {"allow_library_search": True}
+        for text in (conduct.rules(cfg), conduct_chat.rules(cfg)):
+            self.assertIn("WRONG artist is a different song", text)
+            self.assertIn("Lumineers", text)            # the real incident
+            self.assertIn("never as a silent stand-in", text)
+
+    def test_the_dispatcher_branch_keeps_the_rule(self):
+        # The single-lookup-tool prompt is deliberately short, but this rule
+        # is judgement, not routing — it must survive the shortening.
+        from brain import conduct
+
+        cfg = {"allow_library_search": True, "single_lookup_tool": True}
+        text = conduct.rules(cfg)
+        self.assertIn("WRONG artist is a different song", text)
+        self.assertIn("never queued as a stand-in", text)
+
+    def test_the_rule_rides_the_search_switch(self):
+        from brain import conduct
+
+        self.assertNotIn("WRONG artist", conduct.rules({}))
+
+
 class TestActionBulletsRideTheirOwnSwitch(unittest.TestCase):
     """The generalisation of the takeover lesson, caught by the drill's
     refusal sweep the same day: with no announce tool the DJ "passed on" a

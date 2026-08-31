@@ -988,7 +988,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # for callers is told the briefing shows what played when the call
         # CONNECTED, not what is live now. Fifteen lines, all in the rule
         # builders half this seam already names; the split is no harder.
-        "agent-worker/brain/tool_rules.py": (683, "the declarations at the top "
+        # 712: the namesake rule (2026-08-31, the Ophelia exchange) — a title
+        # hit by the wrong artist taught as a different song, in both finding
+        # branches, with the real incident as the NO/YES. Rule-builders half.
+        "agent-worker/brain/tool_rules.py": (712, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
         # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —

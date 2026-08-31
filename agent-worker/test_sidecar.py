@@ -331,6 +331,7 @@ from tests.test_chat import (  # noqa: F401
     TestTheReplyArrivesAtTheOperatorsPace,
 )
 from tests.test_conduct import (  # noqa: F401
+    TestANamesakeIsNotTheSong,
     TestASpokenMixIsNotAMix,
     TestBulkQueueingIsActedOnNotSoldOn,
     TestTheStationsLanguageIsNotTheDJsLanguage,

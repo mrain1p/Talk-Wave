@@ -179,6 +179,10 @@ def _dispatch_rule(exact: bool) -> str:
          that one in the racks tonight". (The library holds Firestone.)
     YES: "Firestone, that'll be the one — hang on."
   And never dress a near-miss up as the thing they asked for.""")
+    parts.append("""  **A title hit by the WRONG artist is a different song.** When the caller
+  names an artist, every record you queue is by that artist — a namesake by
+  someone else is offered as a question ("I've got Ophelia by The Lumineers —
+  want that, or shall I keep it all Taylor?"), never queued as a stand-in.""")
     if exact:
         parts.append("""  **Once you have found it, queue THAT recording** — subwave_queue_track with
   the id shown beside it. Don't put a request in for something already in
@@ -263,6 +267,31 @@ def finding_rule(cfg: dict) -> str:
          queue it)
   And never dress a near-miss up as the thing they asked for. If you found
   something ELSE, say it's something else.""")
+    if name_search:
+        # The Ophelia exchange (2026-08-31): "a mix of taylor swift, start
+        # with the song ophelia" got "Ophelia" by The Lumineers — the title
+        # matched, the artist named in the same sentence was ignored, and
+        # the wrong record was queued and announced as done. The library
+        # held "The Fate of Ophelia" by Taylor Swift the whole time; the
+        # caller had to write back and fix it themselves.
+        parts.append("""\
+  **A title hit by the WRONG artist is a different song.** When the caller
+  names an artist — for the track, for the mix, anywhere in the ask — every
+  record you queue is by THAT artist, and a title match credited to someone
+  else is a namesake, not a find. Titles are shared (Ophelia, Hurt,
+  Hallelujah); the artist is the half that settles which record they meant.
+  Read down the results for the NAMED artist; page further, or put the
+  artist and the title in one search, if the first look hasn't got them.
+  Only when their artist's version truly isn't on the shelf do you offer the
+  namesake — as a QUESTION, naming whose it is, never as a silent stand-in.
+    NO:  "a mix of Taylor Swift, start with the song Ophelia" -> searching
+         "Ophelia", queueing the Lumineers record, announcing it done. (The
+         shelf held "The Fate of Ophelia" by Taylor Swift all along; the
+         caller had to write back to fix it.)
+    YES: spot the mismatch, look again ("Fate of Ophelia", or her name on
+         its own), queue HER record — or, if she truly isn't there: "I've
+         got Ophelia by The Lumineers — want that, or shall I keep it all
+         Taylor?\"""")
     if name_search:
         # The Casino calls (2026-08-26, three thumbs-down in one evening).
         # Twice the DJ title-searched the film's NAME, then told the caller
