@@ -1103,7 +1103,9 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # already puts them; twenty-two lines, none of it across the cut.
         # 919: one line — attach_caller_note wired beside the other
         # lifecycle attachments (the setup-note data channel).
-        "agent-worker/call/session.py": (919, "the ringing half (prepare, "
+        # 928: the landed guard's gated construction (closing_nudge) beside
+        # the other guards — nine lines, in the wiring half.
+        "agent-worker/call/session.py": (928, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),

@@ -168,6 +168,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheGreetingRacesItsOwnSilence,
     TestAFinishedCallStaysFinished,
     TestAnOpenAskComesBackWithoutReasking,
+    TestTheWindDownIsAMomentNotAParagraph,
     TestOneStateObjectFeedsTheReplyPath,
     TestTheLabelJudgesWhatTheLexiconsCannot,
     TestTheHushMarkerHasAnOwnerEvenWhenStartRaised,

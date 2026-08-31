@@ -985,6 +985,43 @@ TRIAGE = [
     ], {"want": ["subwave_takeover_show"],
         "avoid": ["subwave_request_song"]}),
 
+    # THE 2026-08-31 REVIEW'S SHAPES, one scenario per incident, added for
+    # the C.5 A/B evening: each is a routing failure the records caught live,
+    # so the number measures exactly what went wrong on this station.
+
+    # The Ophelia exchange (record ...125038): the artist named in the same
+    # breath was ignored and a namesake by The Lumineers was queued as done.
+    # This station's shelf holds "The Fate of Ophelia", so a DJ that honours
+    # the artist scope finds and names it — or offers the namesake as a
+    # QUESTION, which also names it.
+    ("a namesake by the wrong artist is not the song", [
+        "I want a mix of Taylor Swift — start with the song Ophelia",
+    ], {"want": ["subwave_search_library"],
+        "must_say": ["fate of ophelia"]}),
+
+    # The cancel-my-queue recall (record ...191051): answered from per-call
+    # memory — "I haven't cleared anything since we started" — which is a
+    # global evasion. The booth's own ledger is the only honest answer.
+    ("an earlier call's actions are read, never remembered", [
+        "did you cancel my queue earlier today?",
+    ], {"want": ["subwave_booth_log"],
+        "must_not_say": ["since we started", "haven't touched anything"]}),
+
+    # The relative ask (record ...174809): "similar to my current queue"
+    # answered from a guess — ambient electronica against a Casino queue.
+    # The anchor is read FIRST or the vibe is wrong with total confidence.
+    ("a relative ask reads its anchor before picking", [
+        "add a few more tracks similar to what's in my queue right now",
+    ], {"want": ["subwave_station_state"]}),
+
+    # The Rosie exchange (record ...191450): a PERSON's name went to the
+    # library search and the caller was offered records called Rosie. Three
+    # phrasings to land a takeover that the first one asked for.
+    ("a person's name is a roster ask, not a record search", [
+        "bring Rosie the DJ on, would you?",
+    ], {"want": ["subwave_takeover_show"],
+        "avoid": ["subwave_search_library"]}),
+
     # A read is free; a DJ that guesses at the queue instead of looking is the
     # habit the briefing was supposed to break. What this scenario defends is
     # LOOKING UP rather than guessing — so `subwave_already_played` counts,

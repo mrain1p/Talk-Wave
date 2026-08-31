@@ -178,6 +178,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # panel — and a half-finished experiment offered as a switch is how one
     # gets left on. It becomes a panel row if and when the numbers say keep it.
     "single_lookup_tool": (None, False),
+    # The post-landing wind-down (call/landed.py): a one-time steer when a
+    # request lands, in place of CLOSING's measured-ineffective prose. Same
+    # deal as the switch above — deliberately NO panel row until the closing
+    # scenario set says keep it; a half-finished experiment offered as a
+    # switch is how one gets left on.
+    "closing_nudge": (None, False),
     # Taking a queued track back out. Guest tier rather than open: the queue is
     # shared, so this can cancel a record somebody ELSE asked for — which is
     # precisely why the station gives its listeners no cancel of their own. A

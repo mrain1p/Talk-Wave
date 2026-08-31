@@ -29,11 +29,15 @@ class ConversationState:
     """The guards one call runs, their order, and their two seams."""
 
     def __init__(self, door=None, stuck=None, withheld=None, arc=None,
-                 asks=None, actions=None) -> None:
+                 asks=None, actions=None, landed=None) -> None:
         self.door = door
         self.stuck = stuck
         self.withheld = withheld
         self.arc = arc
+        # The post-landing wind-down (call/landed.py) — None unless the
+        # operator's closing_nudge switch is on; the closing scenario set is
+        # what earns it a default.
+        self.landed = landed
         # Held for the same reason the others are — one object to hand around
         # — but consumed by the promise guard's wiring, not by the reply path.
         self.asks = asks
@@ -99,6 +103,16 @@ class ConversationState:
             if note:
                 out.append(("open_ask", "the caller's ask is still open — "
                             "steering back to it", note))
+        # The wind-down after a landed request — but never while anything
+        # else is steering: an open ask outranks a crest, and a call already
+        # ending needs no help down. See call/landed.py for why this is a
+        # mechanism and not four paragraphs of prose.
+        if (self.landed is not None and not out
+                and not (self.arc is not None and self.arc.ending)):
+            note = self.landed.hint_for(caller_text)
+            if note:
+                out.append(("landed", "the request landed — steering this "
+                            "turn toward the wind-down", note))
         return out
 
 
