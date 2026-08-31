@@ -2975,6 +2975,35 @@ class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
         # the station's /session feed, and only the player shows them.
         self.assertIn('"booth"', self.live_py)
         self.assertIn("d.booth", self.js)
+        # JUST PLAYED rides the gate too — it is the same /state snapshot's
+        # history, so it costs no extra station read, and only the player
+        # shows it.
+        self.assertIn('"justPlayed"', self.live_py)
+        self.assertIn("d.justPlayed", self.js)
+
+    def test_just_played_skips_the_record_still_on_air(self):
+        # The station appends history at the live edge, so its head can be
+        # the record NOW PLAYING already names — shown again under "just
+        # played" it reads as a stutter. Only that record is skipped, and
+        # only when both title and artist agree; a titleless row is noise
+        # from the mixer and never shown.
+        from api import live as live_mod
+        snap = {"history": [
+            {"title": "On Air Now", "artist": "The Cadets"},
+            {"title": "Green Arrow", "artist": "Beegie Adair"},
+            {"title": ""},
+            {"title": "La Femme d'Argent", "artist": "Air"},
+        ]}
+        rows = live_mod._just_played(
+            snap, {"title": "On Air Now", "artist": "The Cadets"})
+        self.assertEqual(
+            [("Green Arrow", "Beegie Adair"), ("La Femme d'Argent", "Air")],
+            [(r["title"], r["artist"]) for r in rows])
+        # A different record on air keeps the whole history — same title by
+        # a DIFFERENT artist is a real repeat spin, not the live edge.
+        rows = live_mod._just_played(
+            snap, {"title": "On Air Now", "artist": "Someone Else"})
+        self.assertEqual("On Air Now", rows[0]["title"])
 
     def test_the_record_travels_as_structure_and_the_art_is_proxied(self):
         # The sheet renders the same analysis strip the station's own player

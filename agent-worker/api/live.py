@@ -55,6 +55,30 @@ def _num(v) -> float | None:
     return n if n == n and n not in (float("inf"), float("-inf")) else None
 
 
+def _just_played(snap: dict, track: dict) -> list[dict]:
+    """The player's JUST PLAYED panel: the /state snapshot's history, newest
+    first — the queue's short memory, free with the read the UP NEXT panel
+    already pays for. The head of the history can be the record still on air
+    (the station appends at the live edge); showing it twice — once as NOW
+    PLAYING, once as just played — reads as a stutter, so that row is
+    skipped."""
+    rows = []
+    for item in (snap.get("history") or [])[:4]:
+        if not item.get("title"):
+            continue
+        if (item.get("title") == track.get("title")
+                and (item.get("artist") or None)
+                == (track.get("artist") or None)):
+            continue
+        rows.append({
+            "title": item.get("title"),
+            "artist": item.get("artist") or None,
+        })
+        if len(rows) >= 3:
+            break
+    return rows
+
+
 # When this process started. The container-skew notice needs it: a call
 # RECORD carries the version of the worker that answered it, which is evidence
 # about the past, not about what is running now. A record written before this
@@ -342,6 +366,7 @@ async def handle_live(request: web.Request) -> web.Response:
         # it, and a /state read per rebuild is not free on a rate-limited
         # station.
         up_next = []
+        just_played = []
         booth_line = None
         if cfg.get("swipe_player"):
             snap = await station.state()
@@ -352,6 +377,9 @@ async def handle_live(request: web.Request) -> web.Response:
                         "artist": item.get("artist") or None,
                         "requestedBy": item.get("requestedBy") or None,
                     })
+            # JUST PLAYED: "what was that song?" is the question a listener
+            # opens the player with, and until now the sheet had no answer.
+            just_played = _just_played(snap, track)
             # IN THE BOOTH is the DJ's commentary on the RECORD — "this
             # track matches the rainy, late-night mood" — which the feed
             # carries as role dj + kind pick (operator's correction, checked
@@ -476,6 +504,7 @@ async def handle_live(request: web.Request) -> web.Response:
                         if cfg.get("vm_player_duck") is not None else 10))),
                     # The player's queue panel, booth line and header weather.
                     "upNext": up_next,
+                    "justPlayed": just_played,
                     "booth": booth_line,
                     "weather": weather_line,
                     # Everything that is a look rather than a fact — the theme,

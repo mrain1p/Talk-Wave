@@ -398,9 +398,21 @@
         <div class="plalbum" id="plAlbum"></div>
         <div class="pltags" id="plTags"></div>
         <div class="plprog"><span class="plel" id="plElapsed"></span><span class="plbar" aria-hidden="true"><span class="plfill"></span></span><span class="pllen" id="plLen"></span></div>
-        <div class="plpanel">
-          <div class="plpanelhead"><span class="ppip" id="plNextPip" aria-hidden="true"></span>Up next<span class="plpanelmeta" id="plNextMeta"></span></div>
-          <div class="plpanelbody" id="plNextBody"></div>
+        <!-- Up next and Just played share one row on every width — stacking
+             a third full-width panel squeezed the booth into a clipped line
+             on a phone, and the sheet's rule is that the middle fits. Just
+             played answers the question a listener opens the player with —
+             "what was that song?" — from the same /state snapshot Up next
+             already reads. -->
+        <div class="plduo">
+          <div class="plpanel">
+            <div class="plpanelhead"><span class="ppip" id="plNextPip" aria-hidden="true"></span>Up next<span class="plpanelmeta" id="plNextMeta"></span></div>
+            <div class="plpanelbody" id="plNextBody"></div>
+          </div>
+          <div class="plpanel" id="plPastPanel" hidden>
+            <div class="plpanelhead"><span class="ppip" aria-hidden="true"></span>Just played</div>
+            <div class="plpanelbody" id="plPastBody"></div>
+          </div>
         </div>
         <div class="plpanel">
           <div class="plpanelhead"><span class="ppip live" aria-hidden="true"></span>In the booth<span class="plpanelmeta" id="plBoothMeta"></span></div>
@@ -410,10 +422,17 @@
       <div class="pldock">
         <div class="plctl">
           <button class="plheart" id="plHeartBtn" type="button" aria-pressed="false" aria-label="Like this track" hidden>&#9825;</button>
+          <!-- The count lives NEXT TO the heart, not in its title attribute:
+               a tooltip needs a hover, and the surface this sheet was built
+               for has no cursor to hover with. -->
+          <span class="pllikes" id="plLikeCount" title="Likes" hidden></span>
           <!-- A speaker, not a note: beside a full-width red slider the note
                read as "track position", and the volume is the one control
-               here a listener grabs first (operator's review, 2026-08-24). -->
-          <span class="plnote" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9.4 9.4 0 0 1 0 13"/></svg></span>
+               here a listener grabs first (operator's review, 2026-08-24).
+               A button now, not decoration — an icon that looks tappable
+               and does nothing reads as broken, so the tap it invites is
+               the one it does: mute. -->
+          <button type="button" class="plnote" id="plMuteBtn" aria-pressed="false" aria-label="Mute the player"><svg class="plspk" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9.4 9.4 0 0 1 0 13"/></svg><svg class="plspkoff" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m16 9 6 6"/><path d="m22 9-6 6"/></svg></button>
           <input type="range" id="plVol" min="0" max="100" value="100" aria-label="Player volume" />
           <span class="plvu" id="plVu" aria-hidden="true"></span>
         </div>
@@ -425,7 +444,11 @@
           <button id="plReqSend" type="button">Send</button>
         </div>
         <div class="plreqmsg" id="plReqMsg"></div>
-        <button id="plPlayBtn" type="button">Pause</button>
+        <!-- Icon + word, and the icon rides the sheet's playing class: a
+             transport that is only a word read as a form button, not as the
+             player's own control. The word stays — a bare glyph would be
+             the one control on the sheet that doesn't say what it does. -->
+        <button id="plPlayBtn" type="button"><svg class="plpi plpi-play" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg><svg class="plpi plpi-pause" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z"/></svg><span id="plPlayWord">Pause</span></button>
         <!-- Grip only, both tabs (operator, 2026-08-24, second ruling):
            the words came and went in one day — a stylised pull tab says
            "pull me" better than a label crowding the row. -->

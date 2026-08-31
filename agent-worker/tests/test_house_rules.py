@@ -1016,7 +1016,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # so a unit test can pin it (test_station) rather than the whole
         # handler; on the shared-build side of the seam where the card is
         # assembled.
-        "agent-worker/api/live.py": (658, "the shared payload build split "
+        # 683: the player's JUST PLAYED panel — a _just_played helper over
+        # the /state history the UP NEXT read already fetches, and its two
+        # call-site lines. A named helper so the on-air dedupe rule is
+        # unit-testable (test_widget), same shape as _reachability above.
+        "agent-worker/api/live.py": (683, "the shared payload build split "
                                           "from the per-caller resolve"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
         # snapshot head start, the MCP warm-up, the join riding prepare). The

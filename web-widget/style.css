@@ -1097,6 +1097,20 @@
        own scrollbar when the sheet is squeezed. */
     display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0;
   }
+  /* Up next and Just played share ONE row on every width — a third panel
+     stacked full-width squeezed the booth into a clipped line on a phone,
+     and the sheet's rule is that the middle fits. Two lists of title +
+     artist read fine at half width; with no history yet the wrapper's one
+     visible panel takes the whole row. */
+  /* flex + min-height:0 keep the column's squeeze reaching the panels: the
+     wrapper compresses exactly as its panels did when they stood alone, and
+     their bodies give height back through their own scrollbars. */
+  .plduo { display: flex; gap: 6px; width: 100%; margin-top: 14px;
+           flex: 0 1 auto; min-height: 0; }
+  .plduo .plpanel,
+  .plscroll .plduo .plpanel:first-of-type { margin-top: 0; flex: 1 1 0;
+                                            min-width: 0; }
+  .plduo .plpanel[hidden] { display: none; }
   .plscroll .plpanel:first-of-type { margin-top: 14px; }
   .plpanelhead {
     display: flex; align-items: center; gap: 7px;
@@ -1146,9 +1160,30 @@
     background: transparent; color: var(--sage); font-size: 14px;
     line-height: 1; border-radius: 0; cursor: pointer; padding: 0;
   }
-  .card .plheart.liked { color: var(--coral); border-color: var(--coral); }
+  .card .plheart.liked { color: var(--coral); border-color: var(--coral);
+                         animation: plpop .28s ease-out; }
   .card .plheart[hidden] { display: none; }
+  @keyframes plpop { 40% { transform: scale(1.25); } }
+  /* The count beside the heart, not buried in a tooltip nobody on a phone
+     can open. Coral like the act it counts; gone at zero. */
+  .pllikes { font: 700 11px/1 var(--font-mono); color: var(--coral);
+             font-variant-numeric: tabular-nums; flex: none;
+             margin-left: -4px; }
+  .pllikes[hidden] { display: none; }
+  /* The mute is a real button now but keeps the note's quiet footprint —
+     no border, the same dim ink, lit coral only while it is actually
+     holding the player silent. */
+  .card button.plnote {
+    border: 0; background: transparent; padding: 0; width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; min-height: 0;
+  }
   .plnote { color: var(--sage-dim); font-size: 13px; flex: none; }
+  .plnote .plspkoff { display: none; }
+  .plnote.muted { color: var(--coral); }
+  .plnote.muted .plspk { display: none; }
+  .plnote.muted .plspkoff { display: block; }
+  .plnote:hover { color: var(--alpenglow); }
   /* The same drawn fader as the card's — a browser-native accent-color
      slider is a different height on every platform, which is the exact
      thing TestTheCardIsOneHeightAndStaysThere exists to stop. */
@@ -1173,9 +1208,15 @@
     background: var(--coral); color: var(--alpenglow);
     font: 700 12px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case); border-radius: 0; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
   }
   .player:not(.playing) #plPlayBtn { background: transparent;
                                      color: var(--coral); }
+  /* The transport's glyph follows the sheet's own playing class: the pause
+     bars while the stream runs, the play triangle while it doesn't. */
+  #plPlayBtn .plpi { flex: none; display: block; }
+  .player.playing #plPlayBtn .plpi-play { display: none; }
+  .player:not(.playing) #plPlayBtn .plpi-pause { display: none; }
   .plreq { display: flex; gap: 10px; }
   .plreq input {
     flex: 1 1 auto; min-width: 0; height: 44px; background: var(--pine);
@@ -1226,6 +1267,10 @@
     .plprog { grid-column: 1 / -1; margin-top: 10px; }
     .plpanel { grid-column: 1 / -1; margin-top: 6px; padding: 7px 10px; }
     .plscroll .plpanel:first-of-type { margin-top: 8px; }
+    /* The pair rides the grid as one full-width item; the row itself is
+       the same flex pairing as the phone's. */
+    .plduo { grid-column: 1 / -1; margin-top: 6px; }
+    .plduo .plpanel { grid-column: auto; }
     /* A shorter window on the short card; the body scrolls past it.
        82px = two whole queue entries — 64 cut the second one mid-row. */
     .plpanelbody { max-height: 82px; }

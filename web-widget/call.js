@@ -632,6 +632,10 @@
   // because applyVolume reads it at first paint, long before the studio's
   // own block runs.
   let playerEl = null, playerDead = false, playerDucked = false;
+  // The sheet's mute — holds the player silent without moving the shared
+  // fader. Declared here because applyVolume reads it at first paint, long
+  // before the dock's handler is wired.
+  let plMuted = false;
   // The DJ's own track, kept so the station can pull the voice into the shared
   // audio graph whichever of the two arrives second. See mixStation.
   let djTrack = null;
@@ -3079,10 +3083,11 @@
     if (playerEl) {
       // Full volume, scaled only by the card's own slider: in the player the
       // broadcast is the subject, not the bed under a call. Under the
-      // STUDIO it ducks instead — playerLevel carries the factor.
+      // STUDIO it ducks instead — playerLevel carries the factor. The
+      // sheet's own mute rides on top of both without moving either.
       const level = playerLevel();
       playerEl.volume = level;
-      playerEl.muted = level <= 0;
+      playerEl.muted = level <= 0 || plMuted;
     }
     // The player's fader is a second handle on the SAME volume — value and
     // drawn fill both, since the fill is a gradient stop, not the browser's.
@@ -5194,6 +5199,27 @@
         nextBody.textContent = 'Nothing queued — send a request below.';
       }
     }
+    // JUST PLAYED: the queue's short memory, newest first — the answer to
+    // "what was that song?", which is the question a listener opens this
+    // sheet holding. The panel only exists while there is history to show:
+    // an empty "nothing yet" box would be furniture, and on the pinned
+    // desktop card its row-mate Up next takes the whole row instead.
+    const past = d.justPlayed || [];
+    const pastPanel = $('plPastPanel'), pastBody = $('plPastBody');
+    if (pastPanel && pastBody) {
+      pastPanel.hidden = !past.length;
+      pastBody.innerHTML = '';
+      past.forEach((px) => {
+        const t = document.createElement('div');
+        t.className = 'pltit'; t.textContent = px.title;
+        pastBody.appendChild(t);
+        if (px.artist) {
+          const s = document.createElement('div');
+          s.className = 'plsub'; s.textContent = px.artist;
+          pastBody.appendChild(s);
+        }
+      });
+    }
     // IN THE BOOTH: what the DJ is SAYING — the newest turn of the live
     // session, straight from the station's own booth feed (the operator's
     // correction: the panel restated the identity header, which is already
@@ -5308,8 +5334,12 @@
   }
 
   function paintPlayerButtons() {
-    const btn = $('plPlayBtn');
-    if (btn) btn.textContent = playerEl ? 'Pause' : (playerDead ? 'Try again' : 'Play');
+    // The word only — the glyphs beside it are CSS-switched off the sheet's
+    // playing class, so writing the button's textContent would erase them.
+    const wordEl = $('plPlayWord');
+    if (wordEl) {
+      wordEl.textContent = playerEl ? 'Pause' : (playerDead ? 'Try again' : 'Play');
+    }
     const pv = $('playerView');
     if (pv) pv.classList.toggle('playing', !!playerEl);
     paintListenChip();
@@ -5548,6 +5578,14 @@
     b.classList.toggle('liked', plLiked);
     b.setAttribute('aria-pressed', plLiked ? 'true' : 'false');
     b.title = count ? count + ' likes' : 'Like this track';
+    // The count in the open, beside the heart — the title above needs a
+    // hover, and this sheet's home surface has no cursor. Zero paints
+    // nothing: an explicit 0 would read as a scoreboard nobody is on.
+    const n = $('plLikeCount');
+    if (n) {
+      n.hidden = !count;
+      n.textContent = count || '';
+    }
   }
   $('plHeartBtn').onclick = async () => {
     if (plLiked) return;
@@ -5600,6 +5638,22 @@
   // on the same fader, kept in step by applyVolume.
   $('plVol').oninput = (e) => {
     volTouched = true; setVolume(+e.target.value); applyVolume();
+  };
+
+  // The mute holds the PLAYER silent without moving the shared fader — a
+  // caller who mutes to answer the door gets their level back on unmute,
+  // and the card's own volume (the call, the sounds) never notices. Local
+  // to this element on purpose: it is not a third handle on the fader.
+  // (plMuted itself lives with the player state up top — applyVolume reads
+  // it at first paint.)
+  $('plMuteBtn').onclick = () => {
+    plMuted = !plMuted;
+    const b = $('plMuteBtn');
+    b.classList.toggle('muted', plMuted);
+    b.setAttribute('aria-pressed', plMuted ? 'true' : 'false');
+    b.setAttribute('aria-label', plMuted ? 'Unmute the player'
+                                         : 'Mute the player');
+    applyVolume();
   };
 
   $('listenChip').onclick = () => {
