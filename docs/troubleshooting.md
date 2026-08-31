@@ -47,6 +47,7 @@ The call record's `heard` block and the worker's `call pacing` line say whether 
   - Run *Model + tools* in the pipeline check: it measures with a real call's prompt and tools, and says outright whether that model can carry a call. See [What to run](models.md).
   - On Ollama, also set `OLLAMA_KEEP_ALIVE=-1` — a model unloaded after five idle minutes pays its load time on the next call.
 - **The DJ is there, the music isn't** — an `http://` stream on an `https://` page is blocked as mixed content, silently. Set **Station stream URL** to an https one; the *Station stream* stage says so outright.
+- **The stream refuses to connect while the station reports healthy** — since station 1.11.0 the operator can cap listeners (Settings → `stream.maxListeners`), and a full station refuses new stream connections at the socket with nothing on `/now-playing` to say why. Compare the listener count against the cap in the station's admin settings before blaming the mount.
 - **Voice test 400s on local TTS** — the voice id doesn't exist on that server (cloud names and local ids aren't interchangeable). Run *Reload voice list* after switching backend.
 
 ### Access and the panel

@@ -930,7 +930,8 @@ SCHEMA: dict[str, dict] = {
         placeholder="default: derived from the station address (plain http only)",
         help="Behind TLS a browser silently refuses to load an http stream into an "
              "https page, and the call runs with no station behind it. Paste the "
-             "station's own https stream. The pipeline check tests it."),
+             "station's own https stream (Admin → Connect → Stream URLs "
+             "on stations 1.11+). The pipeline check tests it."),
     "tune_in_volume": dict(group="tunein", kind="number", label="Volume", unit="%", alias="loudness",
         needs=("tune_in_on_call", True),
         help="10 by default. 0 keeps it silent and the caller still counts as a "
