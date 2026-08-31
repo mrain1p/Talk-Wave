@@ -51,6 +51,8 @@ EXTENSIONS = (".mp3", ".m4a", ".aac", ".ogg", ".wav", ".webm")
 SYNTHESIZED = {
     "classic": "Exchange — telephone network tones",
     "phone": "Handset — a real phone in a room",
+    "arcade": "Arcade — 8-bit cabinet bleeps",
+    "space": "Starship — a hailing console",
 }
 
 URL_PREFIX = "/pack-sounds"
@@ -81,7 +83,10 @@ def packs() -> list[tuple[str, str]]:
     for them, because "Exchange" is still what the operator chose.
     """
     out = [(pid, label) for pid, label in SYNTHESIZED.items()]
-    known = set(SYNTHESIZED)
+    # The library folder is the SHELF's home (loose clips, below), not a
+    # pack — without this it leaked into the dropdown as a "Library" set
+    # whose every sound silently fell back to Exchange.
+    known = set(SYNTHESIZED) | {LIBRARY_DIR_NAME}
     for folder in _pack_dirs():
         if folder.name not in known:
             out.append((folder.name, _label_for(folder)))

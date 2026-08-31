@@ -1237,8 +1237,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 650: the AudioContext grew its route-change lifecycle (a statechange
         # auto-resume and resetCtx) for the Bluetooth hands-free flip that
         # silenced a car call — context management belongs beside ctx(), not
-        # in a fourth file.
-        "web-widget/shared.js": (650, "the caller-facing copy tables "
+        # in a fourth file. 713: two novelty sound packs (Arcade, Starship)
+        # and tone()'s type/glide options — the synthesized packs live in the
+        # engine both pages share, which is the whole design.
+        "web-widget/shared.js": (713, "the caller-facing copy tables "
                                       "(ASK_GROUPS, ASKS, NEVER) split from "
                                       "the runtime foundation; the crossing "
                                       "is zero in both directions"),

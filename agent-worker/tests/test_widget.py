@@ -1307,7 +1307,8 @@ class TestSoundPacks(unittest.TestCase):
         self.assertEqual(self.sounds.asset_url("classic", "ring"), "")
         self.assertEqual(self.sounds.assets_for("classic"), {})
         self.assertEqual(
-            sorted(p for p, _ in self.sounds.packs()), ["classic", "phone"])
+            sorted(p for p, _ in self.sounds.packs()),
+            sorted(self.sounds.SYNTHESIZED))
 
     def test_a_new_folder_becomes_a_new_pack(self):
         self._pack("vintage", ["ring.mp3"])
@@ -1322,6 +1323,24 @@ class TestSoundPacks(unittest.TestCase):
     def test_a_folder_name_without_a_label_is_tidied(self):
         self._pack("old-bell", ["ring.mp3"])
         self.assertIn(("old-bell", "Old Bell"), self.sounds.packs())
+
+    def test_the_shelf_folder_is_not_offered_as_a_pack(self):
+        # assets/sounds/library is the SHELF's home; it once leaked into the
+        # Sound set dropdown as a "Library" pack whose every sound silently
+        # fell back to Exchange.
+        (self.tmp / "library").mkdir()
+        (self.tmp / "library" / "clip.wav").write_bytes(b"")
+        self.assertNotIn("library", [p for p, _ in self.sounds.packs()])
+
+    def test_every_synthesized_pack_has_a_browser_voice(self):
+        # The dropdown offers what sounds.SYNTHESIZED lists, but the BROWSER
+        # synthesizes from shared.js's PACKS — an id in one and not the other
+        # is a Sound set that falls back to Exchange without saying so
+        # (shared.js: `PACKS[soundConfig.pack] || PACKS.classic`).
+        js = widget_js()["shared.js"]
+        for pid in self.sounds.SYNTHESIZED:
+            with self.subTest(pack=pid):
+                self.assertIn(f"{pid}: {{", js)
 
     def test_a_partial_pack_only_covers_what_it_ships(self):
         # One file is a valid pack; everything else stays synthesized.

@@ -1299,9 +1299,10 @@ SCHEMA: dict[str, dict] = {
              "the broadcast, hang-up, and an engaged tone."),
     "sound_pack": dict(group="sounds", kind="select", label="Sound set",
         needs=("call_sounds", True),
-        help="Both are generated in the browser — neither needs a file. "
-             "'Exchange' is the telephone network; 'Handset' is a physical phone "
-             "in a room."),
+        help="All generated in the browser — no files needed. 'Exchange' is the "
+             "telephone network, 'Handset' a physical phone in a room, 'Arcade' "
+             "an 8-bit cabinet, 'Starship' a hailing console. Changing it plays "
+             "the new set's ring."),
     "sound_ring": dict(group="sounds", kind="text", label="Ring", alias="ringtone",
         needs=("call_sounds", True),
         placeholder="default: the sound set above",
