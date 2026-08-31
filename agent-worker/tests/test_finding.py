@@ -218,7 +218,10 @@ class TestItIsAModeNotAnExtraTool(unittest.TestCase):
         names = self._apply({})
         self.assertIn("subwave_search_library", names)
         self.assertNotIn("subwave_find_music", names)
-        self.assertEqual(len(names), 8)
+        # Every route's tool, plus the two bystanders the fixture adds —
+        # counted from ROUTES so the router growing a route (booth,
+        # 2026-08-31) is not misread as the off mode changing something.
+        self.assertEqual(len(names), len(ROUTES) + 2)
 
     def test_on_swaps_six_for_one(self):
         names = self._apply(ON)
@@ -226,7 +229,7 @@ class TestItIsAModeNotAnExtraTool(unittest.TestCase):
         for gone in ROUTES.values():
             with self.subTest(gone=gone):
                 self.assertNotIn(gone, names)
-        # 8 - 6 + 1
+        # every routed tool gone, one finder in, two bystanders untouched
         self.assertEqual(len(names), 3)
 
     def test_requesting_a_song_is_an_action_and_is_left_alone(self):

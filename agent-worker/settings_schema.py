@@ -622,7 +622,9 @@ SCHEMA: dict[str, dict] = {
         label="…after", unit="sec",
         needs=("chat_reprompt", True),
         help="How long a caller may be quiet, the ball in their court, before "
-             "that one nudge. 15 is a natural pause; too short reads as pushy."),
+             "a nudge. 75 by default — under a phone typist's pace reads as "
+             "pushy. At most two nudges per chat, and never while the DJ "
+             "itself owes an action."),
     "show_theme_toggle": dict(group="topcorner", kind="check",
         label="Light / dark toggle",
         help="Forcing a theme below hides this either way — there is nothing "

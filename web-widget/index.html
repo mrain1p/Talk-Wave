@@ -371,7 +371,7 @@
       <!-- The listener count beside the words, same mark as the header's
            (operator's ask, 2026-08-18): whoever opened the deck is one of
            the people this number counts. -->
-      <div class="plhead"><span class="pip" aria-hidden="true"></span>Now playing<span class="listeners" id="plListeners" title="Listening now" hidden><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 18v-6a8 8 0 0 1 16 0v6"/><rect x="2.6" y="13.5" width="4.2" height="6.5" rx="1.8"/><rect x="17.2" y="13.5" width="4.2" height="6.5" rx="1.8"/></svg><span id="plListenersN"></span></span><span class="plheadmeta" id="plHeadMeta"></span><button type="button" class="plseg" id="plSegBtn" hidden aria-haspopup="true" aria-expanded="false" aria-label="Start an Open Lines segment">Segment</button><button class="gear" id="plThemeBtn" title="Theme" aria-label="Change the theme" hidden></button></div>
+      <div class="plhead"><span class="pip" aria-hidden="true"></span>Now playing<span class="listeners" id="plListeners" title="Listening now" hidden><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 18v-6a8 8 0 0 1 16 0v6"/><rect x="2.6" y="13.5" width="4.2" height="6.5" rx="1.8"/><rect x="17.2" y="13.5" width="4.2" height="6.5" rx="1.8"/></svg><span id="plListenersN"></span></span><span class="plheadmeta" id="plHeadMeta"></span><button type="button" class="plseg" id="plSegBtn" hidden aria-haspopup="true" aria-expanded="false" aria-label="Start an Open Lines segment">Segment</button><button class="gear" id="plCastBtn" title="Play on a device" aria-label="Play the stream on another device" hidden><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 20h.01"/><path d="M2 16a4 4 0 0 1 4 4"/><path d="M2 12a8 8 0 0 1 8 8"/><path d="M6 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></button><button class="gear" id="plThemeBtn" title="Theme" aria-label="Change the theme" hidden></button></div>
       <!-- The segment sheet: only ever rendered for a caller /live says may
            trigger one, which is a guest or the operator AND the setting on.
            It offers a length and where the subject comes from — never the
@@ -392,6 +392,11 @@
         <button type="button" class="plseggo" id="plSegGo">Put it up</button>
         <p class="plsegsay" id="plSegSay"></p>
       </div>
+      <!-- The record's colours, washed across the sheet behind everything —
+           a second, far larger blur of the SAME artwork, so the card stops
+           being a hard-edged sleeve on a flat ground (operator's ask,
+           2026-08-31, "the way Plexamp does it"). -->
+      <img class="plambient" id="plAmbient" alt="" aria-hidden="true" hidden />
       <div class="plscroll">
         <span class="plartwrap"><img class="plglow" id="plGlow" alt="" aria-hidden="true" hidden /><span class="plart"><img id="plArt" alt="" hidden /><span class="plmono" id="plMono" aria-hidden="true" hidden></span></span></span>
         <div class="pltrack" id="plTrack"></div>

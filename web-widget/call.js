@@ -5182,6 +5182,20 @@
     // rule as the header's — only a number the station actually gave.
     paintListeners('plListeners', 'plListenersN', d);
     const img = $('plArt'), mono = $('plMono'), glow = $('plGlow');
+    const ambient = $('plAmbient');
+    // The two blurs travel together: the halo behind the sleeve and the
+    // wash across the whole sheet are the same picture at two scales.
+    const setBlurs = (src) => {
+      for (const layer of [glow, ambient]) {
+        if (!layer) continue;
+        if (src) {
+          if (layer.getAttribute('src') !== src) layer.src = src;
+          layer.hidden = false;
+        } else {
+          layer.hidden = true;
+        }
+      }
+    };
     if (img && mono) {
       // The record's own art, else the DJ's photo, else initials — each
       // step taken only when the one before actually failed to load. The
@@ -5190,23 +5204,22 @@
       if (art) {
         // Only on change — re-setting src on every poll re-fetches it.
         if (img.getAttribute('src') !== art) { img.src = art; }
-        if (glow && glow.getAttribute('src') !== art) glow.src = art;
+        setBlurs(art);
         img.hidden = false; mono.hidden = true;
-        if (glow) glow.hidden = false;
         img.onerror = () => {
           if (np.art && img.getAttribute('src') === np.art && d.avatar) {
             img.src = d.avatar;
-            if (glow) glow.src = d.avatar;
+            setBlurs(d.avatar);
             return;
           }
           img.hidden = true;
-          if (glow) glow.hidden = true;
+          setBlurs('');
           mono.textContent = monogram(np.artist || d.name);
           mono.hidden = false;
         };
       } else {
         img.hidden = true;
-        if (glow) glow.hidden = true;
+        setBlurs('');
         mono.textContent = monogram(d.name); mono.hidden = false;
       }
     }
@@ -5318,18 +5331,49 @@
     paintSegBtn();
   }
 
-  // The header's right side: the local clock, and the station's weather when
-  // it sent one — the same readout its own player wears.
+  // The header's right side: the local clock alone. It carried the station's
+  // weather too until 2026-08-31 — the operator's call: that corner's room
+  // belongs to the cast button now, and a listener already knows the sky.
   function paintHeadMeta() {
     const el = $('plHeadMeta');
     if (!el) return;
     const t = new Date();
     const hr = t.getHours() % 12 || 12;
-    const clock = hr + ':' + String(t.getMinutes()).padStart(2, '0')
+    el.textContent = hr + ':' + String(t.getMinutes()).padStart(2, '0')
       + (t.getHours() < 12 ? ' am' : ' pm');
-    const wx = ((shown || live || {}).weather) || '';
-    el.textContent = clock + (wx ? ' · ' + wx : '');
   }
+
+  // --- casting the stream ---------------------------------------------------
+  // "Play this on my speakers" from the sheet itself. Two platform doors,
+  // tried in the order of their reach: the Remote Playback API (Chromium —
+  // Cast devices) and Safari's AirPlay picker. Neither exists = no button,
+  // rather than a control that does nothing. The button waits for a playing
+  // element because both APIs cast an ELEMENT, and it must be pressed inside
+  // the user's own gesture.
+  function castSupported() {
+    return !!(window.HTMLMediaElement
+      && ('remote' in HTMLMediaElement.prototype
+          || 'webkitShowPlaybackTargetPicker' in HTMLMediaElement.prototype));
+  }
+
+  function paintCastBtn() {
+    const b = $('plCastBtn');
+    if (b) b.hidden = !(castSupported() && playerEl);
+  }
+
+  $('plCastBtn').onclick = async () => {
+    const el = playerEl;
+    if (!el) return;
+    try {
+      if (typeof el.webkitShowPlaybackTargetPicker === 'function') {
+        el.webkitShowPlaybackTargetPicker();
+      } else if (el.remote && el.remote.prompt) {
+        await el.remote.prompt();
+      }
+    } catch (e) {
+      // The picker closing unchosen rejects; that is a choice, not a fault.
+    }
+  };
 
   // --- the segment button on the player's ribbon ---------------------------
   // Shown only when /live says THIS caller may trigger one: a guest or the
@@ -5404,6 +5448,7 @@
     }
     const pv = $('playerView');
     if (pv) pv.classList.toggle('playing', !!playerEl);
+    paintCastBtn();
     paintListenChip();
   }
 

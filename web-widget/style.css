@@ -1077,6 +1077,22 @@
     object-fit: cover; border-radius: 6px;
     border: 1px solid var(--edge); background: var(--granite-hi);
   }
+  /* The record's colours washed across the sheet — the same artwork blown
+     up and blurred hard, fading out before the panels so the words never
+     sit on it at strength. Behind everything (the scroll and dock carry
+     their own stacking contexts below); opacity kept low enough to read as
+     light on the ground in BOTH themes rather than a picture. */
+  .plambient {
+    position: absolute; left: -12%; top: -6%; width: 124%; height: 58%;
+    object-fit: cover; pointer-events: none; z-index: 0;
+    filter: blur(72px) saturate(1.25); opacity: .26;
+    -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
+    mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
+  }
+  .plambient[hidden] { display: none; }
+  /* The wash must stay UNDER the sheet's content: both bands get their own
+     stacking context so a z-indexed child can never slip beneath it. */
+  .plscroll, .pldock, .plhead { position: relative; z-index: 1; }
   .plmono {
     display: flex; align-items: center; justify-content: center;
     color: var(--coral); font: 700 44px/1 var(--font-mono);

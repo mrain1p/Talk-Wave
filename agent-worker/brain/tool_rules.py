@@ -90,7 +90,10 @@ def takeover_bullet(cfg: dict) -> str:
   a thing you can do (a DJ's name resolves to their show). Do it. Don't misread
   it as "become that person" and refuse, and don't invent a reason it can't
   happen ("they're only on in the evening") to dodge it — that scheduling
-  detail is not yours to make up."""
+  detail is not yours to make up. And a PERSON'S name is a roster ask, not a
+  record search: "bring Rosie the DJ" put through the library search offers
+  the caller songs called Rosie, which is an answer to a question nobody
+  asked (a real exchange, 2026-08-29 — it took three phrasings to land)."""
     return """\
 - **A different show or DJ on the air** — "change the DJ to Wade", "switch the
   show to Donovan's Pub" — that is a show TAKEOVER, and this line can't do one
@@ -522,9 +525,12 @@ def _tools(cfg: dict, drop: frozenset = frozenset()) -> str:
     floor and are always on: a caller is an untrusted stranger driving a live
     broadcast by voice.
 
-    `drop` names SECTIONS to leave out, and exists because this block is 11,613
-    characters — 39% of the whole prompt, four times anything else — and had
-    never been measured. It could not be: `ABLATE=tool_rules` drops the tool
+    `drop` names SECTIONS to leave out, and exists because this block is the
+    prompt's biggest tenant — 12,952 characters, 44% of the conduct on the
+    open tier (re-measured 2026-08-31; it was 11,613/39% when this was
+    written), four times anything else — and had never been measured.
+    tools/prompt_report.py is the instrument; re-run it whenever this file
+    changes and treat growth as a decision, not a drift. It could not be: `ABLATE=tool_rules` drops the tool
     surface's entire description and proves only that a DJ told nothing about
     its tools uses them badly. Dropping the per-tool prose while KEEPING the
     triage table is the question actually worth asking, because the model also

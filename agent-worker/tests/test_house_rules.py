@@ -996,7 +996,9 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # asks read their anchor, the skip tiebreak) minus the soundtrack
         # dedupe; the speak-first paragraph also became its own SECTION so
         # the chat build can drop it instead of negating it.
-        "agent-worker/brain/tool_rules.py": (741, "the declarations at the top "
+        # 747: the person-name-is-a-roster-ask clause on the takeover
+        # bullet (the Rosie exchange) and the re-measured budget note.
+        "agent-worker/brain/tool_rules.py": (747, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
         # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —
@@ -1138,7 +1140,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # the sweep skips a locked conversation before the idle check, and the
         # opener/nudge tell the shared state what the DJ said. All in the
         # ChatSession half; thirty-three lines, none across the seam.
-        "agent-worker/chat/session.py": (762, "the one-conversation half "
+        # 773: the owes_action flag (set at the promise-grading point,
+        # cleared when a tool runs) so the idle nudge never types
+        # scenery over an unmet promise.
+        "agent-worker/chat/session.py": (773, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "
@@ -1831,7 +1836,8 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         # Batch 2 — the api edge
         "agent-worker/api/live.py::handle_live": (55, "Batch 2 — the /live god-dict assembler"),
         "agent-worker/api/diagnostics.py::handle_speed_test": (47, "Batch 2 — diagnostics god-module"),
-        "agent-worker/api/chat.py::handle_chat_ws": (46, "Batch 2 — the chat websocket loop"),
+        # 47 (2026-08-31): the owes_action veto joins the reprompt gate.
+        "agent-worker/api/chat.py::handle_chat_ws": (47, "Batch 2 — the chat websocket loop"),
         "agent-worker/api/hooks.py::register_station_webhook": (44, "Batch 2 — webhook reconcile"),
         "agent-worker/api/tokens.py::handle_token": (41, "Batch 2 — mint + usage-ceiling ladder"),
         "agent-worker/api/hook_receiver.py::_remember_air": (34, "Batch 2 — two-generation air merge"),

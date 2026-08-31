@@ -417,7 +417,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # by default; 0 or the switch off disables it. Never fires while the DJ is
     # the one still owing a reply.
     "chat_reprompt":         (None, True),
-    "chat_reprompt_secs":    (None, 20),
+    # 75, up from 20 (brain review, 2026-08-31): twenty seconds is faster
+    # than a phone typist composes a sentence, so the nudge kept landing on
+    # people mid-thought. Well above typing pace, still short of "gone".
+    "chat_reprompt_secs":    (None, 75),
     "voicemail_greeting":    (None, ""),
     # Fresh by default (0.10.80): a line written in persona at pickup, with
     # the staged clip as the instant fallback — the machine still answers
