@@ -225,9 +225,39 @@ window.Callin = (function () {
   // Defaults are synthesized so the widget ships with no audio assets; a
   // configured URL replaces them.
   function ctx() {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      // A phone that moves its audio route mid-call — Bluetooth dropping
+      // from the media profile to hands-free when the mic engages, a headset
+      // unplugged, an iOS interruption — can leave the context suspended (or
+      // in webkit's non-standard 'interrupted'). Nothing else runs ctx()
+      // during a call, so the context asks to come back itself.
+      audioCtx.onstatechange = () => {
+        const c = audioCtx;
+        if (c && c.state !== 'running' && c.state !== 'closed') {
+          try { c.resume().catch(() => {}); } catch (e) { /* platform said no */ }
+        }
+      };
+    }
+    if (audioCtx.state !== 'running') {
+      try { audioCtx.resume().catch(() => {}); } catch (e) { /* not yet */ }
+    }
     return audioCtx;
+  }
+
+  // Throw the context away so the next ctx() builds a fresh one. The one
+  // real use is a Bluetooth route flip mid-call: a context opened at the
+  // media profile's rate keeps rendering at that rate after the phone drops
+  // to hands-free at 8/16kHz, and what it renders never reaches the ear. A
+  // context born after the flip picks up the live rate. Fire-and-forget on
+  // purpose — the caller rewires its graph straight after.
+  function resetCtx() {
+    const old = audioCtx;
+    audioCtx = null;
+    if (old) {
+      try { old.onstatechange = null; old.close().catch(() => {}); }
+      catch (e) { /* already gone */ }
+    }
   }
 
   function tone(freqs, start, dur, gain) {
@@ -612,7 +642,7 @@ window.Callin = (function () {
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
     applySkin, skinForced,
     ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
-    ctx, pack, playSound, startRinging, stopRinging,
+    ctx, resetCtx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume, THEME_ICONS, LINK_ICONS,
     playFirstWorking, readPlayerHandoff, writePlayerHandoff,
   };

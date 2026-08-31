@@ -1221,7 +1221,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # web-widget/CLAUDE.md; doing that in the same commit as a new player
         # would give any regression in either two candidate causes. Same
         # deferral the two entries below record.
-        "web-widget/shared.js": (620, "the caller-facing copy tables "
+        # 650: the AudioContext grew its route-change lifecycle (a statechange
+        # auto-resume and resetCtx) for the Bluetooth hands-free flip that
+        # silenced a car call — context management belongs beside ctx(), not
+        # in a fourth file.
+        "web-widget/shared.js": (650, "the caller-facing copy tables "
                                       "(ASK_GROUPS, ASKS, NEVER) split from "
                                       "the runtime foundation; the crossing "
                                       "is zero in both directions"),

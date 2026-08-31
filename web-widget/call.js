@@ -10,7 +10,7 @@
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
     applySkin, skinForced, LINK_ICONS,
     ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
-    ctx, pack, playSound, startRinging, stopRinging,
+    ctx, resetCtx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume, THEME_ICONS,
     playFirstWorking, readPlayerHandoff, writePlayerHandoff,
   } = window.Callin;
@@ -1142,7 +1142,12 @@
   paintSpeakerBtn();
   probeRouting();
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
-    navigator.mediaDevices.addEventListener('devicechange', probeRouting);
+    navigator.mediaDevices.addEventListener('devicechange', () => {
+      probeRouting();
+      // A device list that changes mid-call is what a Bluetooth profile
+      // flip looks like from here — see the route-change recovery ladder.
+      checkAudioAlive('devices changed');
+    });
   }
 
   // While the panel is previewing a line-box state (preview frames only),
@@ -2944,6 +2949,111 @@
     fx = null;
   }
 
+  // ------------------------------------------------- route-change recovery
+  // The marriage above has one enemy: a phone that changes its audio route
+  // mid-call. The worst offender is Bluetooth in a car — the ring plays over
+  // the media profile, then the mic engages and the handset drops the link
+  // to hands-free. The context that opened at the media rate keeps rendering
+  // into a route that no longer exists, and because the graph is the only
+  // audible path (the DJ's element is muted the moment the graph takes the
+  // voice), the call goes silent exactly as the DJ says hello — ring heard,
+  // nothing after (operator's car, 2026-08-31).
+  //
+  // Recovery is a ladder, cheapest rung first:
+  //   1. resume() — covers a plain suspend and iOS's 'interrupted'.
+  //   2. rebuild — throw the context away, open a fresh one (born at the NEW
+  //      route's rate) and rewire: the DJ through wireEffect, the station by
+  //      retuning (a captured element cannot be given back, so it is a new
+  //      element or nothing), the meters re-analysed.
+  //   3. surrender — unmute the DJ's element and leave the graph out of it.
+  //      The element is WebRTC playout, which the platform routes with the
+  //      call itself, so it survives any profile the phone lands on. Split
+  //      volumes beat a silent DJ.
+  //
+  // Checked at the moments a flip actually happens: scheduled beats after
+  // the mic engages (the flip IS the mic engaging), when the device list
+  // changes, and when the page comes back into view. Cheap when nothing is
+  // wrong: the probe below only opens when there is a graph to defend.
+  let recoverBusy = false;
+  let recoverTimers = [];
+
+  function clearRecoveryChecks() {
+    recoverTimers.forEach(clearTimeout);
+    recoverTimers = [];
+  }
+
+  function scheduleRecoveryChecks() {
+    clearRecoveryChecks();
+    // Three beats, not one: SCO can take a couple of seconds to come up, and
+    // a check that runs only during the changeover would rebuild onto a rate
+    // that is itself about to change.
+    [1500, 4000, 8000].forEach((at) => {
+      recoverTimers.push(setTimeout(() => { checkAudioAlive('after pickup'); }, at));
+    });
+  }
+
+  // Whether the graph's context still matches the hardware it is meant to
+  // reach. A stale context after a route flip usually still SAYS 'running' —
+  // the honest tell is the rate: a probe context opened now is born at the
+  // live route's rate, and a mismatch means ours renders into the void.
+  function ctxLooksDead() {
+    const c = ctx();
+    if (c.state !== 'running') return true;
+    try {
+      const C = window.AudioContext || window.webkitAudioContext;
+      const probe = new C();
+      const stale = probe.sampleRate !== c.sampleRate;
+      try { probe.close(); } catch (e) { /* probes may linger, harmlessly */ }
+      return stale;
+    } catch (e) { return false; }
+  }
+
+  async function checkAudioAlive(why) {
+    if (!room || recoverBusy) return;
+    // Element paths route themselves with the platform — only a graph that
+    // holds a voice or the station has anything to lose here.
+    if (!fx && !stationMix) return;
+    if (!ctxLooksDead()) return;
+    recoverBusy = true;
+    try {
+      // Rung 1: ask nicely.
+      try { await ctx().resume(); } catch (e) { /* the rebuild is next */ }
+      if (!ctxLooksDead()) return;
+      console.warn('Talk Wave: audio route changed (' + why + ') — rebuilding the graph');
+      // Rung 2: a fresh context at the live rate, everything rewired.
+      const hadStation = !!stationMix;
+      dropEffect(); unmixStation();
+      resetCtx();
+      if (djTrack) {
+        if (wireEffect(djTrack)) { if (djEl) djEl.muted = true; }
+        else if (djEl) { djEl.muted = false; djEl.play?.(); }
+        anDj = analyserFor(djTrack.mediaStreamTrack);
+      }
+      const mic = room && room.localParticipant
+        && room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
+      if (mic && mic.track) anYou = analyserFor(mic.track.mediaStreamTrack);
+      if (hadStation) { tuneOut(); tuneIn(); }
+      applyVolume();
+      routeAudio(onSpeaker);
+      // Rung 3: if even the fresh context refuses to run, the element is
+      // the way out.
+      recoverTimers.push(setTimeout(() => {
+        if (!room || !fx) return;
+        if (ctx().state === 'running') return;
+        console.warn('Talk Wave: the graph will not run here — the DJ takes the element path');
+        dropEffect();
+        if (djEl) { djEl.muted = false; djEl.play?.(); }
+        applyVolume();
+      }, 1200));
+    } finally {
+      recoverBusy = false;
+    }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) checkAudioAlive('page visible');
+  });
+
   function stationLevel() {
     const s = (live && live.stream) || {};
     return Math.min(1, ((s.volume || 0) / 100) * (getVolume() / 100));
@@ -3332,6 +3442,9 @@
         // refuses is not a reason to interrupt a call that is otherwise up.
         routeAudio(onSpeaker);
         anDj = analyserFor(track.mediaStreamTrack);
+        // The DJ may arrive after the pickup beats have run; restart them so
+        // a voice just wired into a stranded graph is caught too.
+        scheduleRecoveryChecks();
         setStatus('Connected — go ahead, talk', 'connected');
       });
       room.on(LivekitClient.RoomEvent.Disconnected, () => endCall(true));
@@ -3386,6 +3499,10 @@
       const mic = room.localParticipant.getTrackPublication(
         LivekitClient.Track.Source.Microphone);
       anYou = analyserFor(mic?.track?.mediaStreamTrack);
+      // The mic engaging is the moment a Bluetooth handset drops the link
+      // from the media profile to hands-free — the beats below catch the
+      // graph if that flip strands it. See the route-change recovery ladder.
+      scheduleRecoveryChecks();
 
       // Button stays on Ringing/Answering; setAgentState flips it to the
       // green On the line at the DJ's first word.
@@ -3566,6 +3683,7 @@
     room = null; muted = false;
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     dropEffect();
+    clearRecoveryChecks();
     anYou = anDj = null; djEl = null; djTrack = null;
     djOnAir = false; djHasSpoken = false;
     // Reset the on-air hold state too, or a call that hung up while its hold

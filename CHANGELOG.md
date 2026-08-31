@@ -4,6 +4,10 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+- **A Bluetooth call in the car stays audible past the pickup.** The ring plays over the media channel, then the mic engages and the handset drops the Bluetooth link to its hands-free profile — and the audio graph that carries the DJ's voice (and the station bed) kept rendering into the route that had just gone away, so the call went silent exactly as the DJ said hello. The widget now notices the route change — checked in the seconds after pickup, when the device list moves, and when the page comes back into view — and recovers on a ladder: resume the graph if it merely suspended, rebuild it at the new route's rate if it went stale, and if all else fails hand the DJ's voice back to the plain call path, which the phone routes with the call itself. Split volumes beat a silent DJ.
+
 ## 0.99.13
 
 A security sitting at the voicemail door, and the operator-facing documents corrected against the code they describe. Nothing on the live call path changes — every fix here is on the answering machine's side of the line, or in a document an operator makes decisions from.
