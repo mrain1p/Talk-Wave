@@ -5253,9 +5253,6 @@
     const list = d.upNext || [];
     const nextBody = $('plNextBody');
     if (nextBody) {
-      $('plNextMeta').textContent = list.length
-        ? list.length + ' queued' : 'queue empty';
-      $('plNextPip').classList.toggle('live', !!list.length);
       nextBody.innerHTML = '';
       if (list.length) {
         list.forEach((nx) => {
@@ -5275,14 +5272,11 @@
       }
     }
     // JUST PLAYED: the queue's short memory, newest first — the answer to
-    // "what was that song?", which is the question a listener opens this
-    // sheet holding. The panel only exists while there is history to show:
-    // an empty "nothing yet" box would be furniture, and on the pinned
-    // desktop card its row-mate Up next takes the whole row instead.
+    // "what was that song?". It shares the queue card, behind its own tab;
+    // the tab only offers itself while there is history to stand behind it.
     const past = d.justPlayed || [];
-    const pastPanel = $('plPastPanel'), pastBody = $('plPastBody');
-    if (pastPanel && pastBody) {
-      pastPanel.hidden = !past.length;
+    const pastBody = $('plPastBody');
+    if (pastBody) {
       pastBody.innerHTML = '';
       past.forEach((px) => {
         const t = document.createElement('div');
@@ -5295,6 +5289,8 @@
         }
       });
     }
+    plQueueCounts = { next: list.length, past: past.length };
+    paintQueueTabs();
     // IN THE BOOTH: what the DJ is SAYING — the newest turn of the live
     // session, straight from the station's own booth feed (the operator's
     // correction: the panel restated the identity header, which is already
@@ -5438,6 +5434,39 @@
       }
     };
   }
+
+  // ------------------------------------------- the queue card's two tabs
+  // Up next and Just played share one card (the operator's third ruling on
+  // this pair: side by side was cramped, stacked spent room the sheet
+  // hasn't got). 'next' is the resting face; the past tab only offers
+  // itself while there is history, and loses the floor if its history
+  // empties under it.
+  let plTab = 'next';
+  let plQueueCounts = { next: 0, past: 0 };
+
+  function paintQueueTabs() {
+    const tn = $('plTabNext'), tp = $('plTabPast');
+    const bn = $('plNextBody'), bp = $('plPastBody');
+    if (!tn || !tp || !bn || !bp) return;
+    tp.hidden = !plQueueCounts.past;
+    if (tp.hidden && plTab === 'past') plTab = 'next';
+    const onNext = plTab === 'next';
+    tn.classList.toggle('on', onNext);
+    tp.classList.toggle('on', !onNext);
+    tn.setAttribute('aria-pressed', onNext ? 'true' : 'false');
+    tp.setAttribute('aria-pressed', onNext ? 'false' : 'true');
+    bn.hidden = !onNext;
+    bp.hidden = onNext;
+    // The meta and the pip speak for the tab that has the floor: a lit pip
+    // over the play log would say "live" about the past.
+    $('plNextMeta').textContent = onNext
+      ? (plQueueCounts.next ? plQueueCounts.next + ' queued' : 'queue empty')
+      : 'newest first';
+    $('plNextPip').classList.toggle('live', onNext && !!plQueueCounts.next);
+  }
+
+  $('plTabNext').onclick = () => { plTab = 'next'; paintQueueTabs(); };
+  $('plTabPast').onclick = () => { plTab = 'past'; paintQueueTabs(); };
 
   function paintPlayerButtons() {
     // The word only — the glyphs beside it are CSS-switched off the sheet's

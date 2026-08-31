@@ -3515,10 +3515,18 @@ class TestThePanelKeepsItsOwnRules(unittest.TestCase):
         # is about the block's CONTENT, not its length.
         block = self.css.split(
             "body:not(.panelpage):not(.compact) .card {")[1].split("}")[0]
-        self.assertIn("env(safe-area-inset-top)", block,
-                      "the full-bleed phone card must clear the notch")
         self.assertIn("env(safe-area-inset-bottom)", block,
-                      "…and the home indicator")
+                      "the full-bleed phone card must clear the home indicator")
+        # The TOP inset moved INTO the eyebrow (2026-08-31): the card's top
+        # padding is zero so the ON AIR band sits flush like the player's,
+        # and the notch clearance rides inside the row itself. The invariant
+        # is unchanged — the top edge honours the inset — the honouring rule
+        # just lives on the row that touches that edge.
+        eyebrow = self.css.split(
+            "body:not(.panelpage):not(.compact) .card .eyebrow {")[1] \
+            .split("}")[0]
+        self.assertIn("env(safe-area-inset-top)", eyebrow,
+                      "the flush top band must clear the notch itself")
 
     def test_every_field_carries_help(self):
         # The eleven wording fields shipped with none until 0.98.24. Help is
