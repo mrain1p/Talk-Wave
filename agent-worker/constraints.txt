@@ -58,7 +58,7 @@ jiter==0.16.0
 json_repair==0.60.1
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
-livekit==1.1.13
+livekit==1.1.16
 livekit-agents==1.6.7
 livekit-api==1.2.0
 livekit-blingfire==1.1.0
