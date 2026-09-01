@@ -4,6 +4,14 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.23
+
+Tagged without a page of its own (folded forward at the next storied release).
+
+- The arriving screen has an edge now: a lit rule with the light falling onto the screen it covers travels with the boundary, so pulling the phone over the player reads as a card being laid down rather than a scan.
+- The player header drops the clock, groups its icons hard right like the phone card's, and In the booth finally says who is in it — the DJ on the header line, the show on its own line beneath, then the booth's own words.
+- On a player-first page the bottom pull tab stops touching the Call row, and the record rail stops squeezing its own chip.
+
 ## 0.99.22
 
 Tagged without a page of its own (folded forward at the next storied release).

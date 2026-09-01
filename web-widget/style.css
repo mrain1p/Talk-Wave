@@ -937,6 +937,20 @@
   }
   .card.plfirst.playeropen .player { clip-path: inset(0 0 0 0); }
   .card.plfirst .player.dragging { transition: none; }
+  /* The arriving screen's leading edge — a lit rule with the light falling
+     DOWNWARD onto the player it is covering, so the phone reads as a card
+     laid over rather than a scan line (operator, 2026-09-01). It exists
+     only while the two screens are mid-exchange. */
+  .plcurtain {
+    position: absolute; left: 0; right: 0; top: 100%; height: 0;
+    border-top: 2px solid var(--coral);
+    box-shadow: 0 14px 26px rgba(0, 0, 0, .55);
+    z-index: 61; pointer-events: none; display: none;
+  }
+  .card.plfirst .plcurtain.on { display: block; }
+  .card.plfirst .plcurtain.sweep {
+    transition: top .38s cubic-bezier(.32, .72, .28, 1);
+  }
   /* The finger owns the sheet mid-drag; the transition takes over on release. */
   .player.dragging { transition: none; }
   /* display:flex above would beat the UA's [hidden] rule — say it explicitly.
@@ -1186,6 +1200,21 @@
      sitting in the card's own 16px bottom padding so it covers no control.
      The eyebrow gives up its anchor for the same reason — the ribbon has
      to measure from the card, not from the top band. */
+  /* The bottom bookmark needs a strip of its own: at the card's 16px
+     bottom padding it sat ON the Call row (operator's screenshot,
+     2026-09-01). The extra room lifts the whole action row off the edge,
+     which is the "punch that row up" they asked for in the same breath. */
+  /* Specific enough to beat `body:not(.compact) .card`, which owns the
+     phone's padding and quietly won the first attempt (measured: 2px of
+     clearance instead of the intended eighteen). */
+  body .card.plfirst,
+  body:not(.compact) .card.plfirst,
+  body:not(.panelpage):not(.compact) .card.plfirst {
+    padding-bottom: max(34px, calc(20px + env(safe-area-inset-bottom)));
+  }
+  /* The rail was 30px around a chip nearly that tall, so PLAYING touched
+     both hairlines. Only on this face, where the rail carries the record. */
+  .card.plfirst .nprail { height: 42px; }
   .card.plfirst .eyebrow { position: static; }
   .card.plfirst .ribbon {
     top: auto; bottom: 0; height: 18px; padding: 0 17px;
