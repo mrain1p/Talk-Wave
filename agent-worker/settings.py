@@ -813,10 +813,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # Booth texture while the DJ is thinking mid-call: a file path visible
     # to the WORKER (e.g. /data/sounds/thinking.mp3), played on its own
     # room track only while the agent is between hearing and speaking.
-    # Blank = silence, today's behaviour. FIELDS-only for now — settable
-    # via the settings API or data/settings.json; a panel row (and the
-    # sound-slot upload treatment) is the talkwave-setting follow-up if
-    # the experiment earns it.
+    # Blank = silence, today's behaviour. Panel row since 0.99.15 (sounds
+    # section, plain row — deliberately not a seventh board slot); the
+    # slot-menu upload treatment stays the follow-up if the experiment
+    # earns it.
     "sound_thinking":   (None, ""),
     "call_volume":      (None, 100),
 }

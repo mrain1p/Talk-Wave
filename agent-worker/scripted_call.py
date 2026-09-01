@@ -162,6 +162,10 @@ for _var, _path in (("NEW_DOOR", "call.door"), ("NEW_ARC", "call.arc"),
                     ("NEW_DISCOVERY", "call.tools.discovery"),
                     ("NEW_MUSIC", "call.tools.music"),
                     ("NEW_STUCK", "call.stuck"),
+                    # asks imports stuck.same_ask, so stuck must already be
+                    # in place when the injected copy binds.
+                    ("NEW_ASKS", "call.asks"),
+                    ("NEW_LANDED", "call.landed"),
                     ("NEW_WITHHELD", "call.withheld"),
                     ("NEW_RULES", "spoken_rules"),
                     ("NEW_PROMISES", "promises"),

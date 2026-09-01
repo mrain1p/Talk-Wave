@@ -1,0 +1,36 @@
+# The maintainability plan's cadence tier (2026-08-29): know when the pinned
+# world moves, without letting a robot fight the pins. Everything lands on
+# dev — :latest builds from main and feeds the live NAS, so no automated PR
+# may target it.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /agent-worker
+    schedule:
+      interval: weekly
+    target-branch: dev
+    groups:
+      # The LiveKit set moves together or not at all — one PR, one decision.
+      livekit:
+        patterns:
+          - "livekit-*"
+    ignore:
+      # anthropic is pinned at 0.125.0 on purpose: 1.x moved to httpx2 and
+      # livekit-plugins-anthropic 1.6.7 still constructs the client with
+      # httpx. The pin comes off when a plugin built against anthropic 1.x
+      # exists — requirements.txt carries the full story. A weekly PR
+      # re-proposing the break would train us to ignore this file.
+      - dependency-name: anthropic
+        versions: [">0.125.0"]
+
+  - package-ecosystem: docker
+    directory: /agent-worker
+    schedule:
+      interval: weekly
+    target-branch: dev
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    target-branch: dev

@@ -229,7 +229,13 @@ def write_clip(persona_id: str, key: str, text: str, voice: str,
         w.setsampwidth(2)
         w.setframerate(int(sample_rate))
         w.writeframes(pcm)
-    for path, mode in ((VOICEMAIL_DIR, 0o755), (tmp, 0o644)):
+    # 0700 to AGREE with deliver.py: this is the shared voicemail dir, and
+    # 0755 here was silently undoing the messages dir's privacy hardening on
+    # every staging (review-ledger, 2026-08-29). Same-UID cross-container
+    # reads are unaffected — the 0600 messages.json has always been panel-
+    # readable — and the clip files themselves stay 0644: a greeting is
+    # public by nature, played to any caller who reaches the machine.
+    for path, mode in ((VOICEMAIL_DIR, 0o700), (tmp, 0o644)):
         try:
             os.chmod(path, mode)
         except OSError:

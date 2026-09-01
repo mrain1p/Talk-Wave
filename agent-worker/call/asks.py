@@ -86,7 +86,11 @@ ASKS_FOR_ACTION = re.compile(
     # missing is the DJ inventing an answer — the eleven-times call.
     r"(?:the|have|any) lyrics|lyrics (?:for|to|of)|"
     r"give (?:this|that) (?:track|song|tune|one|a spin)|"
-    r"search\b|look (?:\w+ )?up\b|look for|"
+    # "find me something by Max Richter" — the flow set's own trigger, and
+    # the pattern was deaf to it: the interrupted-ask row was being heard
+    # only through the accidental token "queue" inside "DON'T queue
+    # anything yet" (found 2026-08-31, the slice-3 recon).
+    r"search\b|look (?:\w+ )?up\b|look for|find (?:me|us|some|a|something)\b|"
     # Queue edits. "cue" and "queu" are what STT actually makes of "queue".
     r"cancel\b|cue\b|remove (?:all |the |that |this |it |every)|"
     r"recommend|"
@@ -156,28 +160,54 @@ class Asks:
         return bool(self.asked) and not self.unanswered(acted_at)
 
     def unanswered(self, acted_at: list[float]) -> list[str]:
-        """The asks with no action recorded after them.
+        """The asks with no action attributed to them.
 
-        `acted_at` is when the ledger noted each successful action. Only the
-        LAST ask needs care: a caller who asks twice and gets one action has
-        had one answered, and which one is not knowable from here — so an
-        action answers every ask before it. That is generous by construction,
-        which is the right direction for a detector nobody has calibrated yet.
+        `acted_at` is when the ledger noted each successful action. Each
+        action settles the LATEST ask still open when it landed — one
+        action, one ask, not the whole board. Until 2026-08-31 an action
+        answered EVERY ask before it, and the three-asks shape showed what
+        that wipes: the moment any unrelated action landed, the caller's
+        first ask vanished from the comeback, the hold-return nod and the
+        dropped-ask record line all at once — the primary intent
+        evaporated on the first shoutout.
+
+        Still generous where it cannot know. Settling an ask also settles
+        any other open ask that reads as the same request (stuck.same_ask),
+        so a rephrase does not haunt the record as a second dropped ask;
+        and a LONE ask is settled by whatever action follows it, related or
+        not — the calibrated direction this module has always chosen, since
+        a quiet false negative is worse than a noisy false positive.
         """
         if not self.asked:
             return []
-        latest = max(acted_at) if acted_at else 0.0
-        return [what for when, what in self.asked if when > latest]
+        from .stuck import same_ask
+
+        open_idx = set(range(len(self.asked)))
+        for acted in sorted(acted_at or []):
+            latest = max((i for i in open_idx if self.asked[i][0] < acted),
+                         default=None)
+            if latest is None:
+                continue
+            open_idx.discard(latest)
+            for i in list(open_idx):
+                if same_ask(self.asked[i][1], self.asked[latest][1]):
+                    open_idx.discard(i)
+        return [self.asked[i][1] for i in sorted(open_idx)]
 
 
 #: The word in the DJ's ear when a caller's ask has outlived the turn it
 #: arrived in. Same delivery and same honesty rule as the door and arc
 #: hints: it names what to DO — finish the task or say where it stands —
 #: because "you left something hanging" with no direction is just nagging.
+#: "No action has LANDED for it" — a ledger fact — never "it has not
+#: happened": an ask answered in words (a finder read out, a pick left with
+#: the caller) has no receipt, and the old wording made the hint lie to the
+#: model on exactly those rounds (the interrupted-ask row's losing shape).
 COMEBACK_HINT = (
-    "[Note to you, not from the caller: they asked for \"{want}\" and it "
-    "has not happened yet. Come back to it NOW — do the task, or say "
-    "honestly where it stands — without making them ask again.]"
+    "[Note to you, not from the caller: their ask \"{want}\" is still open "
+    "— no action has landed for it. Come back to it NOW — do the task, say "
+    "honestly where it stands, or if you already answered it in words, "
+    "move it forward — without making them ask again.]"
 )
 
 
@@ -200,27 +230,38 @@ class OpenAskComeback:
 
     def __init__(self, asks: Asks) -> None:
         self.asks = asks
-        self._turns_open = 0
+        # Turns each ask has been open, keyed the way _hinted is — per ASK,
+        # never per call: one shared counter made the three-asks shape hint
+        # the shoutout on the shoutout's OWN first turn, because "some ask
+        # has been open two turns" is not "THIS ask has" (2026-08-31).
+        self._ask_age: dict[str, int] = {}
         self._hinted: set[str] = set()
         # Read by the record, like door.corrections and the arc's: how often
         # the DJ had to be steered back to what the caller came for.
         self.corrections = 0
 
     def hint_for(self, caller_text: str, acted_at) -> str:
-        open_asks = self.asks.unanswered(list(acted_at or []))
+        open_asks = [str(w)[:120]
+                     for w in self.asks.unanswered(list(acted_at or []))]
         if not open_asks:
-            self._turns_open = 0
+            self._ask_age.clear()
             return ""
-        self._turns_open += 1
-        want = str(open_asks[-1])[:120]
+        for w in list(self._ask_age):
+            if w not in open_asks:
+                del self._ask_age[w]
+        for w in open_asks:
+            self._ask_age[w] = self._ask_age.get(w, 0) + 1
         # Turn one is the ask itself — the model is presumably acting on it
         # right now, and steering it there would be noise. Turn two with
-        # nothing landed is the caller waiting.
-        if self._turns_open < 2 or want in self._hinted:
-            return ""
-        self._hinted.add(want)
-        self.corrections += 1
-        return COMEBACK_HINT.format(want=want)
+        # nothing landed is the caller waiting. The OLDEST mature ask wins
+        # (open_asks is in ask order): the newest is being worked this turn;
+        # the one that has outlived two caller turns is what they came for.
+        for want in open_asks:
+            if self._ask_age.get(want, 0) >= 2 and want not in self._hinted:
+                self._hinted.add(want)
+                self.corrections += 1
+                return COMEBACK_HINT.format(want=want)
+        return ""
 
 
 def attach_ask_watch(session, asks: Asks) -> None:

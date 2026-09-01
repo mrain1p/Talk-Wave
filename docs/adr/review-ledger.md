@@ -446,3 +446,40 @@ the operator the raw stream.
 Verified: full suite 32/32, ruff clean. No behaviour change — the primitive
 reproduces each site's accumulate-and-close exactly, including on_delta
 streaming (openers) and tool_calls accumulation (preview).
+
+## The parallel-run flakes (2026-09-01)
+
+Two tests were flagged as blocking the pre-commit hook intermittently under
+8-worker load; both were chased to a verdict rather than retried away.
+
+- **`TestTheSignOffIsHeardBeforeTheLineCloses` — real, fixed in the test.**
+  `await_sign_off` polls a 0.2s sleep against wall-clock deadlines and the
+  tests assert on READ COUNTS, so a loaded scheduler that oversleeps a tick
+  spends the deadline in fewer reads and the count falls short with nothing
+  wrong. The `_run` helper now swaps both of the waiter's clocks for one
+  virtual clock (each awaited sleep advances it exactly; no wall time
+  passes), which makes the read counts exact and load-immune without
+  touching the waiter. The says-nothing row's wall bound now proves the wait
+  costs no REAL time — it pays the cold livekit import before starting its
+  clock.
+- **`test_on_air_guard_clear_air_costs_nothing` — not reproducible, no
+  change.** On today's tree the path is provably deterministic: the guard's
+  constructor prime reads the hook-air file through `CALLIN_HOOK_AIR_PATH`,
+  which `_TempStores.setUp` points at a fresh per-test temp dir (absent file
+  -> no verdict -> `_clear` stays set -> the literal `0.0` fast path). Six
+  concurrent module runs produced zero failures. The flag predates the
+  per-test air-path repointing; verdict: fixed by that intervening change.
+  If it ever fires again, the first question is which reader found a REAL
+  push file — not this test's arithmetic.
+
+## mypy report-only on the provider/adapter seam (2026-09-01)
+
+The plan's LATER-tier item, run once to a verdict: `mypy
+--ignore-missing-imports` over call/providers.py, tts_adapter.py, station.py,
+station_config.py (+ their import closure) returns 30 errors, ALL structural
+false positives — the AirVerdict mixin's attributes defined on the subclass
+(attr-defined x12), `is not NOT_GIVEN` sentinel guards mypy cannot narrow
+(tts_adapter x2), and equivalent patterns. Zero real findings. Verdict: not
+worth a permanent CI step — the signal-to-noise on this codebase's idioms is
+near zero, and a report nobody reads is noise. Re-run by hand if the seam
+grows a new adapter. mypy stays a local dev install, not a requirement.

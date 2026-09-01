@@ -16,6 +16,7 @@ record, and none of it is consulted while the call is running.
 from __future__ import annotations
 
 import logging
+import re
 
 from log_setup import describe
 
@@ -35,6 +36,7 @@ def write_notes(call, duration: float, final: list) -> None:
     _note_if_two_turns_wanted_the_floor(call)
     _note_if_an_ask_went_unanswered(call)
     _note_if_a_lookup_was_never_read_out(call)
+    _note_if_next_was_promised_from_down_the_queue(call)
     _note_if_queued_ids_came_from_nowhere(call)
     _note_if_a_tool_call_failed(call)
     _note_if_nothing_was_heard(call, duration, final)
@@ -53,6 +55,7 @@ def write_shared_notes(call) -> None:
     _note_if_the_caller_repeated_or_corrected(call)
     _note_if_an_ask_went_unanswered(call)
     _note_if_a_lookup_was_never_read_out(call)
+    _note_if_next_was_promised_from_down_the_queue(call)
     _note_if_queued_ids_came_from_nowhere(call)
     _note_if_a_tool_call_failed(call)
 
@@ -216,6 +219,53 @@ def _note_if_a_lookup_was_never_read_out(call) -> None:
         + ". The tool ran and returned results, and the DJ's next lines "
         "named none of them — so this reads as a working call in every "
         "other count. The caller asked a question and got no answer."
+    )
+
+
+#: The receipt's own words when a track is NOT next (music._when_it_plays),
+#: and the imminence claims a DJ line makes. "next" alone is far too broad
+#: ("next caller", "the next hour") — these are the receipt-contradicting
+#: phrasings from record 20260831-125306, where the caller asked for a track
+#: "next", it landed at number three, and the DJ said "lined up for you
+#: next" in the same breath as "number three".
+_QUEUE_DEPTH = re.compile(r"\bnumber (\d+) in the queue\b")
+_CLAIMS_NEXT = re.compile(
+    r"\b(?:up next|next up|playing next|on next|for you next|it'?s next|"
+    r"right after this(?: one| track| song)?)\b", re.I)
+
+
+def _note_if_next_was_promised_from_down_the_queue(call) -> None:
+    """Say so when the receipt said number three and the DJ said next.
+
+    Unlike the general false-state-claim detector this repo has twice
+    declined to build (uncalibrated, the lookup guard's own principle), this
+    one has ground truth in the same record: the queue receipt carries the
+    position in words the tool itself chose, so a DJ line claiming
+    imminence two turns later is checkable, not guessed at. Detection only,
+    same as every note here.
+    """
+    if not call.record:
+        return
+    data = getattr(call.record, "data", {}) or {}
+    turns = [t for t in data.get("turns") or [] if t.get("who") == "dj"]
+    lied = []
+    for entry in data.get("tools") or []:
+        if entry.get("failed"):
+            continue
+        m = _QUEUE_DEPTH.search(str(entry.get("result") or ""))
+        if not m or int(m.group(1)) <= 1:
+            continue
+        after = [t for t in turns if (t.get("t") or "") >= (entry.get("t") or "")]
+        spoken = " ".join(str(t.get("text") or "") for t in after[:2])
+        if _CLAIMS_NEXT.search(spoken):
+            lied.append(f"number {m.group(1)}")
+    if not lied:
+        return
+    call.record.problem(
+        f"The DJ told the caller their track was NEXT when the receipt said "
+        f"it was {', '.join(lied[:3])} in the queue — the tool named the "
+        "position and the spoken line contradicted it. A caller who asked "
+        "for it next was left believing they got that."
     )
 
 

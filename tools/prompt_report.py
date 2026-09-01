@@ -123,7 +123,8 @@ def report_ablations(cfg: dict) -> None:
         saved = base - len(conduct.rules(cfg, drop={name}))
         print(f"    -{saved:6,}  ({100.0 * saved / base:4.1f}%)  {name}")
 
-    # tool_rules is 39% of the prompt and `blocks()` returns it whole, so the
+    # tool_rules is the conduct's biggest tenant (this report prices it —
+    # the share climbs open→admin) and `blocks()` returns it whole, so the
     # line above prices it as one indivisible lump — which is exactly why it
     # went a year unmeasured. These are its parts, indented under it because
     # they are not peers of the sections above: they nest inside the largest

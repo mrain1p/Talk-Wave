@@ -1123,6 +1123,10 @@
   .plel { font: 700 11px/1 var(--font-mono); color: var(--amber);
           font-variant-numeric: tabular-nums; }
   .plel:empty { display: none; }
+  /* `display: block` beats the UA hidden rule (the .rig trap), so the
+     no-length case — counting clock alone — needs the hide restated. */
+  .plbar[hidden] { display: none; }
+  .pllen:empty { display: none; }
   .plbar { flex: 1 1 auto; height: 4px; background: var(--hairline);
            position: relative; overflow: hidden; display: block; }
   .plbar .plfill { position: absolute; inset: 0 auto 0 0;
@@ -1184,8 +1188,13 @@
     font: 400 9.5px/1 var(--font-mono); letter-spacing: .08em;
   }
   /* Headless on purpose: the tabs row IS the head. The body starts at the
-     panel's own padding, the same air the booth's words get. */
-  .plqueue .plpanelbody { margin-top: 0; }
+     panel's own padding, the same air the booth's words get.
+     And ONE footprint across the two faces (operator, 2026-08-31: flipping
+     to Just Played shoved the whole card upward): the body claims its full
+     window on BOTH faces, so a sparse Up Next wears the spare room as air
+     instead of giving it back and letting the sheet reflow. Flex shrink
+     stays, so a squeezed sheet still compresses it. */
+  .plqueue .plpanelbody { margin-top: 0; height: 126px; }
   .plpanelbody[hidden] { display: none; }
   .plscroll .plpanel:first-of-type { margin-top: 14px; }
   .plpanelhead {
@@ -1351,6 +1360,7 @@
        100px = two entries and change, one line up from the 82 the queue
        head row used to spend (operator, 2026-08-31). */
     .plpanelbody { max-height: 100px; }
+    .plqueue .plpanelbody { height: 100px; }
     .plqgroup { grid-column: 1 / -1; margin-top: 8px; }
     .pldock { padding: 8px 16px 6px; gap: 7px; }
     .card .plheart, .plreq input, #plReqSend { height: 38px; }
