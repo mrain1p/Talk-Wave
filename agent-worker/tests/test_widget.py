@@ -3044,8 +3044,16 @@ class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
         surface = self.js.split("const playerSurface =")[1][:120]
         for refusal in ("!compact", "!framed", "!previewMode"):
             self.assertIn(refusal, surface)
+        # Since 2026-09-01 the OFFER splits looks from sound: the settings
+        # preview may SHOW the sheet (the operator had no eyes on any
+        # player setting), so the visual gate refuses only compact — an
+        # embed is always compact, so the claim in this test's name holds —
+        # while everything with a side effect (audio, the handoff) still
+        # rides the full playerSurface triple.
+        visual = self.js.split("const playerVisual =")[1][:80]
+        self.assertIn("!compact", visual)
         gate = self.js.split("function playerOffered")[1][:400]
-        self.assertIn("playerSurface", gate)
+        self.assertIn("playerVisual", gate)
 
     def test_a_surface_with_no_player_never_touches_the_handoff(self):
         # The music crossing between / and /settings travels as an intent in

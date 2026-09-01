@@ -86,6 +86,15 @@
     // ask, 2026-08-13).
     set('signinBtn', c.signin !== false && !!(d && d.signinAvailable)
         && !callKey());
+    // The player head mirrors the PAGE's own corner answers (operator,
+    // 2026-09-01: the sheet covers the card's corner, and sign-in is how a
+    // key earns the operator side) — the sheet never renders on an embed,
+    // so the Page column of the Access matrix already governs it and no
+    // new setting exists to drift.
+    set('plGearBtn', c.settings !== false && !compact
+        && (!d || d.canOpenSettings !== false));
+    set('plSigninBtn', c.signin !== false && !!(d && d.signinAvailable)
+        && !callKey());
     // The operator's link out. `link` is already both gates (the feature and
     // this surface); an address that survived the server's http(s) check is
     // the third — a button that goes nowhere is worse than an empty corner.
@@ -2265,6 +2274,13 @@
   function gateSubmit() { return signinMode ? submitSignin() : submitGuestCode(); }
 
   if ($('signinBtn')) $('signinBtn').onclick = openSignin;
+  // The player head's copy forwards; the overlay itself lives on the card.
+  if ($('plSigninBtn')) {
+    $('plSigninBtn').onclick = () => {
+      closePlayer(true);
+      openSignin();
+    };
+  }
   if ($('guestClose')) $('guestClose').onclick = closeSignin;
 
   if ($('guestBtn')) {
@@ -4907,10 +4923,17 @@
   // painted its preview. A surface with no player does not get a vote on
   // whether the music continues (found driving it, 2026-08-23).
   const playerSurface = !compact && !framed && !previewMode;
+  // LOOKS vs SOUND: the settings preview must SHOW the sheet — the operator
+  // had no eyes on any player setting (their report, 2026-09-01) — but must
+  // never play audio or touch the cross-page handoff (the original reason
+  // preview was fenced out: it cleared the operator's intent). So the
+  // visual offer relaxes to any full card, and everything with a side
+  // effect keeps gating on playerSurface.
+  const playerVisual = !compact;
 
   function playerOffered() {
     const d = shown || live || {};
-    return playerSurface && !!d.swipePlayer && !!(d.stream && d.stream.url);
+    return playerVisual && !!d.swipePlayer && !!(d.stream && d.stream.url);
   }
 
   // The card's own volume, times the machine's duck while the studio holds
@@ -5004,6 +5027,10 @@
   }
 
   function startPlayerAudio() {
+    // A preview sheet is a picture of a player: pressing PLAY inside the
+    // settings page must not start the broadcast under the operator's
+    // editing (the panel has its own transport for listening).
+    if (!playerSurface) return;
     if (playerEl) return;
     const s = ((shown || live || {}).stream) || {};
     if (!s.url) return;
@@ -5540,8 +5567,18 @@
   // least audible it will ever be. Debounced so a flapping now-playing
   // cannot saw the stream.
   function castFollowTrack() {
-    if (!plCastSess || !plCastLoadedTitle) return;
+    if (!plCastSess) return;
+    // The FIRST load must land whatever state the session connected in —
+    // mid-song, before /live answered, whatever. A connect-time load that
+    // failed or fed the bare fallback used to stick until the next record
+    // ("only kicks in on new songs" — operator, 2026-09-01); now every
+    // poll retries until the receiver holds a real title.
     const np = heldNowPlaying(shown || live || {});
+    if (!plCastLoadedTitle
+        || (np.title && plCastLoadedTitle === 'Live broadcast')) {
+      castLoadMedia();
+      return;
+    }
     if (!np.title || np.title === plCastLoadedTitle) return;
     if (Date.now() - plCastLoadAt < 8000) return;
     castLoadMedia();
@@ -5686,11 +5723,9 @@
     bn.hidden = face !== 'next';
     bp.hidden = face !== 'past';
     if (bb) bb.hidden = face !== 'booth';
-    // The meta and the pip speak for the tab that has the floor: a lit pip
-    // over the play log would say "live" about the past.
-    $('plNextMeta').textContent = face === 'next'
-      ? (plQueueCounts.next ? plQueueCounts.next + ' queued' : 'queue empty')
-      : (face === 'past' ? 'newest first' : 'last 48h');
+    // Just the three tab headers on the shoulder (operator, 2026-09-01 —
+    // the meta words were noise beside them); the pip alone still says
+    // whether something is actually queued.
     $('plNextPip').classList.toggle('live',
                                     face === 'next' && !!plQueueCounts.next);
   }
@@ -6130,9 +6165,13 @@
         return m < 60 ? Math.round(m) + 'm ago' : Math.round(m / 60) + 'h ago';
       };
       (d.entries || []).forEach((e) => {
+        // The action card's own voice: icon + label lead, the detail and
+        // the age trail. A muted detail (a shoutout's words never reach
+        // this log) leaves the label carrying the line alone.
         body.appendChild(queueRow(
-          e.what || e.kind,
-          [e.kind, e.tier, ago(e.t)].filter(Boolean).join(' · ')));
+          [e.icon, e.what || e.label].filter(Boolean).join(' '),
+          [e.what ? e.label : '', e.tier, ago(e.t)]
+            .filter(Boolean).join(' · ')));
       });
       if (!(d.entries || []).length) {
         body.textContent = 'Nothing yet — what the booth does lands here.';
@@ -6182,21 +6221,9 @@
     volTouched = true; setVolume(+e.target.value); applyVolume();
   };
 
-  // The mute holds the PLAYER silent without moving the shared fader — a
-  // caller who mutes to answer the door gets their level back on unmute,
-  // and the card's own volume (the call, the sounds) never notices. Local
-  // to this element on purpose: it is not a third handle on the fader.
-  // (plMuted itself lives with the player state up top — applyVolume reads
-  // it at first paint.)
-  $('plMuteBtn').onclick = () => {
-    plMuted = !plMuted;
-    const b = $('plMuteBtn');
-    b.classList.toggle('muted', plMuted);
-    b.setAttribute('aria-pressed', plMuted ? 'true' : 'false');
-    b.setAttribute('aria-label', plMuted ? 'Unmute the player'
-                                         : 'Mute the player');
-    applyVolume();
-  };
+  // The mute button went home 2026-09-01 (operator: the transport and the
+  // fader cover it). plMuted stays a variable applyVolume reads — always
+  // false now — so the level maths upstream needed no rewrite.
 
   $('listenChip').onclick = () => {
     if (cardMode() === 'idle') openPlayer();
@@ -6482,5 +6509,9 @@
   // Inert in a preview: the frame is already inside the panel, and following
   // the link would load the settings page into a corner of the settings page.
   if (gear) gear.onclick = () => { if (!previewMode) location.href = '/settings'; };
+  const plGear = $('plGearBtn');
+  if (plGear) {
+    plGear.onclick = () => { if (!previewMode) location.href = '/settings'; };
+  }
 })();
 

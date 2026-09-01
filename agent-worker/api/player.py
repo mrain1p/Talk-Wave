@@ -287,8 +287,18 @@ async def handle_player_booth_log(request: web.Request) -> web.Response:
     if refuse:
         return refuse
     from call import daylog
+    from call.actions import CallActions
 
-    return _cors(request, web.json_response({"entries": daylog.recent(30)}))
+    # The tab is the booth's receipt printer, so each entry wears the same
+    # icon and label the caller's action cards do — mapped on read from the
+    # one table, never stored (the log would drift the moment a label
+    # changed).
+    entries = []
+    for e in daylog.recent(30):
+        icon, label = CallActions.LABELS.get(
+            str(e.get("kind") or ""), ("✅", str(e.get("kind") or "")))
+        entries.append({**e, "icon": icon, "label": label})
+    return _cors(request, web.json_response({"entries": entries}))
 
 
 async def handle_player_request(request: web.Request) -> web.Response:

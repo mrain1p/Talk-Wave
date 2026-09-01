@@ -104,7 +104,10 @@
     text-decoration: none; color: var(--dim);
     font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .12em;
     text-transform: uppercase; font-weight: 700;
-    padding: 7px 9px; border-radius: 8px;
+    /* 6px sides, was 9 (operator, 2026-09-01): thirteen chips have to
+       share one row on a normal desktop, and DIAGNOSTICS alone on a
+       second line read as a different kind of thing, not the last page. */
+    padding: 7px 6px; border-radius: 8px;
     border: 1px solid var(--line2);
     background: color-mix(in srgb, var(--text) 3%, transparent);
   }

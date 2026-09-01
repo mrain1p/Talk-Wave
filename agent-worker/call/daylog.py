@@ -47,7 +47,17 @@ KINDS = frozenset((
     "request", "clear", "cancel", "skip", "album", "mix", "takeover",
     "takeover lifted", "genre lock", "genre lock lifted", "never-play",
     "never-play lifted",
+    # Widened 2026-09-01 for the player's Requests tab (the operator wants
+    # the whole receipt printer: "favorited, skipped, queued, dj change,
+    # on air announce") — every one an action kind a tool actually emits.
+    "like", "unlike", "announcement", "skill", "segment",
 ))
+
+#: Kinds whose DETAIL is the caller's own words (a shoutout message is a
+#: dedication naming a person). The KIND is a station fact and stays; the
+#: words never reach a store that outlives the call — the same covenant
+#: test_a_request_fallback_logs_no_caller_words pins for requests.
+MUTE_DETAIL = frozenset(("announcement",))
 
 MAX_ENTRIES = 400
 MAX_AGE_SECS = 48 * 3600.0
@@ -83,7 +93,7 @@ def note(kind: str, label: str, tier: str = "") -> None:
             "t": time.time(),
             "tier": str(tier or "open")[:8],
             "kind": k,
-            "what": str(label or "")[:80],
+            "what": "" if k in MUTE_DETAIL else str(label or "")[:80],
         })
         cutoff = time.time() - MAX_AGE_SECS
         entries = [e for e in entries

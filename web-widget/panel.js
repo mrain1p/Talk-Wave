@@ -4226,7 +4226,14 @@
       // on a mock page), so the frame's own height report must not override it.
       const stage = $('previewStage');
       if (stage && stage.classList.contains('shaped')) return;
-      f.style.height = Math.max(220, Math.min(760, e.data.px | 0)) + 'px';
+      // The PAGE surface's floor is the card's own fixed height: the card
+      // fills the frame and the frame sized itself from the card, so the
+      // two settled short together (~490px) and the squeezed card painted
+      // its route switch over the idle board — the operator's "weirdly
+      // sized, some overlaps" (2026-09-01). An embed still floors low; a
+      // compact card really is small.
+      const floor = previewSurface === 'embed' ? 220 : 560;
+      f.style.height = Math.max(floor, Math.min(760, e.data.px | 0)) + 'px';
     });
   }
 

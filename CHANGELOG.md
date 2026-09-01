@@ -4,6 +4,15 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.18
+
+The morning-after polish: the player's operator side settles into place, and the cast stops missing its cue.
+
+- **The player takes its notes.** The operator toggle sits beside the skip in one square strip (the mute went home — the transport and fader cover it), the queue card is just three tab headers, and the Requests tab (was Booth) shows every station action as its own receipt card, emoji and all — a shoutout's wording never reaches the log. The phone spends its blank air on an extra queue row and booth line.
+- **Casting kicks in mid-song.** Connecting no longer waits for the next record to name the current one. The brief pause at record changes is Google's stock receiver reloading to take new metadata — the seamless version needs a registered custom receiver, noted as a possible follow-up.
+- **The player head mirrors the page's corner.** Sign-in and settings ride the sheet under the same Access answers as the card — sign in from the player and its operator side appears.
+- **The settings preview grew eyes.** The Players-page preview stops squeezing the card into overlap (the route switch sat on the idle board), it can pull down the station player now — silent by design — and the page picker fits one row again.
+
 ## 0.99.17
 
 The cast finally earns its screen, and the player learns whose hands are on the desk.
