@@ -1208,11 +1208,15 @@
      is the queue window's whole job — "3 rows is adequate... scrolling
      for more" — so the height is exactly three one-line rows and the
      scrollbar carries the rest. */
-  .plqueue .plpanelbody { margin-top: 0; height: 64px; }
+  /* 86 on the PHONE (operator, 2026-09-01, third pass: the tall phone
+     card left blank air under the panels — spend it): four rows there,
+     three at desktop where the fixed card has no air to spare. */
+  .plqueue .plpanelbody { margin-top: 0; height: 86px; }
   /* The booth spends the lines the queue gave up: its window grows before
      scrolling, so the DJ's sentence stops clipping mid-thought
      (operator's screenshots, 2026-09-01, both passes). */
-  .plscroll .plpanel:not(.plqueue) .plpanelbody { max-height: 166px; }
+  .plscroll .plpanel:not(.plqueue) .plpanelbody { max-height: 185px;
+                                                  min-height: 95px; }
   .plpanelbody[hidden] { display: none; }
   .plscroll .plpanel:first-of-type { margin-top: 14px; }
   .plpanelhead {
@@ -1367,7 +1371,7 @@
      faded out — momentary by design (operator, 2026-09-01); the Booth tab
      keeps the durable record. Insets clear the toggle and the button. */
   .plopflash {
-    position: absolute; top: 0; bottom: 0; left: 40px; right: 86px;
+    position: absolute; top: 0; bottom: 0; left: 0; right: 86px;
     display: flex; align-items: center; padding: 0 10px;
     background: var(--pine); border: 1px solid var(--coral);
     border-radius: var(--skin-radius-ctl);
@@ -1470,10 +1474,11 @@
        100px = two entries and change, one line up from the 82 the queue
        head row used to spend (operator, 2026-08-31). */
     .plpanelbody { max-height: 100px; }
-    /* Same trade as the phone: three one-line rows exactly, the booth
-       takes the rest. */
+    /* The short fixed card keeps the tighter budget: three rows, the
+       booth content-sized — the phone's extra line lives on the phone. */
     .plqueue .plpanelbody { height: 64px; }
-    .plscroll .plpanel:not(.plqueue) .plpanelbody { max-height: 137px; }
+    .plscroll .plpanel:not(.plqueue) .plpanelbody { max-height: 137px;
+                                                    min-height: 0; }
     .plqgroup { grid-column: 1 / -1; margin-top: 12px; }
     .pldock { padding: 8px 16px 6px; gap: 7px; }
     /* A control, not a panel (the masthead-budget rule): at desktop width

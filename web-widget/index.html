@@ -380,7 +380,7 @@
       <!-- The listener count beside the words, same mark as the header's
            (operator's ask, 2026-08-18): whoever opened the deck is one of
            the people this number counts. -->
-      <div class="plhead"><span class="pip" aria-hidden="true"></span>Now playing<span class="listeners" id="plListeners" title="Listening now" hidden><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 18v-6a8 8 0 0 1 16 0v6"/><rect x="2.6" y="13.5" width="4.2" height="6.5" rx="1.8"/><rect x="17.2" y="13.5" width="4.2" height="6.5" rx="1.8"/></svg><span id="plListenersN"></span></span><span class="plheadmeta" id="plHeadMeta"></span><button type="button" class="plseg" id="plSegBtn" hidden aria-haspopup="true" aria-expanded="false" aria-label="Start an Open Lines segment">Segment</button><button class="gear" id="plCastBtn" title="Play on a device" aria-label="Play the stream on another device" hidden><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 20h.01"/><path d="M2 16a4 4 0 0 1 4 4"/><path d="M2 12a8 8 0 0 1 8 8"/><path d="M6 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></button><button class="gear" id="plThemeBtn" title="Theme" aria-label="Change the theme" hidden></button></div>
+      <div class="plhead"><span class="pip" aria-hidden="true"></span>Now playing<span class="listeners" id="plListeners" title="Listening now" hidden><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 18v-6a8 8 0 0 1 16 0v6"/><rect x="2.6" y="13.5" width="4.2" height="6.5" rx="1.8"/><rect x="17.2" y="13.5" width="4.2" height="6.5" rx="1.8"/></svg><span id="plListenersN"></span></span><span class="plheadmeta" id="plHeadMeta"></span><button type="button" class="plseg" id="plSegBtn" hidden aria-haspopup="true" aria-expanded="false" aria-label="Start an Open Lines segment">Segment</button><button class="gear" id="plCastBtn" title="Play on a device" aria-label="Play the stream on another device" hidden><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 20h.01"/><path d="M2 16a4 4 0 0 1 4 4"/><path d="M2 12a8 8 0 0 1 8 8"/><path d="M6 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></button><button class="gear" id="plThemeBtn" title="Theme" aria-label="Change the theme" hidden></button><button class="gear" id="plSigninBtn" title="Sign in for more options" aria-label="Sign in for more options" hidden><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 12H2.5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1H6"/><path d="M9 9.5 11.5 7 9 4.5"/><path d="M11.5 7H5.5"/></svg></button><button class="gear" id="plGearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></div>
       <!-- The segment sheet: only ever rendered for a caller /live says may
            trigger one, which is a guest or the operator AND the setting on.
            It offers a length and where the subject comes from — never the
@@ -427,8 +427,7 @@
                station day-log — queues, shoutouts, takeovers from calls,
                texts and operator commands, tier-attributed, never caller
                content — behind the same permission as operator mode. -->
-          <button type="button" class="pltab" id="plTabBooth" role="tab" aria-selected="false" hidden>Booth</button>
-          <span class="plpanelmeta" id="plNextMeta"></span>
+          <button type="button" class="pltab" id="plTabBooth" role="tab" aria-selected="false" hidden>Requests</button>
         </div>
         <div class="plpanel plqueue">
           <div class="plpanelbody" id="plNextBody"></div>
@@ -452,23 +451,24 @@
                caller's key clears the skip permission (/player/abilities)
                AND the operator's phone-page switch has it on the sheet. -->
           <button class="plheart" id="plSkipBtn" type="button" hidden aria-label="Skip this track for everyone listening"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 4l10 8-10 8V4z"/><rect x="17" y="4" width="2.5" height="16"/></svg></button>
+          <!-- Beside the skip, same square (operator, 2026-09-01): the two
+               operator controls sit together on the strip. -->
+          <button class="plheart plop" id="plOpBtn" type="button" hidden aria-pressed="false" aria-label="Operator mode — command the booth directly"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M8.6 8.6a4.8 4.8 0 0 0 0 6.8M15.4 8.6a4.8 4.8 0 0 1 0 6.8M5.8 5.8a8.8 8.8 0 0 0 0 12.4M18.2 5.8a8.8 8.8 0 0 1 0 12.4"/></svg></button>
           <!-- A speaker, not a note: beside a full-width red slider the note
                read as "track position", and the volume is the one control
                here a listener grabs first (operator's review, 2026-08-24).
                A button now, not decoration — an icon that looks tappable
                and does nothing reads as broken, so the tap it invites is
                the one it does: mute. -->
-          <button type="button" class="plnote" id="plMuteBtn" aria-pressed="false" aria-label="Mute the player"><svg class="plspk" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9.4 9.4 0 0 1 0 13"/></svg><svg class="plspkoff" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m16 9 6 6"/><path d="m22 9-6 6"/></svg></button>
+          <!-- The mute went home 2026-09-01 (operator: the transport and
+               the volume fader cover it) — the slider at zero IS the mute,
+               and the strip's room went to the two operator squares. -->
           <input type="range" id="plVol" min="0" max="100" value="100" aria-label="Player volume" />
           <span class="plvu" id="plVu" aria-hidden="true"></span>
         </div>
         <!-- Requests above the transport (operator's order): the input reads
              first, the big PAUSE stays nearest the thumb. -->
         <div class="plreq">
-          <!-- The request line's second face (operator, 2026-09-01): one-shot
-               commands through the text line's own brain. The toggle shows
-               only when /player/abilities says this key may command. -->
-          <button class="plheart plop" id="plOpBtn" type="button" hidden aria-pressed="false" aria-label="Operator mode — command the booth directly"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M8.6 8.6a4.8 4.8 0 0 0 0 6.8M15.4 8.6a4.8 4.8 0 0 1 0 6.8M5.8 5.8a8.8 8.8 0 0 0 0 12.4M18.2 5.8a8.8 8.8 0 0 1 0 12.4"/></svg></button>
           <input type="text" id="plReqInput" maxlength="200" autocomplete="off"
                  placeholder="Request: An artist, song, or vibe." />
           <button id="plReqSend" type="button">Send</button>

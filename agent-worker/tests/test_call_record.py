@@ -1532,13 +1532,20 @@ class TestTheDayLogRemembersActionsNotPeople(unittest.TestCase):
         self._dir.cleanup()
 
     def test_station_changing_kinds_land_and_speech_does_not(self):
+        # Sharpened 2026-09-01 when the Requests tab widened KINDS: the
+        # announcement EVENT lands now (the tab is the receipt printer),
+        # but the SPEECH — the caller's own dedication — still does not.
+        # The covenant was always about the words, not the row.
         from call import daylog
 
         daylog.note("album", "Rumours", tier="open")
-        daylog.note("announcement", "a shoutout", tier="open")
+        daylog.note("announcement", "a shoutout for June", tier="open")
         daylog.note("skip", "Solar", tier="admin")
-        self.assertEqual(["skip", "album"],
-                         [e["kind"] for e in daylog.recent()])
+        entries = daylog.recent()
+        self.assertEqual(["skip", "announcement", "album"],
+                         [e["kind"] for e in entries])
+        self.assertEqual("", entries[1]["what"],
+                         "the shoutout's words reached the day-log")
 
     def test_no_tier_means_no_entry(self):
         # The preview builders and unit fixtures construct a CallActions
@@ -1560,6 +1567,36 @@ class TestTheDayLogRemembersActionsNotPeople(unittest.TestCase):
             self.assertIn(live, daylog.KINDS, f"{live} would be dropped")
         for dead in ("queue", "allowed again"):
             self.assertNotIn(dead, daylog.KINDS, f"{dead} is emitted by no tool")
+        # The Requests tab widened the log to the whole receipt printer
+        # (2026-09-01) — these are all kinds a tool actually emits.
+        for live in ("like", "unlike", "announcement", "skill", "segment"):
+            self.assertIn(live, daylog.KINDS, f"{live} would be dropped")
+
+    def test_a_shoutouts_words_never_reach_the_day_log(self):
+        # An announcement's detail IS the caller's own dedication, and the
+        # 48h log outlives the call and now feeds the player's Requests
+        # tab. The KIND lands; the words do not — the same covenant
+        # test_a_request_fallback_logs_no_caller_words holds for requests.
+        import os
+        import tempfile
+
+        from call import daylog
+
+        old = os.environ.get("DAYLOG_PATH")
+        os.environ["DAYLOG_PATH"] = os.path.join(
+            tempfile.mkdtemp(), "dl.json")
+        try:
+            daylog.note("announcement", "for June, from her sibling",
+                        tier="open")
+            daylog.note("like", "Africa", tier="open")
+            entries = {e["kind"]: e for e in daylog.recent(10)}
+            self.assertEqual("", entries["announcement"]["what"])
+            self.assertEqual("Africa", entries["like"]["what"])
+        finally:
+            if old is None:
+                os.environ.pop("DAYLOG_PATH", None)
+            else:
+                os.environ["DAYLOG_PATH"] = old
 
     def test_a_request_fallback_logs_no_caller_words(self):
         # Security sitting, 2026-08-28: the request_song fallback paths
