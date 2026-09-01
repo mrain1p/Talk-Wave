@@ -70,7 +70,7 @@ livekit-plugins-openai==1.6.7
 livekit-plugins-silero==1.6.7
 livekit-protocol==1.1.26
 markdown-it-py==4.2.0
-mcp==1.29.1
+mcp==2.1.1
 mdurl==0.1.2
 multidict==6.7.1
 nest-asyncio==1.6.0
