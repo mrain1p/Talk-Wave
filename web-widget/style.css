@@ -919,6 +919,14 @@
     will-change: transform;
   }
   .card.playeropen .player { transform: translateY(0); }
+  /* On a player-first page the metaphor inverts, and so does the SLIDE
+     (operator, 2026-09-01: pressing the phone ribbon "lifts up the
+     player" — the sheet exited upward, the wrong way for a phone that
+     hangs above). The sheet's resting place moves BELOW: closing drops it
+     like a windowshade so the phone is revealed from the top — pulled
+     down — and reopening pushes it back up from beneath. */
+  .card.plfirst .player { transform: translateY(103%); }
+  .card.plfirst.playeropen .player { transform: translateY(0); }
   /* The finger owns the sheet mid-drag; the transition takes over on release. */
   .player.dragging { transition: none; }
   /* display:flex above would beat the UA's [hidden] rule — say it explicitly.
