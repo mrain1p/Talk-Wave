@@ -5943,12 +5943,27 @@
   // a player-first page, where the phone hangs above instead and the sheet
   // rests below — so every sign, and the resting offset itself, follows
   // playerIsHome() rather than a constant.
+  // How far the sheet is shown, 0..1, painted the way THIS page's metaphor
+  // says: normally the sheet travels (it arrives over the phone), and on a
+  // player-first page it is clipped from the top instead, so the boundary
+  // sweeps down like a phone drawn over a player that holds still.
+  function paintSheetProgress(sheet, shownPct) {
+    const p = Math.min(1, Math.max(0, shownPct));
+    if (playerIsHome()) {
+      sheet.style.transform = '';
+      sheet.style.clipPath = 'inset(' + ((1 - p) * 100).toFixed(2) + '% 0 0 0)';
+      return;
+    }
+    sheet.style.clipPath = '';
+    sheet.style.transform =
+      'translateY(' + (-103 * (1 - p)).toFixed(2) + '%)';
+  }
+
   function bindSheetDrag(tabId) {
     const tab = $(tabId), sheet = $('playerView');
     const card = document.querySelector('.card');
     if (!tab || !sheet || !card) return;
     const dir = () => (playerIsHome() ? -1 : 1);
-    const restPct = () => (playerIsHome() ? 103 : -103);
     let startY = 0, dragging = false, moved = false, wasOpen = false;
 
     tab.addEventListener('touchstart', (e) => {
@@ -5973,8 +5988,7 @@
       const shownPct = wasOpen
         ? 1 - Math.min(1, Math.max(0, -dy / h))
         : Math.min(1, Math.max(0, dy / h));
-      sheet.style.transform =
-        'translateY(' + (restPct() * (1 - shownPct)).toFixed(2) + '%)';
+      paintSheetProgress(sheet, shownPct);
     }, { passive: true });
 
     const settle = (e) => {
@@ -5997,6 +6011,7 @@
       // Cleared AFTER the state settles, so the transition animates from
       // wherever the finger left the sheet rather than snapping first.
       sheet.style.transform = '';
+      sheet.style.clipPath = '';
     };
     tab.addEventListener('touchend', settle);
     tab.addEventListener('touchcancel', settle);
@@ -6042,6 +6057,7 @@
       const h = card.getBoundingClientRect().height || 1;
       if ((-dy / h) > 0.2 && playerOpen) closePlayer(true);
       sheet.style.transform = '';
+      sheet.style.clipPath = '';
     };
     grab.addEventListener('touchend', settle);
     grab.addEventListener('touchcancel', settle);
@@ -6198,8 +6214,8 @@
       // 2026-09-01): the old operator line listed sentence stems, which
       // read as syntax to obey rather than things it can do.
       input.placeholder = plOpMode
-        ? 'Booth Operator: queue song, create mix, schedule takeover'
-        : 'Booth Request: an artist, song, or vibe';
+        ? 'Operator: queue song, create mix, schedule takeover'
+        : 'Request: an artist, song, or vibe';
     }
     if (send) send.textContent = plOpMode ? 'Do it' : 'Send';
   }

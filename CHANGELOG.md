@@ -4,6 +4,22 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.22
+
+Tagged without a page of its own (folded forward at the next storied release).
+
+- **A genre this station really has is never reported missing.** Ask for one it files, with a year range or instrumental-only on top that empties it, and the DJ used to answer as though the library had never heard the word. It now says the genre is real and the COMBINATION is what came back empty, and offers to drop the tightest filter rather than the genre.
+- **The shelf next door.** The station works out which genres belong beside each other from the music itself rather than from their names — the one question a spelling test can never answer — and the call line now reads it. When a browse empties, the DJ can move sideways to a neighbouring shelf that genuinely has records on it. Genre lists carry how much music sits under each name too, for choosing between them; the DJ is told not to read the numbers out.
+- **A co-host's line is no longer put in the DJ's mouth.** Turns another persona spoke were reaching the briefing under "things you said on the broadcast". A guest's half of a banter exchange is now attributed to them, and the outgoing DJ's handover sign-off is dropped rather than handed to the incoming one as its own most recent thought.
+
+## 0.99.22
+
+Tagged without a page of its own (folded forward at the next storied release).
+
+- The pull-down tab draws the OTHER screen over the current one, both ways: on a player-first page the sheet is clipped from the top so the phone reads as a curtain descending, instead of the player sliding away.
+- The send button stops clipping its own word — it was inheriting the card's 18px side padding, leaving twenty pixels for DO IT — and the header clock is whole again at phone widths rather than "4:4…".
+- The request line's two faces are simply Request and Operator.
+
 ## 0.99.21
 
 Tagged without a page of its own (folded forward at the next storied release).

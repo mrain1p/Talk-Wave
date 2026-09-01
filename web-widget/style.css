@@ -919,14 +919,24 @@
     will-change: transform;
   }
   .card.playeropen .player { transform: translateY(0); }
-  /* On a player-first page the metaphor inverts, and so does the SLIDE
-     (operator, 2026-09-01: pressing the phone ribbon "lifts up the
-     player" — the sheet exited upward, the wrong way for a phone that
-     hangs above). The sheet's resting place moves BELOW: closing drops it
-     like a windowshade so the phone is revealed from the top — pulled
-     down — and reopening pushes it back up from beneath. */
-  .card.plfirst .player { transform: translateY(103%); }
-  .card.plfirst.playeropen .player { transform: translateY(0); }
+  /* On a player-first page the PHONE is the screen that arrives, and a
+     pull-down tab "pulls the other screen OVER the current one" (the
+     operator's own words, third pass — first the sheet exited upward,
+     then it slid away downward, and both read as the player leaving
+     rather than the phone arriving).
+     The phone cannot slide over the player: it is the card's own content,
+     several flex children deep, and the sheet is an overlay above it. So
+     the sheet is CLIPPED from the top instead — the boundary sweeps down
+     while the player holds still, which is exactly what a curtain
+     descending over it looks like, and it costs one property rather than
+     a DOM restructure. */
+  .card.plfirst .player {
+    transform: none;
+    clip-path: inset(100% 0 0 0);
+    transition: clip-path .38s cubic-bezier(.32, .72, .28, 1);
+  }
+  .card.plfirst.playeropen .player { clip-path: inset(0 0 0 0); }
+  .card.plfirst .player.dragging { transition: none; }
   /* The finger owns the sheet mid-drag; the transition takes over on release. */
   .player.dragging { transition: none; }
   /* display:flex above would beat the UA's [hidden] rule — say it explicitly.
@@ -1055,12 +1065,20 @@
   }
   .plsegsay:empty { display: none; }
 
-  /* 10px and allowed to give way (operator, 2026-09-01: the clock was the
-     row's least important member and it was fighting the buttons). */
+  /* The clock never ellipsizes now (operator, 2026-09-01: "4:4…" is not a
+     time). It is the row's least important member, so on a card too
+     narrow to hold everything it LEAVES rather than half-renders — the
+     rule below — and where it stays, it stays whole. */
   .plheadmeta { margin-left: auto; color: var(--sage-dim);
-                font: 400 10px/1 var(--font-mono); letter-spacing: .08em;
-                text-transform: none; flex: 0 1 auto; min-width: 0;
-                overflow: hidden; text-overflow: ellipsis; }
+                font: 400 10px/1 var(--font-mono); letter-spacing: .06em;
+                text-transform: none; flex: none; white-space: nowrap; }
+  /* The row tightens before anything is dropped: at 28px icons and a 6px
+     gap the clock fits a 360px card whole, which is the point. */
+  @container card (max-width: 419px) { .plhead { gap: 6px; } }
+  @container card (max-width: 329px) {
+    /* Genuinely out of room — the clock leaves rather than half-render. */
+    .plhead .plheadmeta { display: none; }
+  }
   /* The middle FITS rather than scrolls: the operator's ask, off the web
      player's screenshot (2026-08-19) — "shouldn't have to scroll on the
      player; a side bar for the upcoming tracks is fine". The art shrinks
@@ -1442,10 +1460,13 @@
      documented eleven lines up as "the one filled control on the sheet",
      and SEND was a second fill fighting it — the phone face's own chat
      Send is the same coral ghost this now is. */
-  /* 58, was 76: the hourglass replaced the working WORD, so the button
-     needs less and the input keeps the difference (operator, 2026-09-01). */
+  /* 64 wide with its OWN padding: the button inherits `padding: 0 18px`
+     from the card's button costume, which left 20px of content box and
+     clipped DO IT clean off (operator's screenshot, 2026-09-01). The
+     padding is the fix; the width is the room the hourglass saved. */
   #plReqSend {
-    width: 58px; flex: none; height: 44px; background: transparent;
+    width: 64px; flex: none; height: 44px; background: transparent;
+    padding: 0 4px; letter-spacing: .1em;
     border: 1px solid var(--coral); color: var(--coral);
     font: 700 11px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case);
