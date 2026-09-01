@@ -1140,17 +1140,52 @@
        own scrollbar when the sheet is squeezed. */
     display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0;
   }
-  /* The queue card's own tabs: two labels in the head, worn in the head's
-     own micro-type — the active one carries the ink, the idle one sits back.
-     Buttons with the chrome stripped, because the head IS the control. */
-  .plpanelhead .pltab {
-    background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
-    font: inherit; letter-spacing: inherit; text-transform: inherit;
-    color: var(--sage-dim); min-height: 0;
+  /* The queue card's two faces as BOOKMARK TABS on its shoulder (operator's
+     shape, 2026-08-31 — labels inside the head read as words fighting, and
+     the pressed one wore the button skin's focus box as a smudge). One
+     explicit micro-type for BOTH states, so neither can drift; the active
+     tab fills with the panel's own ground and merges into it over the
+     border; every .card button costume is overridden by name. */
+  /* Tabs + panel travel as ONE block-flow group: the sheet's grid and flex
+     layouts see a single item, so the tab row and the panel can never land
+     in overlapping rows however either surface places them. */
+  .plqgroup {
+    width: 100%; display: flex; flex-direction: column;
+    flex: 0 1 auto; min-height: 0; margin-top: 14px;
   }
-  .plpanelhead .pltab.on { color: var(--coral); }
-  .plpanelhead .pltab + .pltab { margin-left: 6px; }
-  .plpanelhead .pltab[hidden] { display: none; }
+  .pltabs {
+    width: 100%; display: flex; align-items: flex-end; gap: 4px;
+    position: relative; z-index: 1;
+  }
+  .card .pltabs .pltab {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    background: transparent; border: 1px solid transparent; border-bottom: 0;
+    border-radius: 6px 6px 0 0; padding: 8px 12px; margin: 0;
+    min-height: 0; height: auto; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .card .pltabs .pltab.on {
+    color: var(--coral); background: var(--pine);
+    border-color: var(--edge); margin-bottom: -1px; padding-bottom: 9px;
+  }
+  .card .pltabs .pltab[hidden] { display: none; }
+  .pltabs .plpanelmeta { padding-bottom: 8px; }
+  /* The panel sits flush under its tabs — no first-of-type gap, no rounded
+     corner poking out from beneath the active tab. */
+  .plscroll .plqgroup .plpanel.plqueue {
+    margin-top: 0; border-top-left-radius: 0;
+    flex: 0 1 auto; min-height: 0;
+  }
+  /* The meta keeps the head's micro-type out here in the tabs row — it
+     inherited the body face when it left the panel head and ballooned to
+     16px (caught on the first screenshot). */
+  .pltabs .plpanelmeta {
+    font: 400 9.5px/1 var(--font-mono); letter-spacing: .08em;
+  }
+  /* Headless on purpose: the tabs row IS the head. The body starts at the
+     panel's own padding, the same air the booth's words get. */
+  .plqueue .plpanelbody { margin-top: 0; }
   .plpanelbody[hidden] { display: none; }
   .plscroll .plpanel:first-of-type { margin-top: 14px; }
   .plpanelhead {
@@ -1168,7 +1203,9 @@
      only stops one long panel from pushing the dock off a short phone. */
   .plpanelbody { margin-top: 6px; font-size: 12px; color: var(--sage);
                  flex: 1 1 auto; min-height: 34px;
-                 max-height: 108px; overflow-y: auto;
+                 /* 126, was 108 (operator, 2026-08-31): the room the retired
+                    queue head row gave back, spent as one more entry line. */
+                 max-height: 126px; overflow-y: auto;
                  /* A visible thin bar: the window scrolls, and an invisible
                     scrollbar left a half-clipped queue row reading as a
                     rendering fault (operator's review, 2026-08-24). */
@@ -1294,11 +1331,13 @@
      the middle scrolling. */
   @media (min-width: 701px) {
     .plscroll {
-      display: grid; grid-template-columns: 128px 1fr; gap: 3px 16px;
+      /* 112, was 128 (operator, 2026-08-31): a slightly smaller sleeve so
+         the panels below get one more line of text. */
+      display: grid; grid-template-columns: 112px 1fr; gap: 3px 16px;
       align-content: start; align-items: center; text-align: left;
       padding: 12px 16px 8px;
     }
-    .plartwrap { grid-row: 1 / span 3; grid-column: 1; width: 128px;
+    .plartwrap { grid-row: 1 / span 3; grid-column: 1; width: 112px;
                  align-self: start; }
     .pltrack { grid-column: 2; margin-top: 4px; align-self: end;
                font-size: 22px; }
@@ -1309,8 +1348,10 @@
     .plpanel { grid-column: 1 / -1; margin-top: 6px; padding: 7px 10px; }
     .plscroll .plpanel:first-of-type { margin-top: 8px; }
     /* A shorter window on the short card; the body scrolls past it.
-       82px = two whole queue entries — 64 cut the second one mid-row. */
-    .plpanelbody { max-height: 82px; }
+       100px = two entries and change, one line up from the 82 the queue
+       head row used to spend (operator, 2026-08-31). */
+    .plpanelbody { max-height: 100px; }
+    .plqgroup { grid-column: 1 / -1; margin-top: 8px; }
     .pldock { padding: 8px 16px 6px; gap: 7px; }
     .card .plheart, .plreq input, #plReqSend { height: 38px; }
     .card .plheart { width: 38px; }

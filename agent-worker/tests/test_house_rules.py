@@ -1829,9 +1829,15 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
     LEDGER = {
         # scripted_call.py — the drill harness (test tooling, not shipped);
         # scenario dispatch and grading are inherently branchy.
-        "agent-worker/scripted_call.py::run_scenario": (75, "harness — scenario runner"),
+        # 86 (2026-08-31): the landed wind-down guard mirrored per scenario
+        # (knote default + the suppression check), the same insertion the
+        # other guards each cost this function once.
+        "agent-worker/scripted_call.py::run_scenario": (86, "harness — scenario runner"),
         "agent-worker/scripted_call.py::summarise": (36, "harness — result summary"),
-        "agent-worker/scripted_call.py::main": (35, "harness — arg/lever dispatch"),
+        # 36 (2026-08-31): GATES=all learns to skip the single_lookup_tool
+        # arrangement flag — blanketing it silently ran the C.5 A/B's
+        # "off" arm with the dispatcher on (first measuring evening).
+        "agent-worker/scripted_call.py::main": (36, "harness — arg/lever dispatch"),
         "agent-worker/scripted_call.py::grade_scenario": (33, "harness — grading"),
         # Batch 1 — platform hubs
         "agent-worker/settings.py::_migrate": (33, "Batch 1 — settings migration ladder"),

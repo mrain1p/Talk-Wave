@@ -226,6 +226,12 @@ try:
     from call import withheld as call_withheld
 except ImportError:                                            # noqa: BLE001
     call_withheld = None
+try:
+    # The post-landing wind-down (2026-08-31) — measured here before the
+    # product ever defaults it on, like the arc and the comeback before it.
+    from call import landed as call_landed
+except ImportError:                                            # noqa: BLE001
+    call_landed = None
 from call import promise_guard
 from chat.session import _tool_report
 from livekit.agents import llm as lk_llm
@@ -327,6 +333,12 @@ LIBRARY = [
     {"id": "t13", "title": "Casino Lights", "artist": "The Neon Set"},
     {"id": "t14", "title": "Gimme Shelter", "artist": "The Rolling Stones"},
     {"id": "t15", "title": "House of the Rising Sun", "artist": "The Animals"},
+    # The Ophelia trap (2026-08-31, record ...125038): a title shared across
+    # artists, with the asked-for artist's own record wearing a LONGER name.
+    # The namesake is what a bare title search ranks first; the artist named
+    # in the same breath is what settles it.
+    {"id": "t16", "title": "Ophelia", "artist": "The Lumineers"},
+    {"id": "t17", "title": "The Fate of Ophelia", "artist": "Taylor Swift"},
     {"id": "t10", "title": "On the Nature of Daylight", "artist": "Max Richter"},
     {"id": "t11", "title": "On the Nature of Daylight (orchestral version)",
      "artist": "Max Richter Orchestra"},
@@ -1896,6 +1908,11 @@ WITHHELD_ON = os.environ.get("WITHHELD", "on").strip().lower() != "off"
 # performed after the goodbyes were done, live on 2026-08-25). ARC=off is
 # the control arm the CLOSING prose gets measured against.
 ARC_ON = os.environ.get("ARC", "on").strip().lower() != "off"
+# CLOSING_NUDGE=on arms the landed wind-down guard for the B arm of the
+# closing A/B. Default off — mirroring the product's own default, so a plain
+# run measures the line as deployed.
+CLOSING_NUDGE_ON = (os.environ.get("CLOSING_NUDGE", "off").strip().lower()
+                    == "on")
 # And for the classifier pilot (NORTH STAR move 2): CLASSIFY=off runs the
 # promise lexicons alone — the control arm. On, and with call/classify
 # riding in (NEW_CLASSIFY on an older image), the speech-act label drives
@@ -1957,6 +1974,9 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
     asks_obj = call_asks.Asks() if call_asks is not None else None
     ask_back = (call_asks.OpenAskComeback(asks_obj)
                 if asks_obj is not None else None)
+    # Per scenario, and only on the B arm: the post-landing wind-down.
+    landed_g = (call_landed.Landed(ACTIONS)
+                if (call_landed is not None and CLOSING_NUDGE_ON) else None)
     # Per scenario, like the door: what this caller has already had to ask.
     stuck = call_stuck.Stuck()
     # Per scenario, like both above: which withheld capability this caller
@@ -2041,6 +2061,7 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
             ctx.add_message(role="system", content=anote)
         if asks_obj is not None:
             asks_obj.heard(text)
+        knote = ""
         if (ask_back is not None
                 and not (arc is not None and arc.ending)):
             knote = ask_back.hint_for(
@@ -2054,6 +2075,16 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
             log.append("  (asked for a withheld capability — carding and "
                        "steering this turn)")
             ctx.add_message(role="system", content=wnote)
+        # The wind-down, mirroring state.py's rule exactly: never while any
+        # other guard is steering this turn, never over an ending call.
+        if (landed_g is not None
+                and not (note or hint or anote or knote or wnote)
+                and not (arc is not None and arc.ending)):
+            lnote = landed_g.hint_for(text)
+            if lnote:
+                log.append("  (the request landed — steering toward the "
+                           "wind-down)")
+                ctx.add_message(role="system", content=lnote)
         said, calls = await one_turn(llm, ctx, tools, text)
         if said.strip():
             log.append(f"DJ     : {said.strip()}")
@@ -2394,6 +2425,13 @@ async def main() -> None:
 
         for t in tool_registry.TOOLS:
             if t.gate not in (tool_registry.READ, tool_registry.NEVER):
+                # single_lookup_tool is an ARRANGEMENT flag, not a capability
+                # gate — find_music merely re-fronts tools other gates own.
+                # Blanketed here it silently clobbered the SINGLE_LOOKUP
+                # override above and ran the C.5 A/B's "off" arm with the
+                # dispatcher on (caught 2026-08-31, first measuring evening).
+                if t.gate == "single_lookup_tool":
+                    continue
                 cfg[t.gate] = gates == "all"
         if gates == "all":
             cfg["max_actions_per_call"] = 99

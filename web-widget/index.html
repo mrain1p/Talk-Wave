@@ -403,15 +403,23 @@
         <div class="plalbum" id="plAlbum"></div>
         <div class="pltags" id="plTags"></div>
         <div class="plprog"><span class="plel" id="plElapsed"></span><span class="plbar" aria-hidden="true"><span class="plfill"></span></span><span class="pllen" id="plLen"></span></div>
-        <!-- Up next and Just played share ONE card, toggled by its own head
-             (operator's third ruling on this pair, 2026-08-31: side by side
-             was cramped, stacked spent room the sheet hasn't got). Default
-             Up next; the JUST PLAYED tab offers itself only when there is
-             history to show. Both answer from the same /state snapshot. -->
-        <div class="plpanel">
-          <div class="plpanelhead"><span class="ppip" id="plNextPip" aria-hidden="true"></span><button type="button" class="pltab on" id="plTabNext" aria-pressed="true">Up next</button><button type="button" class="pltab" id="plTabPast" aria-pressed="false" hidden>Just played</button><span class="plpanelmeta" id="plNextMeta"></span></div>
+        <!-- Up next and Just played share ONE card, its two faces worn as
+             BOOKMARK TABS on the card's shoulder (the operator's shape,
+             2026-08-31, fourth ruling on this pair): the active tab fills
+             and merges into the panel, the idle one sits quiet beside it,
+             both in the same micro-type. The JUST PLAYED tab offers itself
+             only when there is history. Both faces answer from the same
+             /state snapshot. -->
+        <div class="plqgroup">
+        <div class="pltabs" role="tablist" aria-label="Queue and history">
+          <button type="button" class="pltab on" id="plTabNext" role="tab" aria-selected="true"><span class="ppip" id="plNextPip" aria-hidden="true"></span>Up next</button>
+          <button type="button" class="pltab" id="plTabPast" role="tab" aria-selected="false" hidden>Just played</button>
+          <span class="plpanelmeta" id="plNextMeta"></span>
+        </div>
+        <div class="plpanel plqueue">
           <div class="plpanelbody" id="plNextBody"></div>
           <div class="plpanelbody" id="plPastBody" hidden></div>
+        </div>
         </div>
         <div class="plpanel">
           <div class="plpanelhead"><span class="ppip live" aria-hidden="true"></span>In the booth<span class="plpanelmeta" id="plBoothMeta"></span></div>

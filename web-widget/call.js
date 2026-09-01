@@ -1783,6 +1783,15 @@
     }
   }
 
+  // When /live last answered. A phone throttles background timers to
+  // nothing, so the 20s poll simply stops while the screen is off — the
+  // card then shows whatever record was playing when the phone was locked
+  // (operator's report, 2026-08-31: "old songs, many times"). The
+  // visibility hook below refreshes the moment the page is looked at again,
+  // and this stamp keeps one failed poll from blanking a card that was
+  // healthy seconds ago.
+  let lastLiveAt = 0;
+
   async function refreshLive() {
     try {
       // Send the stored code so /live resolves canAsk, callerTier and the
@@ -1793,6 +1802,7 @@
         ? { headers: { 'X-Call-Key': callKey() } } : undefined);
       if (!r.ok) throw new Error('unreachable');
       const d = await r.json();
+      lastLiveAt = Date.now();
       const first = !live;
       live = d;
       // The kiosk clock: a stored code past the operator's ceiling is
@@ -1800,6 +1810,13 @@
       if (callKeyExpired(d.guestSessionMinutes)) rememberCallKey('');
       paintLive(preview ? Object.assign({}, d, preview) : d, first);
     } catch (e) {
+      // ONE failed poll against a card that answered seconds ago is a blip —
+      // a slow station read, a phone waking its radio — not an outage. Hold
+      // the truth we have and let the next poll settle it; blanking to
+      // "Station unreachable" on every hiccup was the operator's "sometimes
+      // it shows no song at all". Ninety seconds of silence is a real
+      // outage and paints as one.
+      if (Date.now() - lastLiveAt < 90000 && live) return;
       live = live || {};
       // The controls still have to appear. An unreachable station is the case
       // where the operator most needs the gear, and driving the corner
@@ -1810,6 +1827,17 @@
       setStatus('Station unreachable', 'error');
     }
   }
+
+  // The phone throttles background timers to nothing, so the poll stops the
+  // moment the screen locks — coming back must not mean reading a record
+  // that ended three songs ago for up to 20 more seconds. bfcache restores
+  // ride the same hook.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && !room) refreshLive();
+  });
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted && !room) refreshLive();
+  });
 
   // After a call ends the on-air show may have JUST changed: a takeover the
   // caller asked for lands at the next TRACK BOUNDARY, not the moment the tool
@@ -5453,8 +5481,8 @@
     const onNext = plTab === 'next';
     tn.classList.toggle('on', onNext);
     tp.classList.toggle('on', !onNext);
-    tn.setAttribute('aria-pressed', onNext ? 'true' : 'false');
-    tp.setAttribute('aria-pressed', onNext ? 'false' : 'true');
+    tn.setAttribute('aria-selected', onNext ? 'true' : 'false');
+    tp.setAttribute('aria-selected', onNext ? 'false' : 'true');
     bn.hidden = !onNext;
     bp.hidden = onNext;
     // The meta and the pip speak for the tab that has the floor: a lit pip
