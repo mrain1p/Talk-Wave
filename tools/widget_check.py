@@ -215,6 +215,10 @@ def main() -> None:
                     styles=[
                         (".card", "borderRadius", "16px"),      # style.css
                         ("#callBtn", "display", "flex"),
+                        # The whole surface never scrolls — only the sheet's
+                        # middle may (operator's rule, 2026-09-01). The
+                        # sheet clips; the panels inside carry the bars.
+                        (".player", "overflowY", "hidden"),
                     ])
                 page.close()
 
