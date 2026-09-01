@@ -658,6 +658,8 @@
   // fader. Declared here because applyVolume reads it at first paint, long
   // before the dock's handler is wired.
   let plMuted = false;
+  // The player-first auto-open fires once per page load — see the poll.
+  let playerStartApplied = false;
   // The DJ's own track, kept so the station can pull the voice into the shared
   // audio graph whichever of the two arrives second. See mixStation.
   let djTrack = null;
@@ -1912,8 +1914,14 @@
         lastCanAsk = askSignature(d);
         // The operator can make the player the page's FRONT — it opens
         // without the wipe (this is the starting face, not a transition)
-        // and QUIET: PLAY starts the music, never the page turn.
-        if (d.playerStart && playerOffered() && !inConversation()) {
+        // and QUIET: PLAY starts the music, never the page turn. ONCE per
+        // page load: this block re-runs when the ask-set changes, and it
+        // was re-opening the sheet over a caller who had deliberately
+        // pulled the phone down — the top ribbon read as dead because
+        // every exit was being undone (operator, 2026-09-01).
+        if (!playerStartApplied && d.playerStart && playerOffered()
+            && !inConversation()) {
+          playerStartApplied = true;
           const sheet = $('playerView');
           sheet.classList.add('dragging');
           openPlayer();
@@ -5789,18 +5797,15 @@
     if (tab) {
       // The bookmark only hangs while the player is closed — the way back
       // up is the grabber at the dock's foot, where the finger already is.
-      // And never when the player IS the page: home has no bookmark to
-      // itself.
-      tab.hidden = !idle || playerOpen || playerIsHome();
+      tab.hidden = !idle || playerOpen;
     }
-    // The inverted furniture: on a player-first page the sheet's TOP
-    // ribbon is the way to the phone, and the foot grabber (which pushes
-    // the sheet away upward — the wrong direction for home) stands down.
-    const home = playerIsHome();
-    const pt = $('phoneTab');
-    if (pt) pt.hidden = !(home && playerOpen);
-    const grab = $('plGrab');
-    if (grab) grab.hidden = home;
+    // The inverted furniture rides ONE class, owned by CSS: on a
+    // player-first page the sheet's TOP ribbon is the way to the phone,
+    // and the card's bookmark and the foot grabber stand down. It was
+    // per-element hidden fiddling first, and the pieces disagreed on the
+    // operator's phone (grabber up AND ribbon up, 2026-09-01).
+    const card = document.querySelector('.card');
+    if (card) card.classList.toggle('plfirst', playerIsHome());
   }
 
   // The lock screen's idea of what is playing, on the platforms that ask.
@@ -6032,14 +6037,11 @@
     b.classList.toggle('liked', plLiked);
     b.setAttribute('aria-pressed', plLiked ? 'true' : 'false');
     b.title = count ? count + ' likes' : 'Like this track';
-    // The count in the open, beside the heart — the title above needs a
-    // hover, and this sheet's home surface has no cursor. Zero paints
-    // nothing: an explicit 0 would read as a scoreboard nobody is on.
+    // The number RETIRED (operator, 2026-09-01: "should just show if it's
+    // liked") — the filled heart is the whole answer; the count lives on
+    // in the hover title for a desktop that asks.
     const n = $('plLikeCount');
-    if (n) {
-      n.hidden = !count;
-      n.textContent = count || '';
-    }
+    if (n) n.hidden = true;
   }
   $('plHeartBtn').onclick = async () => {
     // A lit heart UN-hearts when the key clears the permission — the
@@ -6052,11 +6054,14 @@
         const r = await fetch('/player/unlike', {
           method: 'POST',
           headers: keyHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ songId: plLikeSong }),
+          body: JSON.stringify({ songId: plLikeSong,
+                                title: heldNowPlaying(shown || live || {})
+                                  .title || '' }),
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || 'no');
         paintHeart(d.count);
+        if (plTab === 'booth') refreshBoothLog();
       } catch (e) { plLiked = true; paintHeart(); }
       return;
     }
@@ -6065,11 +6070,14 @@
       const r = await fetch('/player/like', {
         method: 'POST',
         headers: keyHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(plLikeSong ? { songId: plLikeSong } : {}),
+        body: JSON.stringify(Object.assign(
+          plLikeSong ? { songId: plLikeSong } : {},
+          { title: heldNowPlaying(shown || live || {}).title || '' })),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || 'no');
       paintHeart(d.count);
+      if (plTab === 'booth') refreshBoothLog();
     } catch (e) { plLiked = false; paintHeart(); }
   };
 
@@ -6095,6 +6103,10 @@
     const op = $('plOpBtn');
     if (op) op.hidden = !a.command;
     if (!a.command && plOpMode) setOpMode(false);
+    // The remembered face comes back the moment the key still clears it.
+    let kept = '';
+    try { kept = localStorage.getItem('twOpMode') || ''; } catch (e) {}
+    if (a.command && kept && !plOpMode) setOpMode(true);
     paintQueueTabs();
   }
 
@@ -6117,6 +6129,10 @@
 
   function setOpMode(on) {
     plOpMode = !!on;
+    // The face survives the visit (operator, 2026-09-01): an operator who
+    // lives in Do-it mode should not re-arm it every open.
+    try { localStorage.setItem('twOpMode', plOpMode ? '1' : ''); }
+    catch (e) { /* private windows */ }
     const op = $('plOpBtn'), input = $('plReqInput'), send = $('plReqSend');
     if (op) {
       op.classList.toggle('on', plOpMode);

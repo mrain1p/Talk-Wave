@@ -100,8 +100,20 @@ async def handle_player_like(request: web.Request) -> web.Response:
     # it thinks it is liking, and a track change between paint and press is
     # answered with 409 rather than the wrong song getting the heart.
     song = body.get("songId") if isinstance(body, dict) else None
-    return await _relay(request, "POST", "/like",
+    resp = await _relay(request, "POST", "/like",
                         {"songId": song} if song else {})
+    # A landed heart is a station action like any other — the Requests tab
+    # is the receipt printer, and a press that leaves no receipt reads as
+    # a press that did nothing (operator, 2026-09-01). Title only: a track
+    # name is station data, never caller words.
+    if resp.status < 400:
+        from api.auth import caller_tier
+        from call import daylog
+
+        daylog.note("like",
+                    str((body or {}).get("title") or "")[:80],
+                    tier=caller_tier(request))
+    return resp
 
 
 def _abilities(cfg: dict, tier: str) -> dict:
@@ -218,6 +230,12 @@ async def handle_player_unlike(request: web.Request) -> web.Response:
         except Exception:                                      # noqa: BLE001
             pass
     ok = not (isinstance(res, dict) and res.get("error"))
+    if ok:
+        from call import daylog
+
+        daylog.note("unlike",
+                    str((body or {}).get("title") or "")[:80],
+                    tier=request.get("player_tier", ""))
     return _cors(request, web.json_response(
         res if isinstance(res, dict) else {"ok": ok},
         status=200 if ok else 502))

@@ -4,6 +4,14 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.19
+
+The morning's fixes on the player-first page, tagged without a page of its own (folded forward at the next storied release).
+
+- The player-first page behaves: the auto-open fires once so leaving sticks, the inverted furniture rides one class (top ribbon in, bookmark and grabber out), and the phone ribbon sits in flow instead of on the clock.
+- Header parity: NOW PLAYING never wraps, the clock gives way instead; phone square before the operator toggle; the operator face is remembered per device.
+- The heart drops its number — filled is the answer — and likes/unlikes land in the Requests tab like every other action, title only.
+
 ## 0.99.18
 
 One night of the operator driving the new player, folded into one release (0.99.17's notes ride here too — two tags an hour apart did not need two stories).
