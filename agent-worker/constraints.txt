@@ -84,7 +84,7 @@ opentelemetry-exporter-otlp-proto-grpc==1.39.1
 opentelemetry-exporter-otlp-proto-http==1.39.1
 opentelemetry-proto==1.39.1
 opentelemetry-sdk==1.39.1
-opentelemetry-semantic-conventions==0.60b1
+opentelemetry-semantic-conventions==0.65b0
 packaging==26.3
 pillow==12.3.0
 prometheus_client==0.26.0
