@@ -6194,23 +6194,20 @@
       if (!r.ok) throw new Error(d.error || 'the booth did not answer');
       plOpChat = d.chat || plOpChat;
       input.value = '';
+      // MECHANICAL feedback only (operator, 2026-09-01: no persona, no
+      // questions, nothing that shifts the layout): the receipts flash in
+      // the row's own fixed overlay — landed actions as their cards, or
+      // the server's one-line status when the command degraded to the
+      // request line. The DJ never speaks here.
       const acts = (d.actions || [])
         .map((a) => [a.icon, a.label, a.detail && '— ' + a.detail]
           .filter(Boolean).join(' '))
         .join('   ·   ');
-      // Actions flash where the words were; the DJ's WORDS persist below
-      // the row until the next send — a brain that asks a clarifying
-      // question or explains a refusal was answering into a four-second
-      // fade nobody caught, which read as nothing happening at all
-      // (operator, 2026-09-01). A follow-up send continues the same
-      // exchange, so answering the question works.
-      if (acts) flashOpResult(acts);
-      msg.classList.add('info');
-      msg.textContent = d.said || (acts ? '' : 'Done — nothing to add.');
+      flashOpResult(acts ? '✓  ' + acts : ('→  ' + (d.note || 'handed to '
+        + 'the request line')));
       if (plTab === 'booth') refreshBoothLog();
     } catch (e) {
-      msg.classList.remove('info');
-      msg.textContent = String(e.message || e);
+      flashOpResult('✗  ' + String(e.message || e));
     }
     btn.textContent = plOpMode ? 'Do it' : 'Send';
     btn.disabled = false;
@@ -6224,9 +6221,10 @@
     f.hidden = false;
     f.classList.remove('fade');
     clearTimeout(plFlashT);
-    // Next frame, so the transition actually runs from opaque.
+    // Next frame, so the transition actually runs from opaque. Seven
+    // seconds total: this line is the command's ONLY feedback now.
     requestAnimationFrame(() => f.classList.add('fade'));
-    plFlashT = setTimeout(() => { f.hidden = true; }, 4600);
+    plFlashT = setTimeout(() => { f.hidden = true; }, 7000);
   }
 
   async function refreshBoothLog() {

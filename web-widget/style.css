@@ -1402,7 +1402,7 @@
     border-radius: var(--skin-radius-ctl);
     color: var(--alpenglow); font: 12px var(--font-body);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    opacity: 1; transition: opacity 3.4s ease .8s; pointer-events: none;
+    opacity: 1; transition: opacity 4s ease 2.6s; pointer-events: none;
   }
   .plopflash.fade { opacity: 0; }
   .plopflash[hidden] { display: none; }
