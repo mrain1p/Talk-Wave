@@ -924,9 +924,10 @@ SCHEMA: dict[str, dict] = {
         label="Opens on",
         needs=("swipe_player", True),
         help="Which of the two faces a caller lands on; the other is always "
-             "one swipe away. Browsers still wait for one tap before any "
-             "audio starts, whichever you pick — that is their rule, not a "
-             "fault."),
+             "one swipe away, and the pull-down tab sits on whichever face "
+             "is the visitor — the gesture follows the start you chose. "
+             "Browsers still wait for one tap before any audio starts, "
+             "whichever you pick — that is their rule, not a fault."),
     "vm_player_duck": dict(group="phone", kind="number",
         label="Player under the machine", unit="%", alias="loudness duck voicemail",
         help="While the machine rings, greets and records, the station plays "

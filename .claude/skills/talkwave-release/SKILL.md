@@ -69,7 +69,14 @@ went to 97 and not to 9.
    measurement essays (verdicts and numbers live in module docstrings, memory and the
    ledger, not on the release page). Vary the voice; do NOT stamp literal "What's new /
    What's fixed" headings on every release. The 0.99.15 page was rewritten to this form —
-   read it for the register. Full-width lines still apply (one unwrapped line per bullet):
+   read it for the register. Full-width lines still apply (one unwrapped line per bullet).
+
+   **Same-day releases share one story** (operator, 2026-09-01: "combine our last release
+   notes... so we dont have 10 versions of release notes in one day"): when a release lands
+   within hours of the previous one, the NEW changelog entry absorbs the earlier bullets,
+   the earlier heading shrinks to a one-line pointer forward, and the earlier RELEASE PAGE
+   body becomes the same pointer. Tags stay 1:1 with headings — only the stories merge.
+   v0.99.17→v0.99.18 is the exemplar:
 
    ```bash
    git tag vX.Y.Z <main merge commit> && git push origin vX.Y.Z

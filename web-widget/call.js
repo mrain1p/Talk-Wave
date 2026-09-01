@@ -4936,6 +4936,15 @@
     return playerVisual && !!d.swipePlayer && !!(d.stream && d.stream.url);
   }
 
+  // Which face is HOME. When the operator starts the page on the player,
+  // the whole pull-down metaphor flips (operator, 2026-09-01): the phone
+  // hangs above the player, the sheet's own top ribbon pulls it down, and
+  // the swipes run the other way — the gesture follows the start.
+  function playerIsHome() {
+    const d = shown || live || {};
+    return !!d.playerStart && playerOffered();
+  }
+
   // The card's own volume, times the machine's duck while the studio holds
   // the line — 0 is a real value and mutes the bed without stopping it.
   function playerLevel() {
@@ -5780,8 +5789,18 @@
     if (tab) {
       // The bookmark only hangs while the player is closed — the way back
       // up is the grabber at the dock's foot, where the finger already is.
-      tab.hidden = !idle || playerOpen;
+      // And never when the player IS the page: home has no bookmark to
+      // itself.
+      tab.hidden = !idle || playerOpen || playerIsHome();
     }
+    // The inverted furniture: on a player-first page the sheet's TOP
+    // ribbon is the way to the phone, and the foot grabber (which pushes
+    // the sheet away upward — the wrong direction for home) stands down.
+    const home = playerIsHome();
+    const pt = $('phoneTab');
+    if (pt) pt.hidden = !(home && playerOpen);
+    const grab = $('plGrab');
+    if (grab) grab.hidden = home;
   }
 
   // The lock screen's idea of what is playing, on the platforms that ask.
@@ -5857,7 +5876,12 @@
       if (!t || Date.now() - st > 800) return;
       const dx = t.clientX - sx, dy = t.clientY - sy;
       if (Math.abs(dy) < 60 || Math.abs(dy) < Math.abs(dx) * 1.5) return;
-      if (dy > 0 && !playerOpen) openPlayer();
+      if (playerIsHome()) {
+        // Player-first page: the phone hangs ABOVE — push up from the
+        // phone to go home, pull the sheet down to fetch the phone.
+        if (dy < 0 && !playerOpen) openPlayer();
+        else if (dy > 0 && playerOpen) closePlayer(true);
+      } else if (dy > 0 && !playerOpen) openPlayer();
       else if (dy < 0 && playerOpen) closePlayer(true);
     }, { passive: true });
   })();
@@ -6228,6 +6252,10 @@
   $('listenChip').onclick = () => {
     if (cardMode() === 'idle') openPlayer();
   };
+  // The strip's phone square and the sheet's top ribbon: both roads to the
+  // card underneath, audio untouched.
+  if ($('plPhoneBtn')) $('plPhoneBtn').onclick = () => closePlayer(true);
+  if ($('phoneTab')) $('phoneTab').onclick = () => closePlayer(true);
   $('plPlayBtn').onclick = () => {
     // A framework session: the transport drives the TV, nothing local.
     if (plCastSess && castCtl) {

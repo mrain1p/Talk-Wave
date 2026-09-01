@@ -1130,6 +1130,15 @@
   .plel { font: 700 11px/1 var(--font-mono); color: var(--amber);
           font-variant-numeric: tabular-nums; }
   .plel:empty { display: none; }
+  /* The phone's ribbon on a player-first page: same grip, the sheet's own
+     top edge — the mirror of the card's bookmark, because on that page
+     the PHONE is the thing that hangs above (operator, 2026-09-01). */
+  .card .plphonetab {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    z-index: 4; padding: 7px 26px 5px; background: transparent; border: 0;
+    min-height: 0; height: auto; cursor: pointer;
+  }
+  .card .plphonetab[hidden] { display: none; }
   /* The cast control lit while a session is CONNECTED — same coral the
      card's live states wear, so "the TV has it" is readable at a glance. */
   .card #plCastBtn.casting { color: var(--coral); border-color: var(--coral); }

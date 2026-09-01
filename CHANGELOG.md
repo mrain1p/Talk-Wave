@@ -6,21 +6,18 @@ Release notes for operators. One entry per release to `main`; work in flight on
 
 ## 0.99.18
 
-The morning-after polish: the player's operator side settles into place, and the cast stops missing its cue.
+One night of the operator driving the new player, folded into one release (0.99.17's notes ride here too — two tags an hour apart did not need two stories).
 
-- **The player takes its notes.** The operator toggle sits beside the skip in one square strip (the mute went home — the transport and fader cover it), the queue card is just three tab headers, and the Requests tab (was Booth) shows every station action as its own receipt card, emoji and all — a shoutout's wording never reaches the log. The phone spends its blank air on an extra queue row and booth line.
-- **Casting kicks in mid-song.** Connecting no longer waits for the next record to name the current one. The brief pause at record changes is Google's stock receiver reloading to take new metadata — the seamless version needs a registered custom receiver, noted as a possible follow-up.
-- **The player head mirrors the page's corner.** Sign-in and settings ride the sheet under the same Access answers as the card — sign in from the player and its operator side appears.
-- **The settings preview grew eyes.** The Players-page preview stops squeezing the card into overlap (the route switch sat on the idle board), it can pull down the station player now — silent by design — and the page picker fits one row again.
+- **The TV finally names the record.** Casting runs on Google's own Cast receiver — title, artist and album art on the Streamer, re-fed per record change and from a mid-song connect; the phone acts as a true remote, and AirPlay keeps its path. The brief pause at record changes is the stock receiver taking new metadata; the seamless version needs a registered custom receiver, noted for later.
+- **The player grew an operator's side — everything off by default.** Behind two phone-page switches and the permission matrix: skip and un-heart beside the like, and the request line's operator mode — one-shot commands through the text line's own brain, receipts flashed where you typed, and a Requests tab reading the station's 48-hour action log as receipt cards, emoji and all. A shoutout's wording never reaches the log. Sign-in and settings ride the sheet's head, and a phone square on the strip jumps back to calls and texts.
+- **Either face can be the front, and the pull-down follows.** On a player-first page the phone is the thing that hangs above: the sheet's top ribbon pulls it down, the swipes run the other way, and the foot grabber stands down — the gesture matches the start you chose.
+- **The sheet stopped painting panels into each other, on every machine.** The overlap's real cause was the variable-length booth line blowing a fixed budget: rows are rigid now and the middle scrolls thinly in the genuinely-too-short case. The queue card is three bare tab headers; the phone spends its blank air on an extra queue row and booth line; the mute went home (the transport and fader cover it).
+- **The settings preview grew eyes.** It stops squeezing the card into overlap, can pull down the (silent) station player, and the page picker fits one row.
+- **The prompt pricing program closed: everything stays.** Thirteen ablation arms across six scenario sets priced the never-measured prompt prose on fault counts. Every section earned its keep — including the one promising cut, which died on its confirm run.
 
 ## 0.99.17
 
-The cast finally earns its screen, and the player learns whose hands are on the desk.
-
-- **The TV finally names the record.** Casting now runs on Google's own Cast receiver instead of flinging the browser's audio — the Streamer shows title, artist and album art, re-fed on every record change, and the phone acts as a true remote. AirPlay and other browsers keep the old path.
-- **The player grew an operator's side — everything off by default.** Behind two new phone-page switches and the permission matrix: a skip button beside the heart, a lit heart that can be un-hearted, and the request line's operator mode — one-shot commands through the text line's own brain, with the receipt flashed where you typed and a Booth tab listing the station's 48-hour action log.
-- **The sheet stopped painting panels into each other.** The overlap that survived one fix turned out to be the variable-length booth line blowing a fixed budget; rows are rigid now and the middle scrolls thinly in the rare case the card is genuinely too short.
-- **The prompt pricing program closed: everything stays.** Thirteen ablation arms across six scenario sets priced the never-measured prompt prose on fault counts. Every section earned its keep — including the one promising cut, which died on its confirm run.
+Released within the same hour as 0.99.18 and folded forward — the full story rides v0.99.18's notes.
 
 ## 0.99.16
 
