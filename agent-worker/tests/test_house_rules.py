@@ -2041,6 +2041,7 @@ class TestTheImportLayeringHolds(unittest.TestCase):
         ("openlines.director", "api.stats"),   # surfaces -> api: the "nobody listening" gate
         ("voicemail.capture", "api.sounds"),   # surfaces -> api: the uploaded custom-beep path
         ("call.greeting", "openlines.prompt"),  # call -> surfaces: additive open-lines greeting clause
+        ("call.record", "openlines.state"),     # call -> surfaces: the record writes the premise it ran under (2026-09-01 — three "phantom came-for" review findings were this feature, unrecorded)
         ("brain.assemble", "openlines.prompt"),  # brain -> surfaces: additive open-lines prompt block
     }
 

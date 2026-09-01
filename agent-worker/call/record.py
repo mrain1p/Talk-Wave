@@ -63,6 +63,21 @@ def with_args(args, result) -> str:
     return f"({detail}) -> {result}"
 
 
+def _open_line_premise(persona_id: str) -> str:
+    """The live open line's premise, "" when none is running.
+
+    Never raises: the record must still build on a box where the open-lines
+    store has never existed. The import is sanctioned in the layer map — the
+    same additive read shape as greeting's clause, for the record instead of
+    the caller's ear."""
+    try:
+        from openlines import state
+
+        return str((state.current(persona_id) or {}).get("premise") or "")[:200]
+    except Exception:                                          # noqa: BLE001
+        return ""
+
+
 class CallRecord:
     """Builds the record as the call runs, writes it once at the end."""
 
@@ -104,6 +119,13 @@ class CallRecord:
                     k for k in cfg
                     if k.startswith(("allow_", "offer_", "shape_")) and cfg[k]
                 ),
+                # The Open Lines premise the DJ was working at pickup, ""
+                # when the line was closed. Without it a records review
+                # reads the FEATURE back as fabrication: three "phantom
+                # came-for" findings (2026-09-01) — "that song for the
+                # heartbreak subject" and kin — were all the DJ asking
+                # about a premise the record never stored.
+                "openLine": _open_line_premise(persona.get("id") or ""),
             },
             "turns": [],
             "tools": [],

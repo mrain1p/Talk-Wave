@@ -2594,6 +2594,17 @@ async def main() -> None:
         else:
             tools += build_call_control_tools(FakeCtx(), lambda: None,
                                               started)
+            if not mcp_tools:
+                # The blind-call fallback (0.99.1): a CALL whose MCP attach
+                # decisively fails serves the local read twins instead — so
+                # a no-MCP sweep must carry them too, or the drill grades a
+                # surface no deployed call actually has. Found the hard way:
+                # "a question about the queue is looked up, not guessed" sat
+                # at 0/3 on BOTH 2026-09-01 arms because the model reached
+                # for subwave_station_state — the right tool on the real
+                # line, absent only here — and the grader faulted it for
+                # missing the one queue read this surface happened to hold.
+                tools = build_read_tools(cfg, station, actions) + tools
         return tools + mcp_tools
 
     tools = rebuild_local_surface()
