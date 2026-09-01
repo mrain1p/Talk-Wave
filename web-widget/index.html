@@ -380,6 +380,10 @@
       <!-- The listener count beside the words, same mark as the header's
            (operator's ask, 2026-08-18): whoever opened the deck is one of
            the people this number counts. -->
+      <!-- When the PLAYER is the page's front, the phone hangs above it —
+           this ribbon pulls it down, mirroring the phone face's own tab
+           (operator, 2026-09-01: the gesture follows the start you chose). -->
+      <button class="ribbon plphonetab" id="phoneTab" type="button" hidden aria-label="Pull down the phone"><span class="grip" aria-hidden="true"></span></button>
       <div class="plhead"><span class="pip" aria-hidden="true"></span>Now playing<span class="listeners" id="plListeners" title="Listening now" hidden><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 18v-6a8 8 0 0 1 16 0v6"/><rect x="2.6" y="13.5" width="4.2" height="6.5" rx="1.8"/><rect x="17.2" y="13.5" width="4.2" height="6.5" rx="1.8"/></svg><span id="plListenersN"></span></span><span class="plheadmeta" id="plHeadMeta"></span><button type="button" class="plseg" id="plSegBtn" hidden aria-haspopup="true" aria-expanded="false" aria-label="Start an Open Lines segment">Segment</button><button class="gear" id="plCastBtn" title="Play on a device" aria-label="Play the stream on another device" hidden><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 20h.01"/><path d="M2 16a4 4 0 0 1 4 4"/><path d="M2 12a8 8 0 0 1 8 8"/><path d="M6 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></button><button class="gear" id="plThemeBtn" title="Theme" aria-label="Change the theme" hidden></button><button class="gear" id="plSigninBtn" title="Sign in for more options" aria-label="Sign in for more options" hidden><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 12H2.5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1H6"/><path d="M9 9.5 11.5 7 9 4.5"/><path d="M11.5 7H5.5"/></svg></button><button class="gear" id="plGearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></div>
       <!-- The segment sheet: only ever rendered for a caller /live says may
            trigger one, which is a guest or the operator AND the setting on.
@@ -454,6 +458,9 @@
           <!-- Beside the skip, same square (operator, 2026-09-01): the two
                operator controls sit together on the strip. -->
           <button class="plheart plop" id="plOpBtn" type="button" hidden aria-pressed="false" aria-label="Operator mode — command the booth directly"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M8.6 8.6a4.8 4.8 0 0 0 0 6.8M15.4 8.6a4.8 4.8 0 0 1 0 6.8M5.8 5.8a8.8 8.8 0 0 0 0 12.4M18.2 5.8a8.8 8.8 0 0 1 0 12.4"/></svg></button>
+          <!-- The way to the phone in one press (operator, 2026-09-01):
+               calls, texts, the machine — the card under the sheet. -->
+          <button class="plheart" id="plPhoneBtn" type="button" aria-label="To the phone — calls and texts"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg></button>
           <!-- A speaker, not a note: beside a full-width red slider the note
                read as "track position", and the volume is the one control
                here a listener grabs first (operator's review, 2026-08-24).
