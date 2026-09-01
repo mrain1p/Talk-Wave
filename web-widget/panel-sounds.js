@@ -783,5 +783,13 @@
   // What panel.js calls back into: the schema-driven rebuild, the repaint,
   // and the initial load. Everything else on this file is reached from its
   // own listeners.
+  // Changing the Sound set plays the new set's ring straight away. The
+  // audition path always existed — press any card's ▶ after switching — but
+  // nothing said so, and a dropdown that changes five sounds silently is a
+  // choice made deaf. previewSound already reads the dropdown's CURRENT
+  // value, so this is only the cue.
+  const packSelect = $('sound_pack');
+  if (packSelect) packSelect.addEventListener('change', () => previewSound('ring'));
+
   window.Panel.sounds = { loadSounds, paintSlotCards, buildSlotCards };
 })();

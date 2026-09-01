@@ -758,6 +758,12 @@ class Handler(BaseHTTPRequestHandler):
                     {"title": "Otherworlds", "artist": "Abakus",
                      "requestedBy": None},
                 ],
+                # The queue's short memory, newest first — the sheet's JUST
+                # PLAYED panel, same /state read as upNext on the real thing.
+                "justPlayed": [
+                    {"title": "Green Arrow", "artist": "Beegie Adair"},
+                    {"title": "La Femme d'Argent", "artist": "Air"},
+                ],
                 # The studio's door, so the machine flow can be driven here:
                 # the button appears, and it opens the browser studio. From
                 # stored_only, NOT load(): load() fills DEFAULTS ("closed",

@@ -229,9 +229,18 @@ class CallSession:
         # move 1 of the conversation-engine convergence (see call/state.py).
         # The per-guard attributes stay: the postmortem and the record read
         # them by name, and the holder is a holder, not a hiding place.
+        # The post-landing wind-down rides its own default-off switch — the
+        # closing scenario set decides whether it earns a default, the same
+        # bar single_lookup_tool waits behind (see call/landed.py).
+        landed_guard = None
+        if self.cfg.get("closing_nudge"):
+            from . import landed as landed_mod
+
+            landed_guard = landed_mod.Landed(self.actions)
         self.state = state_mod.ConversationState(
             door=self.door, stuck=self.stuck, withheld=self.withheld,
-            arc=self.arc, asks=self.asks, actions=self.actions)
+            arc=self.arc, asks=self.asks, actions=self.actions,
+            landed=landed_guard)
         # The come-back line consults these the way it consults the arc: a
         # hold that cut into an open task must return TO the task.
         self.air.asks = self.asks
@@ -750,6 +759,7 @@ class CallSession:
         lifecycle.attach_think_pace(session, self.think)
         lifecycle.attach_first_word(session, self.record)
         lifecycle.attach_turn_commit(ctx, session, pacing=self.pacing)
+        lifecycle.attach_caller_note(ctx, self.record)
         lifecycle.attach_heard_logging(session, self.heard, self.record)
         lifecycle.attach_card_flush(session, self.actions)
         # Attached after card_flush and before the idle watch on purpose: it

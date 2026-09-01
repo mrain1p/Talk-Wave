@@ -10,7 +10,7 @@
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
     applySkin, skinForced, LINK_ICONS,
     ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
-    ctx, pack, playSound, startRinging, stopRinging,
+    ctx, resetCtx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume, THEME_ICONS,
     playFirstWorking, readPlayerHandoff, writePlayerHandoff,
   } = window.Callin;
@@ -51,6 +51,10 @@
     const set = (id, on) => { const b = $(id); if (b) b.hidden = !on; };
     set('helpBtn', c.help !== false && !!(d && d.canAsk));
     set('themeBtn', c.theme !== false && !themeForcedByHost);
+    // The player header carries its own copy of the theme toggle (operator's
+    // ask, 2026-08-31): the sheet covers the card's corner, and reaching the
+    // toggle meant leaving the player. Offered exactly when the card's is.
+    set('plThemeBtn', c.theme !== false && !themeForcedByHost);
     // Admin only. `isAdmin` rides the per-request half of /live, so an
     // older worker that does not send it leaves this exactly as it was —
     // `!== false` rather than a truthy test, deliberately.
@@ -212,6 +216,10 @@
                 '': framed ? 'match the page' : 'follow the device' };
     btn.innerHTML = G[next];
     btn.title = 'Theme — tap for ' + T[next];
+    // The player header's copy wears the same glyph and forwards its press —
+    // one cycle, two doors.
+    const pl = $('plThemeBtn');
+    if (pl) { pl.innerHTML = G[next]; pl.title = btn.title; }
   }
 
   (function bindThemeCycle() {
@@ -225,6 +233,8 @@
       else localStorage.removeItem('callinTheme');
       applyThemeChoice(next);
     };
+    const pl = $('plThemeBtn');
+    if (pl) pl.onclick = () => btn.onclick();
   })();
 
   // "The station's own colours" follow the PROGRAMME — the server resolves
@@ -632,6 +642,10 @@
   // because applyVolume reads it at first paint, long before the studio's
   // own block runs.
   let playerEl = null, playerDead = false, playerDucked = false;
+  // The sheet's mute — holds the player silent without moving the shared
+  // fader. Declared here because applyVolume reads it at first paint, long
+  // before the dock's handler is wired.
+  let plMuted = false;
   // The DJ's own track, kept so the station can pull the voice into the shared
   // audio graph whichever of the two arrives second. See mixStation.
   let djTrack = null;
@@ -1142,7 +1156,12 @@
   paintSpeakerBtn();
   probeRouting();
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
-    navigator.mediaDevices.addEventListener('devicechange', probeRouting);
+    navigator.mediaDevices.addEventListener('devicechange', () => {
+      probeRouting();
+      // A device list that changes mid-call is what a Bluetooth profile
+      // flip looks like from here — see the route-change recovery ladder.
+      checkAudioAlive('devices changed');
+    });
   }
 
   // While the panel is previewing a line-box state (preview frames only),
@@ -1764,6 +1783,15 @@
     }
   }
 
+  // When /live last answered. A phone throttles background timers to
+  // nothing, so the 20s poll simply stops while the screen is off — the
+  // card then shows whatever record was playing when the phone was locked
+  // (operator's report, 2026-08-31: "old songs, many times"). The
+  // visibility hook below refreshes the moment the page is looked at again,
+  // and this stamp keeps one failed poll from blanking a card that was
+  // healthy seconds ago.
+  let lastLiveAt = 0;
+
   async function refreshLive() {
     try {
       // Send the stored code so /live resolves canAsk, callerTier and the
@@ -1774,6 +1802,7 @@
         ? { headers: { 'X-Call-Key': callKey() } } : undefined);
       if (!r.ok) throw new Error('unreachable');
       const d = await r.json();
+      lastLiveAt = Date.now();
       const first = !live;
       live = d;
       // The kiosk clock: a stored code past the operator's ceiling is
@@ -1781,6 +1810,13 @@
       if (callKeyExpired(d.guestSessionMinutes)) rememberCallKey('');
       paintLive(preview ? Object.assign({}, d, preview) : d, first);
     } catch (e) {
+      // ONE failed poll against a card that answered seconds ago is a blip —
+      // a slow station read, a phone waking its radio — not an outage. Hold
+      // the truth we have and let the next poll settle it; blanking to
+      // "Station unreachable" on every hiccup was the operator's "sometimes
+      // it shows no song at all". Ninety seconds of silence is a real
+      // outage and paints as one.
+      if (Date.now() - lastLiveAt < 90000 && live) return;
       live = live || {};
       // The controls still have to appear. An unreachable station is the case
       // where the operator most needs the gear, and driving the corner
@@ -1791,6 +1827,17 @@
       setStatus('Station unreachable', 'error');
     }
   }
+
+  // The phone throttles background timers to nothing, so the poll stops the
+  // moment the screen locks — coming back must not mean reading a record
+  // that ended three songs ago for up to 20 more seconds. bfcache restores
+  // ride the same hook.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && !room) refreshLive();
+  });
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted && !room) refreshLive();
+  });
 
   // After a call ends the on-air show may have JUST changed: a takeover the
   // caller asked for lands at the next TRACK BOUNDARY, not the moment the tool
@@ -2944,6 +2991,111 @@
     fx = null;
   }
 
+  // ------------------------------------------------- route-change recovery
+  // The marriage above has one enemy: a phone that changes its audio route
+  // mid-call. The worst offender is Bluetooth in a car — the ring plays over
+  // the media profile, then the mic engages and the handset drops the link
+  // to hands-free. The context that opened at the media rate keeps rendering
+  // into a route that no longer exists, and because the graph is the only
+  // audible path (the DJ's element is muted the moment the graph takes the
+  // voice), the call goes silent exactly as the DJ says hello — ring heard,
+  // nothing after (operator's car, 2026-08-31).
+  //
+  // Recovery is a ladder, cheapest rung first:
+  //   1. resume() — covers a plain suspend and iOS's 'interrupted'.
+  //   2. rebuild — throw the context away, open a fresh one (born at the NEW
+  //      route's rate) and rewire: the DJ through wireEffect, the station by
+  //      retuning (a captured element cannot be given back, so it is a new
+  //      element or nothing), the meters re-analysed.
+  //   3. surrender — unmute the DJ's element and leave the graph out of it.
+  //      The element is WebRTC playout, which the platform routes with the
+  //      call itself, so it survives any profile the phone lands on. Split
+  //      volumes beat a silent DJ.
+  //
+  // Checked at the moments a flip actually happens: scheduled beats after
+  // the mic engages (the flip IS the mic engaging), when the device list
+  // changes, and when the page comes back into view. Cheap when nothing is
+  // wrong: the probe below only opens when there is a graph to defend.
+  let recoverBusy = false;
+  let recoverTimers = [];
+
+  function clearRecoveryChecks() {
+    recoverTimers.forEach(clearTimeout);
+    recoverTimers = [];
+  }
+
+  function scheduleRecoveryChecks() {
+    clearRecoveryChecks();
+    // Three beats, not one: SCO can take a couple of seconds to come up, and
+    // a check that runs only during the changeover would rebuild onto a rate
+    // that is itself about to change.
+    [1500, 4000, 8000].forEach((at) => {
+      recoverTimers.push(setTimeout(() => { checkAudioAlive('after pickup'); }, at));
+    });
+  }
+
+  // Whether the graph's context still matches the hardware it is meant to
+  // reach. A stale context after a route flip usually still SAYS 'running' —
+  // the honest tell is the rate: a probe context opened now is born at the
+  // live route's rate, and a mismatch means ours renders into the void.
+  function ctxLooksDead() {
+    const c = ctx();
+    if (c.state !== 'running') return true;
+    try {
+      const C = window.AudioContext || window.webkitAudioContext;
+      const probe = new C();
+      const stale = probe.sampleRate !== c.sampleRate;
+      try { probe.close(); } catch (e) { /* probes may linger, harmlessly */ }
+      return stale;
+    } catch (e) { return false; }
+  }
+
+  async function checkAudioAlive(why) {
+    if (!room || recoverBusy) return;
+    // Element paths route themselves with the platform — only a graph that
+    // holds a voice or the station has anything to lose here.
+    if (!fx && !stationMix) return;
+    if (!ctxLooksDead()) return;
+    recoverBusy = true;
+    try {
+      // Rung 1: ask nicely.
+      try { await ctx().resume(); } catch (e) { /* the rebuild is next */ }
+      if (!ctxLooksDead()) return;
+      console.warn('Talk Wave: audio route changed (' + why + ') — rebuilding the graph');
+      // Rung 2: a fresh context at the live rate, everything rewired.
+      const hadStation = !!stationMix;
+      dropEffect(); unmixStation();
+      resetCtx();
+      if (djTrack) {
+        if (wireEffect(djTrack)) { if (djEl) djEl.muted = true; }
+        else if (djEl) { djEl.muted = false; djEl.play?.(); }
+        anDj = analyserFor(djTrack.mediaStreamTrack);
+      }
+      const mic = room && room.localParticipant
+        && room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
+      if (mic && mic.track) anYou = analyserFor(mic.track.mediaStreamTrack);
+      if (hadStation) { tuneOut(); tuneIn(); }
+      applyVolume();
+      routeAudio(onSpeaker);
+      // Rung 3: if even the fresh context refuses to run, the element is
+      // the way out.
+      recoverTimers.push(setTimeout(() => {
+        if (!room || !fx) return;
+        if (ctx().state === 'running') return;
+        console.warn('Talk Wave: the graph will not run here — the DJ takes the element path');
+        dropEffect();
+        if (djEl) { djEl.muted = false; djEl.play?.(); }
+        applyVolume();
+      }, 1200));
+    } finally {
+      recoverBusy = false;
+    }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) checkAudioAlive('page visible');
+  });
+
   function stationLevel() {
     const s = (live && live.stream) || {};
     return Math.min(1, ((s.volume || 0) / 100) * (getVolume() / 100));
@@ -2969,10 +3121,11 @@
     if (playerEl) {
       // Full volume, scaled only by the card's own slider: in the player the
       // broadcast is the subject, not the bed under a call. Under the
-      // STUDIO it ducks instead — playerLevel carries the factor.
+      // STUDIO it ducks instead — playerLevel carries the factor. The
+      // sheet's own mute rides on top of both without moving either.
       const level = playerLevel();
       playerEl.volume = level;
-      playerEl.muted = level <= 0;
+      playerEl.muted = level <= 0 || plMuted;
     }
     // The player's fader is a second handle on the SAME volume — value and
     // drawn fill both, since the fill is a gradient stop, not the browser's.
@@ -2986,6 +3139,20 @@
     volTouched = true; setVolume(+e.target.value); applyVolume();
   };
   applyVolume();      // paint the fill at whatever volume we start on
+
+  // One small data message to the booth at setup: this page's mic outcome
+  // and connection state — the two facts the worker's no-audio postmortem
+  // can never see from its side. Caller-authored, so the worker treats it
+  // as untrusted and clamps it; best-effort here, the shrug still works.
+  function sendSetupNote(mic) {
+    if (!room) return;
+    try {
+      room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify(
+          { mic: mic, conn: (room.state || '') + '' })),
+        { reliable: true, topic: 'talkwave.setup-note' });
+    } catch (e) { /* the postmortem falls back to naming candidates */ }
+  }
 
   // Bumped on every startCall AND every endCall, so an async step that
   // resumes after the caller hung up can tell it is stale. The token mint is
@@ -3332,6 +3499,9 @@
         // refuses is not a reason to interrupt a call that is otherwise up.
         routeAudio(onSpeaker);
         anDj = analyserFor(track.mediaStreamTrack);
+        // The DJ may arrive after the pickup beats have run; restart them so
+        // a voice just wired into a stranded graph is caught too.
+        scheduleRecoveryChecks();
         setStatus('Connected — go ahead, talk', 'connected');
       });
       room.on(LivekitClient.RoomEvent.Disconnected, () => endCall(true));
@@ -3386,6 +3556,15 @@
       const mic = room.localParticipant.getTrackPublication(
         LivekitClient.Track.Source.Microphone);
       anYou = analyserFor(mic?.track?.mediaStreamTrack);
+      // The mic engaging is the moment a Bluetooth handset drops the link
+      // from the media profile to hands-free — the beats below catch the
+      // graph if that flip strands it. See the route-change recovery ladder.
+      scheduleRecoveryChecks();
+      // Tell the booth what this side of the line looks like: the no-audio
+      // postmortem could never tell a blocked mic from a dead media path
+      // from a silent caller, because the distinction only exists HERE.
+      // One small message; the worker records it against the call.
+      sendSetupNote('granted');
 
       // Button stays on Ringing/Answering; setAgentState flips it to the
       // green On the line at the DJ's first word.
@@ -3401,9 +3580,13 @@
       // mic, typically). Without this the room stays joined and the agent
       // sits in an empty call.
       tuneOut();
-      if (room) { try { await room.disconnect(); } catch (e) {} }
       const denied = err && (err.name === 'NotAllowedError'
         || /permission|not allowed|denied/i.test(err.message || ''));
+      // Before the room goes: tell the booth WHY, so the record can name a
+      // blocked mic instead of shrugging at three candidates. Best-effort —
+      // a room that never joined has nowhere to send it.
+      if (denied) sendSetupNote('denied:' + ((err && err.name) || 'mic'));
+      if (room) { try { await room.disconnect(); } catch (e) {} }
       // Three failures wore the same "Could not connect" label, and the most
       // common one is the least obvious: the room is joined and signalling is
       // fine, but audio has no route — so it rings for ~15s and then dies.
@@ -3566,6 +3749,7 @@
     room = null; muted = false;
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     dropEffect();
+    clearRecoveryChecks();
     anYou = anDj = null; djEl = null; djTrack = null;
     djOnAir = false; djHasSpoken = false;
     // Reset the on-air hold state too, or a call that hung up while its hold
@@ -4749,6 +4933,34 @@
   }
 
   let playerStopped = false;
+  // A live stream resumed from the PHONE's own pause — audio focus lost to
+  // another app, the lock screen, a notification — carries on from its
+  // buffer: seconds to minutes behind the broadcast. The caller then hears
+  // one record while the card names another, because the card follows the
+  // station's live edge (the operator heard Placebo under a card that said
+  // Such Great Heights, 2026-08-31). Our own buttons already rebuild fresh;
+  // this covers the resumes that never pass through them. Reloading the SAME
+  // element keeps its play-activation (the parking lesson) and reconnects at
+  // the live edge. The threshold is generous: our own duck/park pauses ride
+  // through here too, and coming back at the live edge is right for those as
+  // well — it is a broadcast, not a podcast.
+  let plPausedAt = 0;
+  function watchLiveDrift(el) {
+    if (el.dataset.driftWatched) return;
+    el.dataset.driftWatched = '1';
+    el.addEventListener('pause', () => { plPausedAt = Date.now(); });
+    el.addEventListener('playing', () => {
+      const gap = plPausedAt ? (Date.now() - plPausedAt) / 1000 : 0;
+      plPausedAt = 0;
+      if (gap > 5 && playerEl === el && !playerStopped) {
+        try {
+          const url = el.currentSrc || el.src;
+          if (url) { el.src = url; el.load(); el.play().catch(() => {}); }
+        } catch (e) { /* stale audio beats no audio */ }
+      }
+    });
+  }
+
   function startPlayerAudio() {
     if (playerEl) return;
     const s = ((shown || live || {}).stream) || {};
@@ -4767,6 +4979,7 @@
           return;
         }
         playerEl = el;
+        if (el) watchLiveDrift(el);
       },
       level: playerLevel,
       onPlaying: () => { playerDead = false; paintPlayerButtons(); feedMediaSession(); },
@@ -4997,6 +5210,20 @@
     // rule as the header's — only a number the station actually gave.
     paintListeners('plListeners', 'plListenersN', d);
     const img = $('plArt'), mono = $('plMono'), glow = $('plGlow');
+    const ambient = $('plAmbient');
+    // The two blurs travel together: the halo behind the sleeve and the
+    // wash across the whole sheet are the same picture at two scales.
+    const setBlurs = (src) => {
+      for (const layer of [glow, ambient]) {
+        if (!layer) continue;
+        if (src) {
+          if (layer.getAttribute('src') !== src) layer.src = src;
+          layer.hidden = false;
+        } else {
+          layer.hidden = true;
+        }
+      }
+    };
     if (img && mono) {
       // The record's own art, else the DJ's photo, else initials — each
       // step taken only when the one before actually failed to load. The
@@ -5005,23 +5232,22 @@
       if (art) {
         // Only on change — re-setting src on every poll re-fetches it.
         if (img.getAttribute('src') !== art) { img.src = art; }
-        if (glow && glow.getAttribute('src') !== art) glow.src = art;
+        setBlurs(art);
         img.hidden = false; mono.hidden = true;
-        if (glow) glow.hidden = false;
         img.onerror = () => {
           if (np.art && img.getAttribute('src') === np.art && d.avatar) {
             img.src = d.avatar;
-            if (glow) glow.src = d.avatar;
+            setBlurs(d.avatar);
             return;
           }
           img.hidden = true;
-          if (glow) glow.hidden = true;
+          setBlurs('');
           mono.textContent = monogram(np.artist || d.name);
           mono.hidden = false;
         };
       } else {
         img.hidden = true;
-        if (glow) glow.hidden = true;
+        setBlurs('');
         mono.textContent = monogram(d.name); mono.hidden = false;
       }
     }
@@ -5055,9 +5281,6 @@
     const list = d.upNext || [];
     const nextBody = $('plNextBody');
     if (nextBody) {
-      $('plNextMeta').textContent = list.length
-        ? list.length + ' queued' : 'queue empty';
-      $('plNextPip').classList.toggle('live', !!list.length);
       nextBody.innerHTML = '';
       if (list.length) {
         list.forEach((nx) => {
@@ -5076,6 +5299,26 @@
         nextBody.textContent = 'Nothing queued — send a request below.';
       }
     }
+    // JUST PLAYED: the queue's short memory, newest first — the answer to
+    // "what was that song?". It shares the queue card, behind its own tab;
+    // the tab only offers itself while there is history to stand behind it.
+    const past = d.justPlayed || [];
+    const pastBody = $('plPastBody');
+    if (pastBody) {
+      pastBody.innerHTML = '';
+      past.forEach((px) => {
+        const t = document.createElement('div');
+        t.className = 'pltit'; t.textContent = px.title;
+        pastBody.appendChild(t);
+        if (px.artist) {
+          const s = document.createElement('div');
+          s.className = 'plsub'; s.textContent = px.artist;
+          pastBody.appendChild(s);
+        }
+      });
+    }
+    plQueueCounts = { next: list.length, past: past.length };
+    paintQueueTabs();
     // IN THE BOOTH: what the DJ is SAYING — the newest turn of the live
     // session, straight from the station's own booth feed (the operator's
     // correction: the panel restated the identity header, which is already
@@ -5112,18 +5355,49 @@
     paintSegBtn();
   }
 
-  // The header's right side: the local clock, and the station's weather when
-  // it sent one — the same readout its own player wears.
+  // The header's right side: the local clock alone. It carried the station's
+  // weather too until 2026-08-31 — the operator's call: that corner's room
+  // belongs to the cast button now, and a listener already knows the sky.
   function paintHeadMeta() {
     const el = $('plHeadMeta');
     if (!el) return;
     const t = new Date();
     const hr = t.getHours() % 12 || 12;
-    const clock = hr + ':' + String(t.getMinutes()).padStart(2, '0')
+    el.textContent = hr + ':' + String(t.getMinutes()).padStart(2, '0')
       + (t.getHours() < 12 ? ' am' : ' pm');
-    const wx = ((shown || live || {}).weather) || '';
-    el.textContent = clock + (wx ? ' · ' + wx : '');
   }
+
+  // --- casting the stream ---------------------------------------------------
+  // "Play this on my speakers" from the sheet itself. Two platform doors,
+  // tried in the order of their reach: the Remote Playback API (Chromium —
+  // Cast devices) and Safari's AirPlay picker. Neither exists = no button,
+  // rather than a control that does nothing. The button waits for a playing
+  // element because both APIs cast an ELEMENT, and it must be pressed inside
+  // the user's own gesture.
+  function castSupported() {
+    return !!(window.HTMLMediaElement
+      && ('remote' in HTMLMediaElement.prototype
+          || 'webkitShowPlaybackTargetPicker' in HTMLMediaElement.prototype));
+  }
+
+  function paintCastBtn() {
+    const b = $('plCastBtn');
+    if (b) b.hidden = !(castSupported() && playerEl);
+  }
+
+  $('plCastBtn').onclick = async () => {
+    const el = playerEl;
+    if (!el) return;
+    try {
+      if (typeof el.webkitShowPlaybackTargetPicker === 'function') {
+        el.webkitShowPlaybackTargetPicker();
+      } else if (el.remote && el.remote.prompt) {
+        await el.remote.prompt();
+      }
+    } catch (e) {
+      // The picker closing unchosen rejects; that is a choice, not a fault.
+    }
+  };
 
   // --- the segment button on the player's ribbon ---------------------------
   // Shown only when /live says THIS caller may trigger one: a guest or the
@@ -5189,11 +5463,49 @@
     };
   }
 
+  // ------------------------------------------- the queue card's two tabs
+  // Up next and Just played share one card (the operator's third ruling on
+  // this pair: side by side was cramped, stacked spent room the sheet
+  // hasn't got). 'next' is the resting face; the past tab only offers
+  // itself while there is history, and loses the floor if its history
+  // empties under it.
+  let plTab = 'next';
+  let plQueueCounts = { next: 0, past: 0 };
+
+  function paintQueueTabs() {
+    const tn = $('plTabNext'), tp = $('plTabPast');
+    const bn = $('plNextBody'), bp = $('plPastBody');
+    if (!tn || !tp || !bn || !bp) return;
+    tp.hidden = !plQueueCounts.past;
+    if (tp.hidden && plTab === 'past') plTab = 'next';
+    const onNext = plTab === 'next';
+    tn.classList.toggle('on', onNext);
+    tp.classList.toggle('on', !onNext);
+    tn.setAttribute('aria-selected', onNext ? 'true' : 'false');
+    tp.setAttribute('aria-selected', onNext ? 'false' : 'true');
+    bn.hidden = !onNext;
+    bp.hidden = onNext;
+    // The meta and the pip speak for the tab that has the floor: a lit pip
+    // over the play log would say "live" about the past.
+    $('plNextMeta').textContent = onNext
+      ? (plQueueCounts.next ? plQueueCounts.next + ' queued' : 'queue empty')
+      : 'newest first';
+    $('plNextPip').classList.toggle('live', onNext && !!plQueueCounts.next);
+  }
+
+  $('plTabNext').onclick = () => { plTab = 'next'; paintQueueTabs(); };
+  $('plTabPast').onclick = () => { plTab = 'past'; paintQueueTabs(); };
+
   function paintPlayerButtons() {
-    const btn = $('plPlayBtn');
-    if (btn) btn.textContent = playerEl ? 'Pause' : (playerDead ? 'Try again' : 'Play');
+    // The word only — the glyphs beside it are CSS-switched off the sheet's
+    // playing class, so writing the button's textContent would erase them.
+    const wordEl = $('plPlayWord');
+    if (wordEl) {
+      wordEl.textContent = playerEl ? 'Pause' : (playerDead ? 'Try again' : 'Play');
+    }
     const pv = $('playerView');
     if (pv) pv.classList.toggle('playing', !!playerEl);
+    paintCastBtn();
     paintListenChip();
   }
 
@@ -5430,6 +5742,14 @@
     b.classList.toggle('liked', plLiked);
     b.setAttribute('aria-pressed', plLiked ? 'true' : 'false');
     b.title = count ? count + ' likes' : 'Like this track';
+    // The count in the open, beside the heart — the title above needs a
+    // hover, and this sheet's home surface has no cursor. Zero paints
+    // nothing: an explicit 0 would read as a scoreboard nobody is on.
+    const n = $('plLikeCount');
+    if (n) {
+      n.hidden = !count;
+      n.textContent = count || '';
+    }
   }
   $('plHeartBtn').onclick = async () => {
     if (plLiked) return;
@@ -5482,6 +5802,22 @@
   // on the same fader, kept in step by applyVolume.
   $('plVol').oninput = (e) => {
     volTouched = true; setVolume(+e.target.value); applyVolume();
+  };
+
+  // The mute holds the PLAYER silent without moving the shared fader — a
+  // caller who mutes to answer the door gets their level back on unmute,
+  // and the card's own volume (the call, the sounds) never notices. Local
+  // to this element on purpose: it is not a third handle on the fader.
+  // (plMuted itself lives with the player state up top — applyVolume reads
+  // it at first paint.)
+  $('plMuteBtn').onclick = () => {
+    plMuted = !plMuted;
+    const b = $('plMuteBtn');
+    b.classList.toggle('muted', plMuted);
+    b.setAttribute('aria-pressed', plMuted ? 'true' : 'false');
+    b.setAttribute('aria-label', plMuted ? 'Unmute the player'
+                                         : 'Mute the player');
+    applyVolume();
   };
 
   $('listenChip').onclick = () => {

@@ -415,8 +415,15 @@ class StationClient:
 
     # djLog kinds that mean the on-air DJ is actually making sound. Everything
     # else in that log (picker, queued, scheduler, mix…) is bookkeeping.
+    # Checked against the station's own queue/kinds.ts VOICE_KINDS on the
+    # 2026-08-31 upstream pass: the station logs "hourly-check" (never
+    # "hourly", which no release has emitted), and "banter" and "handoff"
+    # are speech this guard could not see — a banter exchange or a mic-pass
+    # sign-off just before pickup slipped past the same-persona overlap
+    # check. "hourly" stays for any older station that did say it.
     ON_AIR_SPEECH_KINDS = {
-        "link", "dj-speak", "station-id", "sfx", "hourly", "segment", "skill",
+        "link", "dj-speak", "station-id", "sfx", "hourly", "hourly-check",
+        "banter", "handoff", "segment", "skill",
     }
 
     async def on_air_speech(self, state: dict | None = None) -> tuple[float, str] | None:

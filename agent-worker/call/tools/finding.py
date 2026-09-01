@@ -52,6 +52,11 @@ log = logging.getLogger("callin.tools.finding")
 #: and what the receipt reports, so they are the DJ's vocabulary, not ours.
 ROUTES: dict[str, str] = {
     "name": "subwave_search_library",
+    # The recall route (2026-08-31): "did you cancel my queue?" was answered
+    # from per-call memory — a global evasion — because the dispatcher had
+    # no way to reach the booth's cross-call ledger, and the prose row
+    # vanished with the table when single_lookup_tool went on.
+    "booth": "subwave_booth_log",
     "sound": "subwave_search_by_sound",
     "neighbours": "subwave_more_like_this",
     "browse": "subwave_browse_library",
@@ -66,7 +71,7 @@ ROUTES: dict[str, str] = {
 ROUTE_FIELDS = frozenset((
     "named_track", "artist", "mood", "genre", "energy", "vocal",
     "year_from", "year_to", "sounds_like", "like_whats_on", "like_track_id",
-    "already_played", "let_you_pick"))
+    "already_played", "earlier_call", "let_you_pick"))
 
 #: What the receipt says a route means, in words the DJ can reuse out loud.
 SHELF: dict[str, str] = {
@@ -76,6 +81,7 @@ SHELF: dict[str, str] = {
     "browse": "the shelf for that mood, genre or era",
     "favourites": "what listeners round here have loved",
     "history": "the station's play log",
+    "booth": "the booth's own log of what earlier calls did",
 }
 
 
@@ -83,7 +89,8 @@ def route_for(*, named_track: str = "", artist: str = "", mood: str = "",
               genre: str = "", energy: str = "", vocal: str = "",
               year_from: int = 0, year_to: int = 0, sounds_like: str = "",
               like_whats_on: bool = False, like_track_id: str = "",
-              already_played: bool = False, let_you_pick: bool = False) -> str:
+              already_played: bool = False, earlier_call: bool = False,
+              let_you_pick: bool = False) -> str:
     """Which shelf these words belong to, or "" when nothing fits.
 
     `finding_rule`'s table, in the order it states it. Kept as a free function
@@ -94,6 +101,10 @@ def route_for(*, named_track: str = "", artist: str = "", mood: str = "",
     ("something upbeat — got any Kygo?") is naming a record: the name search is
     the specific answer and the mood is colour around it.
     """
+    if earlier_call:
+        # Before history on purpose: "where's the song I asked for?" is about
+        # what this LINE did, and the play log cannot answer it.
+        return "booth"
     if already_played:
         return "history"
     if like_track_id or like_whats_on:
@@ -166,6 +177,7 @@ def build_finder_tools(cfg: dict, built: list, actions=None) -> list:
                          vocal: str = "", year_from: int = 0, year_to: int = 0,
                          sounds_like: str = "", like_whats_on: bool = False,
                          like_track_id: str = "", already_played: bool = False,
+                         earlier_call: bool = False,
                          let_you_pick: bool = False, page: int = 1,
                          prefer: str = "") -> str:
         """Find music. Tell it WHAT THE CALLER SAID and it picks how to look.
@@ -182,6 +194,9 @@ def build_finder_tools(cfg: dict, built: list, actions=None) -> list:
         - like_whats_on: they want more of what is playing. like_track_id: more
           like one specific record you already have the id for.
         - already_played: did this air earlier, what was that one before.
+        - earlier_call: they ask what an EARLIER CALL on this line did —
+          "did you cancel my queue?", "where's the song I asked for?". Your
+          own memory starts at pickup; this reads the booth's ledger.
         - let_you_pick: they left the choice to you. "play me something good".
         - page: the next page of a name search you already ran.
 
@@ -197,7 +212,8 @@ def build_finder_tools(cfg: dict, built: list, actions=None) -> list:
             "sounds_like": sounds_like.strip(),
             "like_whats_on": like_whats_on,
             "like_track_id": like_track_id.strip(),
-            "already_played": already_played, "let_you_pick": let_you_pick,
+            "already_played": already_played, "earlier_call": earlier_call,
+            "let_you_pick": let_you_pick,
             "page": page,
         }
 

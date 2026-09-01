@@ -70,10 +70,13 @@ def listeners_ok(cfg: dict, now_playing: dict) -> tuple[bool, int | None]:
         return True, None
     count = _listener_count(now_playing or {})
     if count is None:
-        # The station did not say. Treat silence as "not proven empty": a
-        # station that never reports listeners would otherwise switch the
-        # whole feature off with nothing on screen to explain why.
-        return True, None
+        # The station did not say — and silence used to count as "not proven
+        # empty", which meant a cold station that had not reported a count
+        # yet ALWAYS opened a line to nobody the moment it loaded (operator,
+        # 2026-08-31). A floor above zero now means what it says: no count,
+        # no open. A station that genuinely never reports listeners sets the
+        # floor to 0 — the help text names that trade.
+        return False, None
     return count >= floor, count
 
 
@@ -171,8 +174,11 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
             ok, count = listeners_ok(cfg, now_playing)
             if not ok:
                 floor = cfg.get("open_lines_min_listeners")
-                return {"ok": False,
-                        "why": f"Only {count} listening — the floor is {floor}."}
+                why = (f"Only {count} listening — the floor is {floor}."
+                       if count is not None else
+                       "The station hasn't reported a listener count yet — "
+                       f"the floor is {floor}, so nothing opens blind.")
+                return {"ok": False, "why": why}
 
         source = str(source or cfg.get("open_lines_source") or "dj")
         picked = {}
@@ -209,6 +215,19 @@ async def open_now(reason: str = "operator", cfg: dict | None = None,
                 return {"ok": False,
                         "why": f"Nothing on the shelf for {who} — add a "
                                "subject, or let the DJ make one up."}
+        elif source == "directions":
+            # The operator's random mode: one targeted angle off the
+            # catalogue per open, the DJ still writing the subject in
+            # persona — a skill-shaped brief rather than an open one.
+            from openlines import directions as directions_mod
+
+            chosen = directions_mod.pick(cfg)
+            text = await premise_mod.invent(cfg, station, persona,
+                                            direction=chosen)
+            if not text:
+                return {"ok": False,
+                        "why": "The DJ could not come up with one — check the "
+                               "model is reachable."}
         else:
             text = await premise_mod.invent(cfg, station, persona)
             if not text:

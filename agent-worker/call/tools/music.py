@@ -184,6 +184,13 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
     # Without admin credentials this wrapper can only ever return nothing, so
     # the raw MCP tool takes its place (see library_search_needs_mcp).
     if cfg.get("allow_library_search") and not library_search_needs_mcp():
+        # Per-call receipt cache: a weak model re-issues the SAME search in
+        # one exchange (twice each for three titles in record ...174603). A
+        # repeat of an identical (q, page) answers from the receipt, told so.
+        # Per call by construction — the tool list is rebuilt per call — and
+        # only real results cache: a timeout must stay retryable.
+        _search_receipts: dict = {}
+
         @lk_llm.function_tool(name="subwave_search_library")
         async def search_library(q: str, page: int = 1) -> str:
             """Look up a track BY NAME. This is a literal word match against
@@ -195,6 +202,12 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             when the caller has named a track or an artist. Results come a
             page at a time; if the caller says none of these are the one,
             call again with the next page number."""
+            cache_key = (str(q or "").strip().casefold(),
+                         max(1, int(page or 1)))
+            if cache_key in _search_receipts:
+                return ("[you already ran this exact search this call — same "
+                        "answer; read it properly this time]\n"
+                        + _search_receipts[cache_key])
             # Backstop for the prompt rule above: a mood word searched by name
             # returns titles containing that word, which reads to the caller
             # like the DJ is flipping through an index. Refuse and redirect
@@ -279,7 +292,9 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                                 "(\"something by them\", \"whichever\"), "
                                 "choose ONE and queue it — don't read the "
                                 "versions back as a question.")
-                    return head + ":\n" + joined + more + tail
+                    answer = head + ":\n" + joined + more + tail
+                    _search_receipts[cache_key] = answer
+                    return answer
             if page > 1:
                 # An empty deeper page means the results ran out, not that the
                 # phrasing needs loosening — don't send the DJ to the request

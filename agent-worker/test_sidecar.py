@@ -146,6 +146,8 @@ from tests.test_caller_tiers import (  # noqa: F401
     TestUpgradingKeepsTheStationExactlyAsItWas,
 )
 from tests.test_call_record import (  # noqa: F401
+    TestAFabricatedQueueIdIsWrittenDown,
+    TestAFailedToolCallIsWrittenDown,
     TestASearchNobodyHeardTheAnswerToIsWrittenDown,
     TestASwallowedRequestIsWrittenDown,
     TestAnAskThatWentNowhereIsWrittenDown,
@@ -166,6 +168,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheGreetingRacesItsOwnSilence,
     TestAFinishedCallStaysFinished,
     TestAnOpenAskComesBackWithoutReasking,
+    TestTheWindDownIsAMomentNotAParagraph,
     TestOneStateObjectFeedsTheReplyPath,
     TestTheLabelJudgesWhatTheLexiconsCannot,
     TestTheHushMarkerHasAnOwnerEvenWhenStartRaised,
@@ -331,7 +334,9 @@ from tests.test_chat import (  # noqa: F401
     TestTheReplyArrivesAtTheOperatorsPace,
 )
 from tests.test_conduct import (  # noqa: F401
+    TestANamesakeIsNotTheSong,
     TestASpokenMixIsNotAMix,
+    TestTheBrainReviewTierOneRules,
     TestBulkQueueingIsActedOnNotSoldOn,
     TestTheStationsLanguageIsNotTheDJsLanguage,
     TestTheDJSpeaksAsItselfNotAboutItself,
@@ -534,6 +539,7 @@ from tests.test_heard import (  # noqa: F401
 from tests.test_open_lines import (  # noqa: F401
     TestAPremiseSpeaksWithoutItsMarkup,
     TestOpenLinesIsAdditive,
+    TestTheDirectionsDeck,
     TestWhatTheDJIsToldAboutTheTopic,
     TestTheDJAllowlistActuallyMatches,
     TestAQuizTheDJCanActuallyMark,

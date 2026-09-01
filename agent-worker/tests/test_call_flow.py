@@ -311,6 +311,32 @@ class TestSilentCallIsRecorded(unittest.TestCase):
         postmortem._note_if_nothing_was_heard(s, 90.0, [("caller", "hello"), ("dj", "hi")])
         self.assertEqual(s.record.data["problems"], [])
 
+    def test_the_pages_own_report_names_the_cause(self):
+        # The call page posts its mic outcome and connection state at setup
+        # (attach_caller_note) — the two facts the three-way shrug could
+        # never see from the booth. With them present the guard NAMES the
+        # cause; the shrug survives for a page that never sent one (the 24%
+        # of archived records that carried it, brain review 2026-08-31).
+        from call import postmortem
+
+        cases = [
+            ("denied:NotAllowedError", "connected", "BLOCKED"),
+            ("granted", "connected", "genuinely said nothing"),
+            ("granted", "reconnecting", "media path"),
+        ]
+        for mic, conn, expect in cases:
+            with self.subTest(mic=mic, conn=conn):
+                s = self._session(heard=0)
+                s.record.setup_note("callerMic", mic)
+                s.record.setup_note("callerConn", conn)
+                postmortem._note_if_nothing_was_heard(
+                    s, 15.0, [("dj", "Evening.")])
+                problems = s.record.data["problems"]
+                self.assertEqual(len(problems), 1)
+                self.assertIn(expect, problems[0]["what"])
+                self.assertNotIn("Three things look like this",
+                                 problems[0]["what"])
+
     def test_a_repeat_and_a_contradiction_get_distinct_records(self):
         # The phone recorded neither; and a contradiction was landing under
         # the repeat-phrased line (top-down review, 2026-08-28). Now both the
@@ -3188,6 +3214,66 @@ class TestOneStateObjectFeedsTheReplyPath(unittest.TestCase):
         st = ConversationState()
         st.dj_said("anything at all")
         self.assertEqual([], st.hints_for("anything at all"))
+
+
+class TestTheWindDownIsAMomentNotAParagraph(unittest.TestCase):
+    """call/landed.py: CLOSING's job moved to the moment it governs — one
+    steer on the caller turn after a request lands, never over an open ask
+    or an ending call. Ships behind closing_nudge (default off); the closing
+    scenario set is what earns it a default. These pin the mechanics."""
+
+    class _Actions:
+        def __init__(self):
+            self.count = 0
+
+    def test_a_landing_arms_one_steer_on_the_next_quiet_turn(self):
+        from call.landed import Landed
+
+        acts = self._Actions()
+        g = Landed(acts)
+        self.assertEqual("", g.hint_for("hey, play Africa for me"))
+        acts.count = 1                      # the queue receipt came in
+        note = g.hint_for("nice, thanks")
+        self.assertIn("LANDED", note)
+        self.assertIn("anything else", note)   # the forbidden move, named
+        self.assertEqual(1, g.fired)
+        # Consumed: the next turn is not re-steered.
+        self.assertEqual("", g.hint_for("cool"))
+
+    def test_a_fresh_ask_eats_the_crest(self):
+        from call.landed import Landed
+
+        acts = self._Actions()
+        g = Landed(acts)
+        acts.count = 1
+        # "one more thing" is mid-call, not an ending — no steer, and the
+        # armed flag is spent rather than held two asks downstream.
+        self.assertEqual("", g.hint_for("great — and can you do one more "
+                                        "thing for me?"))
+        self.assertEqual("", g.hint_for("just checking"))
+        self.assertEqual(0, g.fired)
+
+    def test_the_wind_down_never_speaks_over_another_guard(self):
+        from call.landed import Landed
+        from call.state import ConversationState
+        from call.stuck import Stuck
+
+        acts = self._Actions()
+        st = ConversationState(stuck=Stuck(), actions=acts,
+                               landed=Landed(acts))
+        # Turn one plants the ask; nothing has landed yet.
+        self.assertEqual([], st.hints_for("where is my song"))
+        # A receipt lands, and the caller repeats themselves: the stuck
+        # guard steers this turn — a repeated ask is not a crest, and the
+        # wind-down must not speak over the guard answering it.
+        acts.count = 1
+        notes = st.hints_for("where is my song")
+        kinds = [k for k, _, _ in notes]
+        self.assertIn("stuck", kinds)
+        self.assertNotIn("landed", kinds)
+
+    def test_the_switch_defaults_off(self):
+        self.assertIs(False, settings_store.FIELDS["closing_nudge"][1])
 
 
 class TestAnOpenAskComesBackWithoutReasking(unittest.TestCase):

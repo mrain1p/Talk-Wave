@@ -507,6 +507,24 @@ class TestTheStationLogSaysWhatWasSaid(unittest.TestCase):
             [{"kind": "scheduler", "message": "bookkeeping",
               "t": "2026-01-01T00:00:00Z"}]))
 
+    def test_every_station_voice_kind_reads_as_speech(self):
+        # Checked against the station's own queue/kinds.ts VOICE_KINDS on the
+        # 2026-08-31 upstream pass: the guard listed "hourly", which no
+        # release has ever logged (the station says "hourly-check"), and
+        # missed "banter" and "handoff" entirely — so a banter exchange or a
+        # mic-pass sign-off just before pickup slipped past the same-persona
+        # overlap check.
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        for kind in ("dj-speak", "link", "station-id", "hourly-check",
+                     "banter", "handoff"):
+            with self.subTest(kind=kind):
+                got = self._speech([{"kind": kind, "message": "words on air",
+                                     "t": now}])
+                self.assertIsNotNone(got)
+                self.assertEqual(got[1], "words on air")
+
 
 class TestTheHoldMatchesHowLongTheStationWillTalk(unittest.TestCase):
     """A fixed hold was the wrong shape. An announcement is a sentence and a

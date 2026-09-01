@@ -184,6 +184,11 @@ async def _run_turn(ws: web.WebSocketResponse, chat, make_coro, cfg: dict) -> No
 # review). This bounds the pre-auth window; a real client sends hello at once.
 _PREAUTH_SECS = 20.0
 
+#: The ceiling on idle nudges in ONE chat. The old shape was once per
+#: silence, re-armed by every caller message — a long exchange filled with
+#: scenery that read as the DJ double-texting (brain review, 2026-08-31).
+_NUDGE_MAX_PER_CHAT = 2
+
 
 async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
     # A WebSocket handshake is not subject to CORS, so without this the chat
@@ -199,7 +204,7 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
     SHELF.sweep(cfg)
 
     chat = None
-    nudged = False
+    nudges_sent = 0
     caller_spoke = False
     try:
         while True:
@@ -208,18 +213,23 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
             # conversation to keep it open.
             preauth = _PREAUTH_SECS if chat is None else 0
             # When the ball is in the CALLER's court, wait only so long before
-            # the DJ nudges once — a text line that sits silent after its own
-            # last message feels dead and turn-based (operator's ask). On by
-            # default; the switch and interval are settings. Never repeated
-            # (reset when they type), never while a turn is mid-flight (so it
-            # can't fire while the DJ is the one still owing a reply), and NOT
-            # until the caller has actually said something — nudging 15s after
-            # the opening greeting, before they've typed a word, reads as pushy
-            # rather than warm, which is the opposite of the point.
+            # the DJ nudges — a text line that sits silent after its own last
+            # message feels dead and turn-based (operator's ask). On by
+            # default; the switch and interval are settings. Capped PER CHAT,
+            # not per silence: the old once-per-silence reset re-armed on
+            # every caller message, and a long exchange filled with scenery
+            # that read as the DJ double-texting (brain review, 2026-08-31).
+            # Never while a turn is mid-flight, never while the DJ itself
+            # OWES an action (a promise no tool backed — the ball is not in
+            # the caller's court, and cheery scenery typed over an unmet
+            # promise is the worst look this line has), and not until the
+            # caller has actually said something.
             reprompt = (
                 float(cfg.get("chat_reprompt_secs") or 0)
                 if cfg.get("chat_reprompt", True) and chat is not None
-                and caller_spoke and not nudged and not chat.lock.locked()
+                and caller_spoke and nudges_sent < _NUDGE_MAX_PER_CHAT
+                and not chat.lock.locked()
+                and not getattr(chat, "owes_action", False)
                 else 0
             )
             # The pre-auth leash wins when there's no chat yet; otherwise the
@@ -231,7 +241,7 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
             except asyncio.TimeoutError:
                 if chat is None:
                     break               # never authenticated — drop the socket
-                nudged = True
+                nudges_sent += 1
                 if not chat.lock.locked():
                     await _run_turn(ws, chat, lambda put: chat.nudge(cfg, put), cfg)
                 continue
@@ -306,10 +316,9 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
                 text = str(body.get("text") or "").strip()[:2000]
                 if not text:
                     continue
-                # They typed — the ball is back with the DJ, so the next silence
-                # earns a fresh nudge, and from here on a nudge is allowed at all
-                # (it never fires before the caller's first message).
-                nudged = False
+                # They typed — from here on a nudge is allowed at all (it
+                # never fires before the caller's first message). The count
+                # deliberately does NOT reset: the cap is per chat.
                 caller_spoke = True
                 # The flood brake, per chat (on chat.msg_times, so it survives
                 # a reconnect): a human types a handful of messages a minute;

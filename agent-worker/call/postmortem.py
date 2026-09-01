@@ -35,6 +35,8 @@ def write_notes(call, duration: float, final: list) -> None:
     _note_if_two_turns_wanted_the_floor(call)
     _note_if_an_ask_went_unanswered(call)
     _note_if_a_lookup_was_never_read_out(call)
+    _note_if_queued_ids_came_from_nowhere(call)
+    _note_if_a_tool_call_failed(call)
     _note_if_nothing_was_heard(call, duration, final)
     _note_if_the_model_kept_the_caller_waiting(call)
     _note_if_the_voice_fell_behind(call)
@@ -51,6 +53,8 @@ def write_shared_notes(call) -> None:
     _note_if_the_caller_repeated_or_corrected(call)
     _note_if_an_ask_went_unanswered(call)
     _note_if_a_lookup_was_never_read_out(call)
+    _note_if_queued_ids_came_from_nowhere(call)
+    _note_if_a_tool_call_failed(call)
 
 
 def _note_if_the_caller_repeated_or_corrected(call) -> None:
@@ -215,6 +219,97 @@ def _note_if_a_lookup_was_never_read_out(call) -> None:
     )
 
 
+def _note_if_a_tool_call_failed(call) -> None:
+    """Say so when a tool call errored — including a tool that doesn't exist.
+
+    The record has stored a failed flag on tool rows since they existed, and
+    nothing anywhere read it: a call where the model INVENTED a tool name
+    (subwave_station_state on a line that never registered it, answered "no
+    such tool") carried seven problems and not one of them mentioned it
+    (record 20260827-174809, brain review 2026-08-31). An invented tool name
+    is model-routing evidence the orchestration stream needs counted, and an
+    errored real tool is a thing the operator should see without reading
+    every row.
+
+    A REFUSAL is not a failure: the station saying no is the system working,
+    and the refusal-conduct rules own that path. Only rows the tool layer
+    itself marked failed land here.
+    """
+    if not call.record:
+        return
+    data = getattr(call.record, "data", {}) or {}
+    rows = [t for t in data.get("tools") or [] if t.get("failed")]
+    if not rows:
+        return
+    phantom = [t for t in rows if "no such tool" in str(t.get("result") or "")]
+    errored = [t for t in rows if t not in phantom]
+    if phantom:
+        names = sorted({str(t.get("name") or "?") for t in phantom})
+        call.record.problem(
+            f"The model called a tool that does not exist ({', '.join(names)})"
+            " — a routing failure, the same cloth as promising with no tool "
+            "behind it: the DJ reached for a capability this line never had.")
+    if errored:
+        heads = "; ".join(
+            f"{t.get('name') or '?'}: {str(t.get('result') or '')[:80]}"
+            for t in errored[:3])
+        call.record.problem(
+            f"{len(errored)} tool call(s) errored and the record's flag was "
+            f"the only witness — {heads}")
+
+
+def _note_if_queued_ids_came_from_nowhere(call) -> None:
+    """Say so when a queued id appears in no earlier tool result.
+
+    Verified live (record 20260827-174809, 17:48:43): the DJ passed invented
+    slug ids to subwave_queue_mix with NO search anywhere before them, the
+    picks parser fell back to the title text beside each id, the tool
+    reported success — and the model learned that fabricating ids WORKS.
+    Nothing watched for it; this does. An id is fabricated exactly when no
+    earlier tool result in the same call contains it, which is a mechanical
+    check the model cannot argue with.
+    """
+    import re
+
+    if not call.record:
+        return
+    data = getattr(call.record, "data", {}) or {}
+    tools = data.get("tools") or []
+    seen: str = ""
+    flagged: list[str] = []
+    for entry in tools:
+        name = str(entry.get("name") or "")
+        result = str(entry.get("result") or "")
+        if name in ("subwave_queue_mix", "subwave_queue_track") \
+                and not entry.get("failed"):
+            ids: list[str] = []
+            if name == "subwave_queue_track":
+                m = re.search(r"id='([^']{4,40})'", result)
+                if m:
+                    ids = [m.group(1)]
+            else:
+                # The record caps a row at 400 characters, so the picks arg
+                # can be cut mid-id: only trust the last line when the quote
+                # actually closed.
+                closed = re.search(r"picks='([^']*)'", result)
+                open_ = re.search(r"picks='([^']*)", result)
+                if open_:
+                    lines = open_.group(1).split("\n")
+                    if not closed:
+                        lines = lines[:-1]
+                    ids = [ln.strip().split(" ", 1)[0]
+                           for ln in lines if ln.strip()]
+            flagged.extend(i for i in ids if i and i not in seen)
+        seen += result
+    if not flagged:
+        return
+    call.record.problem(
+        f"Track id(s) queued that appeared in NO earlier tool result of this "
+        f"call ({', '.join(flagged[:4])}) — the model made them up, and the "
+        "queue tool's title fallback rewarded it. Whatever queued matched the "
+        "TITLE TEXT beside the invented id, not a record anyone verified.")
+
+
 def _search_words(result: str) -> list[str]:
     """What the DJ would have to say for that search to count as reported.
 
@@ -257,14 +352,38 @@ def _note_if_nothing_was_heard(call, duration: float, final: list) -> None:
         "media path, blocked microphone, or a silent caller",
         call.ctx.room.name, duration, dj_spoke,
     )
+    # The call page reports its own side since 0.99.13+ (attach_caller_note):
+    # its mic permission and connection state are exactly the distinction the
+    # three-way shrug below could never make from in here. With the note
+    # present, name the cause; without it (an older cached widget, a page
+    # that died before sending), shrug honestly as before.
+    setup = (getattr(call.record, "data", {}) or {}).get("setup", {}) or {}
+    mic = str(setup.get("callerMic") or "")
+    conn = str(setup.get("callerConn") or "")
+    lead = (f"No audio was ever received from the caller ({duration:.0f}s on "
+            f"the line, the DJ {'did' if dj_spoke else 'did not'} speak). ")
+    if mic.startswith("denied"):
+        call.record.problem(
+            lead + "The page said so itself: the microphone was BLOCKED "
+            f"({mic}) — the caller never granted it, so nothing could arrive.")
+        return
+    if mic == "granted" and conn == "connected":
+        call.record.problem(
+            lead + "The page reported its mic granted and its connection up, "
+            "so the line was healthy — they genuinely said nothing.")
+        return
+    if mic or conn:
+        call.record.problem(
+            lead + f"The page reported mic={mic or '?'} conn={conn or '?'} — "
+            "a media path that never established is the likely read; see "
+            "off-LAN calling in the README.")
+        return
     call.record.problem(
-        f"No audio was ever received from the caller ({duration:.0f}s on the "
-        f"line, the DJ {'did' if dj_spoke else 'did not'} speak). Three "
-        "things look like this from the booth: the caller was off-LAN and "
-        "the media path never established, their microphone was blocked, "
-        "or they genuinely said nothing. If they reported \"Could not "
-        "connect\" after about fifteen seconds of ringing, it is the first "
-        "— see off-LAN calling in the README."
+        lead + "Three things look like this from the booth: the caller was "
+        "off-LAN and the media path never established, their microphone was "
+        "blocked, or they genuinely said nothing. If they reported \"Could "
+        "not connect\" after about fifteen seconds of ringing, it is the "
+        "first — see off-LAN calling in the README."
     )
 
 def _note_if_the_voice_fell_behind(call) -> None:

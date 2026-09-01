@@ -622,7 +622,9 @@ SCHEMA: dict[str, dict] = {
         label="…after", unit="sec",
         needs=("chat_reprompt", True),
         help="How long a caller may be quiet, the ball in their court, before "
-             "that one nudge. 15 is a natural pause; too short reads as pushy."),
+             "a nudge. 75 by default — under a phone typist's pace reads as "
+             "pushy. At most two nudges per chat, and never while the DJ "
+             "itself owes an action."),
     "show_theme_toggle": dict(group="topcorner", kind="check",
         label="Light / dark toggle",
         help="Forcing a theme below hides this either way — there is nothing "
@@ -930,7 +932,8 @@ SCHEMA: dict[str, dict] = {
         placeholder="default: derived from the station address (plain http only)",
         help="Behind TLS a browser silently refuses to load an http stream into an "
              "https page, and the call runs with no station behind it. Paste the "
-             "station's own https stream. The pipeline check tests it."),
+             "station's own https stream (Admin → Connect → Stream URLs "
+             "on stations 1.11+). The pipeline check tests it."),
     "tune_in_volume": dict(group="tunein", kind="number", label="Volume", unit="%", alias="loudness",
         needs=("tune_in_on_call", True),
         help="10 by default. 0 keeps it silent and the caller still counts as a "
@@ -1066,10 +1069,19 @@ SCHEMA: dict[str, dict] = {
     "open_lines_source": dict(group="openlines", kind="select",
         label="Where the topic comes from", alias="premise",
         needs=("open_lines_enabled", True),
-        help="The DJ invents one from the same material a station segment "
-             "uses — who is on air, the show, tonight's episode, what has "
-             "just played. Or it takes the next one off your shelf below — "
-             "the choice if you want to know the question in advance."),
+        help="The DJ invents one from tonight's show; a targeted direction "
+             "hands it a named angle at random (guilty pleasure, night "
+             "drive, cover verdict…) and it writes inside that — like a "
+             "station skill; or take the next one off your shelf below if "
+             "you want the question known in advance."),
+    "open_lines_directions": dict(group="openlines", kind="text",
+        label="Directions to draw from", alias="angles",
+        needs=("open_lines_source", ["directions"]),
+        placeholder="default: all of them",
+        help="Comma-separated names to narrow the deck: guilty pleasure, "
+             "first record, night drive, cover verdict, the skip, one lyric, "
+             "live moment, got them through, undiscovered, hometown sound, "
+             "dream duet, tonight's thread."),
     "open_lines_address": dict(group="openlines", kind="text",
         label="Call-in line", alias="url phone number address reach where",
         placeholder="leave blank to name no address",
@@ -1115,7 +1127,10 @@ SCHEMA: dict[str, dict] = {
         needs=("open_lines_enabled", True),
         help="Checked when a line opens and before each reminder, never in "
              "the middle — a topic that vanished because somebody closed a tab "
-             "would strand whoever was already typing. 0 = open regardless."),
+             "would strand whoever was already typing. No reported count "
+             "counts as nobody: a cold station no longer solicits an empty "
+             "room. 0 = open regardless (also the setting for a station that "
+             "never reports its listeners)."),
     # kind="picks": a text-valued field whose control is drawn, like "order"
     # and "emoji". It saves, loads and diffs as a text field (panel.js folds it
     # into TEXT_FIELDS); the ticks beside it write the comma-separated ids. Not
@@ -1299,9 +1314,10 @@ SCHEMA: dict[str, dict] = {
              "the broadcast, hang-up, and an engaged tone."),
     "sound_pack": dict(group="sounds", kind="select", label="Sound set",
         needs=("call_sounds", True),
-        help="Both are generated in the browser — neither needs a file. "
-             "'Exchange' is the telephone network; 'Handset' is a physical phone "
-             "in a room."),
+        help="All generated in the browser — no files needed. 'Exchange' is the "
+             "telephone network, 'Handset' a physical phone in a room, 'Arcade' "
+             "an 8-bit cabinet, 'Starship' a hailing console. Changing it plays "
+             "the new set's ring."),
     "sound_ring": dict(group="sounds", kind="text", label="Ring", alias="ringtone",
         needs=("call_sounds", True),
         placeholder="default: the sound set above",
@@ -1357,6 +1373,7 @@ RANDOM_PERSONA = "__random__"
 STATIC_CHOICES = {
     "open_lines_source": [
         ("dj", "The DJ decides — invents a topic from tonight's show"),
+        ("directions", "Targeted directions — a random named angle each time"),
         ("shelf", "Off the shelf — the topics you wrote below"),
         ("quiz", "A quiz — the DJ sets a question it can mark"),
     ],
@@ -1476,7 +1493,7 @@ STATIC_CHOICES = {
         ("rack", "Rack unit — brushed steel and vents"),
         ("console", "Console strip — one channel of the desk"),
         ("shortwave", "Shortwave — wood and a lit dial"),
-        ("tape", "Tape deck — the platter turns between calls"),
+        ("tape", "Turntable — the platter spins between calls"),
         ("terminal", "Terminal — green phosphor"),
         ("amber", "Amber CRT — the other phosphor"),
         ("datastream", "Datastream — phosphor, raining"),

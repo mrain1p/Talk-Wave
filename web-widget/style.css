@@ -145,7 +145,22 @@
     --skin-word-size: 15px;
     --skin-word-ink: var(--coral);
     --skin-word-anim: none;
+    /* Where the word sits when it is furniture rather than a screensaver — an
+       engraved plate under a jackfield, a prompt line in a corner. The bounce
+       animations write `left`/`top` and win over this while they run, so the
+       screensaver needs nothing. */
+    --skin-word-inset: 0 auto auto 0;
     --skin-art-anim: none;
+    /* How much of the box's FOOT the drawing leaves to the idle board's text
+       while the board is showing (the headline sits low — see the idleboard
+       spacers). 34% is right for a drawing that is an object; a skin whose art
+       is a full-box UNDERLAY — rain, a texture band — sets 0 and draws dim
+       enough to sit beneath the words. */
+    --skin-art-clear: 34%;
+    /* The distance skinfall travels, so one keyframe serves every skin: a
+       rain layer falls by its own tile period and the loop's snap lands on
+       identical pixels. */
+    --skin-fall: 44px;
 
     /* Legacy aliases — settings panel only. */
     --bg: var(--pine); --panel: var(--granite);
@@ -965,10 +980,18 @@
      info panels, then the docked action bar. -------------------------- */
   .plhead {
     flex: none; width: 100%; display: flex; align-items: center; gap: 8px;
-    padding: 14px 16px 12px; border-bottom: 1px solid var(--hairline);
+    /* The same 38px band as the card's eyebrow — the two headers used to be
+       different heights and the page-wipe between them jumped (operator's
+       phone, 2026-08-31). Height, not padding, so they cannot drift apart
+       again. */
+    height: 38px; padding: 0 16px; border-bottom: 1px solid var(--hairline);
     font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--coral);
   }
+  /* The header's own theme toggle — the sheet covers the card's corner, so
+     the cycle gets a second door here, wearing the same glyph. */
+  .plhead .gear { margin-left: 4px; flex: none; }
+  .plhead .gear[hidden] { display: none; }
   .plhead .pip { width: 8px; height: 8px; background: var(--coral);
                  border-radius: 0; display: block; }
   /* The segment button on the player's own ribbon, and its sheet. Shown only
@@ -1039,7 +1062,9 @@
      share. Width-driven with the aspect ratio deriving height — the
      height-driven direction does not reliably transfer in Chromium. */
   .plartwrap { position: relative;
-               width: min(240px, 62cqw, var(--plart-cap, 999px));
+               /* 200, down from 240 (operator's phone, 2026-08-31): the
+                  sleeve was crowding the three panels out of the stack. */
+               width: min(200px, 54cqw, var(--plart-cap, 999px));
                aspect-ratio: 1; flex: none; }
   .plglow {
     position: absolute; left: -10px; top: -6px;
@@ -1052,14 +1077,32 @@
     object-fit: cover; border-radius: 6px;
     border: 1px solid var(--edge); background: var(--granite-hi);
   }
+  /* The record's colours washed across the sheet — the same artwork blown
+     up and blurred hard, fading out before the panels so the words never
+     sit on it at strength. Behind everything (the scroll and dock carry
+     their own stacking contexts below); opacity kept low enough to read as
+     light on the ground in BOTH themes rather than a picture. */
+  .plambient {
+    position: absolute; left: -12%; top: -6%; width: 124%; height: 58%;
+    object-fit: cover; pointer-events: none; z-index: 0;
+    filter: blur(72px) saturate(1.25); opacity: .26;
+    -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
+    mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
+  }
+  .plambient[hidden] { display: none; }
+  /* The wash must stay UNDER the sheet's content: both bands get their own
+     stacking context so a z-indexed child can never slip beneath it. */
+  .plscroll, .pldock, .plhead { position: relative; z-index: 1; }
   .plmono {
     display: flex; align-items: center; justify-content: center;
     color: var(--coral); font: 700 44px/1 var(--font-mono);
   }
   .plart img[hidden], .plmono[hidden], .plglow[hidden] { display: none; }
   .pltrack {
-    margin-top: 16px;
-    font: 800 clamp(22px, 8cqw, 30px)/1.1 var(--font-body);
+    margin-top: 12px;
+    /* A step down from the 30px mockup size — the title's room belongs to
+       the panels now (same operator note as the smaller sleeve). */
+    font: 800 clamp(19px, 6.5cqw, 25px)/1.1 var(--font-body);
     letter-spacing: .05em; text-transform: uppercase;
   }
   .plalbum { font-size: 13px; color: var(--sage); margin-top: 4px; }
@@ -1097,6 +1140,53 @@
        own scrollbar when the sheet is squeezed. */
     display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0;
   }
+  /* The queue card's two faces as BOOKMARK TABS on its shoulder (operator's
+     shape, 2026-08-31 — labels inside the head read as words fighting, and
+     the pressed one wore the button skin's focus box as a smudge). One
+     explicit micro-type for BOTH states, so neither can drift; the active
+     tab fills with the panel's own ground and merges into it over the
+     border; every .card button costume is overridden by name. */
+  /* Tabs + panel travel as ONE block-flow group: the sheet's grid and flex
+     layouts see a single item, so the tab row and the panel can never land
+     in overlapping rows however either surface places them. */
+  .plqgroup {
+    width: 100%; display: flex; flex-direction: column;
+    flex: 0 1 auto; min-height: 0; margin-top: 14px;
+  }
+  .pltabs {
+    width: 100%; display: flex; align-items: flex-end; gap: 4px;
+    position: relative; z-index: 1;
+  }
+  .card .pltabs .pltab {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    background: transparent; border: 1px solid transparent; border-bottom: 0;
+    border-radius: 6px 6px 0 0; padding: 8px 12px; margin: 0;
+    min-height: 0; height: auto; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .card .pltabs .pltab.on {
+    color: var(--coral); background: var(--pine);
+    border-color: var(--edge); margin-bottom: -1px; padding-bottom: 9px;
+  }
+  .card .pltabs .pltab[hidden] { display: none; }
+  .pltabs .plpanelmeta { padding-bottom: 8px; }
+  /* The panel sits flush under its tabs — no first-of-type gap, no rounded
+     corner poking out from beneath the active tab. */
+  .plscroll .plqgroup .plpanel.plqueue {
+    margin-top: 0; border-top-left-radius: 0;
+    flex: 0 1 auto; min-height: 0;
+  }
+  /* The meta keeps the head's micro-type out here in the tabs row — it
+     inherited the body face when it left the panel head and ballooned to
+     16px (caught on the first screenshot). */
+  .pltabs .plpanelmeta {
+    font: 400 9.5px/1 var(--font-mono); letter-spacing: .08em;
+  }
+  /* Headless on purpose: the tabs row IS the head. The body starts at the
+     panel's own padding, the same air the booth's words get. */
+  .plqueue .plpanelbody { margin-top: 0; }
+  .plpanelbody[hidden] { display: none; }
   .plscroll .plpanel:first-of-type { margin-top: 14px; }
   .plpanelhead {
     display: flex; align-items: center; gap: 7px;
@@ -1113,7 +1203,9 @@
      only stops one long panel from pushing the dock off a short phone. */
   .plpanelbody { margin-top: 6px; font-size: 12px; color: var(--sage);
                  flex: 1 1 auto; min-height: 34px;
-                 max-height: 108px; overflow-y: auto;
+                 /* 126, was 108 (operator, 2026-08-31): the room the retired
+                    queue head row gave back, spent as one more entry line. */
+                 max-height: 126px; overflow-y: auto;
                  /* A visible thin bar: the window scrolls, and an invisible
                     scrollbar left a half-clipped queue row reading as a
                     rendering fault (operator's review, 2026-08-24). */
@@ -1146,9 +1238,30 @@
     background: transparent; color: var(--sage); font-size: 14px;
     line-height: 1; border-radius: 0; cursor: pointer; padding: 0;
   }
-  .card .plheart.liked { color: var(--coral); border-color: var(--coral); }
+  .card .plheart.liked { color: var(--coral); border-color: var(--coral);
+                         animation: plpop .28s ease-out; }
   .card .plheart[hidden] { display: none; }
+  @keyframes plpop { 40% { transform: scale(1.25); } }
+  /* The count beside the heart, not buried in a tooltip nobody on a phone
+     can open. Coral like the act it counts; gone at zero. */
+  .pllikes { font: 700 11px/1 var(--font-mono); color: var(--coral);
+             font-variant-numeric: tabular-nums; flex: none;
+             margin-left: -4px; }
+  .pllikes[hidden] { display: none; }
+  /* The mute is a real button now but keeps the note's quiet footprint —
+     no border, the same dim ink, lit coral only while it is actually
+     holding the player silent. */
+  .card button.plnote {
+    border: 0; background: transparent; padding: 0; width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; min-height: 0;
+  }
   .plnote { color: var(--sage-dim); font-size: 13px; flex: none; }
+  .plnote .plspkoff { display: none; }
+  .plnote.muted { color: var(--coral); }
+  .plnote.muted .plspk { display: none; }
+  .plnote.muted .plspkoff { display: block; }
+  .plnote:hover { color: var(--alpenglow); }
   /* The same drawn fader as the card's — a browser-native accent-color
      slider is a different height on every platform, which is the exact
      thing TestTheCardIsOneHeightAndStaysThere exists to stop. */
@@ -1173,9 +1286,15 @@
     background: var(--coral); color: var(--alpenglow);
     font: 700 12px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case); border-radius: 0; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
   }
   .player:not(.playing) #plPlayBtn { background: transparent;
                                      color: var(--coral); }
+  /* The transport's glyph follows the sheet's own playing class: the pause
+     bars while the stream runs, the play triangle while it doesn't. */
+  #plPlayBtn .plpi { flex: none; display: block; }
+  .player.playing #plPlayBtn .plpi-play { display: none; }
+  .player:not(.playing) #plPlayBtn .plpi-pause { display: none; }
   .plreq { display: flex; gap: 10px; }
   .plreq input {
     flex: 1 1 auto; min-width: 0; height: 44px; background: var(--pine);
@@ -1212,11 +1331,13 @@
      the middle scrolling. */
   @media (min-width: 701px) {
     .plscroll {
-      display: grid; grid-template-columns: 128px 1fr; gap: 3px 16px;
+      /* 112, was 128 (operator, 2026-08-31): a slightly smaller sleeve so
+         the panels below get one more line of text. */
+      display: grid; grid-template-columns: 112px 1fr; gap: 3px 16px;
       align-content: start; align-items: center; text-align: left;
       padding: 12px 16px 8px;
     }
-    .plartwrap { grid-row: 1 / span 3; grid-column: 1; width: 128px;
+    .plartwrap { grid-row: 1 / span 3; grid-column: 1; width: 112px;
                  align-self: start; }
     .pltrack { grid-column: 2; margin-top: 4px; align-self: end;
                font-size: 22px; }
@@ -1227,8 +1348,10 @@
     .plpanel { grid-column: 1 / -1; margin-top: 6px; padding: 7px 10px; }
     .plscroll .plpanel:first-of-type { margin-top: 8px; }
     /* A shorter window on the short card; the body scrolls past it.
-       82px = two whole queue entries — 64 cut the second one mid-row. */
-    .plpanelbody { max-height: 82px; }
+       100px = two entries and change, one line up from the 82 the queue
+       head row used to spend (operator, 2026-08-31). */
+    .plpanelbody { max-height: 100px; }
+    .plqgroup { grid-column: 1 / -1; margin-top: 8px; }
     .pldock { padding: 8px 16px 6px; gap: 7px; }
     .card .plheart, .plreq input, #plReqSend { height: 38px; }
     .card .plheart { width: 38px; }
@@ -2204,7 +2327,7 @@
      on. Absolutely positioned inside the clipped frame like the drawing, so it
      is under the same guarantee: it cannot move the card. */
   .skinword {
-    position: absolute; left: 0; top: 0;
+    position: absolute; inset: var(--skin-word-inset, 0 auto auto 0);
     display: var(--skin-word-display);
     font: 700 var(--skin-word-size)/1 var(--font-mono);
     letter-spacing: .18em; text-transform: uppercase;
@@ -2214,15 +2337,32 @@
   }
   .card[data-mode="idle"] .skinart { display: block; }
   @media (prefers-reduced-motion: reduce) {
-    .skinart::before { animation: none; }
+    .skinart::before, .skinword { animation: none; }
   }
-  /* The three movements a skin may ask for, defined HERE because skins.css is
-     custom properties only and cannot declare keyframes of its own. Three is
-     the whole vocabulary on purpose: a platter that turns, a cursor that
-     blinks, something that breathes. */
+  /* The movements a skin may ask for, defined HERE because skins.css is
+     custom properties only and cannot declare keyframes of its own. A small
+     vocabulary on purpose: a platter that turns, a cursor that blinks,
+     something that breathes — and, since the first pass shipped and the
+     operator called the still ones static, something that falls and a sign
+     that stutters. */
   @keyframes skinspin { to { transform: rotate(360deg); } }
   @keyframes skinblink { 50% { opacity: 0; } }
   @keyframes skinpulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+  /* Falls by --skin-fall then snaps back. The snap is INVISIBLE exactly when
+     every moving layer repeats vertically with a period that divides the
+     distance — rain columns, a marching sprite, a retrace band on a loop.
+     Pair with a negative top inset so the box's own edge never shows the
+     seam. steps(n, end) in the skin's animation value turns the same travel
+     into a stepped descent. */
+  @keyframes skinfall { to { transform: translateY(var(--skin-fall, 44px)); } }
+  /* A neon tube warming up: mostly on, two quick drops and a dip — the
+     irregular stutter that skinblink's clean square wave cannot say. */
+  @keyframes skinflicker {
+    0%, 100% { opacity: 1; }
+    41% { opacity: 1; } 42% { opacity: .35; } 43% { opacity: 1; }
+    47% { opacity: 1; } 48% { opacity: .6; } 50% { opacity: 1; }
+    83% { opacity: 1; } 85% { opacity: .45; } 87% { opacity: .9; }
+  }
   /* The screensaver, and it is two animations rather than one: a horizontal
      sweep and a vertical sweep on different durations, both alternating. That
      is exactly how the real thing worked, and it is why the corner is rare —
@@ -2275,7 +2415,9 @@
      from under it. Only while the board is showing: with the door code or the
      setup nudge in the box there is no headline to make room for, and the
      drawing should have the box. */
-  :root[data-skin] .linebox:has(.idleboard:not([hidden])) .skinart { bottom: 34%; }
+  :root[data-skin] .linebox:has(.idleboard:not([hidden])) .skinart {
+    bottom: var(--skin-art-clear);
+  }
   /* The status follows the headline down, and is anchored to the BOTTOM rather
      than measured from the top: with the board low, its position is a
      proportion of an elastic box and the two would have to be kept in
@@ -2784,7 +2926,18 @@
       height: 100dvh; width: 100%; max-width: none;
       border: 0; border-radius: 0;
     }
-    body:not(.compact) .eyebrow { margin-bottom: 2px; }
+    /* One header grammar, both faces (operator's phone, 2026-08-31): the
+       card's top padding made the ON AIR row read taller than the player's
+       flush NOW PLAYING band. Same 38px strip now, bled to the card's
+       edges; where a notch exists its inset rides INSIDE the row so the
+       text still clears it. --card-pad-top goes to 0 with the padding it
+       bridged, so the pull tab hangs from the row's own edge. */
+    body:not(.compact) .card { padding-top: 0; --card-pad-top: 0px; }
+    body:not(.compact) .card .eyebrow {
+      margin: 0 -16px 2px;
+      padding: max(0px, env(safe-area-inset-top)) 16px 0;
+      height: calc(38px + max(0px, env(safe-area-inset-top)));
+    }
     body:not(.compact) .avatar { width: 44px; height: 44px; }
     body:not(.compact) .who-row { gap: 10px; }
     body:not(.compact) .who-row .tagline { display: none; }
@@ -3166,11 +3319,17 @@
     body:not(.panelpage):not(.compact) .card {
       width: 100%; min-height: 100dvh; border: 0; border-radius: 0;
       display: flex; flex-direction: column;
-      --card-pad-top: max(12px, env(safe-area-inset-top));
-      padding: max(12px, env(safe-area-inset-top))
+      /* Top padding folded into the eyebrow itself (see the flush-band rule
+         in the phone block) — the row reads as the player header's twin. */
+      --card-pad-top: 0px;
+      padding: 0
                max(20px, env(safe-area-inset-right))
                max(20px, env(safe-area-inset-bottom))
                max(20px, env(safe-area-inset-left));
+    }
+    body:not(.panelpage):not(.compact) .card .eyebrow {
+      margin: 0 -20px 2px;
+      padding: max(0px, env(safe-area-inset-top)) 20px 0;
     }
     /* Identity as a centred PORTRAIT — the call-screen look. The text line
        keeps a tight left-aligned header so the conversation gets the room. */

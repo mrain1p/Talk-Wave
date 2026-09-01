@@ -181,6 +181,13 @@ class ChatSession:
         # 0.10.149; the text line never did, so its promise guard had nothing
         # but the DJ's wording to go on — see promises.unbacked.
         self.asks = Asks()
+        # The DJ typed a promise and no tool backed it (set at the grading
+        # point in _tool_loop, cleared the moment any tool actually runs).
+        # The idle nudge reads this: a chat sitting on an unmet promise must
+        # not get cheery scenery typed over it — the caller is waiting on an
+        # ACTION, and the ball is not in their court (brain review flow lens,
+        # 2026-08-31).
+        self.owes_action = False
         # Move 3 of the conversation-engine convergence (NORTH STAR): the two
         # mouths share ONE state holder and its standing order. Chat built its
         # guards a while ago but consulted them by hand, in a shorter order
@@ -517,6 +524,7 @@ class ChatSession:
                 ) if (nudge_left and tools) else ""
                 if kind:
                     nudge_left = False
+                    self.owes_action = True
                     # The operator reads these back, and until 0.98.16 could
                     # not: this list was declared, drained into the record and
                     # never once appended to, so every chat filed a clean
@@ -613,6 +621,9 @@ class ChatSession:
             out = await tool(**kwargs)
             log.info("chat %s tool: %s -> %.90s", self.id, call.name, out)
             self._note_tool(call.name, out, args=kwargs)
+            # A tool actually ran — whatever was owed is being acted on, so
+            # the idle nudge's veto lifts.
+            self.owes_action = False
             return str(out), False
         except Exception as e:                                 # noqa: BLE001
             log.warning("chat %s tool %s failed: %s", self.id, call.name, e)

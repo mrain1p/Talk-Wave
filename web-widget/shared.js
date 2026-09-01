@@ -225,12 +225,46 @@ window.Callin = (function () {
   // Defaults are synthesized so the widget ships with no audio assets; a
   // configured URL replaces them.
   function ctx() {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      // A phone that moves its audio route mid-call — Bluetooth dropping
+      // from the media profile to hands-free when the mic engages, a headset
+      // unplugged, an iOS interruption — can leave the context suspended (or
+      // in webkit's non-standard 'interrupted'). Nothing else runs ctx()
+      // during a call, so the context asks to come back itself.
+      audioCtx.onstatechange = () => {
+        const c = audioCtx;
+        if (c && c.state !== 'running' && c.state !== 'closed') {
+          try { c.resume().catch(() => {}); } catch (e) { /* platform said no */ }
+        }
+      };
+    }
+    if (audioCtx.state !== 'running') {
+      try { audioCtx.resume().catch(() => {}); } catch (e) { /* not yet */ }
+    }
     return audioCtx;
   }
 
-  function tone(freqs, start, dur, gain) {
+  // Throw the context away so the next ctx() builds a fresh one. The one
+  // real use is a Bluetooth route flip mid-call: a context opened at the
+  // media profile's rate keeps rendering at that rate after the phone drops
+  // to hands-free at 8/16kHz, and what it renders never reaches the ear. A
+  // context born after the flip picks up the live rate. Fire-and-forget on
+  // purpose — the caller rewires its graph straight after.
+  function resetCtx() {
+    const old = audioCtx;
+    audioCtx = null;
+    if (old) {
+      try { old.onstatechange = null; old.close().catch(() => {}); }
+      catch (e) { /* already gone */ }
+    }
+  }
+
+  // opts, both optional: `type` picks the oscillator wave — 'square' is the
+  // chiptune voice, everything before the arcade pack was sine — and `glide`
+  // slides the pitch to a target over the note, which is what a sweep, a
+  // power-down or a sonar ping actually are. No opts = exactly the old tone.
+  function tone(freqs, start, dur, gain, opts) {
     const c = ctx(), t0 = c.currentTime + start;
     const g = c.createGain();
     g.gain.setValueAtTime(0, t0);
@@ -240,7 +274,11 @@ window.Callin = (function () {
     g.connect(c.destination);
     freqs.forEach((f) => {
       const o = c.createOscillator();
-      o.frequency.value = f; o.type = 'sine';
+      o.type = (opts && opts.type) || 'sine';
+      o.frequency.setValueAtTime(f, t0);
+      if (opts && opts.glide) {
+        o.frequency.linearRampToValueAtTime(opts.glide, t0 + dur);
+      }
       o.connect(g); o.start(t0); o.stop(t0 + dur);
     });
   }
@@ -298,6 +336,61 @@ window.Callin = (function () {
       failed: () => { tone([400], 0, 0.33, 0.09); tone([400], 0.45, 0.33, 0.09); },
       // Handset set down on the desk beside the phone.
       hold:   () => { noise(0, 0.04, 0.14, 700, 1.1); },
+    },
+    // The novelty shelf. Square waves are the 8-bit voice; the gains sit
+    // well under the sine packs' because a square at equal gain reads twice
+    // as loud.
+    arcade: {
+      // "Insert coin": a rising square arpeggio, twice per cadence.
+      ring: () => {
+        for (const at of [0, 0.34]) {
+          tone([523], at, 0.07, 0.05, { type: 'square' });
+          tone([659], at + 0.08, 0.07, 0.05, { type: 'square' });
+          tone([784], at + 0.16, 0.07, 0.05, { type: 'square' });
+          tone([1047], at + 0.24, 0.1, 0.055, { type: 'square' });
+        }
+      },
+      // The coin drops.
+      pickup: () => {
+        tone([988], 0, 0.06, 0.05, { type: 'square' });
+        tone([1319], 0.07, 0.16, 0.055, { type: 'square' });
+      },
+      // Power-down: the classic descending stair.
+      hangup: () => {
+        tone([659], 0, 0.09, 0.05, { type: 'square' });
+        tone([523], 0.09, 0.09, 0.045, { type: 'square' });
+        tone([392], 0.18, 0.09, 0.04, { type: 'square' });
+        tone([262], 0.27, 0.16, 0.035, { type: 'square' });
+      },
+      // The error buzz — two low dissonant beats, the "wrong move" sound.
+      failed: () => {
+        tone([146, 155], 0, 0.28, 0.045, { type: 'square' });
+        tone([146, 155], 0.4, 0.28, 0.045, { type: 'square' });
+      },
+      // Pause blip, twice.
+      hold: () => {
+        tone([784], 0, 0.07, 0.035, { type: 'square' });
+        tone([784], 0.12, 0.07, 0.03, { type: 'square' });
+      },
+    },
+    // Sine sweeps, all of it — a hailing console rather than a phone.
+    space: {
+      // Two slow pings, rising then answering back down.
+      ring: () => {
+        tone([880], 0, 0.5, 0.07, { glide: 1320 });
+        tone([1320], 0.6, 0.45, 0.06, { glide: 880 });
+      },
+      // The airlock opens: one long sweep up.
+      pickup: () => { tone([440], 0, 0.32, 0.07, { glide: 1760 }); },
+      // Powering down: the sweep falls further than it rose.
+      hangup: () => { tone([1760], 0, 0.38, 0.06, { glide: 330 }); },
+      // A low warble that says "no channel": two close frequencies beating.
+      failed: () => {
+        tone([220, 227], 0, 0.5, 0.07);
+        tone([196, 202], 0.6, 0.4, 0.06);
+      },
+      // A soft rising blip: still here, stand by.
+      hold: () => { tone([660], 0, 0.18, 0.05, { glide: 880 }); },
     },
   };
 
@@ -612,7 +705,7 @@ window.Callin = (function () {
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
     applySkin, skinForced,
     ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
-    ctx, pack, playSound, startRinging, stopRinging,
+    ctx, resetCtx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume, THEME_ICONS, LINK_ICONS,
     playFirstWorking, readPlayerHandoff, writePlayerHandoff,
   };

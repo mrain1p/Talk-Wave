@@ -133,6 +133,8 @@ This config serves **LAN and off-LAN callers together** — removing `node_ip` d
 
 ## The TLS front door — one public name for the page and the signalling
 
+> SUB/WAVE 1.11 ships its own reverse-proxy recipes (nginx, NPM, Traefik, Cloudflare Tunnel), including a "public stream, LAN admin" split. If you adopt one, keep Talk Wave's **station address** (and the MCP URL) pointed at the internal/LAN origin — the worker calls admin endpoints a public-half proxy deliberately doesn't route.
+
 Whichever option carries the media, the **signalling** works best as a single public name. Give the widget and LiveKit one hostname behind your reverse proxy — the bundled Caddy already does this:
 
 | Route on `https://call.example.com` | Goes to | Notes |

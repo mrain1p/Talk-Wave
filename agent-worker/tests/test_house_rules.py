@@ -708,6 +708,15 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
     # Long on purpose. Not measured — only required to still exist and still
     # say why.
     EXEMPT = {
+        "web-widget/skins.css":
+            "nineteen skins, one self-contained token block each, and a test "
+            "(TestASkinCannotReachPastItsTokens) that already forbids any "
+            "block from reaching another's scope — the failure mode a size "
+            "ceiling exists to catch cannot happen here. Splitting means "
+            "nineteen stylesheet fetches on the public call page for zero "
+            "isolation gained. Crossed the ceiling at 0.99.13+ when the "
+            "operator's slapped-together verdict rebuilt the weak skins with "
+            "real multi-layer drawings (2026-08-31).",
         "agent-worker/scripted_call.py":
             "the conduct harness, and it cannot be split: it is DELIVERED by "
             "stdin — `docker exec -i <worker> python - < scripted_call.py` — "
@@ -979,7 +988,17 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # for callers is told the briefing shows what played when the call
         # CONNECTED, not what is live now. Fifteen lines, all in the rule
         # builders half this seam already names; the split is no harder.
-        "agent-worker/brain/tool_rules.py": (683, "the declarations at the top "
+        # 712: the namesake rule (2026-08-31, the Ophelia exchange) — a title
+        # hit by the wrong artist taught as a different song, in both finding
+        # branches, with the real incident as the NO/YES. Rule-builders half.
+        # 741: the brain review's Tier-1 rules (yes-is-the-submit, a
+        # repetition complaint is not a cancel, receipt position, relative
+        # asks read their anchor, the skip tiebreak) minus the soundtrack
+        # dedupe; the speak-first paragraph also became its own SECTION so
+        # the chat build can drop it instead of negating it.
+        # 747: the person-name-is-a-roster-ask clause on the takeover
+        # bullet (the Rosie exchange) and the re-measured budget note.
+        "agent-worker/brain/tool_rules.py": (747, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
         # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —
@@ -1016,7 +1035,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # so a unit test can pin it (test_station) rather than the whole
         # handler; on the shared-build side of the seam where the card is
         # assembled.
-        "agent-worker/api/live.py": (658, "the shared payload build split "
+        # 683: the player's JUST PLAYED panel — a _just_played helper over
+        # the /state history the UP NEXT read already fetches, and its two
+        # call-site lines. A named helper so the on-air dedupe rule is
+        # unit-testable (test_widget), same shape as _reachability above.
+        "agent-worker/api/live.py": (683, "the shared payload build split "
                                           "from the per-caller resolve"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
         # snapshot head start, the MCP warm-up, the join riding prepare). The
@@ -1078,7 +1101,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # come-back task now has a shutdown callback that cancels it. Both are
         # on the LIVE half — start and shutdown ordering — where the seam
         # already puts them; twenty-two lines, none of it across the cut.
-        "agent-worker/call/session.py": (918, "the ringing half (prepare, "
+        # 919: one line — attach_caller_note wired beside the other
+        # lifecycle attachments (the setup-note data channel).
+        # 928: the landed guard's gated construction (closing_nudge) beside
+        # the other guards — nine lines, in the wiring half.
+        "agent-worker/call/session.py": (928, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -1115,7 +1142,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # the sweep skips a locked conversation before the idle check, and the
         # opener/nudge tell the shared state what the DJ said. All in the
         # ChatSession half; thirty-three lines, none across the seam.
-        "agent-worker/chat/session.py": (762, "the one-conversation half "
+        # 773: the owes_action flag (set at the promise-grading point,
+        # cleared when a tool runs) so the idle nudge never types
+        # scenery over an unmet promise.
+        "agent-worker/chat/session.py": (773, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "
@@ -1221,7 +1251,13 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # web-widget/CLAUDE.md; doing that in the same commit as a new player
         # would give any regression in either two candidate causes. Same
         # deferral the two entries below record.
-        "web-widget/shared.js": (620, "the caller-facing copy tables "
+        # 650: the AudioContext grew its route-change lifecycle (a statechange
+        # auto-resume and resetCtx) for the Bluetooth hands-free flip that
+        # silenced a car call — context management belongs beside ctx(), not
+        # in a fourth file. 713: two novelty sound packs (Arcade, Starship)
+        # and tone()'s type/glide options — the synthesized packs live in the
+        # engine both pages share, which is the whole design.
+        "web-widget/shared.js": (713, "the caller-facing copy tables "
                                       "(ASK_GROUPS, ASKS, NEVER) split from "
                                       "the runtime foundation; the crossing "
                                       "is zero in both directions"),
@@ -1793,16 +1829,23 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
     LEDGER = {
         # scripted_call.py — the drill harness (test tooling, not shipped);
         # scenario dispatch and grading are inherently branchy.
-        "agent-worker/scripted_call.py::run_scenario": (75, "harness — scenario runner"),
+        # 86 (2026-08-31): the landed wind-down guard mirrored per scenario
+        # (knote default + the suppression check), the same insertion the
+        # other guards each cost this function once.
+        "agent-worker/scripted_call.py::run_scenario": (86, "harness — scenario runner"),
         "agent-worker/scripted_call.py::summarise": (36, "harness — result summary"),
-        "agent-worker/scripted_call.py::main": (35, "harness — arg/lever dispatch"),
+        # 36 (2026-08-31): GATES=all learns to skip the single_lookup_tool
+        # arrangement flag — blanketing it silently ran the C.5 A/B's
+        # "off" arm with the dispatcher on (first measuring evening).
+        "agent-worker/scripted_call.py::main": (36, "harness — arg/lever dispatch"),
         "agent-worker/scripted_call.py::grade_scenario": (33, "harness — grading"),
         # Batch 1 — platform hubs
         "agent-worker/settings.py::_migrate": (33, "Batch 1 — settings migration ladder"),
         # Batch 2 — the api edge
         "agent-worker/api/live.py::handle_live": (55, "Batch 2 — the /live god-dict assembler"),
         "agent-worker/api/diagnostics.py::handle_speed_test": (47, "Batch 2 — diagnostics god-module"),
-        "agent-worker/api/chat.py::handle_chat_ws": (46, "Batch 2 — the chat websocket loop"),
+        # 47 (2026-08-31): the owes_action veto joins the reprompt gate.
+        "agent-worker/api/chat.py::handle_chat_ws": (47, "Batch 2 — the chat websocket loop"),
         "agent-worker/api/hooks.py::register_station_webhook": (44, "Batch 2 — webhook reconcile"),
         "agent-worker/api/tokens.py::handle_token": (41, "Batch 2 — mint + usage-ceiling ladder"),
         "agent-worker/api/hook_receiver.py::_remember_air": (34, "Batch 2 — two-generation air merge"),
@@ -1825,10 +1868,12 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         # Batch 5 — the brain
         "agent-worker/brain/briefing.py::_fmt_now_playing": (32, "Batch 5 — now-playing formatter"),
         "agent-worker/brain/assemble.py::build_system_prompt": (27, "Batch 5 — prompt assembler entry"),
-        "agent-worker/brain/tool_rules.py::_tools": (27, "Batch 5 — the prompt god-function"),
+        "agent-worker/brain/tool_rules.py::_tools": (28, "Batch 5 — the prompt god-function; +1 2026-08-31: the tool_speakfirst gate, so chat can drop the dead-air rule"),
         # Batch 6 — chat / onair / openlines / voicemail
         "agent-worker/voicemail/capture.py::answer": (45, "Batch 6 — voicemail answer pipeline"),
-        "agent-worker/openlines/director.py::open_now": (38, "Batch 6 — premise-source ladder"),
+        # 41 (2026-08-31): the "directions" source branch — a random targeted
+        # angle per open, the operator's skills-shaped ask.
+        "agent-worker/openlines/director.py::open_now": (41, "Batch 6 — premise-source ladder"),
         "agent-worker/chat/session.py::ChatSession._tool_loop": (33, "Batch 6 — hand-rolled chat tool loop"),
         "agent-worker/voicemail/deliver.py::_triage": (32, "Batch 6 — voicemail triage dispatch"),
         "agent-worker/openlines/quiz.py::facts_from": (28, "Batch 6 — quiz fact extraction"),

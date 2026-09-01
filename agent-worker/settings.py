@@ -178,6 +178,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # panel — and a half-finished experiment offered as a switch is how one
     # gets left on. It becomes a panel row if and when the numbers say keep it.
     "single_lookup_tool": (None, False),
+    # The post-landing wind-down (call/landed.py): a one-time steer when a
+    # request lands, in place of CLOSING's measured-ineffective prose. Same
+    # deal as the switch above — deliberately NO panel row until the closing
+    # scenario set says keep it; a half-finished experiment offered as a
+    # switch is how one gets left on.
+    "closing_nudge": (None, False),
     # Taking a queued track back out. Guest tier rather than open: the queue is
     # shared, so this can cancel a record somebody ELSE asked for — which is
     # precisely why the station gives its listeners no cancel of their own. A
@@ -326,6 +332,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # list below, in order, so a station can put up exactly the topics it
     # wants and nothing else.
     "open_lines_source":          (None, "dj"),
+    # Which targeted directions the "directions" source may draw from.
+    # Comma-separated ids or label words from openlines/directions.py's
+    # catalogue; blank = the whole catalogue. A list that matches nothing
+    # falls back to everything rather than going silent.
+    "open_lines_directions":      (None, ""),
     # Where to reach the booth, said on air. Blank = the DJ opens the topic
     # and names no address, which is right when the audience is already
     # looking at the card. Talk Wave supplies this at compose time, so what
@@ -412,7 +423,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # by default; 0 or the switch off disables it. Never fires while the DJ is
     # the one still owing a reply.
     "chat_reprompt":         (None, True),
-    "chat_reprompt_secs":    (None, 20),
+    # 75, up from 20 (brain review, 2026-08-31): twenty seconds is faster
+    # than a phone typist composes a sentence, so the nudge kept landing on
+    # people mid-thought. Well above typing pace, still short of "gone".
+    "chat_reprompt_secs":    (None, 75),
     "voicemail_greeting":    (None, ""),
     # Fresh by default (0.10.80): a line written in persona at pickup, with
     # the staged clip as the instant fallback — the machine still answers
