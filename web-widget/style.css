@@ -1123,6 +1123,9 @@
   .plel { font: 700 11px/1 var(--font-mono); color: var(--amber);
           font-variant-numeric: tabular-nums; }
   .plel:empty { display: none; }
+  /* The cast control lit while a session is CONNECTED — same coral the
+     card's live states wear, so "the TV has it" is readable at a glance. */
+  .card #plCastBtn.casting { color: var(--coral); border-color: var(--coral); }
   /* `display: block` beats the UA hidden rule (the .rig trap), so the
      no-length case — counting clock alone — needs the hide restated. */
   .plbar[hidden] { display: none; }
@@ -1193,8 +1196,15 @@
      to Just Played shoved the whole card upward): the body claims its full
      window on BOTH faces, so a sparse Up Next wears the spare room as air
      instead of giving it back and letting the sheet reflow. Flex shrink
-     stays, so a squeezed sheet still compresses it. */
-  .plqueue .plpanelbody { margin-top: 0; height: 126px; }
+     stays, so a squeezed sheet still compresses it.
+     106, was 126 (operator, 2026-09-01): one line handed to the booth —
+     and the one-line queue rows mean the shorter window still shows as
+     many records as the old two-line one did. */
+  .plqueue .plpanelbody { margin-top: 0; height: 106px; }
+  /* The booth spends the line the queue gave up: its window grows one line
+     before scrolling, so the DJ's sentence stops clipping mid-thought at
+     three lines (operator's screenshot, 2026-09-01). */
+  .plscroll .plpanel:not(.plqueue) .plpanelbody { max-height: 146px; }
   .plpanelbody[hidden] { display: none; }
   .plscroll .plpanel:first-of-type { margin-top: 14px; }
   .plpanelhead {
@@ -1225,6 +1235,16 @@
   .plpanelbody .plsub { font-size: 12px; color: var(--sage); margin-top: 2px; }
   /* Breathing room between queue entries. */
   .plpanelbody .plsub + .pltit, .plpanelbody .pltit + .pltit { margin-top: 6px; }
+  /* One queue entry is ONE LINE (operator, 2026-09-01): title then artist,
+     baseline-aligned, the artist giving way first when the line runs out.
+     min-width: 0 on both or flex refuses to shrink them past content. */
+  .plpanelbody .plrow { display: flex; align-items: baseline; gap: 7px;
+                        white-space: nowrap; min-width: 0; }
+  .plpanelbody .plrow .pltit { flex: 0 1 auto; min-width: 0;
+                               overflow: hidden; text-overflow: ellipsis; }
+  .plpanelbody .plrow .plsub { flex: 0 1 auto; min-width: 0; margin-top: 0;
+                               overflow: hidden; text-overflow: ellipsis; }
+  .plpanelbody .plrow + .plrow { margin-top: 5px; }
   /* The DJ's own words — prose, not a title. */
   .plpanelbody .plquote {
     font-size: 13px; line-height: 1.45; color: var(--alpenglow);
@@ -1360,7 +1380,9 @@
        100px = two entries and change, one line up from the 82 the queue
        head row used to spend (operator, 2026-08-31). */
     .plpanelbody { max-height: 100px; }
-    .plqueue .plpanelbody { height: 100px; }
+    /* Same line-trade as the phone: the queue gives one line to the booth. */
+    .plqueue .plpanelbody { height: 82px; }
+    .plscroll .plpanel:not(.plqueue) .plpanelbody { max-height: 118px; }
     .plqgroup { grid-column: 1 / -1; margin-top: 8px; }
     .pldock { padding: 8px 16px 6px; gap: 7px; }
     .card .plheart, .plreq input, #plReqSend { height: 38px; }

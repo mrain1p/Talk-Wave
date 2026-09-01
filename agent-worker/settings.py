@@ -638,6 +638,12 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # heart).
     "show_listener_count": (None, True),
     "show_track_like":    (None, True),
+    # The player's cast control. ON by default and ALWAYS visible while on
+    # (operator, 2026-09-01): it used to hide whenever the audio element was
+    # gone — paused, parked, stopped — which is exactly when someone wants
+    # the picker back to switch speakers or stop casting. The widget still
+    # hides it on browsers with no casting API at all.
+    "player_cast_button": (None, True),
     # Which face the page opens on. The player as the front page makes the
     # widget the station's app with a phone behind it; off keeps the phone
     # first. Audio still waits for the browser's one allowed tap either way.

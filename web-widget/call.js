@@ -4951,17 +4951,52 @@
   function watchLiveDrift(el) {
     if (el.dataset.driftWatched) return;
     el.dataset.driftWatched = '1';
-    el.addEventListener('pause', () => { plPausedAt = Date.now(); });
+    el.addEventListener('pause', () => {
+      plPausedAt = Date.now();
+      paintPlayerButtons();
+    });
     el.addEventListener('playing', () => {
       const gap = plPausedAt ? (Date.now() - plPausedAt) / 1000 : 0;
       plPausedAt = 0;
-      if (gap > 5 && playerEl === el && !playerStopped) {
+      paintPlayerButtons();
+      // NEVER while casting: reassigning src ends the receiver's session,
+      // and the TV going quiet mid-resume was reported as "play comes out
+      // of my phone afterwards" (operator, 2026-09-01). The receiver holds
+      // its own buffer at its own edge; drift is the phone's problem.
+      if (gap > 5 && playerEl === el && !playerStopped && !plCasting) {
         try {
           const url = el.currentSrc || el.src;
           if (url) { el.src = url; el.load(); el.play().catch(() => {}); }
         } catch (e) { /* stale audio beats no audio */ }
       }
     });
+    watchRemoteSession(el);
+  }
+
+  // The one fact the whole cast story hangs on: is THIS element's audio on
+  // someone else's speakers right now. Everything that would tear the
+  // element down (the stop path, the drift resnap) checks it first, because
+  // a torn-down element takes the receiver's session with it.
+  let plCasting = false;
+  function watchRemoteSession(el) {
+    if (!el.remote || el.dataset.remoteWatched) return;
+    el.dataset.remoteWatched = '1';
+    const sync = () => {
+      const was = plCasting;
+      // The parked element counts: a call parks the player without ending
+      // the receiver's session, and forgetting that here is how the resume
+      // path would tear a live cast down.
+      const cur = playerEl || playerParked;
+      plCasting = cur === el && el.remote.state === 'connected';
+      // The receiver paints what the media session says — feed it the
+      // moment the session lands so the TV never sits on the browser's
+      // generic "Playing Google Chrome" card.
+      if (plCasting && !was) feedMediaSession();
+      paintPlayerButtons();
+    };
+    el.remote.addEventListener('connect', sync);
+    el.remote.addEventListener('connecting', sync);
+    el.remote.addEventListener('disconnect', sync);
   }
 
   function startPlayerAudio() {
@@ -5060,8 +5095,10 @@
     try {
       // Same mount it was on. The fallback chain is not re-walked: this one
       // was playing a moment ago, and a stream that has just died is the
-      // rarer case than the browser refusing a new element.
-      el.src = s.url;
+      // rarer case than the browser refusing a new element. While the
+      // element is CAST, the src stays untouched — reassigning it ends the
+      // receiver's session, and the receiver rejoins its own edge anyway.
+      if (!plCasting) el.src = s.url;
       el.volume = playerLevel();
       el.muted = playerLevel() <= 0;
       el.play().then(() => {
@@ -5276,6 +5313,22 @@
     $('plAlbum').textContent =
       [np.artist, np.album, np.year].filter(Boolean).join(' · ');
 
+    // One queue entry is ONE LINE (operator, 2026-09-01): title and artist
+    // share it and the tail ellipsizes, so the panel's height budget buys
+    // more entries rather than taller ones.
+    function queueRow(title, sub) {
+      const row = document.createElement('div');
+      row.className = 'plrow';
+      const t = document.createElement('span');
+      t.className = 'pltit'; t.textContent = title;
+      row.appendChild(t);
+      if (sub) {
+        const s = document.createElement('span');
+        s.className = 'plsub'; s.textContent = sub;
+        row.appendChild(s);
+      }
+      return row;
+    }
     // UP NEXT: the station's own queue, ALL of it — the operator wants to
     // see what is coming, not the head of the line; the panel body scrolls
     // when the list outgrows it. The pip only goes live when something is
@@ -5287,16 +5340,10 @@
       nextBody.innerHTML = '';
       if (list.length) {
         list.forEach((nx) => {
-          const t = document.createElement('div');
-          t.className = 'pltit'; t.textContent = nx.title;
-          nextBody.appendChild(t);
-          const sub = [nx.artist, nx.requestedBy ? 'for ' + nx.requestedBy : '']
-            .filter(Boolean).join(' · ');
-          if (sub) {
-            const s = document.createElement('div');
-            s.className = 'plsub'; s.textContent = sub;
-            nextBody.appendChild(s);
-          }
+          nextBody.appendChild(queueRow(
+            nx.title,
+            [nx.artist, nx.requestedBy ? 'for ' + nx.requestedBy : '']
+              .filter(Boolean).join(' · ')));
         });
       } else {
         nextBody.textContent = 'Nothing queued — send a request below.';
@@ -5310,14 +5357,7 @@
     if (pastBody) {
       pastBody.innerHTML = '';
       past.forEach((px) => {
-        const t = document.createElement('div');
-        t.className = 'pltit'; t.textContent = px.title;
-        pastBody.appendChild(t);
-        if (px.artist) {
-          const s = document.createElement('div');
-          s.className = 'plsub'; s.textContent = px.artist;
-          pastBody.appendChild(s);
-        }
+        pastBody.appendChild(queueRow(px.title, px.artist || ''));
       });
     }
     plQueueCounts = { next: list.length, past: past.length };
@@ -5385,16 +5425,33 @@
 
   function paintCastBtn() {
     const b = $('plCastBtn');
-    if (b) b.hidden = !(castSupported() && playerEl);
+    if (!b) return;
+    // ALWAYS on show while the operator's switch is on (2026-09-01): it
+    // used to require a live element, which hid it in exactly the states —
+    // paused, parked, stopped — where someone wants the picker back to
+    // switch speakers or stop casting. Only a browser with no casting API
+    // at all removes it.
+    const offered = (shown || live || {}).castButton !== false;
+    b.hidden = !(castSupported() && offered);
+    b.classList.toggle('casting', plCasting);
+    b.setAttribute('aria-label',
+                   plCasting ? 'Casting — change or stop' : 'Cast the stream');
   }
 
   $('plCastBtn').onclick = async () => {
-    const el = playerEl;
+    // No element yet? Start one inside this same gesture — both pickers
+    // cast an ELEMENT, and the first mount is tried synchronously, so the
+    // prompt below still counts as user-activated.
+    if (!playerEl) { wantPlayer(true); startPlayerAudio(); }
+    const el = playerEl || playerParked;
     if (!el) return;
     try {
       if (typeof el.webkitShowPlaybackTargetPicker === 'function') {
         el.webkitShowPlaybackTargetPicker();
       } else if (el.remote && el.remote.prompt) {
+        // Always the prompt, connected or not — the picker IS the way to
+        // switch devices or stop, and gating it on state was the "can't
+        // untoggle" report.
         await el.remote.prompt();
       }
     } catch (e) {
@@ -5502,12 +5559,16 @@
   function paintPlayerButtons() {
     // The word only — the glyphs beside it are CSS-switched off the sheet's
     // playing class, so writing the button's textContent would erase them.
+    // A cast element PAUSED is not playing, and the element survives the
+    // pause (tearing it down ends the receiver's session) — so the word
+    // reads the element's own state, not just its existence.
+    const playing = !!playerEl && !(plCasting && playerEl.paused);
     const wordEl = $('plPlayWord');
     if (wordEl) {
-      wordEl.textContent = playerEl ? 'Pause' : (playerDead ? 'Try again' : 'Play');
+      wordEl.textContent = playing ? 'Pause' : (playerDead ? 'Try again' : 'Play');
     }
     const pv = $('playerView');
-    if (pv) pv.classList.toggle('playing', !!playerEl);
+    if (pv) pv.classList.toggle('playing', playing);
     paintCastBtn();
     paintListenChip();
   }
@@ -5553,11 +5614,23 @@
         album: np.album || d.show || '',
         artwork: art ? [{ src: new URL(art, location.href).href }] : [],
       });
-      // The lock screen is the caller pressing the same two buttons.
+      // The lock screen is the caller pressing the same two buttons — and
+      // while casting, the same rule as the on-sheet button: a real pause
+      // on the same element, never the teardown that ends the session.
       navigator.mediaSession.setActionHandler(
-        'play', () => { wantPlayer(true); startPlayerAudio(); });
+        'play', () => {
+          wantPlayer(true);
+          if (playerEl && playerEl.paused) playerEl.play().catch(() => {});
+          else if (!playerEl) startPlayerAudio();
+          paintPlayerButtons();
+        });
       navigator.mediaSession.setActionHandler(
-        'pause', () => { wantPlayer(false); stopPlayerAudio(); });
+        'pause', () => {
+          wantPlayer(false);
+          if (playerEl && plCasting) playerEl.pause();
+          else stopPlayerAudio();
+          paintPlayerButtons();
+        });
     } catch (e) { /* optional kit; the player works without it */ }
   }
 
@@ -5827,7 +5900,19 @@
     if (cardMode() === 'idle') openPlayer();
   };
   $('plPlayBtn').onclick = () => {
-    if (playerEl) { wantPlayer(false); stopPlayerAudio(); }
+    const el = playerEl;
+    // While casting, the button is a REAL pause on the same element: the
+    // stop path clears src, which ends the receiver's session, and the
+    // next press then played from the phone's own speakers (operator,
+    // 2026-09-01). Paused-but-cast, the TV holds the session and play
+    // resumes it there.
+    if (el && plCasting) {
+      if (el.paused) { wantPlayer(true); el.play().catch(() => {}); }
+      else { wantPlayer(false); el.pause(); }
+      paintPlayerButtons();
+      return;
+    }
+    if (el) { wantPlayer(false); stopPlayerAudio(); }
     else { wantPlayer(true); startPlayerAudio(); }
   };
 

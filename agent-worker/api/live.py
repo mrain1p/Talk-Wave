@@ -494,6 +494,9 @@ async def handle_live(request: web.Request) -> web.Response:
                     # public /like any listener page sends, relayed by
                     # /player/like so LAN and mixed-content deployments work.
                     "cardLike": bool(cfg.get("show_track_like", True)),
+                    # Whether the player keeps its cast control on show.
+                    # The widget still requires a casting API in the browser.
+                    "castButton": bool(cfg.get("player_cast_button", True)),
                     # Which face the page opens on; the widget still requires
                     # the player to actually be offered before honouring it.
                     "playerStart": settings_store.opens_on_player(cfg),

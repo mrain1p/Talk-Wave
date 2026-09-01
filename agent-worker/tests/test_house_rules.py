@@ -1039,7 +1039,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # the /state history the UP NEXT read already fetches, and its two
         # call-site lines. A named helper so the on-air dedupe rule is
         # unit-testable (test_widget), same shape as _reachability above.
-        "agent-worker/api/live.py": (683, "the shared payload build split "
+        # 686: the castButton card option (2026-09-01) — one payload row in
+        # the same cardLike block, plus its two comment lines. The payload
+        # grows a row when the card grows a switch; the seam is unchanged.
+        "agent-worker/api/live.py": (686, "the shared payload build split "
                                           "from the per-caller resolve"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
         # snapshot head start, the MCP warm-up, the join riding prepare). The

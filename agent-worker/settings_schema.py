@@ -889,6 +889,14 @@ SCHEMA: dict[str, dict] = {
              "any listener page sends, through the same per-listener limits "
              "the station already enforces. Works with or without the "
              "swipe-up player."),
+    "player_cast_button": dict(group="phone", kind="check",
+        needs=("swipe_player", True),
+        label="Cast button on the player", alias="chromecast airplay",
+        help="The player's cast control — Chromecast on Chrome, AirPlay on "
+             "Safari. Stays visible even while nothing is playing: pressing "
+             "it starts the stream and opens the picker, and reopening the "
+             "picker is how you switch speakers or stop casting. Hidden "
+             "only on browsers with no casting at all."),
     "start_on_player": dict(group="phone", kind="select",
         label="Opens on",
         needs=("swipe_player", True),

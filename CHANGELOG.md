@@ -4,6 +4,11 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+- **Casting stops fighting the caller.** The cast button is always on show while its new switch is on (On the caller's phone → Cast button on the player, default on) — it used to require a playing element, which hid it in exactly the paused/parked/stopped states where someone wants the picker back to switch speakers or stop; pressing it now starts the stream inside the same gesture when nothing is playing, and pressing it while connected reopens the picker, which is how you change devices or untoggle. While a session is CONNECTED the button wears coral, pause is a real pause on the same element instead of the teardown that ended the receiver's session and sent the next press to the phone's own speakers, the live-drift resnap never reassigns src mid-cast, and the media metadata — track, artist, album art — is fed to the receiver the moment the session lands, so the TV shows the record instead of "Playing Google Chrome".
+- **The queue panels spend their height on records, not rows.** One entry is one line — title then artist, the tail ellipsizing — and the queue window hands one line to In the booth, whose sentence stopped clipping mid-thought at three lines. With one-line entries the shorter queue window still shows as many records as before.
+
 ## 0.99.15
 
 The day after the release day: both open experiments got their final answer from the instrument, the director learned whose ask an action actually answered, and the maintainability plan closed its books. Nothing here ships on an argument — the wind-down lost its case in numbers and stays off with the full verdict written down; the asks ledger's fix won its case in numbers and ships. Plus the player's progress row earning its digits back, a privacy tug in the voicemail directory settled for good, and the dependency tree frozen to exactly what the deployment already runs.
