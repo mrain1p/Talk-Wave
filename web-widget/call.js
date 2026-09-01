@@ -942,8 +942,7 @@
         $('plLen').textContent = '';
         if (prog) prog.hidden = true;
         deck.style.setProperty('--pl-progress', '0%');
-        if (!deck.hidden) paintHeadMeta();
-      }
+        }
       return;
     }
     const secs = Math.max(0, Math.floor(Date.now() / 1000 - npStart));
@@ -984,7 +983,6 @@
       if (prog) prog.hidden = !(running || ticking);
       deck.style.setProperty('--pl-progress', running ? pct : '0%');
       // The header's wall clock rides the same tick while the sheet is up.
-      if (!deck.hidden) paintHeadMeta();
     }
   }
   // One second is the right cadence for a clock that shows whole seconds, and
@@ -5290,6 +5288,7 @@
     void sheet.offsetHeight;
     document.querySelector('.card').classList.add('playeropen');
     playerOpen = true;
+    sweepCurtain(true);
     paintPlayer();
     fitPlayerArt();
     // What this caller's key unlocks (skip, unlike, operator mode) — the
@@ -5306,6 +5305,7 @@
     if (!keepAudio) stopPlayerAudio();
     if (!playerOpen) { $('playerView').hidden = true; paintListenChip(); return; }
     playerOpen = false;
+    sweepCurtain(false);
     document.querySelector('.card').classList.remove('playeropen');
     // display:none only after the wipe has left. A timer, not transitionend:
     // transition events never fire in a hidden pane, and a sheet stuck
@@ -5486,9 +5486,21 @@
     // stands in only while the booth has said nothing yet.
     const boothBody = $('plBoothBody');
     if (boothBody) {
+      // WHO is in the booth, beside the label (operator, 2026-09-01: the
+      // sheet never said, and "live" was a word the pip already carries).
+      // The NAME rides the header line; the SHOW gets the line under it,
+      // always; the booth's own words follow. A real fault outranks the
+      // name — a dead stream is worth that room.
       $('plBoothMeta').textContent = playerDead
-        ? 'stream unavailable' : (d.onAir ? 'live' : 'off air');
+        ? 'stream unavailable'
+        : (d.onAir ? (d.name || '') : 'off air');
       boothBody.innerHTML = '';
+      // The show, always, on its own line under the DJ's name.
+      if (d.show) {
+        const sh = document.createElement('div');
+        sh.className = 'plsub plbshow'; sh.textContent = d.show;
+        boothBody.appendChild(sh);
+      }
       const line = d.booth && d.booth.text;
       if (line) {
         // The words alone — the DJ's name and show were a third statement
@@ -5496,20 +5508,15 @@
         const q = document.createElement('div');
         q.className = 'plquote'; q.textContent = line;
         boothBody.appendChild(q);
-      } else {
-        const t = document.createElement('div');
-        t.className = 'pltit';
-        t.textContent = (d.name && d.name !== '…') ? d.name : 'The booth';
-        boothBody.appendChild(t);
-        const subText = [d.show, d.tagline].filter(Boolean).join(' — ');
-        if (subText) {
-          const s = document.createElement('div');
-          s.className = 'plsub'; s.textContent = subText;
-          boothBody.appendChild(s);
-        }
+      } else if (d.tagline) {
+        // Nothing said yet: the show's own line stands in. The name and
+        // show are already above — repeating them here was the third
+        // statement of one fact (the operator's earlier cut, still true).
+        const s = document.createElement('div');
+        s.className = 'plquote'; s.textContent = d.tagline;
+        boothBody.appendChild(s);
       }
     }
-    paintHeadMeta();
     refreshHeart(np.title || '');
     paintPlayerButtons();
     paintSegBtn();
@@ -5518,14 +5525,9 @@
   // The header's right side: the local clock alone. It carried the station's
   // weather too until 2026-08-31 — the operator's call: that corner's room
   // belongs to the cast button now, and a listener already knows the sky.
-  function paintHeadMeta() {
-    const el = $('plHeadMeta');
-    if (!el) return;
-    const t = new Date();
-    const hr = t.getHours() % 12 || 12;
-    el.textContent = hr + ':' + String(t.getMinutes()).padStart(2, '0')
-      + (t.getHours() < 12 ? ' am' : ' pm');
-  }
+  // The player head's clock RETIRED 2026-09-01 (operator: "it is not a
+  // clock app and just gets in the way") — the element and its painter
+  // left together, so nothing reaches an id that no longer exists.
 
   // --- casting the stream ---------------------------------------------------
   // "Play this on my speakers" from the sheet itself. Two platform doors,
@@ -5947,13 +5949,44 @@
   // says: normally the sheet travels (it arrives over the phone), and on a
   // player-first page it is clipped from the top instead, so the boundary
   // sweeps down like a phone drawn over a player that holds still.
+  // The arriving screen's own EDGE. Clipping alone reads as a scan — no
+  // seam, nothing that says a second card is coming over the first
+  // (operator, 2026-09-01) — so a lit rule with a shadow under it travels
+  // with the boundary and gives the phone a leading edge.
+  function paintCurtain(pct, on) {
+    const c = $('plCurtain');
+    if (!c) return;
+    c.style.top = (pct * 100).toFixed(2) + '%';
+    c.classList.toggle('on', !!on);
+  }
+
+  // A tap has no finger to follow, so the edge is swept by hand over the
+  // same duration the sheet's own transition runs.
+  function sweepCurtain(toOpen) {
+    if (!playerIsHome()) { paintCurtain(0, false); return; }
+    const c = $('plCurtain');
+    if (!c) return;
+    paintCurtain(toOpen ? 1 : 0, true);
+    c.classList.add('sweep');
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => paintCurtain(toOpen ? 0 : 1, true));
+    });
+    clearTimeout(plCurtainT);
+    plCurtainT = setTimeout(() => {
+      c.classList.remove('sweep', 'on');
+    }, 460);
+  }
+  let plCurtainT = 0;
+
   function paintSheetProgress(sheet, shownPct) {
     const p = Math.min(1, Math.max(0, shownPct));
     if (playerIsHome()) {
       sheet.style.transform = '';
       sheet.style.clipPath = 'inset(' + ((1 - p) * 100).toFixed(2) + '% 0 0 0)';
+      paintCurtain(1 - p, p > 0.001 && p < 0.999);
       return;
     }
+    paintCurtain(0, false);
     sheet.style.clipPath = '';
     sheet.style.transform =
       'translateY(' + (-103 * (1 - p)).toFixed(2) + '%)';
