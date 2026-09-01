@@ -1,7 +1,7 @@
 # Built from the REPO ROOT context (docker build -f agent-worker/Dockerfile .)
 # so the widget ships inside the image — a pulled image needs no source
 # checkout. token_server's default WIDGET_DIR resolves to /web-widget.
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
