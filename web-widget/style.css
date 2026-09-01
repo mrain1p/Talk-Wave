@@ -990,8 +990,11 @@
     /* The same 38px band as the card's eyebrow — the two headers used to be
        different heights and the page-wipe between them jumped (operator's
        phone, 2026-08-31). Height, not padding, so they cannot drift apart
-       again. */
+       again. nowrap because the row grew buttons and NOW PLAYING folded
+       onto two squeezed lines (operator's phone, 2026-09-01) — the CLOCK
+       is the member that gives way instead, below. */
     height: 38px; padding: 0 16px; border-bottom: 1px solid var(--hairline);
+    white-space: nowrap;
     font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--coral);
   }
@@ -1044,9 +1047,12 @@
   }
   .plsegsay:empty { display: none; }
 
+  /* 10px and allowed to give way (operator, 2026-09-01: the clock was the
+     row's least important member and it was fighting the buttons). */
   .plheadmeta { margin-left: auto; color: var(--sage-dim);
-                font: 400 11px/1 var(--font-mono); letter-spacing: .08em;
-                text-transform: none; }
+                font: 400 10px/1 var(--font-mono); letter-spacing: .08em;
+                text-transform: none; flex: 0 1 auto; min-width: 0;
+                overflow: hidden; text-overflow: ellipsis; }
   /* The middle FITS rather than scrolls: the operator's ask, off the web
      player's screenshot (2026-08-19) — "shouldn't have to scroll on the
      player; a side bar for the upcoming tracks is fine". The art shrinks
@@ -1131,14 +1137,24 @@
           font-variant-numeric: tabular-nums; }
   .plel:empty { display: none; }
   /* The phone's ribbon on a player-first page: same grip, the sheet's own
-     top edge — the mirror of the card's bookmark, because on that page
-     the PHONE is the thing that hangs above (operator, 2026-09-01). */
-  .card .plphonetab {
-    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-    z-index: 4; padding: 7px 26px 5px; background: transparent; border: 0;
-    min-height: 0; height: auto; cursor: pointer;
+     top strip — IN FLOW, never floating (its absolute first cut sat on
+     the header clock, operator's screenshot 2026-09-01). All the inverted
+     furniture rides the card's plfirst class in one place: the phone
+     ribbon exists, the card's bookmark and the foot grabber stand down. */
+  .card .plphonetab { display: none; }
+  .card.plfirst .plphonetab {
+    display: flex; justify-content: center; align-items: center;
+    width: 100%; flex: none; padding: 8px 0 5px;
+    background: transparent; border: 0; min-height: 0; height: auto;
+    cursor: pointer;
   }
-  .card .plphonetab[hidden] { display: none; }
+  .card.plfirst .plphonetab .grip {
+    width: 34px; height: 4px; border-radius: 2px; background: var(--sage-dim);
+    display: block;
+  }
+  .card.plfirst .plphonetab:hover .grip { background: var(--alpenglow); }
+  .card.plfirst .ribbon { display: none; }
+  .card.plfirst .plgrab { display: none; }
   /* The cast control lit while a session is CONNECTED — same coral the
      card's live states wear, so "the TV has it" is readable at a glance. */
   .card #plCastBtn.casting { color: var(--coral); border-color: var(--coral); }
@@ -1418,6 +1434,9 @@
   #plReqSend:disabled { background: transparent; color: var(--sage-dim);
                         border-color: var(--hairline); opacity: 1; }
   .plreqmsg { font-size: 11px; color: var(--coral); text-align: left; }
+  /* The DJ's own reply to an operator command — words, not a fault, so
+     not the refusal coral. */
+  .plreqmsg.info { color: var(--sage); font-size: 12px; line-height: 1.4; }
   .plreqmsg:empty { display: none; }
   /* The way home: the same grip as the top bookmark, now at the sheet's
      foot — "the pulldown stays on the bottom when the page is switched". */

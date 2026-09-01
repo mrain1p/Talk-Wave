@@ -658,6 +658,8 @@
   // fader. Declared here because applyVolume reads it at first paint, long
   // before the dock's handler is wired.
   let plMuted = false;
+  // The player-first auto-open fires once per page load — see the poll.
+  let playerStartApplied = false;
   // The DJ's own track, kept so the station can pull the voice into the shared
   // audio graph whichever of the two arrives second. See mixStation.
   let djTrack = null;
@@ -832,7 +834,31 @@
     b.innerHTML = cardLiked ? '&#9829;' : '&#9825;';
   }
   $('npHeart').addEventListener('click', async () => {
-    if (cardLiked) return;               // add-only, matching the station
+    // A lit heart un-hearts here too when the key clears the permission —
+    // the phone page's heart matching the player's (operator, 2026-09-01).
+    if (cardLiked) {
+      if (!(plAbilities && plAbilities.unlike)) return;
+      cardLiked = false;
+      paintCardHeart({ track: cardHeartFor, cardLike: true });
+      try {
+        let song = null;
+        try {
+          const s = await fetch('/player/like', { headers: keyHeaders() });
+          if (s.ok) song = (await s.json()).songId || null;
+        } catch (e) { /* no id, no unlike — restore below */ }
+        if (!song) throw new Error('no record id to un-heart');
+        const r = await fetch('/player/unlike', {
+          method: 'POST',
+          headers: keyHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ songId: song, title: cardHeartFor }),
+        });
+        if (!r.ok) throw new Error('refused');
+      } catch (e) {
+        cardLiked = true;
+        paintCardHeart({ track: cardHeartFor, cardLike: true });
+      }
+      return;
+    }
     cardLiked = true;                    // optimistic; walked back on refusal
     paintCardHeart({ track: cardHeartFor, cardLike: true });
     try {
@@ -1912,8 +1938,14 @@
         lastCanAsk = askSignature(d);
         // The operator can make the player the page's FRONT — it opens
         // without the wipe (this is the starting face, not a transition)
-        // and QUIET: PLAY starts the music, never the page turn.
-        if (d.playerStart && playerOffered() && !inConversation()) {
+        // and QUIET: PLAY starts the music, never the page turn. ONCE per
+        // page load: this block re-runs when the ask-set changes, and it
+        // was re-opening the sheet over a caller who had deliberately
+        // pulled the phone down — the top ribbon read as dead because
+        // every exit was being undone (operator, 2026-09-01).
+        if (!playerStartApplied && d.playerStart && playerOffered()
+            && !inConversation()) {
+          playerStartApplied = true;
           const sheet = $('playerView');
           sheet.classList.add('dragging');
           openPlayer();
@@ -1967,6 +1999,10 @@
       // Only once /live has landed: whether the player is offered at all is
       // the server's answer, and the stream URL arrives with it.
       if (first) resumeFromHandoff();
+      // The card heart's un-press and the player's operator side both read
+      // the same server answer — fetched once the line is known, not only
+      // at sheet-open, so the phone face has it too.
+      if (first) fetchAbilities();
       if (playerOpen) { paintPlayer(); fitPlayerArt(); }
       if (playerEl) feedMediaSession();
       castFollowTrack();
@@ -5789,18 +5825,15 @@
     if (tab) {
       // The bookmark only hangs while the player is closed — the way back
       // up is the grabber at the dock's foot, where the finger already is.
-      // And never when the player IS the page: home has no bookmark to
-      // itself.
-      tab.hidden = !idle || playerOpen || playerIsHome();
+      tab.hidden = !idle || playerOpen;
     }
-    // The inverted furniture: on a player-first page the sheet's TOP
-    // ribbon is the way to the phone, and the foot grabber (which pushes
-    // the sheet away upward — the wrong direction for home) stands down.
-    const home = playerIsHome();
-    const pt = $('phoneTab');
-    if (pt) pt.hidden = !(home && playerOpen);
-    const grab = $('plGrab');
-    if (grab) grab.hidden = home;
+    // The inverted furniture rides ONE class, owned by CSS: on a
+    // player-first page the sheet's TOP ribbon is the way to the phone,
+    // and the card's bookmark and the foot grabber stand down. It was
+    // per-element hidden fiddling first, and the pieces disagreed on the
+    // operator's phone (grabber up AND ribbon up, 2026-09-01).
+    const card = document.querySelector('.card');
+    if (card) card.classList.toggle('plfirst', playerIsHome());
   }
 
   // The lock screen's idea of what is playing, on the platforms that ask.
@@ -6032,14 +6065,11 @@
     b.classList.toggle('liked', plLiked);
     b.setAttribute('aria-pressed', plLiked ? 'true' : 'false');
     b.title = count ? count + ' likes' : 'Like this track';
-    // The count in the open, beside the heart — the title above needs a
-    // hover, and this sheet's home surface has no cursor. Zero paints
-    // nothing: an explicit 0 would read as a scoreboard nobody is on.
+    // The number RETIRED (operator, 2026-09-01: "should just show if it's
+    // liked") — the filled heart is the whole answer; the count lives on
+    // in the hover title for a desktop that asks.
     const n = $('plLikeCount');
-    if (n) {
-      n.hidden = !count;
-      n.textContent = count || '';
-    }
+    if (n) n.hidden = true;
   }
   $('plHeartBtn').onclick = async () => {
     // A lit heart UN-hearts when the key clears the permission — the
@@ -6052,11 +6082,14 @@
         const r = await fetch('/player/unlike', {
           method: 'POST',
           headers: keyHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ songId: plLikeSong }),
+          body: JSON.stringify({ songId: plLikeSong,
+                                title: heldNowPlaying(shown || live || {})
+                                  .title || '' }),
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || 'no');
         paintHeart(d.count);
+        if (plTab === 'booth') refreshBoothLog();
       } catch (e) { plLiked = true; paintHeart(); }
       return;
     }
@@ -6065,11 +6098,14 @@
       const r = await fetch('/player/like', {
         method: 'POST',
         headers: keyHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(plLikeSong ? { songId: plLikeSong } : {}),
+        body: JSON.stringify(Object.assign(
+          plLikeSong ? { songId: plLikeSong } : {},
+          { title: heldNowPlaying(shown || live || {}).title || '' })),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || 'no');
       paintHeart(d.count);
+      if (plTab === 'booth') refreshBoothLog();
     } catch (e) { plLiked = false; paintHeart(); }
   };
 
@@ -6095,6 +6131,10 @@
     const op = $('plOpBtn');
     if (op) op.hidden = !a.command;
     if (!a.command && plOpMode) setOpMode(false);
+    // The remembered face comes back the moment the key still clears it.
+    let kept = '';
+    try { kept = localStorage.getItem('twOpMode') || ''; } catch (e) {}
+    if (a.command && kept && !plOpMode) setOpMode(true);
     paintQueueTabs();
   }
 
@@ -6117,6 +6157,10 @@
 
   function setOpMode(on) {
     plOpMode = !!on;
+    // The face survives the visit (operator, 2026-09-01): an operator who
+    // lives in Do-it mode should not re-arm it every open.
+    try { localStorage.setItem('twOpMode', plOpMode ? '1' : ''); }
+    catch (e) { /* private windows */ }
     const op = $('plOpBtn'), input = $('plReqInput'), send = $('plReqSend');
     if (op) {
       op.classList.toggle('on', plOpMode);
@@ -6154,9 +6198,18 @@
         .map((a) => [a.icon, a.label, a.detail && '— ' + a.detail]
           .filter(Boolean).join(' '))
         .join('   ·   ');
-      flashOpResult(acts || d.said || 'Done.');
+      // Actions flash where the words were; the DJ's WORDS persist below
+      // the row until the next send — a brain that asks a clarifying
+      // question or explains a refusal was answering into a four-second
+      // fade nobody caught, which read as nothing happening at all
+      // (operator, 2026-09-01). A follow-up send continues the same
+      // exchange, so answering the question works.
+      if (acts) flashOpResult(acts);
+      msg.classList.add('info');
+      msg.textContent = d.said || (acts ? '' : 'Done — nothing to add.');
       if (plTab === 'booth') refreshBoothLog();
     } catch (e) {
+      msg.classList.remove('info');
       msg.textContent = String(e.message || e);
     }
     btn.textContent = plOpMode ? 'Do it' : 'Send';
@@ -6215,6 +6268,7 @@
     const text = (input.value || '').trim();
     if (!text) { input.focus(); return; }
     btn.disabled = true; btn.textContent = 'Sending';
+    msg.classList.remove('info');
     msg.textContent = '';
     try {
       const r = await fetch('/player/request', {
