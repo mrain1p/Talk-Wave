@@ -51,9 +51,14 @@ from api.live import (
     handle_live_preview,
 )
 from api.player import (
+    handle_player_abilities,
+    handle_player_booth_log,
+    handle_player_command,
     handle_player_like,
     handle_player_like_status,
     handle_player_request,
+    handle_player_skip,
+    handle_player_unlike,
 )
 from api.voicemail import (
     handle_vm_air_clip,
@@ -206,6 +211,16 @@ def build_app() -> web.Application:
     app.router.add_options("/player/like", handle_options)
     app.router.add_post("/player/request", handle_player_request)
     app.router.add_options("/player/request", handle_options)
+    app.router.add_get("/player/abilities", handle_player_abilities)
+    app.router.add_options("/player/abilities", handle_options)
+    app.router.add_post("/player/skip", handle_player_skip)
+    app.router.add_options("/player/skip", handle_options)
+    app.router.add_post("/player/unlike", handle_player_unlike)
+    app.router.add_options("/player/unlike", handle_options)
+    app.router.add_post("/player/command", handle_player_command)
+    app.router.add_options("/player/command", handle_options)
+    app.router.add_get("/player/booth-log", handle_player_booth_log)
+    app.router.add_options("/player/booth-log", handle_options)
     app.router.add_get("/settings/sounds", handle_sounds_list)
     app.router.add_post("/settings/sounds", handle_sound_upload)
     app.router.add_options("/settings/sounds", handle_options)

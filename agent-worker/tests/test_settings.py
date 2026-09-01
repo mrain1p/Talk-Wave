@@ -1382,3 +1382,56 @@ class TestTheThinkingSoundShipsOff(unittest.TestCase):
         # Never fatal: a missing file costs the operator a note, not the
         # call.
         self.assertIn("could not start", src)
+
+
+class TestThePlayerOperatorSideFollowsTheMatrix(unittest.TestCase):
+    """The player's skip, unlike and operator mode (2026-09-01): two gates
+    that multiply. The phone-page SWITCH decides whether the furniture is
+    on the sheet at all; the permission matrix decides which TIER may use
+    it — and _abilities is the one pure function both the endpoint and
+    these rows read."""
+
+    def _abilities(self, cfg, tier):
+        from api.player import _abilities
+
+        base = {k: v for k, (_, v) in settings_store.FIELDS.items()}
+        base.update(cfg)
+        return _abilities(base, tier)
+
+    def test_everything_ships_dark(self):
+        # New doors onto admin-backed writes ship OFF; an existing
+        # deployment sees nothing new until the operator opens them.
+        self.assertIs(False, settings_store.FIELDS["player_skip_button"][1])
+        self.assertIs(False, settings_store.FIELDS["player_operator_mode"][1])
+        self.assertEqual("admin",
+                         settings_store.FIELDS["allow_player_commands"][1])
+
+    def test_the_switch_and_the_tier_both_gate(self):
+        # Switch off: even the operator sees no skip button.
+        self.assertFalse(self._abilities({}, "admin")["skip"])
+        # Switch on: the tier still has to clear the matrix.
+        on = {"player_skip_button": True}
+        self.assertTrue(self._abilities(on, "admin")["skip"])
+        self.assertFalse(self._abilities(on, "guest")["skip"])
+        self.assertFalse(self._abilities(on, "open")["skip"])
+        # The operator can open it to guests without opening it to the world.
+        wide = {"player_skip_button": True, "allow_skip_track": "guest"}
+        self.assertTrue(self._abilities(wide, "guest")["skip"])
+        self.assertFalse(self._abilities(wide, "open")["skip"])
+
+    def test_operator_mode_rides_its_own_permission(self):
+        on = {"player_operator_mode": True}
+        self.assertTrue(self._abilities(on, "admin")["command"])
+        self.assertFalse(self._abilities(on, "guest")["command"])
+        opened = {"player_operator_mode": True,
+                  "allow_player_commands": "guest"}
+        self.assertTrue(self._abilities(opened, "guest")["command"])
+
+    def test_unlike_follows_the_unfavorite_permission(self):
+        # The heart's un-heart is the station's ADMIN write (the operator's
+        # own record) — it follows the matrix row the DJ's tool already
+        # obeys, and the heart switch itself.
+        self.assertTrue(self._abilities({}, "admin")["unlike"])
+        self.assertFalse(self._abilities({}, "open")["unlike"])
+        self.assertFalse(
+            self._abilities({"show_track_like": False}, "admin")["unlike"])

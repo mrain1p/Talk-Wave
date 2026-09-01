@@ -1960,6 +1960,7 @@
       if (first) resumeFromHandoff();
       if (playerOpen) { paintPlayer(); fitPlayerArt(); }
       if (playerEl) feedMediaSession();
+      castFollowTrack();
 
       if (!d.reachable) { paintOffAir('offline'); return; }
       if (!d.onAir)     { paintOffAir('offair');  return; }
@@ -5206,6 +5207,10 @@
     playerOpen = true;
     paintPlayer();
     fitPlayerArt();
+    // What this caller's key unlocks (skip, unlike, operator mode) — the
+    // server's answer, refreshed at every open so a newly-entered code
+    // counts without a reload.
+    fetchAbilities();
     // NO music yet — opening shows the deck, and PLAY starts it (operator's
     // correction: the sheet was playing the moment it arrived). Music that
     // was already going keeps going.
@@ -5265,6 +5270,24 @@
     }
     if (plLastNp && Date.now() - plLastNpAt < 90000) return plLastNp;
     return np;
+  }
+
+  // One queue entry is ONE LINE (operator, 2026-09-01): title and artist
+  // share it and the tail ellipsizes, so the panel's height budget buys
+  // more entries rather than taller ones. Module-level because the Booth
+  // tab's log rows wear the same anatomy.
+  function queueRow(title, sub) {
+    const row = document.createElement('div');
+    row.className = 'plrow';
+    const t = document.createElement('span');
+    t.className = 'pltit'; t.textContent = title;
+    row.appendChild(t);
+    if (sub) {
+      const s = document.createElement('span');
+      s.className = 'plsub'; s.textContent = sub;
+      row.appendChild(s);
+    }
+    return row;
   }
 
   function paintPlayer() {
@@ -5338,22 +5361,6 @@
     $('plAlbum').textContent =
       [np.artist, np.album, np.year].filter(Boolean).join(' · ');
 
-    // One queue entry is ONE LINE (operator, 2026-09-01): title and artist
-    // share it and the tail ellipsizes, so the panel's height budget buys
-    // more entries rather than taller ones.
-    function queueRow(title, sub) {
-      const row = document.createElement('div');
-      row.className = 'plrow';
-      const t = document.createElement('span');
-      t.className = 'pltit'; t.textContent = title;
-      row.appendChild(t);
-      if (sub) {
-        const s = document.createElement('span');
-        s.className = 'plsub'; s.textContent = sub;
-        row.appendChild(s);
-      }
-      return row;
-    }
     // UP NEXT: the station's own queue, ALL of it — the operator wants to
     // see what is coming, not the head of the line; the panel body scrolls
     // when the list outgrows it. The pip only goes live when something is
@@ -5443,9 +5450,101 @@
   // element because both APIs cast an ELEMENT, and it must be pressed inside
   // the user's own gesture.
   function castSupported() {
-    return !!(window.HTMLMediaElement
+    return !!(castFramework() || (window.HTMLMediaElement
       && ('remote' in HTMLMediaElement.prototype
-          || 'webkitShowPlaybackTargetPicker' in HTMLMediaElement.prototype));
+          || 'webkitShowPlaybackTargetPicker' in HTMLMediaElement.prototype)));
+  }
+
+  // --- the Cast SDK path (Chromecast / Google TV) --------------------------
+  // Remote Playback flings our ELEMENT, and for live audio Chrome shows the
+  // receiver a bare "Playing Google Chrome" card no matter what the media
+  // session says — proven on the operator's own wall: the phone notification
+  // named the record, the TV named the browser (2026-09-01). The framework
+  // path loads the stream URL on Google's own media receiver instead: the
+  // TV plays the mount itself (the phone can even lock), and the receiver
+  // paints title, artist and artwork — re-fed on every record change by a
+  // fresh load, which rejoins the live edge during the transition it rides.
+  let plCastSess = false, castPlayer = null, castCtl = null;
+  let plCastLoadedTitle = null, plCastLoadAt = 0;
+
+  function castFramework() {
+    return (window.cast && window.cast.framework
+            && window.chrome && window.chrome.cast
+            && window.chrome.cast.media) ? window.cast.framework : null;
+  }
+
+  window.__onGCastApiAvailable = (ok) => { if (ok) initCastApi(); };
+
+  function initCastApi() {
+    const fw = castFramework();
+    if (!fw || castCtl) return;
+    try {
+      fw.CastContext.getInstance().setOptions({
+        receiverApplicationId:
+          window.chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+        autoJoinPolicy: window.chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+      });
+      castPlayer = new fw.RemotePlayer();
+      castCtl = new fw.RemotePlayerController(castPlayer);
+      castCtl.addEventListener(
+        fw.RemotePlayerEventType.IS_CONNECTED_CHANGED, () => {
+          plCastSess = !!castPlayer.isConnected;
+          if (plCastSess) {
+            // The TV takes the stream; two copies of the broadcast a
+            // half-second apart is the alternative.
+            if (playerEl) { wantPlayer(true); stopPlayerAudio(); }
+            plCastLoadedTitle = null;
+            castLoadMedia();
+          }
+          paintPlayerButtons();
+        });
+      castCtl.addEventListener(
+        fw.RemotePlayerEventType.IS_PAUSED_CHANGED, paintPlayerButtons);
+    } catch (e) { /* the fallback paths stand */ }
+  }
+  // The async CDN script can win the race against the callback above being
+  // read — one late check catches that without polling forever.
+  setTimeout(initCastApi, 4000);
+
+  function castLoadMedia() {
+    const fw = castFramework();
+    const sess = fw && fw.CastContext.getInstance().getCurrentSession();
+    if (!sess) return;
+    const d = shown || live || {};
+    const s = d.stream || {};
+    if (!s.url) return;
+    const np = heldNowPlaying(d);
+    try {
+      const C = window.chrome.cast;
+      const mi = new C.media.MediaInfo(
+        new URL(s.url, location.href).href, 'audio/mpeg');
+      mi.streamType = C.media.StreamType.LIVE;
+      const md = new C.media.MusicTrackMediaMetadata();
+      md.title = np.title || d.track || 'Live broadcast';
+      md.artist = np.artist || d.name || '';
+      md.albumName = np.album || d.show || '';
+      const art = np.art || d.avatar;
+      if (art) md.images = [new C.Image(new URL(art, location.href).href)];
+      mi.metadata = md;
+      sess.loadMedia(new C.media.LoadRequest(mi)).then(() => {
+        plCastLoadedTitle = md.title;
+        plCastLoadAt = Date.now();
+        paintPlayerButtons();
+      }, () => {});
+    } catch (e) { /* the stream keeps playing with the old card */ }
+  }
+
+  // A record change re-feeds the receiver. The default receiver only reads
+  // metadata at load, so this is a fresh load — it rejoins the live edge
+  // inside the transition between records, where a beat of rejoin is the
+  // least audible it will ever be. Debounced so a flapping now-playing
+  // cannot saw the stream.
+  function castFollowTrack() {
+    if (!plCastSess || !plCastLoadedTitle) return;
+    const np = heldNowPlaying(shown || live || {});
+    if (!np.title || np.title === plCastLoadedTitle) return;
+    if (Date.now() - plCastLoadAt < 8000) return;
+    castLoadMedia();
   }
 
   function paintCastBtn() {
@@ -5457,13 +5556,23 @@
     // switch speakers or stop casting. Only a browser with no casting API
     // at all removes it.
     const offered = (shown || live || {}).castButton !== false;
+    const on = plCasting || plCastSess;
     b.hidden = !(castSupported() && offered);
-    b.classList.toggle('casting', plCasting);
+    b.classList.toggle('casting', on);
     b.setAttribute('aria-label',
-                   plCasting ? 'Casting — change or stop' : 'Cast the stream');
+                   on ? 'Casting — change or stop' : 'Cast the stream');
   }
 
   $('plCastBtn').onclick = async () => {
+    // The framework path first: the receiver that can actually SHOW the
+    // record. Its own dialog is also where an active session is switched
+    // or stopped.
+    const fw = castFramework();
+    if (fw) {
+      try { await fw.CastContext.getInstance().requestSession(); }
+      catch (e) { /* dialog closed unchosen — a choice, not a fault */ }
+      return;
+    }
     // No element yet? Start one inside this same gesture — both pickers
     // cast an ELEMENT, and the first mount is tried synchronously, so the
     // prompt below still counts as user-activated.
@@ -5558,36 +5667,52 @@
   let plQueueCounts = { next: 0, past: 0 };
 
   function paintQueueTabs() {
-    const tn = $('plTabNext'), tp = $('plTabPast');
-    const bn = $('plNextBody'), bp = $('plPastBody');
+    const tn = $('plTabNext'), tp = $('plTabPast'), tb = $('plTabBooth');
+    const bn = $('plNextBody'), bp = $('plPastBody'), bb = $('plBoothLogBody');
     if (!tn || !tp || !bn || !bp) return;
     tp.hidden = !plQueueCounts.past;
-    if (tp.hidden && plTab === 'past') plTab = 'next';
-    const onNext = plTab === 'next';
-    tn.classList.toggle('on', onNext);
-    tp.classList.toggle('on', !onNext);
-    tn.setAttribute('aria-selected', onNext ? 'true' : 'false');
-    tp.setAttribute('aria-selected', onNext ? 'false' : 'true');
-    bn.hidden = !onNext;
-    bp.hidden = onNext;
+    // The Booth face is the operator's receipt printer — offered only when
+    // the server said this caller's key clears operator mode.
+    if (tb) tb.hidden = !(plAbilities && plAbilities.command);
+    if ((tp.hidden && plTab === 'past')
+        || (!tb || tb.hidden) && plTab === 'booth') plTab = 'next';
+    const face = plTab;
+    const set = (btn, name) => {
+      if (!btn) return;
+      btn.classList.toggle('on', face === name);
+      btn.setAttribute('aria-selected', face === name ? 'true' : 'false');
+    };
+    set(tn, 'next'); set(tp, 'past'); set(tb, 'booth');
+    bn.hidden = face !== 'next';
+    bp.hidden = face !== 'past';
+    if (bb) bb.hidden = face !== 'booth';
     // The meta and the pip speak for the tab that has the floor: a lit pip
     // over the play log would say "live" about the past.
-    $('plNextMeta').textContent = onNext
+    $('plNextMeta').textContent = face === 'next'
       ? (plQueueCounts.next ? plQueueCounts.next + ' queued' : 'queue empty')
-      : 'newest first';
-    $('plNextPip').classList.toggle('live', onNext && !!plQueueCounts.next);
+      : (face === 'past' ? 'newest first' : 'last 48h');
+    $('plNextPip').classList.toggle('live',
+                                    face === 'next' && !!plQueueCounts.next);
   }
 
   $('plTabNext').onclick = () => { plTab = 'next'; paintQueueTabs(); };
   $('plTabPast').onclick = () => { plTab = 'past'; paintQueueTabs(); };
+  if ($('plTabBooth')) {
+    $('plTabBooth').onclick = () => {
+      plTab = 'booth'; paintQueueTabs(); refreshBoothLog();
+    };
+  }
 
   function paintPlayerButtons() {
     // The word only — the glyphs beside it are CSS-switched off the sheet's
     // playing class, so writing the button's textContent would erase them.
     // A cast element PAUSED is not playing, and the element survives the
     // pause (tearing it down ends the receiver's session) — so the word
-    // reads the element's own state, not just its existence.
-    const playing = !!playerEl && !(plCasting && playerEl.paused);
+    // reads the element's own state, not just its existence. A framework
+    // session outranks both: the TV is the player then.
+    const playing = plCastSess
+      ? !(castPlayer && castPlayer.isPaused)
+      : (!!playerEl && !(plCasting && playerEl.paused));
     const wordEl = $('plPlayWord');
     if (wordEl) {
       wordEl.textContent = playing ? 'Pause' : (playerDead ? 'Try again' : 'Play');
@@ -5858,7 +5983,24 @@
     }
   }
   $('plHeartBtn').onclick = async () => {
-    if (plLiked) return;
+    // A lit heart UN-hearts when the key clears the permission — the
+    // station keeps that as an admin write (the operator's own record),
+    // so it goes through /player/unlike, never the public like.
+    if (plLiked) {
+      if (!(plAbilities && plAbilities.unlike) || !plLikeSong) return;
+      plLiked = false; paintHeart();    // optimistic; walked back on refusal
+      try {
+        const r = await fetch('/player/unlike', {
+          method: 'POST',
+          headers: keyHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ songId: plLikeSong }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || 'no');
+        paintHeart(d.count);
+      } catch (e) { plLiked = true; paintHeart(); }
+      return;
+    }
     plLiked = true; paintHeart();       // optimistic; walked back on refusal
     try {
       const r = await fetch('/player/like', {
@@ -5872,10 +6014,140 @@
     } catch (e) { plLiked = false; paintHeart(); }
   };
 
+  // --- the operator's side of the sheet (2026-09-01) -----------------------
+  // What the caller's key unlocks is the SERVER's answer (/player/abilities)
+  // — the widget never guesses from the tier, because only the server has
+  // seen the password (the segment button's own rule). Fetched at every
+  // sheet open: cheap, and a code entered since last time counts.
+  let plAbilities = null, plOpMode = false, plOpChat = '';
+
+  async function fetchAbilities() {
+    try {
+      const r = await fetch('/player/abilities', { headers: keyHeaders() });
+      plAbilities = r.ok ? await r.json() : null;
+    } catch (e) { plAbilities = null; }
+    paintOperatorSide();
+  }
+
+  function paintOperatorSide() {
+    const a = plAbilities || {};
+    const skip = $('plSkipBtn');
+    if (skip) skip.hidden = !a.skip;
+    const op = $('plOpBtn');
+    if (op) op.hidden = !a.command;
+    if (!a.command && plOpMode) setOpMode(false);
+    paintQueueTabs();
+  }
+
+  if ($('plSkipBtn')) {
+    $('plSkipBtn').onclick = async () => {
+      const b = $('plSkipBtn'), msg = $('plReqMsg');
+      b.disabled = true;
+      try {
+        const r = await fetch('/player/skip',
+                              { method: 'POST', headers: keyHeaders() });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || 'the station said no');
+        if (msg) msg.textContent = '';
+      } catch (e) {
+        if (msg) msg.textContent = String(e.message || e);
+      }
+      setTimeout(() => { b.disabled = false; }, 1500);
+    };
+  }
+
+  function setOpMode(on) {
+    plOpMode = !!on;
+    const op = $('plOpBtn'), input = $('plReqInput'), send = $('plReqSend');
+    if (op) {
+      op.classList.toggle('on', plOpMode);
+      op.setAttribute('aria-pressed', plOpMode ? 'true' : 'false');
+    }
+    if (input) {
+      input.placeholder = plOpMode
+        ? 'Tell the booth: queue…, shoutout…, take over…'
+        : 'Request: An artist, song, or vibe.';
+    }
+    if (send) send.textContent = plOpMode ? 'Do it' : 'Send';
+  }
+  if ($('plOpBtn')) $('plOpBtn').onclick = () => setOpMode(!plOpMode);
+
+  // One command, one turn of the text line's own brain — the reply's
+  // ACTIONS flash where the words were typed and fade (the operator's
+  // shape), and the Booth tab carries the durable record.
+  async function plSendCommand() {
+    const input = $('plReqInput'), btn = $('plReqSend'), msg = $('plReqMsg');
+    const text = (input.value || '').trim();
+    if (!text) { input.focus(); return; }
+    btn.disabled = true; btn.textContent = 'Working';
+    msg.textContent = '';
+    try {
+      const r = await fetch('/player/command', {
+        method: 'POST',
+        headers: keyHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ text, chat: plOpChat }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'the booth did not answer');
+      plOpChat = d.chat || plOpChat;
+      input.value = '';
+      const acts = (d.actions || [])
+        .map((a) => [a.icon, a.label, a.detail && '— ' + a.detail]
+          .filter(Boolean).join(' '))
+        .join('   ·   ');
+      flashOpResult(acts || d.said || 'Done.');
+      if (plTab === 'booth') refreshBoothLog();
+    } catch (e) {
+      msg.textContent = String(e.message || e);
+    }
+    btn.textContent = plOpMode ? 'Do it' : 'Send';
+    btn.disabled = false;
+  }
+
+  let plFlashT = 0;
+  function flashOpResult(text) {
+    const f = $('plOpFlash');
+    if (!f) return;
+    f.textContent = text;
+    f.hidden = false;
+    f.classList.remove('fade');
+    clearTimeout(plFlashT);
+    // Next frame, so the transition actually runs from opaque.
+    requestAnimationFrame(() => f.classList.add('fade'));
+    plFlashT = setTimeout(() => { f.hidden = true; }, 4600);
+  }
+
+  async function refreshBoothLog() {
+    const body = $('plBoothLogBody');
+    if (!body) return;
+    try {
+      const r = await fetch('/player/booth-log', { headers: keyHeaders() });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'no');
+      body.innerHTML = '';
+      const ago = (t) => {
+        const m = Math.max(0, (Date.now() / 1000 - t) / 60);
+        return m < 60 ? Math.round(m) + 'm ago' : Math.round(m / 60) + 'h ago';
+      };
+      (d.entries || []).forEach((e) => {
+        body.appendChild(queueRow(
+          e.what || e.kind,
+          [e.kind, e.tier, ago(e.t)].filter(Boolean).join(' · ')));
+      });
+      if (!(d.entries || []).length) {
+        body.textContent = 'Nothing yet — what the booth does lands here.';
+      }
+    } catch (e) {
+      body.textContent = 'The log could not be read.';
+    }
+  }
+
   // The request row: the station's own listener request box, relayed. The
   // button says SENT for a moment (the mockup's beat); a refusal shows the
   // station's own words — they are written for listeners.
   async function plSendRequest() {
+    // The row's second face: operator mode sends a command, not a request.
+    if (plOpMode) return plSendCommand();
     const input = $('plReqInput'), btn = $('plReqSend'), msg = $('plReqMsg');
     const text = (input.value || '').trim();
     if (!text) { input.focus(); return; }
@@ -5930,6 +6202,12 @@
     if (cardMode() === 'idle') openPlayer();
   };
   $('plPlayBtn').onclick = () => {
+    // A framework session: the transport drives the TV, nothing local.
+    if (plCastSess && castCtl) {
+      castCtl.playOrPause();
+      paintPlayerButtons();
+      return;
+    }
     const el = playerEl;
     // While casting, the button is a REAL pause on the same element: the
     // stop path clears src, which ends the receiver's session, and the

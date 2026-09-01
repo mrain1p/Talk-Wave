@@ -20,6 +20,7 @@ from tests.test_settings import (  # noqa: F401
     TestTheGuestDoorRuleHasOneSpelling,
     TestTheJsonStoreIdiom,
     TestTheThinkingSoundShipsOff,
+    TestThePlayerOperatorSideFollowsTheMatrix,
     TestTheMapTheOperatorNavigatesBy,
     TestTheOnAirDelayIsTheOperatorsDial,
     TestTheOnAirCallerSoundSetting,

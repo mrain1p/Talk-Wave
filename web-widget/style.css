@@ -1360,7 +1360,23 @@
   #plPlayBtn .plpi { flex: none; display: block; }
   .player.playing #plPlayBtn .plpi-play { display: none; }
   .player:not(.playing) #plPlayBtn .plpi-pause { display: none; }
-  .plreq { display: flex; gap: 10px; }
+  .plreq { display: flex; gap: 10px; position: relative; }
+  /* Operator mode's toggle, lit while the row wears its command face. */
+  .card #plOpBtn.on { color: var(--coral); border-color: var(--coral); }
+  /* The command's receipt, flashed over the spot the words were typed and
+     faded out — momentary by design (operator, 2026-09-01); the Booth tab
+     keeps the durable record. Insets clear the toggle and the button. */
+  .plopflash {
+    position: absolute; top: 0; bottom: 0; left: 40px; right: 86px;
+    display: flex; align-items: center; padding: 0 10px;
+    background: var(--pine); border: 1px solid var(--coral);
+    border-radius: var(--skin-radius-ctl);
+    color: var(--alpenglow); font: 12px var(--font-body);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    opacity: 1; transition: opacity 3.4s ease .8s; pointer-events: none;
+  }
+  .plopflash.fade { opacity: 0; }
+  .plopflash[hidden] { display: none; }
   .plreq input {
     flex: 1 1 auto; min-width: 0; height: 44px; background: var(--pine);
     border: 1px solid var(--edge); color: var(--alpenglow);

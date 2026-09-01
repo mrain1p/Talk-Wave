@@ -214,6 +214,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # else's. Both are served by local wrappers so "Actions per call" caps
     # them — over MCP they would have no ceiling at all.
     "allow_skip_track":   (None, "admin"),
+    # The player's operator mode: one-shot typed commands through the chat
+    # brain, no conversation. The tier that may command is decided here;
+    # whether the mode is on the sheet at all is player_operator_mode.
+    "allow_player_commands": (None, "admin"),
     "allow_dj_segment":   (None, "admin"),
     # Further-reaching than either, and the only caller action whose effect
     # outlives the call: it puts a different show — a different DJ — on air
@@ -644,6 +648,16 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # the picker back to switch speakers or stop casting. The widget still
     # hides it on browsers with no casting API at all.
     "player_cast_button": (None, True),
+    # The player's OPERATOR-side controls (2026-09-01): a skip button beside
+    # the heart, and the request line's operator mode — one-shot commands
+    # through the same brain and tool surface as the text line, with the
+    # actions listed under a third queue-card tab. Both ship OFF: they are
+    # doors onto admin-backed station writes, and which TIER may walk
+    # through is the permission matrix's question (allow_skip_track,
+    # allow_unfavorite, allow_player_commands) — these switches only decide
+    # whether the furniture is on the sheet at all.
+    "player_skip_button": (None, False),
+    "player_operator_mode": (None, False),
     # Which face the page opens on. The player as the front page makes the
     # widget the station's app with a phone behind it; off keeps the phone
     # first. Audio still waits for the browser's one allowed tap either way.

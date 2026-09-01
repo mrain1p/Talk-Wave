@@ -51,6 +51,17 @@ class TestExposedSurface(unittest.TestCase):
         "GET /player/like": "public",
         "POST /player/like": "public",
         "POST /player/request": "public",
+        # The player's OPERATOR side (2026-09-01). "public" is this column's
+        # coarse word for "not admin-header-gated at the door" — every one
+        # of these self-gates twice in api/player: the phone's guest door,
+        # then the permission matrix against the caller's resolved tier
+        # (allow_skip_track / allow_unfavorite / allow_player_commands, all
+        # defaulting admin), before anything touches the admin client.
+        "GET /player/abilities": "public",
+        "POST /player/skip": "public",
+        "POST /player/unlike": "public",
+        "POST /player/command": "public",
+        "GET /player/booth-log": "public",
         "GET /sounds/{name}": "public",        # uploaded call sounds
         "GET /sound-lib/{name}": "public",     # bundled clips — the widget plays them on every caller's page
         "POST /settings/sounds/meta": "admin", # category edits on the sound board

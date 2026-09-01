@@ -4,6 +4,13 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+- **The TV finally names the record.** Casting now runs on Google's own Cast receiver instead of flinging the browser's audio — the Streamer shows title, artist and album art, re-fed on every record change, and the phone acts as a true remote. AirPlay and other browsers keep the old path.
+- **The player grew an operator's side — everything off by default.** Behind two new phone-page switches and the permission matrix: a skip button beside the heart, a lit heart that can be un-hearted, and the request line's operator mode — one-shot commands through the text line's own brain, with the receipt flashed where you typed and a Booth tab listing the station's 48-hour action log.
+- **The sheet stopped painting panels into each other.** The overlap that survived one fix turned out to be the variable-length booth line blowing a fixed budget; rows are rigid now and the middle scrolls thinly in the rare case the card is genuinely too short.
+- **The prompt pricing program closed: everything stays.** Thirteen ablation arms across six scenario sets priced the never-measured prompt prose on fault counts. Every section earned its keep — including the one promising cut, which died on its confirm run.
+
 ## 0.99.16
 
 A player-and-polish day, and the release notes themselves go on a diet from here.

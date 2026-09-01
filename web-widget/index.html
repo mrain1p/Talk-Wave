@@ -57,6 +57,15 @@
 <!-- Pinned exactly: a floating @2 tag means a breaking client release lands
      silently on every visitor. Bump deliberately, test a call, then ship. -->
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.21.0/dist/livekit-client.umd.min.js"></script>
+<!-- The Google Cast SENDER (Chromium only; same CDN precedent as LiveKit).
+     Remote Playback flings the element and Chrome shows the TV a generic
+     "Playing Google Chrome" card for live audio, metadata be damned — the
+     operator's phone notification named the record while the TV named the
+     browser (2026-09-01). The Cast framework loads the stream on Google's
+     own media receiver instead, which paints title, artist and artwork for
+     a live stream, and the phone becomes a real remote. call.js falls back
+     to Remote Playback / AirPlay when this never loads. -->
+<script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1" async></script>
 <!-- No webfonts. 0.9.92 pulled Archivo and IBM Plex Mono from Google so the
      widget's labels would match one particular station page — which is a
      request to a third party from every embed, on somebody else's site, for
@@ -414,11 +423,17 @@
         <div class="pltabs" role="tablist" aria-label="Queue and history">
           <button type="button" class="pltab on" id="plTabNext" role="tab" aria-selected="true"><span class="ppip" id="plNextPip" aria-hidden="true"></span>Up next</button>
           <button type="button" class="pltab" id="plTabPast" role="tab" aria-selected="false" hidden>Just played</button>
+          <!-- The booth's receipt printer (operator, 2026-09-01): the
+               station day-log — queues, shoutouts, takeovers from calls,
+               texts and operator commands, tier-attributed, never caller
+               content — behind the same permission as operator mode. -->
+          <button type="button" class="pltab" id="plTabBooth" role="tab" aria-selected="false" hidden>Booth</button>
           <span class="plpanelmeta" id="plNextMeta"></span>
         </div>
         <div class="plpanel plqueue">
           <div class="plpanelbody" id="plNextBody"></div>
           <div class="plpanelbody" id="plPastBody" hidden></div>
+          <div class="plpanelbody" id="plBoothLogBody" hidden></div>
         </div>
         </div>
         <div class="plpanel">
@@ -433,6 +448,10 @@
                a tooltip needs a hover, and the surface this sheet was built
                for has no cursor to hover with. -->
           <span class="pllikes" id="plLikeCount" title="Likes" hidden></span>
+          <!-- Station-wide, so it appears only when the server says this
+               caller's key clears the skip permission (/player/abilities)
+               AND the operator's phone-page switch has it on the sheet. -->
+          <button class="plheart" id="plSkipBtn" type="button" hidden aria-label="Skip this track for everyone listening"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 4l10 8-10 8V4z"/><rect x="17" y="4" width="2.5" height="16"/></svg></button>
           <!-- A speaker, not a note: beside a full-width red slider the note
                read as "track position", and the volume is the one control
                here a listener grabs first (operator's review, 2026-08-24).
@@ -446,9 +465,14 @@
         <!-- Requests above the transport (operator's order): the input reads
              first, the big PAUSE stays nearest the thumb. -->
         <div class="plreq">
+          <!-- The request line's second face (operator, 2026-09-01): one-shot
+               commands through the text line's own brain. The toggle shows
+               only when /player/abilities says this key may command. -->
+          <button class="plheart plop" id="plOpBtn" type="button" hidden aria-pressed="false" aria-label="Operator mode — command the booth directly"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M8.6 8.6a4.8 4.8 0 0 0 0 6.8M15.4 8.6a4.8 4.8 0 0 1 0 6.8M5.8 5.8a8.8 8.8 0 0 0 0 12.4M18.2 5.8a8.8 8.8 0 0 1 0 12.4"/></svg></button>
           <input type="text" id="plReqInput" maxlength="200" autocomplete="off"
                  placeholder="Request: An artist, song, or vibe." />
           <button id="plReqSend" type="button">Send</button>
+          <div class="plopflash" id="plOpFlash" hidden></div>
         </div>
         <div class="plreqmsg" id="plReqMsg"></div>
         <!-- Icon + word, and the icon rides the sheet's playing class: a

@@ -137,9 +137,13 @@ def check_page(page, rep: Report, name: str, url: str,
         rep.add("FAIL", f"{name}: stylesheet contract",
                 f"expected {sorted(sheets)}, browser has {sorted(got_sheets)}")
 
+    # CDN riders are filtered out by name: LiveKit (both pages' SDK) and the
+    # Google Cast sender (the call page's Chromecast path, 2026-09-01) are
+    # deliberate externals, not page-contract drift.
     got_scripts = set(page.evaluate(
         "[...document.scripts].map(s => s.src && s.src.split('/').pop()"
-        ".split('?')[0]).filter(s => s && !s.startsWith('livekit'))"))
+        ".split('?')[0]).filter(s => s && !s.startsWith('livekit')"
+        " && !s.startsWith('cast_sender'))"))
     if got_scripts == scripts:
         rep.add("ok", f"{name}: scripts attached = {sorted(scripts)}")
     else:
