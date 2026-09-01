@@ -5007,6 +5007,10 @@
     // BEFORE the chain starts: the first candidate is tried synchronously,
     // and a stale stop from the last press would refuse it on arrival.
     playerStopped = false;
+    // Metadata BEFORE first audio: a cast handoff that grabs the element
+    // early must find the record already named, or the receiver latches
+    // the browser's own "Playing Google Chrome" card.
+    feedMediaSession();
     playFirstWorking([s.url].concat(s.alternates || []), 0, {
       get: () => playerEl,
       set: (el) => {
@@ -5242,9 +5246,27 @@
   }
   window.addEventListener('resize', () => { if (playerOpen) fitPlayerArt(); });
 
+  // The last REAL record the station named, and when. The station's
+  // /now-playing flaps — a slow read, a track transition — and every flap
+  // used to blank the whole sheet to "Live broadcast" until the next good
+  // poll (operator, 2026-09-01: "out of nowhere the player drops what is
+  // playing... fixes after a while"). Same shape as the call card's
+  // lastLiveAt blip tolerance: hold the last known record through a gap,
+  // give it up after 90s — by then the silence is a fact, not a flap.
+  let plLastNp = null, plLastNpAt = 0;
+  function heldNowPlaying(d) {
+    const np = d.nowPlaying || {};
+    if (np.title) {
+      plLastNp = np; plLastNpAt = Date.now();
+      return np;
+    }
+    if (plLastNp && Date.now() - plLastNpAt < 90000) return plLastNp;
+    return np;
+  }
+
   function paintPlayer() {
     const d = shown || live || {};
-    const np = d.nowPlaying || {};
+    const np = heldNowPlaying(d);
     // The count beside the Now-playing words (operator's ask, 2026-08-18):
     // whoever opened the deck is one of the people this number counts. Same
     // rule as the header's — only a number the station actually gave.
@@ -5605,14 +5627,19 @@
   function feedMediaSession() {
     if (!('mediaSession' in navigator)) return;
     const d = shown || live || {};
-    const np = d.nowPlaying || {};
+    // The held record, so a station flap never downgrades the lock screen
+    // or a cast receiver to the bare fallback mid-song.
+    const np = heldNowPlaying(d);
     const art = np.art || d.avatar;
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: np.title || d.track || d.name || 'Live broadcast',
         artist: np.artist || d.name || '',
         album: np.album || d.show || '',
-        artwork: art ? [{ src: new URL(art, location.href).href }] : [],
+        // sizes/type spelled out: some receivers skip artwork they cannot
+        // size ahead of fetching.
+        artwork: art ? [{ src: new URL(art, location.href).href,
+                          sizes: '512x512', type: 'image/jpeg' }] : [],
       });
       // The lock screen is the caller pressing the same two buttons — and
       // while casting, the same rule as the on-sheet button: a real pause
