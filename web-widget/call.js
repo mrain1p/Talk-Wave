@@ -91,6 +91,10 @@
     // key earns the operator side) — the sheet never renders on an embed,
     // so the Page column of the Access matrix already governs it and no
     // new setting exists to drift.
+    // What-can-I-ask, on the sheet too (operator, 2026-09-01) — the same
+    // corner-control answer the card's own "?" reads, so one switch
+    // governs both and there is no second copy to drift.
+    set('plHelpBtn', c.help !== false && !!(d && d.canAsk));
     set('plGearBtn', c.settings !== false && !compact
         && (!d || d.canOpenSettings !== false));
     set('plSigninBtn', c.signin !== false && !!(d && d.signinAvailable)
@@ -2310,6 +2314,15 @@
   function gateSubmit() { return signinMode ? submitSignin() : submitGuestCode(); }
 
   if ($('signinBtn')) $('signinBtn').onclick = openSignin;
+  // The ask list lives on the CARD (and an embed's host has to make room
+  // for it), so the sheet's copy steps aside and presses the real one —
+  // no second popup, no second anchoring problem.
+  if ($('plHelpBtn')) {
+    $('plHelpBtn').onclick = () => {
+      closePlayer(true);
+      setTimeout(() => { const b = $('helpBtn'); if (b) b.click(); }, 80);
+    };
+  }
   // The player head's copy forwards; the overlay itself lives on the card.
   if ($('plSigninBtn')) {
     $('plSigninBtn').onclick = () => {
@@ -5923,10 +5936,19 @@
   // the operator asked for, not a tap that teleports. Release past a fifth
   // of the card and it commits; short of that it settles back. A plain tap
   // (no travel) toggles, which is also the mouse's way in.
-  (function bindRibbon() {
-    const tab = $('playerTab'), sheet = $('playerView');
+  // ONE binder, both handles, both directions (operator, 2026-09-01: the
+  // phone ribbon was tap-only because only the card's tab was ever bound,
+  // and the drag maths was hardcoded to a sheet that rests ABOVE).
+  // `dir` is +1 when the player hangs above (pull DOWN to open) and -1 on
+  // a player-first page, where the phone hangs above instead and the sheet
+  // rests below — so every sign, and the resting offset itself, follows
+  // playerIsHome() rather than a constant.
+  function bindSheetDrag(tabId) {
+    const tab = $(tabId), sheet = $('playerView');
     const card = document.querySelector('.card');
     if (!tab || !sheet || !card) return;
+    const dir = () => (playerIsHome() ? -1 : 1);
+    const restPct = () => (playerIsHome() ? 103 : -103);
     let startY = 0, dragging = false, moved = false, wasOpen = false;
 
     tab.addEventListener('touchstart', (e) => {
@@ -5945,14 +5967,14 @@
 
     tab.addEventListener('touchmove', (e) => {
       if (!dragging) return;
-      const dy = e.touches[0].clientY - startY;
+      const dy = (e.touches[0].clientY - startY) * dir();
       const h = card.getBoundingClientRect().height || 1;
       if (Math.abs(dy) > 6) moved = true;
       const shownPct = wasOpen
         ? 1 - Math.min(1, Math.max(0, -dy / h))
         : Math.min(1, Math.max(0, dy / h));
       sheet.style.transform =
-        'translateY(' + (-103 * (1 - shownPct)).toFixed(2) + '%)';
+        'translateY(' + (restPct() * (1 - shownPct)).toFixed(2) + '%)';
     }, { passive: true });
 
     const settle = (e) => {
@@ -5960,7 +5982,7 @@
       dragging = false;
       sheet.classList.remove('dragging');
       const t = e.changedTouches && e.changedTouches[0];
-      const dy = t ? t.clientY - startY : 0;
+      const dy = (t ? t.clientY - startY : 0) * dir();
       const h = card.getBoundingClientRect().height || 1;
       const shouldOpen = wasOpen ? (-dy / h) < 0.2 : (dy / h) > 0.2;
       if (shouldOpen && !playerOpen) openPlayer();
@@ -5982,7 +6004,12 @@
       if (moved) { moved = false; return; }   // the click after a real drag
       if (playerOpen) closePlayer(true); else openPlayer();
     });
-  })();
+  }
+  // The card's bookmark, and — on a player-first page — the sheet's own
+  // phone ribbon. Both drag; the binder reads the direction per gesture,
+  // so a mid-session settings change cannot leave one of them backwards.
+  bindSheetDrag('playerTab');
+  bindSheetDrag('phoneTab');
 
   // The grabber at the dock's foot: the way back up, with the same
   // finger-following drag as the bookmark — always from the open state.
@@ -6167,9 +6194,12 @@
       op.setAttribute('aria-pressed', plOpMode ? 'true' : 'false');
     }
     if (input) {
+      // Each face names itself and then gives EXAMPLES (operator,
+      // 2026-09-01): the old operator line listed sentence stems, which
+      // read as syntax to obey rather than things it can do.
       input.placeholder = plOpMode
-        ? 'Tell the booth: queue…, shoutout…, take over…'
-        : 'Request: An artist, song, or vibe.';
+        ? 'Booth Operator: queue song, create mix, schedule takeover'
+        : 'Booth Request: an artist, song, or vibe';
     }
     if (send) send.textContent = plOpMode ? 'Do it' : 'Send';
   }
@@ -6182,7 +6212,10 @@
     const input = $('plReqInput'), btn = $('plReqSend'), msg = $('plReqMsg');
     const text = (input.value || '').trim();
     if (!text) { input.focus(); return; }
-    btn.disabled = true; btn.textContent = 'Working';
+    // An hourglass, not a word: "Working" overflowed the button on a
+    // narrow phone (operator, 2026-09-01), and the glyph lets the button
+    // stay narrow so the input keeps the room.
+    btn.disabled = true; btn.textContent = '⏳';
     msg.textContent = '';
     try {
       const r = await fetch('/player/command', {
@@ -6265,7 +6298,7 @@
     const input = $('plReqInput'), btn = $('plReqSend'), msg = $('plReqMsg');
     const text = (input.value || '').trim();
     if (!text) { input.focus(); return; }
-    btn.disabled = true; btn.textContent = 'Sending';
+    btn.disabled = true; btn.textContent = '⏳';
     msg.classList.remove('info');
     msg.textContent = '';
     try {
@@ -6280,10 +6313,14 @@
       }
       input.value = '';
       btn.textContent = 'Sent';
-      setTimeout(() => { btn.textContent = 'Send'; btn.disabled = false; }, 1600);
+      setTimeout(() => {
+        btn.textContent = plOpMode ? 'Do it' : 'Send';
+        btn.disabled = false;
+      }, 1600);
     } catch (e) {
       msg.textContent = String(e.message || e);
-      btn.textContent = 'Send'; btn.disabled = false;
+      btn.textContent = plOpMode ? 'Do it' : 'Send';
+      btn.disabled = false;
     }
   }
   $('plReqSend').onclick = plSendRequest;
@@ -6304,10 +6341,11 @@
   $('listenChip').onclick = () => {
     if (cardMode() === 'idle') openPlayer();
   };
-  // The strip's phone square and the sheet's top ribbon: both roads to the
-  // card underneath, audio untouched.
+  // The strip's phone square: the one-press road to the card underneath,
+  // audio untouched. (The sheet's phone ribbon is a DRAG handle — bound by
+  // bindSheetDrag, which owns its click too; a second handler here toggled
+  // it straight back.)
   if ($('plPhoneBtn')) $('plPhoneBtn').onclick = () => closePlayer(true);
-  if ($('phoneTab')) $('phoneTab').onclick = () => closePlayer(true);
   $('plPlayBtn').onclick = () => {
     // A framework session: the transport drives the TV, nothing local.
     if (plCastSess && castCtl) {

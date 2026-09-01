@@ -984,7 +984,7 @@
   /* The narrowest phones: the centred tab and a full row of corner icons
      can meet in the middle, so both give a little. */
   @container card (max-width: 359px) {
-    .card .gear { width: 28px; }
+    /* (the gear's own narrowing moved to its base rule — 28px everywhere) */
     .card .ribbon { padding-left: 10px; padding-right: 10px; }
   }
   .card .ribbon:hover .grip { background: var(--alpenglow); }
@@ -1008,7 +1008,7 @@
   }
   /* The header's own theme toggle — the sheet covers the card's corner, so
      the cycle gets a second door here, wearing the same glyph. */
-  .plhead .gear { margin-left: 4px; flex: none; }
+  .plhead .gear { margin-left: 0; flex: none; }
   .plhead .gear[hidden] { display: none; }
   .plhead .pip { width: 8px; height: 8px; background: var(--coral);
                  border-radius: 0; display: block; }
@@ -1161,7 +1161,20 @@
     display: block;
   }
   .card.plfirst .plphonetab:hover .grip { background: var(--alpenglow); }
-  .card.plfirst .ribbon { display: none; }
+  /* The card's bookmark does NOT disappear on a player-first page — hiding
+     it left the phone face with no way back at all (operator, 2026-09-01,
+     and they were right to be cross). It MOVES: the player hangs below
+     now, so its handle hangs from the card's BOTTOM edge, radius flipped,
+     sitting in the card's own 16px bottom padding so it covers no control.
+     The eyebrow gives up its anchor for the same reason — the ribbon has
+     to measure from the card, not from the top band. */
+  .card.plfirst .eyebrow { position: static; }
+  .card.plfirst .ribbon {
+    top: auto; bottom: 0; height: 18px; padding: 0 17px;
+    border: 1px solid var(--edge); border-bottom: 0;
+    border-radius: max(7px, var(--skin-radius-ctl))
+                   max(7px, var(--skin-radius-ctl)) 0 0;
+  }
   .card.plfirst .plgrab { display: none; }
   /* The cast control lit while a session is CONNECTED — same coral the
      card's live states wear, so "the TV has it" is readable at a glance. */
@@ -1404,7 +1417,7 @@
      faded out — momentary by design (operator, 2026-09-01); the Booth tab
      keeps the durable record. Insets clear the toggle and the button. */
   .plopflash {
-    position: absolute; top: 0; bottom: 0; left: 0; right: 86px;
+    position: absolute; top: 0; bottom: 0; left: 0; right: 68px;
     display: flex; align-items: center; padding: 0 10px;
     background: var(--pine); border: 1px solid var(--coral);
     border-radius: var(--skin-radius-ctl);
@@ -1429,8 +1442,10 @@
      documented eleven lines up as "the one filled control on the sheet",
      and SEND was a second fill fighting it — the phone face's own chat
      Send is the same coral ghost this now is. */
+  /* 58, was 76: the hourglass replaced the working WORD, so the button
+     needs less and the input keeps the difference (operator, 2026-09-01). */
   #plReqSend {
-    width: 76px; flex: none; height: 44px; background: transparent;
+    width: 58px; flex: none; height: 44px; background: transparent;
     border: 1px solid var(--coral); color: var(--coral);
     font: 700 11px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case);
@@ -2990,7 +3005,10 @@
        icon did in 0.10.144: every drawn corner control shifted left inside its
        34px box and the row read as unevenly spaced (operator screenshot). */
     display: inline-flex; align-items: center; justify-content: center;
-    width: 34px; height: 34px; padding: 0; border-radius: 0;
+    /* 28, was 34 (operator, 2026-09-01: "the icons should be a little
+       tighter together to the right") — the icon inside is 13px either
+       way, so this is pure gap, on both surfaces at once. */
+    width: 28px; height: 34px; padding: 0; border-radius: 0;
     border: 1px solid transparent;
     background: transparent; color: var(--sage);
     font-family: var(--font-mono); font-size: 16px; line-height: 1;

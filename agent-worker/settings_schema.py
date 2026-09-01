@@ -550,7 +550,9 @@ SCHEMA: dict[str, dict] = {
         label="“What can I ask?” button",
         help="Opens the same live reference this panel shows you, filtered to "
              "what is actually switched on. Most callers assume a phone-in only "
-             "takes requests."),
+             "takes requests. One switch, both faces: the station player's own "
+             "header carries the same button, and pressing it there steps back "
+             "to the card to show the list."),
     "embed_caller_help": dict(group="topcorner", kind="check",
         label="“What can I ask?” button (embed)",
         help="The same button, in a frame on somebody else's page."),

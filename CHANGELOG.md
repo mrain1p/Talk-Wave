@@ -4,6 +4,15 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.21
+
+Tagged without a page of its own (folded forward at the next storied release).
+
+- Both pull-down handles really drag now, in whichever direction the page's start points — and on a player-first page the card keeps its bookmark at the BOTTOM edge, so the phone face can always pull the player back up. Hiding it was the bug.
+- The request line names itself and gives examples — Booth Request / Booth Operator — the working button is an hourglass that no longer overflows a narrow phone, and the input takes the room it saved.
+- The what-can-I-ask button reaches the player's header, on the same switch as the card's.
+- Corner icons sit tighter on both faces.
+
 ## 0.99.20
 
 Tagged without a page of its own (folded forward at the next storied release).
