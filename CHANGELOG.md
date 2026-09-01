@@ -4,6 +4,13 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.20
+
+Tagged without a page of its own (folded forward at the next storied release).
+
+- On a player-first page the sheet slides the way the metaphor points: closing drops it like a windowshade so the phone is genuinely pulled down, and reopening pushes up from beneath.
+- Operator mode goes fully mechanical: receipts only in the row's own overlay — no persona, no questions, nothing shifting the layout — and a command that lands no action degrades to the station's request line to resolve best-effort, with the one-line status saying so.
+
 ## 0.99.19
 
 The morning's fixes on the player-first page, tagged without a page of its own (folded forward at the next storied release).

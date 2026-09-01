@@ -286,10 +286,31 @@ async def handle_player_command(request: web.Request) -> web.Response:
     actions = [{"icon": e.get("icon"), "label": e.get("label"),
                 "detail": e.get("detail")}
                for e in events if e.get("type") == "action"]
-    said = next((str(e.get("text") or "") for e in reversed(events)
-                 if e.get("type") == "done"), "")
+    # MECHANICAL, not conversational (operator, 2026-09-01): the command
+    # line answers in receipts, never in the DJ's voice — no questions, no
+    # explanations. A command that landed no action is UNRESOLVED whatever
+    # the brain said about it, and it degrades to the station's own
+    # listener request box, which resolves best-effort the way the
+    # request tool always has. The spoken reply is deliberately not
+    # returned; it lives in the chat record for diagnostics.
+    if not actions:
+        relay = await _relay(request, "POST", "/request",
+                             {"text": text[:200]})
+        note = "no direct action — handed to the request line"
+        try:
+            import json as _json
+
+            rb = _json.loads(relay.body.decode("utf-8"))
+            msg = str(rb.get("message") or rb.get("error") or "")
+            if msg:
+                note += ": " + msg[:120]
+        except Exception:                                      # noqa: BLE001
+            pass
+        return _cors(request, web.json_response(
+            {"chat": chat.id, "actions": [],
+             "fallback": "request", "note": note}))
     return _cors(request, web.json_response(
-        {"chat": chat.id, "said": said, "actions": actions}))
+        {"chat": chat.id, "actions": actions}))
 
 
 async def handle_player_booth_log(request: web.Request) -> web.Response:
