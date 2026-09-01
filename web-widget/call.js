@@ -204,8 +204,8 @@
     if (!btn) return;
     const opts = themeOptions();
     const cur = localStorage.getItem('callinTheme') || '';
-    const at = opts.indexOf(opts.includes(cur) ? cur : '');
-    const next = opts[(at + 1) % opts.length];
+    const here = opts.includes(cur) ? cur : '';
+    const next = opts[(opts.indexOf(here) + 1) % opts.length];
     // Drawn, not typed (shared.js THEME_ICONS): the sun glyph read as a
     // star and the station's asterisk read as nothing at all
     // (operator-reported) \u2014 the station stop wears a transmitter mast,
@@ -214,12 +214,15 @@
                 station: THEME_ICONS.station, '': THEME_ICONS.device };
     const T = { light: 'light', dark: 'dark', station: "the station's colours",
                 '': framed ? 'match the page' : 'follow the device' };
-    btn.innerHTML = G[next];
-    btn.title = 'Theme — tap for ' + T[next];
+    // The glyph shows the theme you are ON; the title names where a tap
+    // goes. It used to preview the NEXT stop, which read as the page being
+    // wrong about its own state on every surface (operator, 2026-09-01).
+    btn.innerHTML = G[here];
+    btn.title = 'Theme: ' + T[here] + ' — tap for ' + T[next];
     // The player header's copy wears the same glyph and forwards its press —
     // one cycle, two doors.
     const pl = $('plThemeBtn');
-    if (pl) { pl.innerHTML = G[next]; pl.title = btn.title; }
+    if (pl) { pl.innerHTML = G[here]; pl.title = btn.title; }
   }
 
   (function bindThemeCycle() {

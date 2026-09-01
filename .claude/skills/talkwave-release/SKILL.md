@@ -61,7 +61,15 @@ went to 97 and not to 9.
 6. **Tag and publish the GitHub Release** — merging alone leaves the Releases page stale,
    which sat on v0.9.45 for 85 versions before anyone noticed. The notes are the version's
    CHANGELOG.md entry (write that entry BEFORE the merge — high level, grouped, no laundry
-   list, no AI commentary), extracted verbatim:
+   list, no AI commentary), extracted verbatim.
+
+   **The entry is SHORT and user-facing (operator's rule, 2026-09-01: "aint nobody have
+   time for that").** A bold headline per item and at most a sentence or two behind it —
+   what's new and what's fixed in the operator's terms, never mechanism tours, never
+   measurement essays (verdicts and numbers live in module docstrings, memory and the
+   ledger, not on the release page). Vary the voice; do NOT stamp literal "What's new /
+   What's fixed" headings on every release. The 0.99.15 page was rewritten to this form —
+   read it for the register. Full-width lines still apply (one unwrapped line per bullet):
 
    ```bash
    git tag vX.Y.Z <main merge commit> && git push origin vX.Y.Z

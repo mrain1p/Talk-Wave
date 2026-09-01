@@ -1450,6 +1450,13 @@
     .plscroll .plpanel:not(.plqueue) .plpanelbody { max-height: 137px; }
     .plqgroup { grid-column: 1 / -1; margin-top: 12px; }
     .pldock { padding: 8px 16px 6px; gap: 7px; }
+    /* A control, not a panel (the masthead-budget rule): at desktop width
+       the volume rail stretched the whole dock and read as a statement.
+       Capped, with the VU holding the right edge the way a panel's meta
+       does — the strip picks up the sheet's own label-left/meta-right
+       grammar. */
+    #plVol { max-width: 320px; }
+    .pldock .plvu { margin-left: auto; }
     .card .plheart, .plreq input, #plReqSend { height: 38px; }
     .card .plheart, .card button.plnote { width: 38px; }
     .card button.plnote { height: 38px; }
@@ -1949,12 +1956,18 @@
   }
   /* --vol is written by applyVolume(); webkit has no ::-moz-range-progress
      equivalent, so the fill is a hard-stop gradient on the track itself. */
+  /* The FILL is dimmed a step (operator, 2026-09-01: the full-coral rail
+     at 100% read louder than anything on the sheet — the volume is
+     furniture, and the sheet's own bars are hairline-quiet). The thumb
+     keeps full coral: it is the grab point and the state. One rule, three
+     sliders, both pages — the shared-fader discipline holds. */
   .vol input[type=range]::-webkit-slider-runnable-track,
   #plVol::-webkit-slider-runnable-track,
   #stationBarVol::-webkit-slider-runnable-track {
     height: 3px; border-radius: 0;
     background: linear-gradient(to right,
-      var(--coral) var(--vol, 100%), var(--hairline) var(--vol, 100%));
+      color-mix(in srgb, var(--coral) 55%, var(--hairline)) var(--vol, 100%),
+      var(--hairline) var(--vol, 100%));
   }
   .vol input[type=range]::-webkit-slider-thumb, #plVol::-webkit-slider-thumb,
   #stationBarVol::-webkit-slider-thumb {
@@ -1967,7 +1980,10 @@
   #stationBarVol::-moz-range-track { height: 3px; background: var(--hairline); }
   .vol input[type=range]::-moz-range-progress,
   #plVol::-moz-range-progress,
-  #stationBarVol::-moz-range-progress { height: 3px; background: var(--coral); }
+  #stationBarVol::-moz-range-progress {
+    height: 3px;
+    background: color-mix(in srgb, var(--coral) 55%, var(--hairline));
+  }
   .vol input[type=range]::-moz-range-thumb,
   #plVol::-moz-range-thumb,
   #stationBarVol::-moz-range-thumb {
