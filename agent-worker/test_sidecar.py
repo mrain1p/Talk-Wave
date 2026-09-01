@@ -152,6 +152,7 @@ from tests.test_call_record import (  # noqa: F401
     TestASwallowedRequestIsWrittenDown,
     TestAnAskThatWentNowhereIsWrittenDown,
     TestNextPromisedFromDownTheQueueIsWrittenDown,
+    TestTheRecordKeepsThePremiseItRanUnder,
     TestCallPrivacy,
     TestCallRecord,
     TestOneUtteranceIsOneLineInTheRecord,

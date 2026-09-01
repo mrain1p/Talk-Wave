@@ -4275,20 +4275,23 @@
     if (!btn) return;
     const opts = panelThemeOptions();
     const stored = localStorage.getItem('callinTheme') || '';
-    const idx = opts.indexOf(opts.includes(stored) ? stored : '');
-    const next = opts[(idx + 1) % opts.length];
+    const here = opts.includes(stored) ? stored : '';
+    const next = opts[(opts.indexOf(here) + 1) % opts.length];
     // Drawn, not typed \u2014 the same table the card's cycle uses (shared.js
     // THEME_ICONS), so the two surfaces' controls cannot drift. The label
-    // rides along because the destination icon alone doesn't say "theme" \u2014
+    // rides along because the icon alone doesn't say "theme" \u2014
     // the operator hunted for this button while it wore the monitor (0.10.78).
+    // The glyph shows the theme you are ON, the title where a tap goes \u2014
+    // previewing the next stop read as the page being wrong about its own
+    // state (operator, 2026-09-01, all surfaces at once).
+    const NAMES = { light: 'light', dark: 'dark',
+                    station: "the station's show colours",
+                    '': 'match the device' };
     btn.innerHTML = ({ light: THEME_ICONS.light, dark: THEME_ICONS.dark,
                        station: THEME_ICONS.station,
-                       '': THEME_ICONS.device }[next])
+                       '': THEME_ICONS.device }[here])
       + '<span class="glabel">Theme</span>';
-    btn.title = 'Theme \u2014 ' + ({ light: 'switch to light',
-                  dark: 'switch to dark',
-                  station: "the station's show colours",
-                  '': 'match the device' }[next]);
+    btn.title = 'Theme: ' + NAMES[here] + ' \u2014 tap for ' + NAMES[next];
   }
 
   (function bindPanelThemeCycle() {

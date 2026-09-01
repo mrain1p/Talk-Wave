@@ -641,6 +641,13 @@
   .card button:hover:not(:disabled) {
     filter: none; background: color-mix(in srgb, var(--coral) 12%, transparent);
   }
+  /* One keyboard-focus voice for every button on BOTH faces (dock polish,
+     2026-09-01): the house already chose amber for focus on the fader
+     thumbs, and until now no card button had any focus style at all.
+     :focus-visible fires for keyboard and AT only; outline costs no
+     layout, so the one-height promise holds. */
+  .card button:focus-visible { outline: 2px solid var(--amber);
+                               outline-offset: 1px; }
   /* A new DJ or show brings a new palette — applyTokens() writes it onto
      :root and every var() resolves to the new colour in one frame, which
      snapped the whole card over abruptly (operator asked for a graceful
@@ -1123,6 +1130,9 @@
   .plel { font: 700 11px/1 var(--font-mono); color: var(--amber);
           font-variant-numeric: tabular-nums; }
   .plel:empty { display: none; }
+  /* The cast control lit while a session is CONNECTED — same coral the
+     card's live states wear, so "the TV has it" is readable at a glance. */
+  .card #plCastBtn.casting { color: var(--coral); border-color: var(--coral); }
   /* `display: block` beats the UA hidden rule (the .rig trap), so the
      no-length case — counting clock alone — needs the hide restated. */
   .plbar[hidden] { display: none; }
@@ -1193,8 +1203,16 @@
      to Just Played shoved the whole card upward): the body claims its full
      window on BOTH faces, so a sparse Up Next wears the spare room as air
      instead of giving it back and letting the sheet reflow. Flex shrink
-     stays, so a squeezed sheet still compresses it. */
-  .plqueue .plpanelbody { margin-top: 0; height: 126px; }
+     stays, so a squeezed sheet still compresses it.
+     64, was 126 then 106 (operator, 2026-09-01, second pass): THREE songs
+     is the queue window's whole job — "3 rows is adequate... scrolling
+     for more" — so the height is exactly three one-line rows and the
+     scrollbar carries the rest. */
+  .plqueue .plpanelbody { margin-top: 0; height: 64px; }
+  /* The booth spends the lines the queue gave up: its window grows before
+     scrolling, so the DJ's sentence stops clipping mid-thought
+     (operator's screenshots, 2026-09-01, both passes). */
+  .plscroll .plpanel:not(.plqueue) .plpanelbody { max-height: 166px; }
   .plpanelbody[hidden] { display: none; }
   .plscroll .plpanel:first-of-type { margin-top: 14px; }
   .plpanelhead {
@@ -1225,6 +1243,23 @@
   .plpanelbody .plsub { font-size: 12px; color: var(--sage); margin-top: 2px; }
   /* Breathing room between queue entries. */
   .plpanelbody .plsub + .pltit, .plpanelbody .pltit + .pltit { margin-top: 6px; }
+  /* One queue entry is ONE LINE (operator, 2026-09-01): title then artist,
+     baseline-aligned, the artist giving way first when the line runs out.
+     min-width: 0 on both or flex refuses to shrink them past content. */
+  .plpanelbody .plrow { display: flex; align-items: baseline; gap: 7px;
+                        white-space: nowrap; min-width: 0; }
+  .plpanelbody .plrow .pltit { flex: 0 1 auto; min-width: 0;
+                               overflow: hidden; text-overflow: ellipsis;
+                               /* 600/13, not the stacked layout's 700/14:
+                                  three bold-capped lines in a row read as
+                                  shouting (operator, 2026-09-01 — "a bit
+                                  too strong, jarring"). One step down
+                                  keeps the title leading the artist
+                                  without the block going heavy. */
+                               font-weight: 600; font-size: 13px; }
+  .plpanelbody .plrow .plsub { flex: 0 1 auto; min-width: 0; margin-top: 0;
+                               overflow: hidden; text-overflow: ellipsis; }
+  .plpanelbody .plrow + .plrow { margin-top: 5px; }
   /* The DJ's own words — prose, not a title. */
   .plpanelbody .plquote {
     font-size: 13px; line-height: 1.45; color: var(--alpenglow);
@@ -1245,7 +1280,8 @@
   .card .plheart {
     width: 30px; height: 30px; flex: none; border: 1px solid var(--edge);
     background: transparent; color: var(--sage); font-size: 14px;
-    line-height: 1; border-radius: 0; cursor: pointer; padding: 0;
+    line-height: 1; border-radius: var(--skin-radius-ctl); cursor: pointer;
+    padding: 0;
   }
   .card .plheart.liked { color: var(--coral); border-color: var(--coral);
                          animation: plpop .28s ease-out; }
@@ -1261,7 +1297,12 @@
      no border, the same dim ink, lit coral only while it is actually
      holding the player silent. */
   .card button.plnote {
-    border: 0; background: transparent; padding: 0; width: 22px; height: 22px;
+    /* 30, was 22: the heart beside it is a 30px square, and two grey
+       icons in one row on two different grids read as unrelated pieces
+       (dock polish, 2026-09-01). Same box, still borderless — the note's
+       quiet-footprint ruling stands; the strip's height was already the
+       heart's, so nothing moves. */
+    border: 0; background: transparent; padding: 0; width: 30px; height: 30px;
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; min-height: 0;
   }
@@ -1292,13 +1333,28 @@
      filled control on the sheet, same as the card's own primary. */
   #plPlayBtn {
     width: 100%; height: 48px; border: 1px solid var(--coral);
-    background: var(--coral); color: var(--alpenglow);
+    /* #fff, not alpenglow: the light theme resolves alpenglow near-black,
+       which put dark ink on the coral fill. White-on-coral is the card
+       primary's own documented exception (#callBtn wears the same
+       literal), so the two faces' filled controls now say it identically.
+       The radius rides the skin token like every call-face control. */
+    background: var(--coral); color: #fff;
     font: 700 12px/1 var(--font-mono); letter-spacing: .14em;
-    text-transform: var(--skin-label-case); border-radius: 0; cursor: pointer;
+    text-transform: var(--skin-label-case);
+    border-radius: var(--skin-radius-ctl); cursor: pointer;
     display: flex; align-items: center; justify-content: center; gap: 8px;
   }
   .player:not(.playing) #plPlayBtn { background: transparent;
                                      color: var(--coral); }
+  /* The id out-specified the card's own hover wash, so the two dock
+     buttons answered nothing on hover (dock polish, 2026-09-01). The
+     filled state brightens like #callBtn; the outlined states take the
+     card's coral wash, values copied not invented. */
+  .player.playing #plPlayBtn:hover { filter: brightness(1.08); }
+  .player:not(.playing) #plPlayBtn:hover,
+  #plReqSend:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--coral) 12%, transparent);
+  }
   /* The transport's glyph follows the sheet's own playing class: the pause
      bars while the stream runs, the play triangle while it doesn't. */
   #plPlayBtn .plpi { flex: none; display: block; }
@@ -1308,16 +1364,30 @@
   .plreq input {
     flex: 1 1 auto; min-width: 0; height: 44px; background: var(--pine);
     border: 1px solid var(--edge); color: var(--alpenglow);
-    font: 13px var(--font-body); padding: 0 10px; border-radius: 0;
+    font: 13px var(--font-body); padding: 0 10px;
+    border-radius: var(--skin-radius-ctl);
   }
   .plreq input::placeholder { color: var(--sage-dim); }
+  /* The chatrow input's own focus answer, restated here — before this the
+     request box wore the UA's blue ring, the one obviously-foreign colour
+     on the sheet. */
+  .plreq input:focus { outline: none; border-color: var(--coral); }
+  /* Outlined, NOT filled (dock polish, 2026-09-01): the transport is
+     documented eleven lines up as "the one filled control on the sheet",
+     and SEND was a second fill fighting it — the phone face's own chat
+     Send is the same coral ghost this now is. */
   #plReqSend {
-    width: 76px; flex: none; height: 44px; background: var(--coral);
-    border: 1px solid var(--coral); color: var(--alpenglow);
+    width: 76px; flex: none; height: 44px; background: transparent;
+    border: 1px solid var(--coral); color: var(--coral);
     font: 700 11px/1 var(--font-mono); letter-spacing: .14em;
-    text-transform: var(--skin-label-case); border-radius: 0; cursor: pointer;
+    text-transform: var(--skin-label-case);
+    border-radius: var(--skin-radius-ctl); cursor: pointer;
   }
-  #plReqSend:disabled { opacity: .7; }
+  /* The card's own disabled rule, restated at id specificity — the id was
+     out-specifying it, leaving disabled SEND a dimmed coral fill, the
+     exact look "a disabled action gives up the fill" exists to prevent. */
+  #plReqSend:disabled { background: transparent; color: var(--sage-dim);
+                        border-color: var(--hairline); opacity: 1; }
   .plreqmsg { font-size: 11px; color: var(--coral); text-align: left; }
   .plreqmsg:empty { display: none; }
   /* The way home: the same grip as the top bookmark, now at the sheet's
@@ -1340,13 +1410,19 @@
      the middle scrolling. */
   @media (min-width: 701px) {
     .plscroll {
-      /* 112, was 128 (operator, 2026-08-31): a slightly smaller sleeve so
-         the panels below get one more line of text. */
-      display: grid; grid-template-columns: 112px 1fr; gap: 3px 16px;
+      /* 92, was 128 then 112 (operator, 2026-08-31 and 2026-09-01): the
+         sleeve keeps shrinking in the panels' favour — and this step is
+         load-bearing, not taste. The sheet fits a FIXED-height card, and
+         the grid was height-starved: auto rows shrank below their
+         content, the queue card overflowed its row, and the booth's top
+         edge sat inside it (the operator's desktop overlap screenshot;
+         measured via gridTemplateRows vs the boxes). The sleeve is where
+         the budget comes back. */
+      display: grid; grid-template-columns: 92px 1fr; gap: 3px 16px;
       align-content: start; align-items: center; text-align: left;
       padding: 12px 16px 8px;
     }
-    .plartwrap { grid-row: 1 / span 3; grid-column: 1; width: 112px;
+    .plartwrap { grid-row: 1 / span 3; grid-column: 1; width: 92px;
                  align-self: start; }
     .pltrack { grid-column: 2; margin-top: 4px; align-self: end;
                font-size: 22px; }
@@ -1354,17 +1430,36 @@
     .pltags { grid-column: 2; justify-content: flex-start; margin-top: 4px;
               align-self: start; }
     .plprog { grid-column: 1 / -1; margin-top: 10px; }
-    .plpanel { grid-column: 1 / -1; margin-top: 6px; padding: 7px 10px; }
+    /* The bar, the bookmark tabs and the booth sat 2-5px apart at desktop
+       and read as touching (operator, 2026-09-01). Two causes, both
+       fixed: the grid's centre alignment HALVES an asymmetric margin (a
+       centred item gives half its margin back to the track — pinned by an
+       inline-margin probe, delta-20 of margin moved the box delta-10), so
+       the full-width rows align start and their margins mean what they
+       say again; and the margins themselves grew a step. */
+    .plprog, .plqgroup, .plscroll .plpanel { align-self: start; }
+    .plpanel { grid-column: 1 / -1; margin-top: 10px; padding: 7px 10px; }
     .plscroll .plpanel:first-of-type { margin-top: 8px; }
     /* A shorter window on the short card; the body scrolls past it.
        100px = two entries and change, one line up from the 82 the queue
        head row used to spend (operator, 2026-08-31). */
     .plpanelbody { max-height: 100px; }
-    .plqueue .plpanelbody { height: 100px; }
-    .plqgroup { grid-column: 1 / -1; margin-top: 8px; }
+    /* Same trade as the phone: three one-line rows exactly, the booth
+       takes the rest. */
+    .plqueue .plpanelbody { height: 64px; }
+    .plscroll .plpanel:not(.plqueue) .plpanelbody { max-height: 137px; }
+    .plqgroup { grid-column: 1 / -1; margin-top: 12px; }
     .pldock { padding: 8px 16px 6px; gap: 7px; }
+    /* A control, not a panel (the masthead-budget rule): at desktop width
+       the volume rail stretched the whole dock and read as a statement.
+       Capped, with the VU holding the right edge the way a panel's meta
+       does — the strip picks up the sheet's own label-left/meta-right
+       grammar. */
+    #plVol { max-width: 320px; }
+    .pldock .plvu { margin-left: auto; }
     .card .plheart, .plreq input, #plReqSend { height: 38px; }
-    .card .plheart { width: 38px; }
+    .card .plheart, .card button.plnote { width: 38px; }
+    .card button.plnote { height: 38px; }
     #plPlayBtn { height: 38px; }
     .card .plgrab { height: 14px; }
   }
@@ -1861,12 +1956,18 @@
   }
   /* --vol is written by applyVolume(); webkit has no ::-moz-range-progress
      equivalent, so the fill is a hard-stop gradient on the track itself. */
+  /* The FILL is dimmed a step (operator, 2026-09-01: the full-coral rail
+     at 100% read louder than anything on the sheet — the volume is
+     furniture, and the sheet's own bars are hairline-quiet). The thumb
+     keeps full coral: it is the grab point and the state. One rule, three
+     sliders, both pages — the shared-fader discipline holds. */
   .vol input[type=range]::-webkit-slider-runnable-track,
   #plVol::-webkit-slider-runnable-track,
   #stationBarVol::-webkit-slider-runnable-track {
     height: 3px; border-radius: 0;
     background: linear-gradient(to right,
-      var(--coral) var(--vol, 100%), var(--hairline) var(--vol, 100%));
+      color-mix(in srgb, var(--coral) 55%, var(--hairline)) var(--vol, 100%),
+      var(--hairline) var(--vol, 100%));
   }
   .vol input[type=range]::-webkit-slider-thumb, #plVol::-webkit-slider-thumb,
   #stationBarVol::-webkit-slider-thumb {
@@ -1879,7 +1980,10 @@
   #stationBarVol::-moz-range-track { height: 3px; background: var(--hairline); }
   .vol input[type=range]::-moz-range-progress,
   #plVol::-moz-range-progress,
-  #stationBarVol::-moz-range-progress { height: 3px; background: var(--coral); }
+  #stationBarVol::-moz-range-progress {
+    height: 3px;
+    background: color-mix(in srgb, var(--coral) 55%, var(--hairline));
+  }
   .vol input[type=range]::-moz-range-thumb,
   #plVol::-moz-range-thumb,
   #stationBarVol::-moz-range-thumb {

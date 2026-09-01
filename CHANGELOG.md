@@ -4,6 +4,18 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.16
+
+A player-and-polish day, and the release notes themselves go on a diet from here.
+
+- **Casting behaves like casting.** The cast button stays on show (its own switch under On the caller's phone), the picker reopens to switch devices or stop, pause keeps the session on the TV instead of snapping back to phone speakers, and the TV shows the record — art, title, artist — instead of "Playing Google Chrome".
+- **The player stops dropping what's playing.** A station blip no longer blanks the sheet, the lock screen or the TV — the last record holds for up to 90 seconds while the station catches its breath.
+- **The queue shows three songs, and looks calmer doing it.** One line per song with quieter titles, the freed room goes to In the booth, and the desktop overlap between the bar, the queue and the booth is gone for real — it was a layout bug, not spacing.
+- **The dock got its polish pass.** One filled button instead of two, a quieter volume rail, hover and keyboard-focus states on both faces, and skin corner-rounding now reaches the dock.
+- **The theme button shows the theme you're on**, not the one a tap would switch to — every page.
+- **Call records note the Open Lines topic they ran under**, so a review can tell the DJ working its topic from the DJ inventing one. The drill's no-MCP calls also got the local reads a real blind call has — a false 0/3 in the triage set re-measured 3/3.
+- **Dependabot goes quiet.** Its first firing buried the operator in ten version-bump PRs against deliberately pinned versions; it now watches for security updates only. The one class worth taking was taken: CI's four GitHub Actions moved to current majors.
+
 ## 0.99.15
 
 The day after the release day: both open experiments got their final answer from the instrument, the director learned whose ask an action actually answered, and the maintainability plan closed its books. Nothing here ships on an argument — the wind-down lost its case in numbers and stays off with the full verdict written down; the asks ledger's fix won its case in numbers and ships. Plus the player's progress row earning its digits back, a privacy tug in the voicemail directory settled for good, and the dependency tree frozen to exactly what the deployment already runs.

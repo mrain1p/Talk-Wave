@@ -204,8 +204,8 @@
     if (!btn) return;
     const opts = themeOptions();
     const cur = localStorage.getItem('callinTheme') || '';
-    const at = opts.indexOf(opts.includes(cur) ? cur : '');
-    const next = opts[(at + 1) % opts.length];
+    const here = opts.includes(cur) ? cur : '';
+    const next = opts[(opts.indexOf(here) + 1) % opts.length];
     // Drawn, not typed (shared.js THEME_ICONS): the sun glyph read as a
     // star and the station's asterisk read as nothing at all
     // (operator-reported) \u2014 the station stop wears a transmitter mast,
@@ -214,12 +214,15 @@
                 station: THEME_ICONS.station, '': THEME_ICONS.device };
     const T = { light: 'light', dark: 'dark', station: "the station's colours",
                 '': framed ? 'match the page' : 'follow the device' };
-    btn.innerHTML = G[next];
-    btn.title = 'Theme — tap for ' + T[next];
+    // The glyph shows the theme you are ON; the title names where a tap
+    // goes. It used to preview the NEXT stop, which read as the page being
+    // wrong about its own state on every surface (operator, 2026-09-01).
+    btn.innerHTML = G[here];
+    btn.title = 'Theme: ' + T[here] + ' — tap for ' + T[next];
     // The player header's copy wears the same glyph and forwards its press —
     // one cycle, two doors.
     const pl = $('plThemeBtn');
-    if (pl) { pl.innerHTML = G[next]; pl.title = btn.title; }
+    if (pl) { pl.innerHTML = G[here]; pl.title = btn.title; }
   }
 
   (function bindThemeCycle() {
@@ -4951,17 +4954,52 @@
   function watchLiveDrift(el) {
     if (el.dataset.driftWatched) return;
     el.dataset.driftWatched = '1';
-    el.addEventListener('pause', () => { plPausedAt = Date.now(); });
+    el.addEventListener('pause', () => {
+      plPausedAt = Date.now();
+      paintPlayerButtons();
+    });
     el.addEventListener('playing', () => {
       const gap = plPausedAt ? (Date.now() - plPausedAt) / 1000 : 0;
       plPausedAt = 0;
-      if (gap > 5 && playerEl === el && !playerStopped) {
+      paintPlayerButtons();
+      // NEVER while casting: reassigning src ends the receiver's session,
+      // and the TV going quiet mid-resume was reported as "play comes out
+      // of my phone afterwards" (operator, 2026-09-01). The receiver holds
+      // its own buffer at its own edge; drift is the phone's problem.
+      if (gap > 5 && playerEl === el && !playerStopped && !plCasting) {
         try {
           const url = el.currentSrc || el.src;
           if (url) { el.src = url; el.load(); el.play().catch(() => {}); }
         } catch (e) { /* stale audio beats no audio */ }
       }
     });
+    watchRemoteSession(el);
+  }
+
+  // The one fact the whole cast story hangs on: is THIS element's audio on
+  // someone else's speakers right now. Everything that would tear the
+  // element down (the stop path, the drift resnap) checks it first, because
+  // a torn-down element takes the receiver's session with it.
+  let plCasting = false;
+  function watchRemoteSession(el) {
+    if (!el.remote || el.dataset.remoteWatched) return;
+    el.dataset.remoteWatched = '1';
+    const sync = () => {
+      const was = plCasting;
+      // The parked element counts: a call parks the player without ending
+      // the receiver's session, and forgetting that here is how the resume
+      // path would tear a live cast down.
+      const cur = playerEl || playerParked;
+      plCasting = cur === el && el.remote.state === 'connected';
+      // The receiver paints what the media session says — feed it the
+      // moment the session lands so the TV never sits on the browser's
+      // generic "Playing Google Chrome" card.
+      if (plCasting && !was) feedMediaSession();
+      paintPlayerButtons();
+    };
+    el.remote.addEventListener('connect', sync);
+    el.remote.addEventListener('connecting', sync);
+    el.remote.addEventListener('disconnect', sync);
   }
 
   function startPlayerAudio() {
@@ -4972,6 +5010,10 @@
     // BEFORE the chain starts: the first candidate is tried synchronously,
     // and a stale stop from the last press would refuse it on arrival.
     playerStopped = false;
+    // Metadata BEFORE first audio: a cast handoff that grabs the element
+    // early must find the record already named, or the receiver latches
+    // the browser's own "Playing Google Chrome" card.
+    feedMediaSession();
     playFirstWorking([s.url].concat(s.alternates || []), 0, {
       get: () => playerEl,
       set: (el) => {
@@ -5060,8 +5102,10 @@
     try {
       // Same mount it was on. The fallback chain is not re-walked: this one
       // was playing a moment ago, and a stream that has just died is the
-      // rarer case than the browser refusing a new element.
-      el.src = s.url;
+      // rarer case than the browser refusing a new element. While the
+      // element is CAST, the src stays untouched — reassigning it ends the
+      // receiver's session, and the receiver rejoins its own edge anyway.
+      if (!plCasting) el.src = s.url;
       el.volume = playerLevel();
       el.muted = playerLevel() <= 0;
       el.play().then(() => {
@@ -5205,9 +5249,27 @@
   }
   window.addEventListener('resize', () => { if (playerOpen) fitPlayerArt(); });
 
+  // The last REAL record the station named, and when. The station's
+  // /now-playing flaps — a slow read, a track transition — and every flap
+  // used to blank the whole sheet to "Live broadcast" until the next good
+  // poll (operator, 2026-09-01: "out of nowhere the player drops what is
+  // playing... fixes after a while"). Same shape as the call card's
+  // lastLiveAt blip tolerance: hold the last known record through a gap,
+  // give it up after 90s — by then the silence is a fact, not a flap.
+  let plLastNp = null, plLastNpAt = 0;
+  function heldNowPlaying(d) {
+    const np = d.nowPlaying || {};
+    if (np.title) {
+      plLastNp = np; plLastNpAt = Date.now();
+      return np;
+    }
+    if (plLastNp && Date.now() - plLastNpAt < 90000) return plLastNp;
+    return np;
+  }
+
   function paintPlayer() {
     const d = shown || live || {};
-    const np = d.nowPlaying || {};
+    const np = heldNowPlaying(d);
     // The count beside the Now-playing words (operator's ask, 2026-08-18):
     // whoever opened the deck is one of the people this number counts. Same
     // rule as the header's — only a number the station actually gave.
@@ -5276,6 +5338,22 @@
     $('plAlbum').textContent =
       [np.artist, np.album, np.year].filter(Boolean).join(' · ');
 
+    // One queue entry is ONE LINE (operator, 2026-09-01): title and artist
+    // share it and the tail ellipsizes, so the panel's height budget buys
+    // more entries rather than taller ones.
+    function queueRow(title, sub) {
+      const row = document.createElement('div');
+      row.className = 'plrow';
+      const t = document.createElement('span');
+      t.className = 'pltit'; t.textContent = title;
+      row.appendChild(t);
+      if (sub) {
+        const s = document.createElement('span');
+        s.className = 'plsub'; s.textContent = sub;
+        row.appendChild(s);
+      }
+      return row;
+    }
     // UP NEXT: the station's own queue, ALL of it — the operator wants to
     // see what is coming, not the head of the line; the panel body scrolls
     // when the list outgrows it. The pip only goes live when something is
@@ -5287,16 +5365,10 @@
       nextBody.innerHTML = '';
       if (list.length) {
         list.forEach((nx) => {
-          const t = document.createElement('div');
-          t.className = 'pltit'; t.textContent = nx.title;
-          nextBody.appendChild(t);
-          const sub = [nx.artist, nx.requestedBy ? 'for ' + nx.requestedBy : '']
-            .filter(Boolean).join(' · ');
-          if (sub) {
-            const s = document.createElement('div');
-            s.className = 'plsub'; s.textContent = sub;
-            nextBody.appendChild(s);
-          }
+          nextBody.appendChild(queueRow(
+            nx.title,
+            [nx.artist, nx.requestedBy ? 'for ' + nx.requestedBy : '']
+              .filter(Boolean).join(' · ')));
         });
       } else {
         nextBody.textContent = 'Nothing queued — send a request below.';
@@ -5310,14 +5382,7 @@
     if (pastBody) {
       pastBody.innerHTML = '';
       past.forEach((px) => {
-        const t = document.createElement('div');
-        t.className = 'pltit'; t.textContent = px.title;
-        pastBody.appendChild(t);
-        if (px.artist) {
-          const s = document.createElement('div');
-          s.className = 'plsub'; s.textContent = px.artist;
-          pastBody.appendChild(s);
-        }
+        pastBody.appendChild(queueRow(px.title, px.artist || ''));
       });
     }
     plQueueCounts = { next: list.length, past: past.length };
@@ -5385,16 +5450,33 @@
 
   function paintCastBtn() {
     const b = $('plCastBtn');
-    if (b) b.hidden = !(castSupported() && playerEl);
+    if (!b) return;
+    // ALWAYS on show while the operator's switch is on (2026-09-01): it
+    // used to require a live element, which hid it in exactly the states —
+    // paused, parked, stopped — where someone wants the picker back to
+    // switch speakers or stop casting. Only a browser with no casting API
+    // at all removes it.
+    const offered = (shown || live || {}).castButton !== false;
+    b.hidden = !(castSupported() && offered);
+    b.classList.toggle('casting', plCasting);
+    b.setAttribute('aria-label',
+                   plCasting ? 'Casting — change or stop' : 'Cast the stream');
   }
 
   $('plCastBtn').onclick = async () => {
-    const el = playerEl;
+    // No element yet? Start one inside this same gesture — both pickers
+    // cast an ELEMENT, and the first mount is tried synchronously, so the
+    // prompt below still counts as user-activated.
+    if (!playerEl) { wantPlayer(true); startPlayerAudio(); }
+    const el = playerEl || playerParked;
     if (!el) return;
     try {
       if (typeof el.webkitShowPlaybackTargetPicker === 'function') {
         el.webkitShowPlaybackTargetPicker();
       } else if (el.remote && el.remote.prompt) {
+        // Always the prompt, connected or not — the picker IS the way to
+        // switch devices or stop, and gating it on state was the "can't
+        // untoggle" report.
         await el.remote.prompt();
       }
     } catch (e) {
@@ -5502,12 +5584,16 @@
   function paintPlayerButtons() {
     // The word only — the glyphs beside it are CSS-switched off the sheet's
     // playing class, so writing the button's textContent would erase them.
+    // A cast element PAUSED is not playing, and the element survives the
+    // pause (tearing it down ends the receiver's session) — so the word
+    // reads the element's own state, not just its existence.
+    const playing = !!playerEl && !(plCasting && playerEl.paused);
     const wordEl = $('plPlayWord');
     if (wordEl) {
-      wordEl.textContent = playerEl ? 'Pause' : (playerDead ? 'Try again' : 'Play');
+      wordEl.textContent = playing ? 'Pause' : (playerDead ? 'Try again' : 'Play');
     }
     const pv = $('playerView');
-    if (pv) pv.classList.toggle('playing', !!playerEl);
+    if (pv) pv.classList.toggle('playing', playing);
     paintCastBtn();
     paintListenChip();
   }
@@ -5544,20 +5630,37 @@
   function feedMediaSession() {
     if (!('mediaSession' in navigator)) return;
     const d = shown || live || {};
-    const np = d.nowPlaying || {};
+    // The held record, so a station flap never downgrades the lock screen
+    // or a cast receiver to the bare fallback mid-song.
+    const np = heldNowPlaying(d);
     const art = np.art || d.avatar;
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: np.title || d.track || d.name || 'Live broadcast',
         artist: np.artist || d.name || '',
         album: np.album || d.show || '',
-        artwork: art ? [{ src: new URL(art, location.href).href }] : [],
+        // sizes/type spelled out: some receivers skip artwork they cannot
+        // size ahead of fetching.
+        artwork: art ? [{ src: new URL(art, location.href).href,
+                          sizes: '512x512', type: 'image/jpeg' }] : [],
       });
-      // The lock screen is the caller pressing the same two buttons.
+      // The lock screen is the caller pressing the same two buttons — and
+      // while casting, the same rule as the on-sheet button: a real pause
+      // on the same element, never the teardown that ends the session.
       navigator.mediaSession.setActionHandler(
-        'play', () => { wantPlayer(true); startPlayerAudio(); });
+        'play', () => {
+          wantPlayer(true);
+          if (playerEl && playerEl.paused) playerEl.play().catch(() => {});
+          else if (!playerEl) startPlayerAudio();
+          paintPlayerButtons();
+        });
       navigator.mediaSession.setActionHandler(
-        'pause', () => { wantPlayer(false); stopPlayerAudio(); });
+        'pause', () => {
+          wantPlayer(false);
+          if (playerEl && plCasting) playerEl.pause();
+          else stopPlayerAudio();
+          paintPlayerButtons();
+        });
     } catch (e) { /* optional kit; the player works without it */ }
   }
 
@@ -5827,7 +5930,19 @@
     if (cardMode() === 'idle') openPlayer();
   };
   $('plPlayBtn').onclick = () => {
-    if (playerEl) { wantPlayer(false); stopPlayerAudio(); }
+    const el = playerEl;
+    // While casting, the button is a REAL pause on the same element: the
+    // stop path clears src, which ends the receiver's session, and the
+    // next press then played from the phone's own speakers (operator,
+    // 2026-09-01). Paused-but-cast, the TV holds the session and play
+    // resumes it there.
+    if (el && plCasting) {
+      if (el.paused) { wantPlayer(true); el.play().catch(() => {}); }
+      else { wantPlayer(false); el.pause(); }
+      paintPlayerButtons();
+      return;
+    }
+    if (el) { wantPlayer(false); stopPlayerAudio(); }
     else { wantPlayer(true); startPlayerAudio(); }
   };
 

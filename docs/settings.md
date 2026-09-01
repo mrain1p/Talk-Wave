@@ -372,6 +372,7 @@ The Behaviour band — nothing visual:
 - the card's **listener count** — "On air now · 2 listening", shown from one listener up, so a quiet hour never paints a zero
 - its **heart button** — the same public like any listener page sends, beside the record on the card. Both on by default
 - the swipe-up station player, and **which face it opens on** — the phone with the player a swipe up, or the player with the call button a swipe down
+- the player's **cast button** — Chromecast on Chrome, AirPlay on Safari, on by default and always on show while the switch is on; pressing it starts the stream if needed, and reopening the picker is how you switch speakers or stop casting
 - how loud the station plays under the answering machine
 
 ### After the conversation

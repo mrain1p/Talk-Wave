@@ -1278,6 +1278,57 @@ class TestAFabricatedQueueIdIsWrittenDown(unittest.TestCase):
         self.assertEqual([], self._problems(call))
 
 
+class TestTheRecordKeepsThePremiseItRanUnder(unittest.TestCase):
+    """Three 2026-09-01 review findings called the DJ's topic references
+    fabricated — "that song for the heartbreak subject" and kin — and every
+    one was the Open Lines premise doing its job, invisible because the
+    record never stored it. The record's config now carries the live
+    premise, and "" when the line is closed, so a review can tell the
+    feature from an invention."""
+
+    def _line(self, tmp, premise):
+        import importlib
+
+        from openlines import state
+
+        old = state.STATE_PATH
+        state.STATE_PATH = tmp / "open-line.json"
+        rec = state.build(premise, "aired", {"id": "p1", "name": "Cliff"},
+                          "", minutes=60, source="dj",
+                          reminder_minutes=0, reminder_max=0)
+        state.write(rec)
+        self.addCleanup(lambda: setattr(state, "STATE_PATH", old))
+        return importlib
+
+    def test_a_live_premise_is_written_into_the_config(self):
+        import pathlib
+        import tempfile
+
+        from call.record import CallRecord
+
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        self._line(tmp, "music for the quiet")
+        rec = CallRecord("room-abc123def456", {"id": "p1", "name": "Cliff"},
+                         {})
+        self.assertEqual("music for the quiet",
+                         rec.data["config"]["openLine"])
+
+    def test_a_closed_line_writes_an_empty_string_not_a_ghost(self):
+        import pathlib
+        import tempfile
+
+        from call.record import CallRecord
+        from openlines import state
+
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        old = state.STATE_PATH
+        state.STATE_PATH = tmp / "open-line.json"
+        self.addCleanup(lambda: setattr(state, "STATE_PATH", old))
+        rec = CallRecord("room-abc123def456", {"id": "p1", "name": "Cliff"},
+                         {})
+        self.assertEqual("", rec.data["config"]["openLine"])
+
+
 class TestNextPromisedFromDownTheQueueIsWrittenDown(unittest.TestCase):
     """Record 20260831-125306: the caller asked for a track "next", the
     receipt said number three, and the DJ said "lined up for you next" in
