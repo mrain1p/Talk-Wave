@@ -1068,6 +1068,44 @@ class TestAnAskThatWentNowhereIsWrittenDown(unittest.TestCase):
             asks.heard(said, at=1.0)
             self.assertEqual(1, len(asks.unanswered(acted_at=[])), said)
 
+    def test_an_unrelated_action_no_longer_wipes_the_first_ask(self):
+        # The slice-3 recon's verified evaporation (2026-08-31): one action
+        # of ANY kind used to settle every ask before it, so the moment a
+        # shoutout landed, "play Africa" vanished from the comeback, the
+        # hold-return nod and the dropped-ask line all at once. Each action
+        # settles the latest open ask it followed — one action, one ask.
+        asks = self._asks()
+        asks.heard("can you play Africa by Toto", at=100.0)
+        asks.heard("and give a shoutout to Marcus", at=200.0)
+        open_ = asks.unanswered(acted_at=[210.0])
+        self.assertEqual(1, len(open_))
+        self.assertIn("Africa", open_[0])
+
+    def test_two_actions_still_settle_two_asks(self):
+        asks = self._asks()
+        asks.heard("can you play Africa by Toto", at=100.0)
+        asks.heard("and give a shoutout to Marcus", at=200.0)
+        self.assertEqual([], asks.unanswered(acted_at=[210.0, 220.0]))
+
+    def test_a_rephrase_is_one_ask_not_two(self):
+        # A caller who says it twice and gets it once is answered — the
+        # settled ask folds any open ask that reads as the same request
+        # (stuck.same_ask), so the rephrase does not haunt the record as a
+        # second dropped ask.
+        asks = self._asks()
+        asks.heard("can you play Africa by Toto", at=100.0)
+        asks.heard("play Africa by Toto for me please", at=150.0)
+        self.assertEqual([], asks.unanswered(acted_at=[160.0]))
+
+    def test_find_me_something_is_heard(self):
+        # The flow set's interrupted-ask row says "find me something by Max
+        # Richter" — and the pattern was deaf to it, hearing the row only
+        # through the accidental token "queue" inside "DON'T queue anything
+        # yet" (slice-3 recon, 2026-08-31).
+        asks = self._asks()
+        asks.heard("find me something by Max Richter", at=1.0)
+        self.assertEqual(1, len(asks.unanswered(acted_at=[])))
+
     def test_the_ledger_stamps_when_an_action_landed(self):
         # The record's side of the same question.
         from call.actions import CallActions
@@ -1237,6 +1275,57 @@ class TestAFabricatedQueueIdIsWrittenDown(unittest.TestCase):
             {"t": "2026-08-27T17:56:00+00:00", "name": "subwave_queue_mix",
              "result": "(picks='GO9zyAYwhmsdpCOvl0CEiB Gimme Shelter\n579SLFsZ"},
         ])
+        self.assertEqual([], self._problems(call))
+
+
+class TestNextPromisedFromDownTheQueueIsWrittenDown(unittest.TestCase):
+    """Record 20260831-125306: the caller asked for a track "next", the
+    receipt said number three, and the DJ said "lined up for you next" in
+    the same breath as the number. Unlike the general false-state-claim
+    detector this repo has twice declined to build, this claim has ground
+    truth in the same record — the receipt carries the position in the
+    tool's own words — so the contradiction is checkable, not guessed at."""
+
+    RECEIPT = ("(\"Africa\") -> queued. It's number 3 in the queue — roughly "
+               "9-12 minutes away. You may tell them that.")
+
+    def _call(self, tools, dj_lines):
+        import types
+
+        from call.record import CallRecord
+
+        rec = CallRecord.__new__(CallRecord)
+        rec.data = {"turns": [{"who": "dj", "t": t, "text": x}
+                              for t, x in dj_lines],
+                    "tools": list(tools), "problems": []}
+        return types.SimpleNamespace(record=rec)
+
+    def _problems(self, call):
+        from call import postmortem
+
+        postmortem._note_if_next_was_promised_from_down_the_queue(call)
+        return call.record.data["problems"]
+
+    def test_the_real_incident_is_flagged(self):
+        call = self._call(
+            [{"name": "subwave_queue_track", "t": "10", "result": self.RECEIPT}],
+            [("11", "That's lined up for you next, my friend.")])
+        found = self._problems(call)
+        self.assertEqual(1, len(found))
+        self.assertIn("number 3", found[0]["what"])
+
+    def test_an_honest_read_out_of_the_number_is_not_flagged(self):
+        call = self._call(
+            [{"name": "subwave_queue_track", "t": "10", "result": self.RECEIPT}],
+            [("11", "It's number three in the queue, ten minutes or so out.")])
+        self.assertEqual([], self._problems(call))
+
+    def test_a_track_that_really_is_next_is_not_flagged(self):
+        call = self._call(
+            [{"name": "subwave_queue_track", "t": "10",
+              "result": "-> queued. It's next up, so it plays after the "
+                        "current track."}],
+            [("11", "That's up next for you!")])
         self.assertEqual([], self._problems(call))
 
 

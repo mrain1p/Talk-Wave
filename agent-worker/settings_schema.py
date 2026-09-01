@@ -1351,6 +1351,18 @@ SCHEMA: dict[str, dict] = {
              "plays rather than the card, so it must be a .wav the server can "
              "read. Deliberately not governed by Play call sounds: it tells "
              "the caller to start talking. Unplayable falls back to the tone."),
+    # Worker-played like the beep above, so it ignores "Play call sounds"
+    # too — and it is deliberately NOT a seventh board slot: the six moments
+    # are one-shot card sounds, this is a loop the booth plays, and
+    # panel-sounds.py's SOUND_SLOTS assumes exactly six. The slot-menu
+    # treatment is recorded as the follow-up if the experiment earns it.
+    "sound_thinking": dict(group="sounds", kind="text", label="Thinking sound",
+        placeholder="default: silence",
+        help="Booth texture while the DJ works mid-call — looped only "
+             "between hearing and speaking, on its own track so it can "
+             "never leak on air. A file path the WORKER can read (e.g. "
+             "/data/sounds/thinking.mp3), not a URL. A missing file costs "
+             "a diagnostics note, never the call."),
     "call_volume": dict(group="sounds", kind="number", label="Default volume", unit="%", alias="loudness",
         needs=("call_sounds", True), help="Starting playback volume for a call."),
     "ring_cut_at_pickup": dict(group="sounds", kind="check",

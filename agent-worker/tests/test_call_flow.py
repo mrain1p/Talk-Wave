@@ -1289,13 +1289,25 @@ class TestTheSignOffIsHeardBeforeTheLineCloses(unittest.TestCase):
     """
 
     def _run(self, states, start_grace=1.0, quiet=0.15):
-        """`states` is what agent_state returns on successive reads."""
+        """`states` is what agent_state returns on successive reads.
+
+        Runs on a VIRTUAL clock: every awaited sleep advances it by exactly
+        the requested amount and no wall time passes. The real scheduler
+        oversleeps a 0.2s tick freely under parallel-suite load, so the
+        wall-clock deadlines expired after FEWER reads and these read-count
+        assertions flaked 1-in-N on a loaded box while proving nothing was
+        wrong (the pre-commit hook's most familiar false stop). The waiter's
+        logic is untouched — only its two clocks are swapped for one that
+        cannot be leaned on by the machine next door.
+        """
         import asyncio
+        import types
 
         from call import hangup
 
         seq = list(states)
         reads = {"n": 0}
+        clock = {"t": 0.0}
 
         class _Session:
             @property
@@ -1304,17 +1316,24 @@ class TestTheSignOffIsHeardBeforeTheLineCloses(unittest.TestCase):
                 reads["n"] += 1
                 return seq[i]
 
+        async def _sleep(secs):
+            clock["t"] += float(secs)
+
         old = (hangup.SPEECH_START_GRACE, hangup.QUIET_CONFIRM,
-               hangup.FINAL_BEAT, hangup.SPEECH_MAX)
+               hangup.FINAL_BEAT, hangup.SPEECH_MAX,
+               hangup.time, hangup.asyncio)
         hangup.SPEECH_START_GRACE = start_grace
         hangup.QUIET_CONFIRM = quiet
         hangup.FINAL_BEAT = 0.0
         hangup.SPEECH_MAX = 3.0
+        hangup.time = types.SimpleNamespace(time=lambda: clock["t"])
+        hangup.asyncio = types.SimpleNamespace(sleep=_sleep)
         try:
             asyncio.run(hangup.await_sign_off(_Session()))
         finally:
             (hangup.SPEECH_START_GRACE, hangup.QUIET_CONFIRM,
-             hangup.FINAL_BEAT, hangup.SPEECH_MAX) = old
+             hangup.FINAL_BEAT, hangup.SPEECH_MAX,
+             hangup.time, hangup.asyncio) = old
         return reads["n"]
 
     def test_it_waits_through_thinking_for_speech_to_start(self):
@@ -1346,7 +1365,12 @@ class TestTheSignOffIsHeardBeforeTheLineCloses(unittest.TestCase):
     def test_a_dj_that_says_nothing_does_not_hold_the_line(self):
         # The grace period is a ceiling, not a wait: a model that emitted the
         # tool call and no words must not leave the caller on an open line.
+        # The waiter runs on the virtual clock, so what this wall-clock
+        # bound now proves is that the wait consumes NO real time at all —
+        # pay the module import (livekit, ~7s cold) before the clock starts.
         import time
+
+        from call import hangup  # noqa: F401
 
         started = time.time()
         self._run(["listening"] * 50, start_grace=0.5)
@@ -3236,6 +3260,9 @@ class TestTheWindDownIsAMomentNotAParagraph(unittest.TestCase):
         note = g.hint_for("nice, thanks")
         self.assertIn("LANDED", note)
         self.assertIn("anything else", note)   # the forbidden move, named
+        # The 2026-08-31 run's fix: the wind-down must never talk the DJ out
+        # of hanging up on a caller who already said they're done.
+        self.assertIn("end_call", note)
         self.assertEqual(1, g.fired)
         # Consumed: the next turn is not re-steered.
         self.assertEqual("", g.hint_for("cool"))
@@ -3293,9 +3320,14 @@ class TestAnOpenAskComesBackWithoutReasking(unittest.TestCase):
         asks.heard("can you queue Africa by Toto for me", at=100.0)
         # Turn one is the ask itself — the model is acting on it now.
         self.assertEqual("", back.hint_for("can you queue Africa", []))
-        # Turn two with nothing landed is the caller waiting.
+        # Turn two with nothing landed is the caller waiting. The hint
+        # states the ledger fact ("no action has landed"), never the world
+        # claim "it has not happened" — an ask answered in words has no
+        # receipt, and the old wording lied to the model on those rounds.
         note = back.hint_for("no worries, take your time", [])
-        self.assertIn("has not happened yet", note)
+        self.assertIn("is still open", note)
+        self.assertIn("no action has landed", note)
+        self.assertNotIn("has not happened", note)
         self.assertEqual(1, back.corrections)
         # And only once per ask — steering every turn is nagging.
         self.assertEqual("", back.hint_for("still here", []))
@@ -3311,6 +3343,47 @@ class TestAnOpenAskComesBackWithoutReasking(unittest.TestCase):
         self.assertEqual("", back.hint_for("lovely", [105.0]))
         self.assertEqual(0, back.corrections)
 
+    def test_a_new_ask_is_not_hinted_on_its_own_first_turn(self):
+        # The three-asks shape (slice-3 recon, 2026-08-31): one per-call
+        # counter meant "some ask has been open two turns" and fired the
+        # hint at a brand-new ask on its own first turn — pure noise, and
+        # the exact noise the turn-one grace exists to prevent. The grace
+        # is per ASK now.
+        from call.asks import Asks, OpenAskComeback
+
+        asks = Asks()
+        back = OpenAskComeback(asks)
+        asks.heard("can you queue Africa by Toto", at=100.0)
+        self.assertEqual("", back.hint_for("can you queue Africa", []))
+        # The queue lands; a NEW ask arrives in the same breath. Its own
+        # first turn must stay quiet even though the call has had an ask
+        # open for two turns.
+        asks.heard("and give a shoutout to Marcus on air", at=200.0)
+        self.assertEqual(
+            "", back.hint_for("and give a shoutout to Marcus on air",
+                              [150.0]))
+        # Turn two of the shoutout with nothing landed IS the caller
+        # waiting — and the hint names the shoutout.
+        note = back.hint_for("he really will love that", [150.0])
+        self.assertIn("shoutout", note)
+
+    def test_the_oldest_open_ask_is_the_one_brought_back(self):
+        # With per-ask attribution the primary survives later asks; the
+        # comeback must name what they CAME FOR, not whatever was asked
+        # last (the old want=open_asks[-1]).
+        from call.asks import Asks, OpenAskComeback
+
+        asks = Asks()
+        back = OpenAskComeback(asks)
+        asks.heard("can you queue Africa by Toto", at=100.0)
+        back.hint_for("can you queue Africa by Toto", [])
+        asks.heard("and put a shoutout out for Marcus", at=200.0)
+        # The shoutout landed (210); Africa never did. Africa is now two
+        # caller turns old with no receipt — the steer goes to the first
+        # ask, the reason they called, not to whatever was said last.
+        note = back.hint_for("did that go out?", [210.0])
+        self.assertIn("Africa", note)
+
     def test_a_finished_call_is_not_steered_back(self):
         from call.arc import CallArc
         from call.asks import Asks
@@ -3324,7 +3397,7 @@ class TestAnOpenAskComesBackWithoutReasking(unittest.TestCase):
         st = ConversationState(arc=arc, asks=asks)
         # The arc's end-call steer may fire; the ask comeback must not.
         notes = [t[-1] for t in st.hints_for("bye then")]
-        self.assertFalse(any("has not happened yet" in n for n in notes))
+        self.assertFalse(any("is still open" in n for n in notes))
 
     def test_the_hold_return_carries_the_open_task(self):
         from call.asks import Asks

@@ -526,11 +526,11 @@ def _tools(cfg: dict, drop: frozenset = frozenset()) -> str:
     broadcast by voice.
 
     `drop` names SECTIONS to leave out, and exists because this block is the
-    prompt's biggest tenant — 12,952 characters, 44% of the conduct on the
-    open tier (re-measured 2026-08-31; it was 11,613/39% when this was
-    written), four times anything else — and had never been measured.
-    tools/prompt_report.py is the instrument; re-run it whenever this file
-    changes and treat growth as a decision, not a drift. It could not be: `ABLATE=tool_rules` drops the tool
+    prompt's biggest tenant — roughly half the conduct, and the share climbs
+    with the tier. tools/prompt_report.py is the ONLY home of the numbers: a
+    figure copied here went stale twice in one day (2026-08-31), so none
+    lives here; re-run the report when this file changes, and treat growth
+    as a decision. It could not be measured whole: `ABLATE=tool_rules` drops the tool
     surface's entire description and proves only that a DJ told nothing about
     its tools uses them badly. Dropping the per-tool prose while KEEPING the
     triage table is the question actually worth asking, because the model also

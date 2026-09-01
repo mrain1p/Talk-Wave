@@ -5,8 +5,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY agent-worker/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY agent-worker/requirements.txt agent-worker/constraints.txt ./
+# The constraint file pins the TRANSITIVE tree to the set verified working
+# on the live deployment (see its header) — requirements.txt still decides
+# WHAT installs, constraints only decide which version resolves.
+RUN pip install --no-cache-dir -r requirements.txt -c constraints.txt
 
 COPY agent-worker/ .
 COPY web-widget/ /web-widget/

@@ -926,17 +926,20 @@
       total.hidden = !(ticking && npLength);
     }
     if (nbar) nbar.hidden = !(npLength && ticking);
-    // The station player's hairline follows the same figures — but the BAR
-    // only, and only while the record is actually running. The numbers are
-    // gone (operator, 2026-08-24: "3:37 — 3:37" pinned at a track's end
-    // read as random), and a bar sitting full past the end reads as broken,
-    // so a track past its length plus a grace hides the row — the ids stay
-    // painted empty because this file reaching them is the contract.
+    // The station player's row follows the same figures. The numbers came
+    // BACK 2026-08-31 (operator's ask: current time and song end time by
+    // the bar) — but only while the record actually runs, so the pinned
+    // "3:37 — 3:37" the 2026-08-24 review reported cannot return: past the
+    // length plus a grace the whole row hides, and a record whose length
+    // the station never sent keeps the counting clock alone, no bar and no
+    // end time to be honest about — same deal as the header cluster above.
     if (deck) {
-      $('plElapsed').textContent = '';
-      $('plLen').textContent = '';
       const running = !!npLength && secs < npLength + 8;
-      if (prog) prog.hidden = !running;
+      $('plElapsed').textContent = ticking ? mmss(shown) : '';
+      $('plLen').textContent = running ? mmss(npLength) : '';
+      const bar = prog && prog.querySelector('.plbar');
+      if (bar) bar.hidden = !running;
+      if (prog) prog.hidden = !(running || ticking);
       deck.style.setProperty('--pl-progress', running ? pct : '0%');
       // The header's wall clock rides the same tick while the sheet is up.
       if (!deck.hidden) paintHeadMeta();

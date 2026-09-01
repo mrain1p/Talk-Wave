@@ -211,6 +211,8 @@ Every dropdown names the default it stands for ("Default — the Exchange set's 
 
 The **voicemail beep** lives here too — WAV uploads only, since the server plays it — with its own preview button and a verdict line saying whether the file converts.
 
+The **thinking sound** is the section's other server-side row: a file path the worker can read (e.g. `/data/sounds/thinking.mp3`), looped as booth texture only while the DJ is between hearing and speaking, on its own room track so it can never reach the broadcast. Blank — the default — means silence. It is deliberately a plain row rather than a seventh board slot: the six moments are one-shot card sounds, this is a loop the booth plays.
+
 ### Voice effects
 
 The ten colours above on the DJ's voice, with its intensity dial (default 60) and Test with effect — applied in the caller's browser only.

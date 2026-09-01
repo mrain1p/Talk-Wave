@@ -53,6 +53,26 @@ class TestGreetingClipsFollowWhatTheyWereRenderedFrom(_VmDirs):
         ):
             self.assertNotEqual(base, changed)
 
+    def test_staging_a_greeting_keeps_the_voicemail_dir_private(self):
+        # The ledger's follow-up (2026-08-29): write_clip set the SHARED
+        # voicemail dir to 0755, silently undoing deliver.py's 0700 on
+        # every staging — so the messages store's privacy hardening was
+        # only as durable as the time to the next greeting render. The dir
+        # must come out of a staging owner-only; the clip file itself stays
+        # world-readable because a greeting is public by nature.
+        import os
+        import stat
+
+        if os.name != "posix":
+            self.skipTest("POSIX mode bits are not enforced on this OS")
+        g = self.greetings
+        g.write_clip("p1", g.render_key("hi", "v", "local", ""),
+                     "hi", "v", b"\x00\x00" * 240, 24000)
+        mode = stat.S_IMODE(os.stat(g.VOICEMAIL_DIR).st_mode)
+        self.assertEqual(mode & 0o077, 0,
+                         f"voicemail dir is group/other-accessible after a "
+                         f"staging: {oct(mode)}")
+
     def test_a_written_clip_is_current_until_its_inputs_change(self):
         g = self.greetings
         key = g.render_key("hello", "v", "local", "")
