@@ -373,6 +373,7 @@ The Behaviour band — nothing visual:
 - its **heart button** — the same public like any listener page sends, beside the record on the card. Both on by default
 - the swipe-up station player, and **which face it opens on** — the phone with the player a swipe up, or the player with the call button a swipe down
 - the player's **cast button** — Chromecast on Chrome, AirPlay on Safari, on by default and always on show while the switch is on; pressing it starts the stream if needed, and reopening the picker is how you switch speakers or stop casting
+- the player's **operator side**, off by default: a **skip button** beside the heart and an **operator mode** on the request line — one-shot commands through the text line's own brain, receipts flashed in place and a Booth tab reading the 48-hour action log. Both are doors onto admin-backed writes, so each is gated twice: these switches put the furniture on the sheet, and the permission matrix decides which tier's key may use it
 - how loud the station plays under the answering machine
 
 ### After the conversation

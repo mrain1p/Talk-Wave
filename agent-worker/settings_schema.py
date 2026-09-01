@@ -443,6 +443,13 @@ SCHEMA: dict[str, dict] = {
         help="Ends what is playing for EVERYONE listening, not just the caller who "
              "asked. The station treats skip as an operator override and offers no "
              "listener-facing equivalent. Counts against Actions per call."),
+    "allow_player_commands": dict(group="perms", kind="select", tiered=True,
+        admin=True,
+        label="Operator commands from the player",
+        help="Who may drive the booth from the player's request line — "
+             "one-shot typed commands through the same brain and tools the "
+             "text line runs, each spending an LLM turn. The player switch "
+             "that shows the mode at all is on the caller's-phone page."),
     "allow_dj_segment": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Fire a programme beat",
         help="Station ID, the hour, a link, guest banter, an intro or outro — "
@@ -889,6 +896,22 @@ SCHEMA: dict[str, dict] = {
              "any listener page sends, through the same per-listener limits "
              "the station already enforces. Works with or without the "
              "swipe-up player."),
+    "player_skip_button": dict(group="phone", kind="check",
+        needs=("swipe_player", True),
+        label="Skip button on the player", alias="next track",
+        help="A skip control beside the heart — station-wide, everyone "
+             "hears the record end. The button only appears for callers "
+             "whose tier clears \"Skip the current track\" in Permissions; "
+             "this switch decides whether it is on the sheet at all."),
+    "player_operator_mode": dict(group="phone", kind="check",
+        needs=("swipe_player", True),
+        label="Operator mode on the request line", alias="commands booth",
+        help="The request box grows a second face: one-shot commands "
+             "through the same brain and tools as the text line — \"queue "
+             "X then a shoutout for Y\" — with the actions taken flashed "
+             "back and listed under a Booth tab. Who may command is "
+             "\"Operator commands\" in Permissions; each command spends an "
+             "LLM turn like a text message."),
     "player_cast_button": dict(group="phone", kind="check",
         needs=("swipe_player", True),
         label="Cast button on the player", alias="chromecast airplay",

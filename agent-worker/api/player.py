@@ -104,6 +104,193 @@ async def handle_player_like(request: web.Request) -> web.Response:
                         {"songId": song} if song else {})
 
 
+def _abilities(cfg: dict, tier: str) -> dict:
+    """What one caller's key unlocks on the player — pure, so the tier
+    truth-table is unit-testable without a web request.
+
+    Two gates multiply on purpose: the phone-page SWITCH says whether the
+    furniture is on the sheet at all (the operator's view decision), and the
+    permission matrix says which TIER may use it (the access decision) —
+    the operator's own framing, 2026-09-01."""
+    reaches = settings_store.tier_reaches
+    return {
+        "tier": tier,
+        "skip": bool(cfg.get("player_skip_button"))
+        and reaches(cfg.get("allow_skip_track"), tier),
+        "unlike": bool(cfg.get("show_track_like", True))
+        and reaches(cfg.get("allow_unfavorite"), tier),
+        "command": bool(cfg.get("player_operator_mode"))
+        and reaches(cfg.get("allow_player_commands"), tier),
+    }
+
+
+async def handle_player_abilities(request: web.Request) -> web.Response:
+    """GET /player/abilities — the server's answer to which operator-side
+    controls THIS caller's key earns. The widget paints from this rather
+    than guessing from the tier, because only the server has seen the
+    password (the segment button's own rule)."""
+    refuse = _door(request)
+    if refuse:
+        return refuse
+    from api.auth import caller_tier
+
+    cfg = settings_store.load()
+    return _cors(request, web.json_response(
+        _abilities(cfg, caller_tier(request))))
+
+
+def _tier_refusal(request: web.Request, cfg: dict,
+                  ability: str) -> web.Response | None:
+    """403 in honest words when the key does not clear the permission —
+    after _door, so the caller is already through the phone's own gate."""
+    from api.auth import caller_tier
+
+    tier = caller_tier(request)
+    if _abilities(cfg, tier).get(ability):
+        request["player_tier"] = tier
+        return None
+    return _cors(request, web.json_response(
+        {"error": "your access level does not include that"}, status=403))
+
+
+async def handle_player_skip(request: web.Request) -> web.Response:
+    """POST /player/skip — the operator's skip, from the sheet.
+
+    Station-wide by nature (its own API calls skip an operator override
+    and offers no listener-facing equivalent), which is why this rides the
+    ADMIN client behind the permission matrix instead of the public
+    listener surface every other /player write uses."""
+    refuse = _door(request)
+    if refuse:
+        return refuse
+    cfg = settings_store.load()
+    refuse = _tier_refusal(request, cfg, "skip")
+    if refuse:
+        return refuse
+    from call import daylog
+    from station import StationClient
+
+    station = StationClient()
+    try:
+        res = await station.skip_track()
+    finally:
+        try:
+            await station.aclose()
+        except Exception:                                      # noqa: BLE001
+            pass
+    if res.get("ok"):
+        daylog.note("skip", "from the player",
+                    tier=request.get("player_tier", ""))
+        return _cors(request, web.json_response(res))
+    return _cors(request, web.json_response(res, status=502))
+
+
+async def handle_player_unlike(request: web.Request) -> web.Response:
+    """POST /player/unlike {songId} — take the operator's heart back off a
+    record. The station keeps that as an admin write (DELETE
+    /likes/song/:id/operator), so like the skip it rides the admin client
+    behind the matrix — the public heart stays exactly as it was."""
+    refuse = _door(request, ("swipe_player", "show_track_like"))
+    if refuse:
+        return refuse
+    cfg = settings_store.load()
+    refuse = _tier_refusal(request, cfg, "unlike")
+    if refuse:
+        return refuse
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001
+        body = {}
+    song = str((body or {}).get("songId") or "")
+    if not song:
+        # The same stale-tap honesty as the like: without the id this could
+        # un-heart whatever record slid under the finger.
+        return _cors(request, web.json_response(
+            {"error": "songId is needed — which record?"}, status=400))
+    from station import StationClient
+
+    station = StationClient()
+    try:
+        res = await station.unlike_track(song)
+    finally:
+        try:
+            await station.aclose()
+        except Exception:                                      # noqa: BLE001
+            pass
+    ok = not (isinstance(res, dict) and res.get("error"))
+    return _cors(request, web.json_response(
+        res if isinstance(res, dict) else {"ok": ok},
+        status=200 if ok else 502))
+
+
+async def handle_player_command(request: web.Request) -> web.Response:
+    """POST /player/command {text, chat?} — the request line's operator
+    mode: one typed instruction through the SAME brain and tool surface as
+    the text line, no back-and-forth (operator's ask, 2026-09-01). The
+    turn runs on a real ChatSession from the shared shelf — resumed by the
+    id the widget hands back, swept by the chat clocks, written to the
+    records like any text exchange — so operator commands cost nothing new
+    in machinery and show up in diagnostics like everything else."""
+    import asyncio
+
+    refuse = _door(request)
+    if refuse:
+        return refuse
+    cfg = settings_store.load()
+    refuse = _tier_refusal(request, cfg, "command")
+    if refuse:
+        return refuse
+    try:
+        body = await request.json()
+    except Exception:                                          # noqa: BLE001
+        body = {}
+    text = str((body or {}).get("text") or "").strip()
+    if not text:
+        return _cors(request, web.json_response(
+            {"error": "say what you want done"}, status=400))
+    from chat.session import SHELF
+
+    SHELF.sweep(cfg)
+    chat = SHELF.get_or_open(str((body or {}).get("chat") or ""),
+                             request.get("player_tier", "admin"), cfg)
+    if chat is None:
+        return _cors(request, web.json_response(
+            {"error": "the booth's lines are all tied up — a moment"},
+            status=429))
+    events: list[dict] = []
+    try:
+        timeout = float(cfg.get("chat_reply_timeout_secs") or 0) or 90.0
+        await asyncio.wait_for(chat.ask(text, events.append), timeout)
+    except asyncio.TimeoutError:
+        return _cors(request, web.json_response(
+            {"chat": chat.id, "said": "Still digging — give it another go "
+             "in a moment?", "actions": []}))
+    actions = [{"icon": e.get("icon"), "label": e.get("label"),
+                "detail": e.get("detail")}
+               for e in events if e.get("type") == "action"]
+    said = next((str(e.get("text") or "") for e in reversed(events)
+                 if e.get("type") == "done"), "")
+    return _cors(request, web.json_response(
+        {"chat": chat.id, "said": said, "actions": actions}))
+
+
+async def handle_player_booth_log(request: web.Request) -> web.Response:
+    """GET /player/booth-log — the Booth tab's feed: the station day-log,
+    the same 48h no-caller-content record the DJ's own booth_log tool
+    reads, tier-attributed. One source of truth; operator commands land in
+    it through the ledger like every other action."""
+    refuse = _door(request)
+    if refuse:
+        return refuse
+    cfg = settings_store.load()
+    refuse = _tier_refusal(request, cfg, "command")
+    if refuse:
+        return refuse
+    from call import daylog
+
+    return _cors(request, web.json_response({"entries": daylog.recent(30)}))
+
+
 async def handle_player_request(request: web.Request) -> web.Response:
     refuse = _door(request)
     if refuse:
