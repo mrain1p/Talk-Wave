@@ -10,6 +10,7 @@ The morning's fixes on the player-first page, tagged without a page of its own (
 
 - The player-first page behaves: the auto-open fires once so leaving sticks, the inverted furniture rides one class (top ribbon in, bookmark and grabber out), and the phone ribbon sits in flow instead of on the clock.
 - Header parity: NOW PLAYING never wraps, the clock gives way instead; phone square before the operator toggle; the operator face is remembered per device.
+- The Do-it reply persists: a clarifying question or a refusal from the brain used to live in a four-second fade — the DJ's words now stay under the row until the next send, and a follow-up continues the same exchange. The phone page's heart un-presses too, permission willing.
 - The heart drops its number — filled is the answer — and likes/unlikes land in the Requests tab like every other action, title only.
 
 ## 0.99.18

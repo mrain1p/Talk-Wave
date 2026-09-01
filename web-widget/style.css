@@ -1434,6 +1434,9 @@
   #plReqSend:disabled { background: transparent; color: var(--sage-dim);
                         border-color: var(--hairline); opacity: 1; }
   .plreqmsg { font-size: 11px; color: var(--coral); text-align: left; }
+  /* The DJ's own reply to an operator command — words, not a fault, so
+     not the refusal coral. */
+  .plreqmsg.info { color: var(--sage); font-size: 12px; line-height: 1.4; }
   .plreqmsg:empty { display: none; }
   /* The way home: the same grip as the top bookmark, now at the sheet's
      foot — "the pulldown stays on the bottom when the page is switched". */

@@ -834,7 +834,31 @@
     b.innerHTML = cardLiked ? '&#9829;' : '&#9825;';
   }
   $('npHeart').addEventListener('click', async () => {
-    if (cardLiked) return;               // add-only, matching the station
+    // A lit heart un-hearts here too when the key clears the permission —
+    // the phone page's heart matching the player's (operator, 2026-09-01).
+    if (cardLiked) {
+      if (!(plAbilities && plAbilities.unlike)) return;
+      cardLiked = false;
+      paintCardHeart({ track: cardHeartFor, cardLike: true });
+      try {
+        let song = null;
+        try {
+          const s = await fetch('/player/like', { headers: keyHeaders() });
+          if (s.ok) song = (await s.json()).songId || null;
+        } catch (e) { /* no id, no unlike — restore below */ }
+        if (!song) throw new Error('no record id to un-heart');
+        const r = await fetch('/player/unlike', {
+          method: 'POST',
+          headers: keyHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ songId: song, title: cardHeartFor }),
+        });
+        if (!r.ok) throw new Error('refused');
+      } catch (e) {
+        cardLiked = true;
+        paintCardHeart({ track: cardHeartFor, cardLike: true });
+      }
+      return;
+    }
     cardLiked = true;                    // optimistic; walked back on refusal
     paintCardHeart({ track: cardHeartFor, cardLike: true });
     try {
@@ -1975,6 +1999,10 @@
       // Only once /live has landed: whether the player is offered at all is
       // the server's answer, and the stream URL arrives with it.
       if (first) resumeFromHandoff();
+      // The card heart's un-press and the player's operator side both read
+      // the same server answer — fetched once the line is known, not only
+      // at sheet-open, so the phone face has it too.
+      if (first) fetchAbilities();
       if (playerOpen) { paintPlayer(); fitPlayerArt(); }
       if (playerEl) feedMediaSession();
       castFollowTrack();
@@ -6170,9 +6198,18 @@
         .map((a) => [a.icon, a.label, a.detail && '— ' + a.detail]
           .filter(Boolean).join(' '))
         .join('   ·   ');
-      flashOpResult(acts || d.said || 'Done.');
+      // Actions flash where the words were; the DJ's WORDS persist below
+      // the row until the next send — a brain that asks a clarifying
+      // question or explains a refusal was answering into a four-second
+      // fade nobody caught, which read as nothing happening at all
+      // (operator, 2026-09-01). A follow-up send continues the same
+      // exchange, so answering the question works.
+      if (acts) flashOpResult(acts);
+      msg.classList.add('info');
+      msg.textContent = d.said || (acts ? '' : 'Done — nothing to add.');
       if (plTab === 'booth') refreshBoothLog();
     } catch (e) {
+      msg.classList.remove('info');
       msg.textContent = String(e.message || e);
     }
     btn.textContent = plOpMode ? 'Do it' : 'Send';
@@ -6231,6 +6268,7 @@
     const text = (input.value || '').trim();
     if (!text) { input.focus(); return; }
     btn.disabled = true; btn.textContent = 'Sending';
+    msg.classList.remove('info');
     msg.textContent = '';
     try {
       const r = await fetch('/player/request', {

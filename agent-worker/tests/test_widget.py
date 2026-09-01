@@ -3189,11 +3189,16 @@ class TestTheCardOffersTheCountAndTheHeart(unittest.TestCase):
         self.assertIn('id="npTrack"', row)
         self.assertIn('id="npHeart"', row)
 
-    def test_the_heart_is_add_only(self):
+    def test_the_heart_is_add_only_for_listeners(self):
         # Matching the station's public like: there is no un-like for
-        # listeners, so a pressed heart never sends a second request.
-        block = self.js.split("$('npHeart').addEventListener")[1][:600]
-        self.assertIn("if (cardLiked) return", block)
+        # LISTENERS. Since 2026-09-01 a key that clears the unfavorite
+        # permission may un-press (the operator's own record, via the admin
+        # write) — so the add-only rule holds exactly when the server's
+        # abilities answer says no.
+        block = self.js.split("$('npHeart').addEventListener")[1][:900]
+        self.assertIn("if (cardLiked) {", block)
+        self.assertIn("plAbilities && plAbilities.unlike", block)
+        self.assertIn("/player/unlike", block)
 
 
 class TestNothingIsReachableOnlyByRecognisingIt(unittest.TestCase):
