@@ -1,14 +1,14 @@
 # Pinned against the versions verified working on 2026-08-02.
 # livekit-agents 1.6.7 is current; the [mcp] extra is required for the
 # station's MCP tool surface (livekit.agents.mcp is not installed without it).
-livekit-agents[mcp]==1.6.7
-livekit-plugins-deepgram==1.6.7
-livekit-plugins-google==1.6.7
-livekit-plugins-silero==1.6.7
+livekit-agents[mcp]==1.7.1
+livekit-plugins-deepgram==1.7.1
+livekit-plugins-google==1.7.1
+livekit-plugins-silero==1.7.1
 # openai plugin also drives Ollama (same protocol, via LLM.with_ollama)
-livekit-plugins-openai==1.6.7
-livekit-plugins-anthropic==1.6.7
-livekit-api==1.2.0
+livekit-plugins-openai==1.7.1
+livekit-plugins-anthropic==1.7.1
+livekit-api==1.2.1
 # In-process speech-to-text: no container, no key, CPU only.
 faster-whisper==1.2.1
 
