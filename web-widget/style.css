@@ -1357,7 +1357,11 @@
      min-width: 0 on both or flex refuses to shrink them past content. */
   .plpanelbody .plrow { display: flex; align-items: baseline; gap: 7px;
                         white-space: nowrap; min-width: 0; }
-  .plpanelbody .plrow .pltit { flex: 0 1 auto; min-width: 0;
+  /* The TITLE gives way first. Both halves used to shrink together, so a
+     long title squeezed the artist to nothing and the row read as
+     title-only (operator, 2026-09-01) — the artist now keeps up to 46%
+     of the line and the title ellipsizes into what is left. */
+  .plpanelbody .plrow .pltit { flex: 1 1 auto; min-width: 2ch;
                                overflow: hidden; text-overflow: ellipsis;
                                /* 600/13, not the stacked layout's 700/14:
                                   three bold-capped lines in a row read as
@@ -1367,6 +1371,7 @@
                                   without the block going heavy. */
                                font-weight: 600; font-size: 13px; }
   .plpanelbody .plrow .plsub { flex: 0 1 auto; min-width: 0; margin-top: 0;
+                               max-width: 46%; white-space: nowrap;
                                overflow: hidden; text-overflow: ellipsis; }
   .plpanelbody .plrow + .plrow { margin-top: 5px; }
   /* The DJ's own words — prose, not a title. */
