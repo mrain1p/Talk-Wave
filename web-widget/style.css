@@ -1026,7 +1026,14 @@
     }
     /* The three pull handles are absolutely positioned, so the padding
        above never reaches them — they anchor below the inset instead. */
-    body:not(.compact) .card .ribbon,
+    /* NOT .plfirst: there the bookmark hangs from the card's BOTTOM edge
+       (top:auto; bottom:0), and this rule out-specified it — 0,3,1 against
+       0,3,0 — so the notch fix threw the handle back to the top of the
+       screen after every pull-down (operator, 2026-09-02, and the drag
+       probe caught it the moment it was re-run). A safe-area inset is a
+       TOP-anchored idea; it has no business reaching a bottom-anchored
+       tab. */
+    body:not(.compact) .card:not(.plfirst) .ribbon,
     body:not(.compact) .card .plphonetab {
       top: max(0px, env(safe-area-inset-top));
     }
