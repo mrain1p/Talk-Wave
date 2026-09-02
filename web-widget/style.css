@@ -1185,11 +1185,20 @@
      furniture rides the card's plfirst class in one place: the phone
      ribbon exists, the card's bookmark and the foot grabber stand down. */
   .card .plphonetab { display: none; }
+  /* A real TAB, not a bare grip: the phone's handle wears the card
+     bookmark's own shape — granite fill, feet rounded, hanging from the
+     sheet's top edge and sticking out past it — with a heavier outline
+     (operator, 2026-09-01). Absolute like the bookmark, so the head's
+     text and icons cannot push it off centre. */
   .card.plfirst .plphonetab {
     display: flex; justify-content: center; align-items: center;
-    width: 100%; flex: none; padding: 8px 0 5px;
-    background: transparent; border: 0; min-height: 0; height: auto;
-    cursor: pointer;
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: auto; flex: none; padding: 7px 18px 6px; min-height: 0;
+    height: auto; z-index: 5; cursor: pointer;
+    background: var(--granite);
+    border: 2px solid var(--edge); border-top: 0;
+    border-radius: 0 0 max(7px, var(--skin-radius-ctl))
+                   max(7px, var(--skin-radius-ctl));
   }
   .card.plfirst .plphonetab .grip {
     width: 34px; height: 4px; border-radius: 2px; background: var(--sage-dim);
@@ -1220,8 +1229,8 @@
   .card.plfirst .nprail { height: 42px; }
   .card.plfirst .eyebrow { position: static; }
   .card.plfirst .ribbon {
-    top: auto; bottom: 0; height: 18px; padding: 0 17px;
-    border: 1px solid var(--edge); border-bottom: 0;
+    top: auto; bottom: 0; height: 22px; padding: 0 18px;
+    border: 2px solid var(--edge); border-bottom: 0;
     border-radius: max(7px, var(--skin-radius-ctl))
                    max(7px, var(--skin-radius-ctl)) 0 0;
   }
@@ -1499,6 +1508,10 @@
   #plReqSend {
     width: 64px; flex: none; height: 44px; background: transparent;
     padding: 0 4px; letter-spacing: .1em;
+    /* Centres the drawn working-state glyph the same way it centres the
+       word — a block-level <svg> would otherwise sit at the content box's
+       left edge (the corner controls learned this in 0.10.144). */
+    display: inline-flex; align-items: center; justify-content: center;
     border: 1px solid var(--coral); color: var(--coral);
     font: 700 11px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case);

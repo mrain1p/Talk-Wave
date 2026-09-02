@@ -4,6 +4,13 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.25
+
+Tagged without a page of its own (folded forward at the next storied release).
+
+- The send button's working mark is drawn, not typed: the emoji hourglass arrived in full colour from the system font, and the card's icons are never that. Same line weight and currentColor as every other glyph on the surface.
+- Both pull tabs look like tabs: the phone's handle wears the card bookmark's own shape — granite fill, rounded feet, hanging out past the edge it belongs to — and both outlines went heavier.
+
 ## 0.99.24
 
 Tagged without a page of its own (folded forward at the next storied release).

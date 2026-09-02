@@ -6260,7 +6260,7 @@
     // An hourglass, not a word: "Working" overflowed the button on a
     // narrow phone (operator, 2026-09-01), and the glyph lets the button
     // stay narrow so the input keeps the room.
-    btn.disabled = true; btn.textContent = '⏳';
+    btn.disabled = true; btn.innerHTML = BUSY_ICON;
     msg.textContent = '';
     try {
       const r = await fetch('/player/command', {
@@ -6337,13 +6337,19 @@
   // The request row: the station's own listener request box, relayed. The
   // button says SENT for a moment (the mockup's beat); a refusal shows the
   // station's own words — they are written for listeners.
+  // The working state's mark, DRAWN not typed: the emoji hourglass came
+  // from the system font in full colour, which is the one thing the
+  // card's icons never are (operator, 2026-09-01). Same line weight and
+  // currentColor as every other glyph on this surface.
+  const BUSY_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h12M6 22h12M6 2c0 4 3 6.5 6 10-3 3.5-6 6-6 10M18 2c0 4-3 6.5-6 10 3 3.5 6 6 6 10"/></svg>';
+
   async function plSendRequest() {
     // The row's second face: operator mode sends a command, not a request.
     if (plOpMode) return plSendCommand();
     const input = $('plReqInput'), btn = $('plReqSend'), msg = $('plReqMsg');
     const text = (input.value || '').trim();
     if (!text) { input.focus(); return; }
-    btn.disabled = true; btn.textContent = '⏳';
+    btn.disabled = true; btn.innerHTML = BUSY_ICON;
     msg.classList.remove('info');
     msg.textContent = '';
     try {
