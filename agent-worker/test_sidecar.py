@@ -79,6 +79,7 @@ from tests.test_http import (  # noqa: F401
     TestTheMintGivesTheWorkerAHeadStart,
 )
 from tests.test_widget import (
+    TestTheFacesSitSideBySide,
     TestSectionTagsCanShowTheirState,  # noqa: F401
     TestThePanelKeepsItsOwnRules,
     TestThePanelStylesStayOffTheCallPage,

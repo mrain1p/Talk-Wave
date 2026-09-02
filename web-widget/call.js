@@ -1949,7 +1949,7 @@
             && !inConversation()) {
           playerStartApplied = true;
           const sheet = $('playerView');
-          sheet.classList.add('dragging');
+          sheet.classList.add('dragging');    // no slide: this is the start
           openPlayer();
           void sheet.offsetHeight;
           sheet.classList.remove('dragging');
@@ -4983,10 +4983,9 @@
     return playerVisual && !!d.swipePlayer && !!(d.stream && d.stream.url);
   }
 
-  // Which face is HOME. When the operator starts the page on the player,
-  // the whole pull-down metaphor flips (operator, 2026-09-01): the phone
-  // hangs above the player, the sheet's own top ribbon pulls it down, and
-  // the swipes run the other way — the gesture follows the start.
+  // Which face the page OPENS on (operator's "Opens on"): the phone, or
+  // the player card already slid in. The other is one swipe away either
+  // way; nothing about the gesture flips with the start any more.
   function playerIsHome() {
     const d = shown || live || {};
     return !!d.playerStart && playerOffered();
@@ -5288,7 +5287,6 @@
     void sheet.offsetHeight;
     document.querySelector('.card').classList.add('playeropen');
     playerOpen = true;
-    sweepCurtain(true);
     paintPlayer();
     fitPlayerArt();
     // What this caller's key unlocks (skip, unlike, operator mode) — the
@@ -5305,7 +5303,6 @@
     if (!keepAudio) stopPlayerAudio();
     if (!playerOpen) { $('playerView').hidden = true; paintListenChip(); return; }
     playerOpen = false;
-    sweepCurtain(false);
     document.querySelector('.card').classList.remove('playeropen');
     // display:none only after the wipe has left. A timer, not transitionend:
     // transition events never fire in a hidden pane, and a sheet stuck
@@ -5815,36 +5812,27 @@
   }
 
   function paintListenChip() {
-    const chip = $('listenChip'), tab = $('playerTab');
+    const chip = $('listenChip');
     if (!chip) return;
     if (!playerOffered()) {
       // The operator can pull the player out from under a caller mid-song —
       // honour it on the next poll rather than playing on with the door gone.
       chip.hidden = true;
-      if (tab) tab.hidden = true;
       // Nothing to carry next door either: the door the music came through
       // has gone.
       if (playerWanted) wantPlayer(false);
       if (playerEl) stopPlayerAudio();
       if (playerOpen) closePlayer();
+      paintFaceBar();
       return;
     }
     const idle = cardMode() === 'idle';
     chip.hidden = !idle || playerOpen;
     chip.classList.toggle('playing', !!playerEl);
     chip.textContent = playerEl ? 'Playing' : 'Listen';
-    if (tab) {
-      // The bookmark only hangs while the player is closed — the way back
-      // up is the grabber at the dock's foot, where the finger already is.
-      tab.hidden = !idle || playerOpen;
-    }
-    // The inverted furniture rides ONE class, owned by CSS: on a
-    // player-first page the sheet's TOP ribbon is the way to the phone,
-    // and the card's bookmark and the foot grabber stand down. It was
-    // per-element hidden fiddling first, and the pieces disagreed on the
-    // operator's phone (grabber up AND ribbon up, 2026-09-01).
-    const card = document.querySelector('.card');
-    if (card) card.classList.toggle('plfirst', playerIsHome());
+    // The faces row tracks the same state the chip does: which card is
+    // showing, and whether the player may be gone to at all right now.
+    paintFaceBar();
   }
 
   // The lock screen's idea of what is playing, on the platforms that ask.
@@ -5896,138 +5884,140 @@
     } catch (e) {}
   }
 
-  // The plain swipe, anywhere on the card: down pulls the station in, up
-  // pushes it away. Touch, not pointer: this is a phone move, and the mouse
-  // path is the ribbon, the chip and the hint button. A swipe that starts
-  // on a control is a press, not a gesture, and a slow or mostly-horizontal
-  // drag is a scroll — both fall through untouched.
-  (function bindSwipe() {
-    const card = document.querySelector('.card');
-    if (!card) return;
-    let sx = 0, sy = 0, st = 0, armed = false;
-    card.addEventListener('touchstart', (e) => {
-      armed = false;
-      if (e.touches.length !== 1) return;
-      if (e.target.closest('button, a, input, select, textarea')) return;
-      if (playerOpen ? false : (cardMode() !== 'idle' || !playerOffered())) return;
-      armed = true;
-      sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now();
-    }, { passive: true });
-    card.addEventListener('touchend', (e) => {
-      if (!armed) return;
-      armed = false;
-      const t = e.changedTouches && e.changedTouches[0];
-      if (!t || Date.now() - st > 800) return;
-      const dx = t.clientX - sx, dy = t.clientY - sy;
-      if (Math.abs(dy) < 60 || Math.abs(dy) < Math.abs(dx) * 1.5) return;
-      if (playerIsHome()) {
-        // Player-first page: the phone hangs ABOVE — push up from the
-        // phone to go home, pull the sheet down to fetch the phone.
-        if (dy < 0 && !playerOpen) openPlayer();
-        else if (dy > 0 && playerOpen) closePlayer(true);
-      } else if (dy > 0 && !playerOpen) openPlayer();
-      else if (dy < 0 && playerOpen) closePlayer(true);
-    }, { passive: true });
-  })();
-
-  // The ribbon: press it and the sheet FOLLOWS the finger — the page wipe
-  // the operator asked for, not a tap that teleports. Release past a fifth
-  // of the card and it commits; short of that it settles back. A plain tap
-  // (no travel) toggles, which is also the mouse's way in.
-  // ONE binder, both handles, both directions (operator, 2026-09-01: the
-  // phone ribbon was tap-only because only the card's tab was ever bound,
-  // and the drag maths was hardcoded to a sheet that rests ABOVE).
-  // `dir` is +1 when the player hangs above (pull DOWN to open) and -1 on
-  // a player-first page, where the phone hangs above instead and the sheet
-  // rests below — so every sign, and the resting offset itself, follows
-  // playerIsHome() rather than a constant.
-  // How far the sheet is shown, 0..1, painted the way THIS page's metaphor
-  // says: normally the sheet travels (it arrives over the phone), and on a
-  // player-first page it is clipped from the top instead, so the boundary
-  // sweeps down like a phone drawn over a player that holds still.
-  // The arriving screen's own EDGE. Clipping alone reads as a scan — no
-  // seam, nothing that says a second card is coming over the first
-  // (operator, 2026-09-01) — so a lit rule with a shadow under it travels
-  // with the boundary and gives the phone a leading edge.
-  function paintCurtain(pct, on) {
-    const c = $('plCurtain');
-    if (!c) return;
-    c.style.top = (pct * 100).toFixed(2) + '%';
-    c.classList.toggle('on', !!on);
+  // ---- THE FACES. The phone and the player are cards SIDE BY SIDE
+  // (operator, 2026-09-02: "swipe left and right to switch between them,
+  // and the small selector row on the bottom"). Until then the player was
+  // a sheet pulled down over the phone by a ribbon, with a second ribbon,
+  // a foot grabber and a travelling curtain for the player-first page —
+  // all of it went with that model. The phone is the base; the player
+  // slides in from the right over it and back out the same way, following
+  // the finger, and the row at the card's foot names every face on offer
+  // and switches on a tap. A face the operator switched off is simply not
+  // in the row. Touch, not pointer: on a desktop the row is the way across
+  // (and the arrow keys). A drag that starts on a field is typing or the
+  // fader, and one that runs mostly up or down is a scroll — the axis is
+  // decided in the first eight pixels and then OWNED for the rest of the
+  // gesture, so a scroll through the queue never turns into a page turn
+  // halfway down.
+  // A function, not a const: paintListenChip runs from the first /live
+  // paint, and a const this far down the file would still be unassigned.
+  function faceDefs() {
+    return [
+      { id: 'phone',  btn: 'facePhone',  offered: () => true },
+      { id: 'player', btn: 'facePlayer', offered: () => playerOffered() },
+    ];
+  }
+  function faceList() { return faceDefs().filter((f) => f.offered()); }
+  function currentFace() { return playerOpen ? 'player' : 'phone'; }
+  function showFace(id) {
+    if (id === currentFace()) return;
+    if (id === 'player') openPlayer();
+    else closePlayer(true);
   }
 
-  // A tap has no finger to follow, so the edge is swept by hand over the
-  // same duration the sheet's own transition runs.
-  function sweepCurtain(toOpen) {
-    if (!playerIsHome()) { paintCurtain(0, false); return; }
-    const c = $('plCurtain');
-    if (!c) return;
-    paintCurtain(toOpen ? 1 : 0, true);
-    c.classList.add('sweep');
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => paintCurtain(toOpen ? 0 : 1, true));
+  function paintFaceBar() {
+    const bar = $('faceBar'), card = document.querySelector('.card');
+    if (!bar || !card) return;
+    const list = faceList();
+    // Looks, not sound: the settings preview shows the row like it shows
+    // the sheet (playerVisual), and a compact card or an embed never has
+    // a second face to name.
+    const many = playerVisual && list.length > 1;
+    bar.hidden = !many;
+    // The card's foot makes room only while the row is there — a phone-
+    // only card keeps its 16px, and the height the embed reports never
+    // moves (an embed is compact, so it never gets the row at all).
+    card.classList.toggle('faces', many);
+    const now = currentFace();
+    const idle = cardMode() === 'idle';
+    faceDefs().forEach((f) => {
+      const b = $(f.btn);
+      if (!b) return;
+      b.hidden = !list.some((x) => x.id === f.id);
+      b.classList.toggle('on', f.id === now);
+      b.setAttribute('aria-current', f.id === now ? 'true' : 'false');
+      // A call is not a page to turn: the player's tab stays in the row
+      // (so the foot doesn't jump) but sleeps until the line is idle again
+      // — openPlayer refuses mid-conversation for the same reason.
+      b.disabled = f.id === 'player' && !playerOpen && !idle;
     });
-    clearTimeout(plCurtainT);
-    plCurtainT = setTimeout(() => {
-      c.classList.remove('sweep', 'on');
-    }, 460);
   }
-  let plCurtainT = 0;
+  faceDefs().forEach((f) => {
+    const b = $(f.btn);
+    if (b) b.onclick = () => showFace(f.id);
+  });
 
-  function paintSheetProgress(sheet, shownPct) {
+  // How far the player is shown, 0..1: parked off the right edge at 0.
+  function paintFaceProgress(sheet, shownPct) {
     const p = Math.min(1, Math.max(0, shownPct));
-    if (playerIsHome()) {
-      sheet.style.transform = '';
-      sheet.style.clipPath = 'inset(' + ((1 - p) * 100).toFixed(2) + '% 0 0 0)';
-      paintCurtain(1 - p, p > 0.001 && p < 0.999);
-      return;
-    }
-    paintCurtain(0, false);
-    sheet.style.clipPath = '';
-    sheet.style.transform =
-      'translateY(' + (-103 * (1 - p)).toFixed(2) + '%)';
+    sheet.style.transform = 'translateX(' + ((1 - p) * 100).toFixed(2) + '%)';
   }
 
-  function bindSheetDrag(tabId) {
-    const tab = $(tabId), sheet = $('playerView');
-    const card = document.querySelector('.card');
-    if (!tab || !sheet || !card) return;
-    const dir = () => (playerIsHome() ? -1 : 1);
-    let startY = 0, dragging = false, moved = false, wasOpen = false;
+  (function bindFaceSwipe() {
+    const card = document.querySelector('.card'), sheet = $('playerView');
+    if (!card || !sheet) return;
+    let sx = 0, sy = 0, st = 0, axis = '', wasOpen = false;
+    let lastX = 0, lastT = 0, vx = 0;
 
-    tab.addEventListener('touchstart', (e) => {
-      if (!playerOffered() || inConversation()) return;
-      dragging = true; moved = false; wasOpen = playerOpen;
-      startY = e.touches[0].clientY;
-      if (!wasOpen) {
-        // Rendered under the finger from the first pixel of travel.
-        clearTimeout(playerHideTimer);
-        sheet.hidden = false;
-        paintPlayer();
-        fitPlayerArt();
-      }
-      sheet.classList.add('dragging');
+    card.addEventListener('touchstart', (e) => {
+      axis = '';
+      if (e.touches.length !== 1) return;
+      // The fader, the request box, a select: a finger there is using it.
+      if (e.target.closest('input, select, textarea')) return;
+      if (faceList().length < 2) return;
+      if (!playerOpen && cardMode() !== 'idle') return;
+      sx = lastX = e.touches[0].clientX; sy = e.touches[0].clientY;
+      st = lastT = Date.now(); vx = 0;
+      wasOpen = playerOpen;
+      axis = 'wait';
     }, { passive: true });
 
-    tab.addEventListener('touchmove', (e) => {
-      if (!dragging) return;
-      const dy = (e.touches[0].clientY - startY) * dir();
-      const h = card.getBoundingClientRect().height || 1;
-      if (Math.abs(dy) > 6) moved = true;
-      const shownPct = wasOpen
-        ? 1 - Math.min(1, Math.max(0, -dy / h))
-        : Math.min(1, Math.max(0, dy / h));
-      paintSheetProgress(sheet, shownPct);
+    card.addEventListener('touchmove', (e) => {
+      if (!axis || axis === 'v') return;
+      const t = e.touches[0];
+      const dx = t.clientX - sx, dy = t.clientY - sy;
+      if (axis === 'wait') {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        // Mostly vertical, or pulling towards a face that isn't there:
+        // this is a scroll, and it stays one.
+        if (Math.abs(dy) > Math.abs(dx) || (wasOpen ? dx < 0 : dx > 0)) {
+          axis = 'v';
+          return;
+        }
+        axis = 'h';
+        if (!wasOpen) {
+          // Rendered under the finger from the first pixel of travel.
+          clearTimeout(playerHideTimer);
+          sheet.hidden = false;
+          paintPlayer();
+          fitPlayerArt();
+        }
+        sheet.classList.add('dragging');
+      }
+      const now = Date.now();
+      if (now > lastT) {
+        vx = (t.clientX - lastX) / (now - lastT);   // px per ms, signed
+        lastX = t.clientX; lastT = now;
+      }
+      const w = sheet.getBoundingClientRect().width || 1;
+      paintFaceProgress(sheet, wasOpen
+        ? 1 - Math.min(1, Math.max(0, dx / w))
+        : Math.min(1, Math.max(0, -dx / w)));
     }, { passive: true });
 
     const settle = (e) => {
-      if (!dragging) return;
-      dragging = false;
+      if (axis !== 'h') { axis = ''; return; }
+      axis = '';
       sheet.classList.remove('dragging');
       const t = e.changedTouches && e.changedTouches[0];
-      const dy = (t ? t.clientY - startY : 0) * dir();
-      const h = card.getBoundingClientRect().height || 1;
-      const shouldOpen = wasOpen ? (-dy / h) < 0.2 : (dy / h) > 0.2;
+      const dx = t ? t.clientX - sx : 0;
+      const w = sheet.getBoundingClientRect().width || 1;
+      // Past a fifth of the width it commits; short of that a quick flick
+      // in the same direction commits too, the way a page turn feels.
+      const flick = Math.abs(vx) > 0.5 && Date.now() - st < 500;
+      const shouldOpen = wasOpen
+        ? !((dx / w) > 0.2 || (flick && vx > 0))
+        : ((-dx / w) > 0.2 || (flick && vx < 0));
       if (shouldOpen && !playerOpen) openPlayer();
       else if (!shouldOpen && playerOpen) closePlayer(true);
       else if (!shouldOpen && !playerOpen) {
@@ -6040,61 +6030,23 @@
       // Cleared AFTER the state settles, so the transition animates from
       // wherever the finger left the sheet rather than snapping first.
       sheet.style.transform = '';
-      sheet.style.clipPath = '';
     };
-    tab.addEventListener('touchend', settle);
-    tab.addEventListener('touchcancel', settle);
-    tab.addEventListener('click', () => {
-      if (moved) { moved = false; return; }   // the click after a real drag
-      if (playerOpen) closePlayer(true); else openPlayer();
-    });
-  }
-  // The card's bookmark, and — on a player-first page — the sheet's own
-  // phone ribbon. Both drag; the binder reads the direction per gesture,
-  // so a mid-session settings change cannot leave one of them backwards.
-  bindSheetDrag('playerTab');
-  bindSheetDrag('phoneTab');
-
-  // The grabber at the dock's foot: the way back up, with the same
-  // finger-following drag as the bookmark — always from the open state.
-  (function bindGrab() {
-    const grab = $('plGrab'), sheet = $('playerView');
-    const card = document.querySelector('.card');
-    if (!grab || !sheet || !card) return;
-    let startY = 0, dragging = false, moved = false;
-
-    grab.addEventListener('touchstart', (e) => {
-      if (!playerOpen) return;
-      dragging = true; moved = false;
-      startY = e.touches[0].clientY;
-      sheet.classList.add('dragging');
-    }, { passive: true });
-    grab.addEventListener('touchmove', (e) => {
-      if (!dragging) return;
-      const dy = e.touches[0].clientY - startY;
-      const h = card.getBoundingClientRect().height || 1;
-      if (Math.abs(dy) > 6) moved = true;
-      const hiddenPct = Math.min(1, Math.max(0, -dy / h));
-      sheet.style.transform = 'translateY(' + (-103 * hiddenPct).toFixed(2) + '%)';
-    }, { passive: true });
-    const settle = (e) => {
-      if (!dragging) return;
-      dragging = false;
-      sheet.classList.remove('dragging');
-      const t = e.changedTouches && e.changedTouches[0];
-      const dy = t ? t.clientY - startY : 0;
-      const h = card.getBoundingClientRect().height || 1;
-      if ((-dy / h) > 0.2 && playerOpen) closePlayer(true);
-      sheet.style.transform = '';
-      sheet.style.clipPath = '';
-    };
-    grab.addEventListener('touchend', settle);
-    grab.addEventListener('touchcancel', settle);
-    grab.addEventListener('click', () => {
-      if (moved) { moved = false; return; }
-      closePlayer(true);
-    });
+    card.addEventListener('touchend', settle, { passive: true });
+    card.addEventListener('touchcancel', settle, { passive: true });
   })();
+
+  // The keyboard's swipe: left and right arrows walk the row, unless a
+  // field has the focus.
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'ArrowLeft' && e.code !== 'ArrowRight') return;
+    const t = e.target;
+    if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    const list = faceList();
+    if (list.length < 2) return;
+    const i = list.findIndex((f) => f.id === currentFace());
+    const next = list[i + (e.code === 'ArrowRight' ? 1 : -1)];
+    if (next) showFace(next.id);
+  });
 
   // The VU meter: eleven bars built once, each with its own height, pace
   // and phase, so the strip breathes rather than marches. CSS pauses them
@@ -6439,10 +6391,8 @@
   $('listenChip').onclick = () => {
     if (cardMode() === 'idle') openPlayer();
   };
-  // The strip's phone square: the one-press road to the card underneath,
-  // audio untouched. (The sheet's phone ribbon is a DRAG handle — bound by
-  // bindSheetDrag, which owns its click too; a second handler here toggled
-  // it straight back.)
+  // The strip's phone square: the one-press road to the phone card,
+  // audio untouched — the same move as the row's PHONE tab.
   if ($('plPhoneBtn')) $('plPhoneBtn').onclick = () => closePlayer(true);
   $('plPlayBtn').onclick = () => {
     // A framework session: the transport drives the TV, nothing local.

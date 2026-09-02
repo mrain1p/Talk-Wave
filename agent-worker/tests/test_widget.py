@@ -3586,3 +3586,59 @@ class TestThePanelKeepsItsOwnRules(unittest.TestCase):
         bare = sorted(n for n, m in settings_store.SCHEMA.items()
                       if m["kind"] == "text" and not m.get("placeholder"))
         self.assertFalse(bare, "text settings with no placeholder: %s" % bare)
+
+
+class TestTheFacesSitSideBySide(unittest.TestCase):
+    """The phone and the player are cards SIDE BY SIDE (operator, 2026-09-02:
+    "swipe left and right to switch between them, and the small selector row
+    on the bottom"). Until then the player was a sheet pulled down over the
+    phone by a ribbon, with a second ribbon, a foot grabber and a travelling
+    curtain for the player-first page. All of that is gone, and this holds
+    the new shape: the sheet parks off the RIGHT edge, the card carries the
+    faces row with one static tab per card, and nothing reaches for the
+    pull-down's ids any more."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = widget_js()["call.js"]
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        cls.html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+
+    def test_the_player_parks_beside_the_phone_not_above_it(self):
+        base = self.css.split("\n  .player {")[1].split("}")[0]
+        self.assertIn("transform: translateX(103%)", base)
+        self.assertNotIn("translateY", base)
+        self.assertIn(".card.playeropen .player { transform: translateX(0); }",
+                      self.css)
+        # The finger paints the same axis the transition runs on.
+        self.assertIn("'translateX(' + ((1 - p) * 100).toFixed(2) + '%)'",
+                      self.js)
+
+    def test_the_faces_row_names_every_card_on_offer(self):
+        for el in ('id="faceBar"', 'id="facePhone"', 'id="facePlayer"'):
+            self.assertIn(el, self.html)
+        # One definition of which cards exist, and the row is painted from
+        # it wherever the listen chip already repaints.
+        self.assertIn("function faceDefs()", self.js)
+        self.assertIn("paintFaceBar();", self.js.split("function paintListenChip")[1][:900])
+        # The row makes room at the card's foot only while it is there.
+        self.assertIn(".card.faces { padding-bottom: 46px; }", self.css)
+        self.assertIn(".card.faces .player { bottom: 46px; }", self.css)
+
+    def test_the_swipe_owns_one_axis_for_the_whole_gesture(self):
+        # A scroll through the queue must never turn into a page turn
+        # halfway down: the axis is decided once, in the first pixels.
+        swipe = self.js.split("function bindFaceSwipe")[1]
+        self.assertIn("axis = 'wait'", swipe)
+        self.assertIn("if (Math.abs(dy) > Math.abs(dx)", swipe)
+        self.assertIn("axis = 'v'", swipe)
+        # The fader and the request box keep their own finger.
+        self.assertIn("closest('input, select, textarea')", swipe)
+
+    def test_the_pull_down_is_gone_from_every_file(self):
+        for name, text in (("call.js", self.js), ("style.css", self.css),
+                           ("index.html", self.html)):
+            for token in ("playerTab", "phoneTab", "plGrab", "plCurtain",
+                          "plfirst", "plphonetab", "plcurtain"):
+                with self.subTest(file=name, token=token):
+                    self.assertNotIn(token, text)

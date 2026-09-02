@@ -653,28 +653,25 @@
      on the phone this thing actually lives on, a press changed nothing
      until its result arrived — hundreds of milliseconds later for
      anything that talks to the station. Opacity, never transform: the
-     ribbon, the phone tab and the ask-popup close are centred with
-     translateX(-50%), and a transform here would throw them across the
-     card. */
+     ask-popup close is centred with translateX(-50%), and a transform
+     here would throw it across the card. */
   .card button:active:not(:disabled) { opacity: .68; }
   /* HIT BOXES. Fifteen targets measured under 44px and five pairs sat 0px
      apart, all of it in the chrome around the (well-sized) action row.
      The fix is the BOX, never the ink: an unpainted ::after grows what a
      thumb can hit while the glyph, the row heights and the card's fixed
      height stay exactly as they are. */
-  .card .gear, .card .plheart, .card button.plnote, .card .ribbon,
-  .card .plphonetab, .card .plgrab, .card .pltabs .pltab, .card #npHeart {
+  .card .gear, .card .plheart, .card button.plnote,
+  .card .pltabs .pltab, .card .facebar .face, .card #npHeart {
     position: relative;
   }
   .card .gear::after, .card .plheart::after, .card button.plnote::after,
-  .card .ribbon::after, .card .plphonetab::after, .card .plgrab::after,
-  .card .pltabs .pltab::after, .card #npHeart::after {
+  .card .pltabs .pltab::after, .card .facebar .face::after,
+  .card #npHeart::after {
     content: ""; position: absolute; inset: -7px -4px;
   }
-  /* The two smallest, and the two that are DRAG handles rather than taps. */
+  /* The smallest. */
   .card #npHeart::after { inset: -14px -13px; }
-  .card .ribbon::after, .card .plphonetab::after,
-  .card .plgrab::after { inset: -12px -14px; }
   /* A new DJ or show brings a new palette — applyTokens() writes it onto
      :root and every var() resolves to the new colour in one frame, which
      snapped the whole card over abruptly (operator asked for a graceful
@@ -927,9 +924,10 @@
   #vmRecBtn { touch-action: none; -webkit-user-select: none; user-select: none; }
 
   /* The station player: a SHEET pulled down over the card, not a card mode.
-     The wipe is the design — the operator's ask is the player coming down
-     over the phone page like a shade, and going back up the same way — so
-     it overlays whatever the card was showing and touches none of the bands
+     A card BESIDE the phone (operator, 2026-09-02): it parks off the
+     card's right edge, slides in over the phone and back out the same
+     way — it was a shade pulled down from the top until then — so it
+     overlays whatever the card was showing and touches none of the bands
      beneath. A direct child of .card on purpose: .rig reserves visibility
      for the call's own rows, and the first build sat inside it — laid out,
      measured by every geometry probe, painting NOTHING (operator's phone,
@@ -941,69 +939,69 @@
     text-align: center; padding: 0; overflow: hidden;
     background-color: var(--pine);
     border-radius: inherit;
-    transform: translateY(-103%);
+    transform: translateX(103%);
     transition: transform .38s cubic-bezier(.32, .72, .28, 1);
     will-change: transform;
   }
-  .card.playeropen .player { transform: translateY(0); }
-  /* On a player-first page the PHONE is the screen that arrives, and a
-     pull-down tab "pulls the other screen OVER the current one" (the
-     operator's own words, third pass — first the sheet exited upward,
-     then it slid away downward, and both read as the player leaving
-     rather than the phone arriving).
-     The phone cannot slide over the player: it is the card's own content,
-     several flex children deep, and the sheet is an overlay above it. So
-     the sheet is CLIPPED from the top instead — the boundary sweeps down
-     while the player holds still, which is exactly what a curtain
-     descending over it looks like, and it costs one property rather than
-     a DOM restructure. */
-  .card.plfirst .player {
-    transform: none;
-    clip-path: inset(100% 0 0 0);
-    transition: clip-path .38s cubic-bezier(.32, .72, .28, 1);
-  }
-  .card.plfirst.playeropen .player { clip-path: inset(0 0 0 0); }
-  .card.plfirst .player.dragging { transition: none; }
-  /* The arriving screen's leading edge: the card's OWN top edge, moving.
-     A hairline in the card's neutral edge colour with a short soft shadow
-     under it — the first cut used a 2px coral rule and a deep shadow, and
-     it read as a phase ray sweeping the screen rather than a card being
-     drawn down (operator, 2026-09-01). Nothing lit, nothing station-
-     coloured; just the seam a card makes. It exists only while the two
-     screens are mid-exchange. */
-  .plcurtain {
-    position: absolute; left: 0; right: 0; top: 100%; height: 0;
-    border-top: 1px solid var(--edge);
-    box-shadow: 0 5px 10px rgba(0, 0, 0, .22);
-    z-index: 61; pointer-events: none; display: none;
-  }
-  /* THE TAB TRAVELS WITH THE EDGE. Without it the descent is a moving
-     hairline — "just a line wipe" (operator, 2026-09-01) — because the
-     thing that makes a card read as a card being pulled is its handle
-     coming with it. This is the bottom bookmark's own shape, hung under
-     the moving seam: granite fill, 2px edge, rounded feet, and the grip
-     drawn in the middle. It IS the tab that lands at the card's bottom
-     when the exchange finishes. */
-  .plcurtain::after {
-    content: ""; position: absolute; top: 0; left: 50%;
-    transform: translateX(-50%);
-    width: 66px; height: 22px; box-sizing: border-box;
-    background: var(--granite)
-      linear-gradient(var(--sage-dim), var(--sage-dim)) no-repeat center;
-    background-size: 30px 4px;
-    border: 2px solid var(--edge); border-top: 0;
-    border-radius: 0 0 max(7px, var(--skin-radius-ctl))
-                   max(7px, var(--skin-radius-ctl));
-  }
-  .card.plfirst .plcurtain.on { display: block; }
-  .card.plfirst .plcurtain.sweep {
-    transition: top .38s cubic-bezier(.32, .72, .28, 1);
-  }
+  .card.playeropen .player { transform: translateX(0); }
   /* The finger owns the sheet mid-drag; the transition takes over on release. */
   .player.dragging { transition: none; }
   /* display:flex above would beat the UA's [hidden] rule — say it explicitly.
      At rest the sheet is display:none, so nothing sits off-canvas. */
   .player[hidden] { display: none !important; }
+  /* ---- The faces row: one tab per card on offer, at the card's foot
+     (operator, 2026-09-02: "the small selector row on the bottom"). The
+     phone and the player are cards side by side now; this names them and
+     lights the one showing. Only while there is more than one — a phone-
+     only card keeps its 16px foot. The row lives in the card's bottom
+     padding, the way the bottom bookmark did, and the sheet ends above it
+     so the player's own dock never hides under the tabs. -------------- */
+  .card.faces { padding-bottom: 46px; }
+  .card.faces .player { bottom: 46px; }
+  .facebar {
+    position: absolute; left: 16px; right: 16px; bottom: 8px; height: 30px;
+    display: flex; justify-content: center; align-items: center; gap: 6px;
+    z-index: 70;
+  }
+  .facebar[hidden] { display: none; }
+  .card .facebar .face {
+    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    background: transparent; border: 1px solid var(--edge);
+    border-radius: max(12px, var(--skin-radius-ctl));
+    padding: 0 14px; margin: 0; min-height: 0; height: 24px; cursor: pointer;
+    display: inline-flex; align-items: center;
+  }
+  .card .facebar .face.on {
+    color: var(--coral); border-color: var(--coral); background: var(--pine);
+  }
+  .card .facebar .face:hover:not(.on):not(:disabled) { color: var(--alpenglow); }
+  .card .facebar .face:disabled { opacity: .45; cursor: default; }
+  .card .facebar .face[hidden] { display: none; }
+  /* On a phone the player is the whole screen, so the row is the screen's
+     own foot: fixed, above the sheet, with the safe area paid once here
+     rather than by the dock beneath it. */
+  @media (max-width: 700px) {
+    body:not(.compact) .card.faces .facebar {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      height: calc(38px + env(safe-area-inset-bottom));
+      padding-bottom: env(safe-area-inset-bottom);
+      background: var(--granite); border-top: 1px solid var(--hairline);
+      z-index: 95;
+    }
+    body:not(.compact) .card.faces .player {
+      bottom: calc(38px + env(safe-area-inset-bottom));
+    }
+    body:not(.compact) .card.faces .pldock { padding-bottom: 8px; }
+    /* Specific enough to beat `body:not(.panelpage):not(.compact) .card`,
+       which owns the phone's padding further down and quietly won the
+       first cut (the row sat on the Call button; measured at 375x812). */
+    body .card.faces,
+    body:not(.compact) .card.faces,
+    body:not(.panelpage):not(.compact) .card.faces {
+      padding-bottom: calc(46px + env(safe-area-inset-bottom));
+    }
+  }
   /* While the sheet is rendered the card clips, so the wipe stays inside the
      card's own corners. The ask popup is position:fixed and does not care. */
   .card:has(.player:not([hidden])) { overflow: clip; }
@@ -1024,19 +1022,6 @@
       height: calc(38px + max(0px, env(safe-area-inset-top)));
       padding-top: max(0px, env(safe-area-inset-top));
     }
-    /* The three pull handles are absolutely positioned, so the padding
-       above never reaches them — they anchor below the inset instead. */
-    /* NOT .plfirst: there the bookmark hangs from the card's BOTTOM edge
-       (top:auto; bottom:0), and this rule out-specified it — 0,3,1 against
-       0,3,0 — so the notch fix threw the handle back to the top of the
-       screen after every pull-down (operator, 2026-09-02, and the drag
-       probe caught it the moment it was re-run). A safe-area inset is a
-       TOP-anchored idea; it has no business reaching a bottom-anchored
-       tab. */
-    body:not(.compact) .card:not(.plfirst) .ribbon,
-    body:not(.compact) .card .plphonetab {
-      top: max(0px, env(safe-area-inset-top));
-    }
     /* SHORT PHONES. Below roughly 600px of height the panels were being
        flex-shrunk past their content and painted INTO each other — the
        queue collapsed to 20px and overlapped the booth by 14 (measured
@@ -1048,51 +1033,7 @@
     body:not(.compact) .plscroll > .plqgroup { flex: none; }
   }
 
-  /* The ribbon: a BOOKMARK hanging from the card's top edge — the operator's
-     correction to a bare floating grip ("it should look more like a
-     pulldown/tab/bookmark"). Visible only while the player is closed; the
-     way back up is the grabber at the dock's foot. Neutral surface tones on
-     purpose: nothing red rides the handle. */
-  /* .card-prefixed: the card's own `.card button` costume outranks a bare
-     class, and it dressed the bookmark as a control-height button. */
-  /* An inline pull-down tab, IN the eyebrow row between the state and the
-     corner icons (operator, 2026-08-24, third ruling — it hung above the
-     row for a day and crowded the phone's top edge). Grip only, no words:
-     the bottom-rounded tab shape says "pull me" itself. */
-  /* The tab HANGS from the card's top edge, dead centre — absolute, so the
-     eyebrow's text and icons cannot push it off centre and it cannot squeeze
-     them into an ellipsis (both happened on the operator's phone when it sat
-     in the flex flow between two spacers). No top border and no gap above:
-     attached is what makes it read as a pull tab rather than a floating
-     button. --card-pad-top bridges whatever padding this surface has. */
   .card .eyebrow { position: relative; }
-  .card .ribbon {
-    position: absolute; left: 50%; transform: translateX(-50%);
-    top: calc(-1 * var(--card-pad-top, 0px));
-    height: calc(var(--card-pad-top, 0px) + 24px);
-    padding: var(--card-pad-top, 0px) 17px 0; box-sizing: border-box;
-    z-index: 2;
-    background: var(--granite); border: 1px solid var(--edge); border-top: 0;
-    /* The feet keep the tab's own 7px so it reads as a handle even in the
-       square default, and follow a skin whose controls are rounder. */
-    border-radius: 0 0 max(7px, var(--skin-radius-ctl))
-                   max(7px, var(--skin-radius-ctl));
-    cursor: grab;
-    display: flex; align-items: center; justify-content: center;
-    touch-action: none;
-  }
-  .card .ribbon .grip {
-    width: 30px; height: 4px; border-radius: 2px;
-    background: var(--sage-dim); display: block;
-  }
-  /* The narrowest phones: the centred tab and a full row of corner icons
-     can meet in the middle, so both give a little. */
-  @container card (max-width: 359px) {
-    /* (the gear's own narrowing moved to its base rule — 28px everywhere) */
-    .card .ribbon { padding-left: 10px; padding-right: 10px; }
-  }
-  .card .ribbon:hover .grip { background: var(--alpenglow); }
-  .card .ribbon[hidden] { display: none; }
 
   /* ---- The player's own anatomy: the operator's 3a handoff, token for
      token. Header ribbon / glow art / title block / chips / progress /
@@ -1262,62 +1203,6 @@
   .plel { font: 700 11px/1 var(--font-mono); color: var(--amber);
           font-variant-numeric: tabular-nums; }
   .plel:empty { display: none; }
-  /* The phone's ribbon on a player-first page: same grip, the sheet's own
-     top strip — IN FLOW, never floating (its absolute first cut sat on
-     the header clock, operator's screenshot 2026-09-01). All the inverted
-     furniture rides the card's plfirst class in one place: the phone
-     ribbon exists, the card's bookmark and the foot grabber stand down. */
-  .card .plphonetab { display: none; }
-  /* A real TAB, not a bare grip: the phone's handle wears the card
-     bookmark's own shape — granite fill, feet rounded, hanging from the
-     sheet's top edge and sticking out past it — with a heavier outline
-     (operator, 2026-09-01). Absolute like the bookmark, so the head's
-     text and icons cannot push it off centre. */
-  .card.plfirst .plphonetab {
-    display: flex; justify-content: center; align-items: center;
-    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-    width: auto; flex: none; padding: 7px 18px 6px; min-height: 0;
-    height: auto; z-index: 5; cursor: pointer;
-    background: var(--granite);
-    border: 2px solid var(--edge); border-top: 0;
-    border-radius: 0 0 max(7px, var(--skin-radius-ctl))
-                   max(7px, var(--skin-radius-ctl));
-  }
-  .card.plfirst .plphonetab .grip {
-    width: 34px; height: 4px; border-radius: 2px; background: var(--sage-dim);
-    display: block;
-  }
-  .card.plfirst .plphonetab:hover .grip { background: var(--alpenglow); }
-  /* The card's bookmark does NOT disappear on a player-first page — hiding
-     it left the phone face with no way back at all (operator, 2026-09-01,
-     and they were right to be cross). It MOVES: the player hangs below
-     now, so its handle hangs from the card's BOTTOM edge, radius flipped,
-     sitting in the card's own 16px bottom padding so it covers no control.
-     The eyebrow gives up its anchor for the same reason — the ribbon has
-     to measure from the card, not from the top band. */
-  /* The bottom bookmark needs a strip of its own: at the card's 16px
-     bottom padding it sat ON the Call row (operator's screenshot,
-     2026-09-01). The extra room lifts the whole action row off the edge,
-     which is the "punch that row up" they asked for in the same breath. */
-  /* Specific enough to beat `body:not(.compact) .card`, which owns the
-     phone's padding and quietly won the first attempt (measured: 2px of
-     clearance instead of the intended eighteen). */
-  body .card.plfirst,
-  body:not(.compact) .card.plfirst,
-  body:not(.panelpage):not(.compact) .card.plfirst {
-    padding-bottom: max(34px, calc(20px + env(safe-area-inset-bottom)));
-  }
-  /* The rail was 30px around a chip nearly that tall, so PLAYING touched
-     both hairlines. Only on this face, where the rail carries the record. */
-  .card.plfirst .nprail { height: 42px; }
-  .card.plfirst .eyebrow { position: static; }
-  .card.plfirst .ribbon {
-    top: auto; bottom: 0; height: 22px; padding: 0 18px;
-    border: 2px solid var(--edge); border-bottom: 0;
-    border-radius: max(7px, var(--skin-radius-ctl))
-                   max(7px, var(--skin-radius-ctl)) 0 0;
-  }
-  .card.plfirst .plgrab { display: none; }
   /* The cast control lit while a session is CONNECTED — same coral the
      card's live states wear, so "the TV has it" is readable at a glance. */
   .card #plCastBtn.casting { color: var(--coral); border-color: var(--coral); }
@@ -1626,18 +1511,6 @@
      not the refusal coral. */
   .plreqmsg.info { color: var(--sage); font-size: 12px; line-height: 1.4; }
   .plreqmsg:empty { display: none; }
-  /* The way home: the same grip as the top bookmark, now at the sheet's
-     foot — "the pulldown stays on the bottom when the page is switched". */
-  .card .plgrab {
-    align-self: center; width: auto; min-width: 76px; height: 20px; padding: 0 10px;
-    background: transparent; border: 0; cursor: grab;
-    display: flex; align-items: center; justify-content: center; gap: 7px;
-    touch-action: none;
-  }
-  .card .plgrab .grip { width: 34px; height: 4px; border-radius: 2px;
-                  background: var(--sage-dim); display: block; }
-  .card .plgrab:hover .grip { background: var(--alpenglow); }
-
   /* The DESKTOP card is 544px tall — the phone's stacked litany overflowed
      it, scrolled the art half out of view and buried the booth panel under
      the dock (operator's screenshot, 2026-08-17). Side-by-side header: the
@@ -1708,7 +1581,6 @@
     .card .plheart, .card button.plnote { width: 38px; }
     .card button.plnote { height: 38px; }
     #plPlayBtn { height: 38px; }
-    .card .plgrab { height: 14px; }
   }
 
   /* The door into the player is a chip that is pressed, not read — the one

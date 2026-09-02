@@ -4,6 +4,10 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+- **The phone and the player are cards side by side.** Swipe across the card, or tap the row at its foot, to move between them; the pull-down ribbon, the foot grabber and the player-first curtain are gone with the old model. Opens-on still picks which card a caller lands on. The `beta` lane only for now.
+
 ## 0.99.31
 
 The taped call that never aired, worked back to its root and out to the class of it — and the DJ keeps the call moving after a request (0.99.30's one fix rides here too).
