@@ -74,6 +74,22 @@ class TestAnUnknownTierFailsClosed(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertEqual(settings_store.normalise_tier(value), "off")
 
+    def test_a_missing_permission_grants_nothing(self):
+        # It used to read as "open" — the one direction a permission must
+        # never default (found while testing the player's endpoints against
+        # the live deployment, 2026-09-02). Nothing exploited it: every
+        # caller passes cfg.get("allow_…") and load() always supplies the
+        # field's default. But those endpoints read RAW settings, and the
+        # ladder's own docstring already promised this.
+        for value in (None, ""):
+            for tier in ("open", "guest", "admin"):
+                with self.subTest(value=value, tier=tier):
+                    self.assertFalse(settings_store.tier_reaches(value, tier))
+        # An explicit "open" still opens — this closes the hole, not the door.
+        self.assertTrue(settings_store.tier_reaches("open", "open"))
+        self.assertTrue(settings_store.tier_reaches("admin", "admin"))
+        self.assertFalse(settings_store.tier_reaches("admin", "guest"))
+
     def test_a_caller_at_an_unknown_tier_gets_nothing(self):
         for tier in ("", "root", "operator", "OPEN"):
             with self.subTest(tier=tier):
@@ -292,7 +308,13 @@ class TestTheLadderLivesInOnePlace(unittest.TestCase):
         self.assertTrue(settings_store.tier_reaches("guest", "admin"))
         self.assertFalse(settings_store.tier_reaches("admin", "guest"))
         self.assertFalse(settings_store.tier_reaches("banana", "admin"))
-        self.assertTrue(settings_store.tier_reaches(None, "open"))
+        # Was assertTrue until 2026-09-02: a MISSING need read as "open".
+        # The class docstring above always claimed the opposite, and the
+        # player's endpoints read raw settings rather than a collapsed
+        # session config — so the one direction a permission must never
+        # default was one refactor from mattering. Changed deliberately:
+        # an absent permission grants nothing.
+        self.assertFalse(settings_store.tier_reaches(None, "open"))
 
     def test_no_gate_spells_the_ladder_out_again(self):
         from pathlib import Path

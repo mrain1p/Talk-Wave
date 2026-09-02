@@ -4,6 +4,12 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.30
+
+Tagged without a page of its own (folded forward at the next storied release).
+
+- A permission that isn't there now grants nothing. The tier ladder read a missing setting as "open" — the one direction a permission must never default — while its own docstring claimed the opposite. Nothing was exploitable, because every caller reads a settings value that always carries its default; but the player's endpoints read raw settings rather than a collapsed call config, which put that gap one refactor from mattering.
+
 ## 0.99.29
 
 The front-end review, worked — plus the regression it caught in its own last change.
