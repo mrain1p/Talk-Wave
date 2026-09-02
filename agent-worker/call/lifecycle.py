@@ -60,6 +60,69 @@ def _in_plain_words(err, think=None) -> str:
     return f"{leg} failed: {type(inner).__name__}: {inner}"[:400]
 
 
+def isolate_shutdown(ctx: JobContext) -> None:
+    """Make every shutdown callback registered on `ctx` fail alone.
+
+    The SDK runs shutdown callbacks under ONE asyncio.gather with no
+    return_exceptions (livekit.agents.ipc.job_proc_lazy_main), so the first
+    callback to raise ends the gather, the job's cleanup runs, and the
+    process exits with the rest still in flight. Every other callback is
+    lost with it — and _on_shutdown is one of the rest: it airs the taped
+    call and writes the record. 2026-09-02 (callin-al-bed1d5bd8410) a
+    reaper registered as a bare lambda returned a bool, the SDK's `await`
+    on it raised TypeError, and the tape spoke its intro and nothing else.
+    That callback was fixed at the source (see OnAirGuard.reap_comeback);
+    this closes the CLASS, so the next wrong-shaped or raising step costs a
+    log line and not the record.
+
+    Installed once, on the job context itself, rather than at each of the
+    fourteen registration sites: a wrapper that has to be remembered at
+    every call site is the same bug waiting at the fifteenth. The SDK's own
+    rules are kept — a callback that takes an argument is handed the
+    shutdown reason, the rest are called bare — and a result that is not
+    awaitable is logged and left alone rather than awaited, since that is
+    the exact error this exists to survive. CancelledError passes through:
+    the SDK cancels these on its own timeout and must see it land. The raw
+    callback stays reachable as `__wrapped__`, which is how
+    TestEveryShutdownCallbackCanBeAwaited keeps checking the callbacks
+    themselves and not just the wrapper round them.
+    """
+    import functools
+    import inspect
+
+    add = ctx.add_shutdown_callback
+    if getattr(add, "isolates", False):
+        return                                   # already installed
+
+    def add_isolated(callback) -> None:
+        name = getattr(callback, "__qualname__", repr(callback))
+        code = getattr(callback, "__code__", None)
+        wants_reason = bool(code) and code.co_argcount >= (
+            2 if inspect.ismethod(callback) else 1)
+
+        @functools.wraps(callback)
+        async def step(reason: str) -> None:
+            try:
+                result = callback(reason) if wants_reason else callback()
+                if inspect.isawaitable(result):
+                    await result
+                else:
+                    log.error("shutdown step %s returned %s, not something "
+                              "awaitable — the SDK would have raised here and "
+                              "lost every other step", name,
+                              type(result).__name__)
+            except asyncio.CancelledError:
+                raise
+            except Exception:                              # noqa: BLE001
+                log.exception("shutdown step %s failed; the other steps "
+                              "still run", name)
+
+        add(step)
+
+    add_isolated.isolates = True
+    ctx.add_shutdown_callback = add_isolated
+
+
 async def cancel(task: asyncio.Task) -> None:
     # Await the cancellation, don't just request it. A task cancelled mid-await
     # (generate_reply, await_sign_off) is otherwise destroyed while pending —

@@ -138,6 +138,9 @@ def turn_handling(cfg: dict) -> dict:
 class CallSession:
     def __init__(self, ctx: JobContext) -> None:
         self.ctx = ctx
+        # Before the first add_shutdown_callback: every shutdown step this
+        # call registers fails alone — see isolate_shutdown (2026-09-02).
+        lifecycle.isolate_shutdown(ctx)
         # The DISPATCHED room name, not the rtc room's: this object is built
         # before ctx.connect() now (the join rides prepare()'s station wait),
         # and rtc.Room only learns its own name once connected — read early it
@@ -736,12 +739,9 @@ class CallSession:
         # it.
         air_task = asyncio.create_task(self.air.watch(session))
         ctx.add_shutdown_callback(lambda: lifecycle.cancel(air_task))
-        # The come-back task is spawned raw inside the watch loop and is
-        # otherwise cancelled only on a new busy edge, so cancelling air_task
-        # stops the loop but not its child; this reaps the child too. A
-        # COROUTINE, not a lambda round _cancel_comeback: the SDK awaits what
-        # a shutdown callback returns, and the bool that lambda returned took
-        # every other callback down with it (2026-09-02; see reap_comeback).
+        # Cancelling air_task stops the watch loop but not the come-back
+        # child it spawned; this reaps the child too. A coroutine, not a
+        # lambda: see reap_comeback (2026-09-02).
         ctx.add_shutdown_callback(self.air.reap_comeback)
 
         # Keep this call's hush marker fresh, when this call quieted the

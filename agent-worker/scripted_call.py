@@ -1265,13 +1265,19 @@ CLOSING_SET = [
     # now?". The FAILURE is ending the turn by asking whether they want more,
     # not one wording of it, so grading one wording just teaches the next
     # rewrite to dodge the grader.
+    #
+    # The must_not_say list came off on 2026-09-02, on the operator's own
+    # framing after a taped call died on the opposite fault (the DJ queued
+    # the record, said when it would play, and stopped; the caller sat in
+    # twenty seconds of silence): a live call keeps moving towards its close,
+    # and ONE "anything else?" is a fair step towards it. The harm was always
+    # the repetition, and "the door is not held open twice" below grades
+    # exactly that from turn 2. What this scenario still holds is the line
+    # it was named for: the call is not OVER because a request landed.
     ("a landed request is not the end of the call", [
         "hey, can you play Africa by Toto?",
         "yeah, that's the one",
-    ], {"avoid": ["end_call"],
-        "must_not_say": ["anything else", "let you go", "before you go",
-                         "you all set", "are you good", "anything more",
-                         "something else you", "what else can i"]}),
+    ], {"avoid": ["end_call"]}),
 
     # "Closing is yours to do. You do not need permission." A caller who has to
     # ask "well, are you going to hang up?" has been made to do the DJ's job —
@@ -1420,10 +1426,14 @@ FLOW_SET = [
         "can you queue Dreams by Fleetwood Mac?",
         "cool thanks",
     ], {"flow": ("After completing the request and being thanked, did the "
-                 "DJ keep natural momentum — a warm beat, a thread offered "
-                 "in its own voice — without interrogating ('anything "
-                 "else?') and without a dead stop that leaves the caller "
-                 "nothing to answer?")}),
+                 "DJ keep the call moving — an update on the record, what's "
+                 "on next, a thread offered in its own voice, or a single "
+                 "step towards wrapping up — without a dead stop that leaves "
+                 "the caller nothing to answer, and without stapling a "
+                 "close-out question ('anything else?') onto every turn or "
+                 "interrogating the caller about their life? One 'anything "
+                 "else?' on the way to the close is fine; the same question "
+                 "on every turn is not.")}),
 
     # The ask that must survive an interruption without the caller
     # re-asking. The caller RESERVES the pick on purpose: the first draft

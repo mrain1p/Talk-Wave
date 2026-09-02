@@ -374,25 +374,32 @@ class TestCallPrivacy(_TempStores):
     def test_prompt_tells_the_dj_how_to_close_a_call(self):
         text = self._prompt({})
         self.assertIn("Closing a call", text)
-        self.assertIn("anything else before i let you go?", text.lower())
+        # The close-out question, shown once as the step towards wrapping up
+        # (operator's framing, 2026-09-02; see CLOSING_DOOR).
+        self.assertIn("before i let you get back to it?", text.lower())
         self.assertIn("end_call", text)
         # And the guard against closing early, which is the real risk.
         self.assertIn("is NOT a call to close", text)
         self.assertIn("nothing good about a short", text)
         self.assertIn("never end a call because it's gone quiet", text.lower())
 
-    def test_the_closing_check_is_the_end_not_a_full_stop_on_every_action(self):
+    def test_the_closing_check_is_one_step_towards_the_close_not_a_staple(self):
         # Measured against the live deployment: the closing question landed in
         # eight of twelve turns, attached to every completed action. The model
-        # was reading "I did the thing" as "the call is over", and momentum
-        # agreed with it — so both places had to stop saying so.
+        # was reading "I did the thing" as "the call is over". Then the
+        # opposite fault, 2026-09-02: the DJ queued the record and stopped
+        # dead, and the caller sat in twenty seconds of silence. The
+        # operator's framing that day is what the prose now says — a live
+        # call keeps moving towards its close, one "anything else?" is a fair
+        # step towards it, and only the repetition is the fault (door.py
+        # corrects the second). Momentum agrees, and still does not hustle.
         text = self._prompt({})
         self.assertIn("Calls end when the CALLER is finished", text)
-        self.assertIn("is the LAST thing you say in a call", text)
+        self.assertIn("ONCE", text)
+        self.assertIn("don't ask a second time", text)
         self.assertIn("nothing to angle for", text)
-        # Momentum must not undo it by asking for a wind-down after each action.
         self.assertNotIn("wind toward a close", text)
-        self.assertIn("does NOT mean moving it", text)
+        self.assertIn("does NOT mean hustling them", text)
 
     def test_a_refused_hangup_does_not_invite_a_new_subject(self):
         # A caller who says goodbye inside the first minute was getting the

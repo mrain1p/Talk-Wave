@@ -169,6 +169,7 @@ from tests.test_call_record import (  # noqa: F401
 )
 from tests.test_call_flow import (  # noqa: F401
     TestEveryShutdownCallbackCanBeAwaited,
+    TestOneFailingShutdownStepDoesNotTakeTheRestDown,
     TestTheGreetingRacesItsOwnSilence,
     TestAFinishedCallStaysFinished,
     TestAnOpenAskComesBackWithoutReasking,
@@ -340,6 +341,7 @@ from tests.test_chat import (  # noqa: F401
 from tests.test_conduct import (  # noqa: F401
     TestANamesakeIsNotTheSong,
     TestASpokenMixIsNotAMix,
+    TestATurnAfterAnActionKeepsTheCallMoving,
     TestTheBrainReviewTierOneRules,
     TestBulkQueueingIsActedOnNotSoldOn,
     TestTheStationsLanguageIsNotTheDJsLanguage,

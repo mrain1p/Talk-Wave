@@ -846,3 +846,87 @@ class TestASpokenMixIsNotAMix(unittest.TestCase):
         off = {k: v for k, v in self.ON.items() if k != "allow_album_queue"}
         for rules in (conduct.rules(off), conduct_chat.rules(off)):
             self.assertNotIn("A mix you have SPOKEN is not a mix", rules)
+
+
+class TestATurnAfterAnActionKeepsTheCallMoving(unittest.TestCase):
+    """2026-09-02 17:48, callin-al-bed1d5bd8410, read off the operator's box:
+    the DJ queued Sweet Caroline, said when it would play, praised the choice
+    and stopped. Twenty seconds of silence, then the caller asked whether
+    they were meant to say something, and the check-in talked over them.
+
+    The operator's framing, same day: a live call has momentum. After a
+    request the DJ keeps giving updates — when it plays, what's on after it —
+    and steers towards the call's natural close; one "anything else?" is a
+    fair step towards that close, and only stapling it onto every action is
+    the fault (door.py already corrects the second). The prose the DJ was
+    following ENDED its worked YES on a bare full stop and said a full stop
+    leaves the call open; a first rewrite that made every YES a question
+    measured 2/5 against 3/5 on the flow set, the questions drifting into
+    the caller's life. Worked pairs are what the model copies (conduct.py's
+    own 2026-08-14 lesson), so the YES examples are what this pins: each
+    points forward, and the close-out question is shown exactly once.
+    """
+
+    @staticmethod
+    def _yes_examples(block: str) -> list[str]:
+        import re
+
+        lines = block.splitlines()
+        out, i = [], 0
+        while i < len(lines):
+            m = re.match(r'^\s*YES:?\s+"(.*)$', lines[i])
+            if not m:
+                i += 1
+                continue
+            text, i = m.group(1), i + 1
+            # A worked example runs on over indented continuation lines
+            # until the next NO/YES or the prose resumes at the margin.
+            while (i < len(lines) and re.match(r"^\s{8,}\S", lines[i])
+                   and not re.match(r"^\s*(NO|YES)", lines[i])):
+                text += " " + lines[i].strip()
+                i += 1
+            out.append(text.rstrip().rstrip('"'))
+        return out
+
+    FORWARD = ("after", "next", "coming", "session", "queue", "before")
+
+    def test_every_worked_yes_after_an_action_points_forward(self):
+        from brain import conduct
+
+        for name, block in (("CLOSING_DOOR", conduct.CLOSING_DOOR),
+                            ("CLOSING", conduct.CLOSING)):
+            examples = self._yes_examples(block)
+            self.assertTrue(examples, f"{name} lost its worked YES")
+            for text in examples:
+                with self.subTest(block=name, yes=text):
+                    low = text.lower()
+                    self.assertTrue(
+                        text.endswith("?") or any(w in low for w in self.FORWARD),
+                        "a YES that just reports the action is the line the "
+                        "caller sat through twenty seconds of silence after")
+
+    def test_the_close_out_question_is_shown_once_and_named_as_once(self):
+        # One YES holds the door on purpose — the operator's "anything else"
+        # as the step towards wrapping up — and the prose says ONCE beside
+        # it. Two such examples would teach the staple; none would teach
+        # the dead stop back.
+        from brain import conduct
+        from call import door
+
+        held = [y for y in self._yes_examples(conduct.CLOSING_DOOR)
+                if door.holds_the_door(y)]
+        self.assertEqual(1, len(held), held)
+        self.assertIn("ONCE", conduct.CLOSING_DOOR)
+        self.assertIn("don't ask a second time", conduct.CLOSING_DOOR)
+
+    def test_the_phone_is_told_a_full_stop_is_not_the_end_of_a_turn(self):
+        from brain import conduct, conduct_chat
+
+        phone = conduct.rules({})
+        self.assertNotIn("Landing on a full stop leaves the call open", phone,
+                         "the claim the 2026-09-02 call disproved is back")
+        self.assertIn("a full stop and a dead line sound the same", phone)
+        self.assertIn("pointed at what's next", phone)
+        # A typed line has an input box under it; the caller can see the
+        # reply is finished. The rule is the phone's alone.
+        self.assertNotIn("dead line sound the same", conduct_chat.rules({}))
