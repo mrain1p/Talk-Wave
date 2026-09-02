@@ -9,6 +9,7 @@ Release notes for operators. One entry per release to `main`; work in flight on
 Tagged without a page of its own (folded forward at the next storied release).
 
 - The pull-down's leading edge is a card seam again, not a light show: a neutral hairline with a short soft shadow, in place of the lit coral rule that swept the screen like a phase ray.
+- In the booth carries the DJ and the show and nothing else — the tagline stood in when the booth had said nothing, and it was a line too many.
 
 ## 0.99.23
 

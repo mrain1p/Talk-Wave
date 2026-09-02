@@ -5508,14 +5508,10 @@
         const q = document.createElement('div');
         q.className = 'plquote'; q.textContent = line;
         boothBody.appendChild(q);
-      } else if (d.tagline) {
-        // Nothing said yet: the show's own line stands in. The name and
-        // show are already above — repeating them here was the third
-        // statement of one fact (the operator's earlier cut, still true).
-        const s = document.createElement('div');
-        s.className = 'plquote'; s.textContent = d.tagline;
-        boothBody.appendChild(s);
       }
+      // Nothing stands in when the booth has said nothing: the panel is
+      // the DJ, the show, and their words — the tagline was a fourth line
+      // nobody asked for (operator, 2026-09-01).
     }
     refreshHeart(np.title || '');
     paintPlayerButtons();
