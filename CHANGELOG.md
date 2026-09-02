@@ -4,6 +4,12 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.24
+
+Tagged without a page of its own (folded forward at the next storied release).
+
+- The pull-down's leading edge is a card seam again, not a light show: a neutral hairline with a short soft shadow, in place of the lit coral rule that swept the screen like a phase ray.
+
 ## 0.99.23
 
 Tagged without a page of its own (folded forward at the next storied release).

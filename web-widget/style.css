@@ -937,14 +937,17 @@
   }
   .card.plfirst.playeropen .player { clip-path: inset(0 0 0 0); }
   .card.plfirst .player.dragging { transition: none; }
-  /* The arriving screen's leading edge — a lit rule with the light falling
-     DOWNWARD onto the player it is covering, so the phone reads as a card
-     laid over rather than a scan line (operator, 2026-09-01). It exists
-     only while the two screens are mid-exchange. */
+  /* The arriving screen's leading edge: the card's OWN top edge, moving.
+     A hairline in the card's neutral edge colour with a short soft shadow
+     under it — the first cut used a 2px coral rule and a deep shadow, and
+     it read as a phase ray sweeping the screen rather than a card being
+     drawn down (operator, 2026-09-01). Nothing lit, nothing station-
+     coloured; just the seam a card makes. It exists only while the two
+     screens are mid-exchange. */
   .plcurtain {
     position: absolute; left: 0; right: 0; top: 100%; height: 0;
-    border-top: 2px solid var(--coral);
-    box-shadow: 0 14px 26px rgba(0, 0, 0, .55);
+    border-top: 1px solid var(--edge);
+    box-shadow: 0 5px 10px rgba(0, 0, 0, .22);
     z-index: 61; pointer-events: none; display: none;
   }
   .card.plfirst .plcurtain.on { display: block; }
