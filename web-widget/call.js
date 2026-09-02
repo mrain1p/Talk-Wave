@@ -6162,7 +6162,10 @@
         if (!r.ok) throw new Error(d.error || 'no');
         paintHeart(d.count);
         if (plTab === 'booth') refreshBoothLog();
-      } catch (e) { plLiked = true; paintHeart(); }
+      } catch (e) {
+        plLiked = true; paintHeart();
+        flashOpResult('✗  the un-like did not land', true);
+      }
       return;
     }
     plLiked = true; paintHeart();       // optimistic; walked back on refusal
@@ -6178,7 +6181,12 @@
       if (!r.ok) throw new Error(d.error || 'no');
       paintHeart(d.count);
       if (plTab === 'booth') refreshBoothLog();
-    } catch (e) { plLiked = false; paintHeart(); }
+    } catch (e) {
+      // The heart used to just un-fill: indistinguishable from a press
+      // that never registered (front-end review, 2026-09-02).
+      plLiked = false; paintHeart();
+      flashOpResult('✗  the like did not land', true);
+    }
   };
 
   // --- the operator's side of the sheet (2026-09-01) -----------------------
@@ -6220,8 +6228,14 @@
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || 'the station said no');
         if (msg) msg.textContent = '';
+        // A skip ends the record for EVERYONE listening and its only
+        // acknowledgement was a 1.5s disabled tint (front-end review,
+        // 2026-09-02) — the biggest action on the strip, reported like
+        // the smallest. It gets the same receipt every other action does.
+        flashOpResult('✓  ⏭  Track skipped');
+        if (plTab === 'booth') refreshBoothLog();
       } catch (e) {
-        if (msg) msg.textContent = String(e.message || e);
+        flashOpResult('✗  ' + String(e.message || e), true);
       }
       setTimeout(() => { b.disabled = false; }, 1500);
     };
@@ -6415,6 +6429,12 @@
   // The mute button went home 2026-09-01 (operator: the transport and the
   // fader cover it). plMuted stays a variable applyVolume reads — always
   // false now — so the level maths upstream needed no rewrite.
+
+  // iOS fires :active on a non-anchor ONLY when the document itself
+  // carries a touch listener — without this the card's pressed state
+  // (style.css) is an Android-only courtesy. Passive and empty: it
+  // exists to be registered, nothing more.
+  document.addEventListener('touchstart', () => {}, { passive: true });
 
   $('listenChip').onclick = () => {
     if (cardMode() === 'idle') openPlayer();

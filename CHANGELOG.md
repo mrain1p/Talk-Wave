@@ -4,6 +4,15 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+- **The card answers a press.** It carried twenty-nine hover rules and not one `:active` — on a phone, which cannot hover, every press went unacknowledged until its result arrived. Every control on both faces now dims on touch, iOS included.
+- **The small controls got big enough to hit.** The track heart was 18x16, the corner icons 28x34 with nothing between them, the dock squares smaller on the phone than on the desktop, and the volume knob 9px. Every drawn glyph is unchanged — the tappable box grew underneath it: the heart is now 44x44 of touch, the corner icons 36x48, the pull tabs 102x43. The fader carries 34px of grab in the same 18px of layout, and its knob went to 12px.
+- **The player sheet pays the notch.** Its header and pull tabs sat at the top of a fixed sheet with no safe-area inset, so on a notched iPhone they were behind the status bar. Android was never affected.
+- **Short phones stop overlapping.** Below roughly 600px of height the queue and booth panels were being squeezed past their content and painted into each other — measured at 14px of overlap on a 360x560. They hold their size now and the sheet's middle scrolls, which is that surface's own rule.
+- **The card's type is a scale again.** Twenty-one font sizes with eight pairs inside half a pixel became twelve, folded into their neighbours — no body text moved by more than 0.5px — and a test now holds the line the way the panel's has for months.
+- **Smaller honesties:** skipping a record reports a receipt instead of a 1.5-second tint, a like or un-like that fails says so rather than silently springing back, the Open Lines button stops being a second filled button on a surface whose transport is already the fill, and two small meta texts move off the dimmest ink to clear the contrast floor.
+
 ## 0.99.28
 
 Tagged without a page of its own (folded forward at the next storied release).
