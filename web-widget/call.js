@@ -6319,10 +6319,12 @@
     f.classList.toggle('stuck', !!sticky);
     clearTimeout(plFlashT);
     if (sticky) return;
-    // Next frame, so the transition actually runs from opaque. Seven
-    // seconds total: this line is the command's ONLY feedback now.
+    // Next frame, so the transition actually runs from opaque. Held solid
+    // for three and a half seconds and gone by four and a half — long
+    // enough to read what was invoked, short enough not to sit on the
+    // input (the operator's own 4-5s, 2026-09-01).
     requestAnimationFrame(() => f.classList.add('fade'));
-    plFlashT = setTimeout(() => { f.hidden = true; }, 7000);
+    plFlashT = setTimeout(() => { f.hidden = true; }, 4600);
   }
 
   async function refreshBoothLog() {
@@ -6383,6 +6385,11 @@
         throw new Error(d.message || d.error || 'the booth did not answer');
       }
       input.value = '';
+      // The row says what was invoked, the same way a command does — a
+      // request used to vanish into a cleared box with only the button
+      // whispering "Sent" (operator, 2026-09-01). The booth's own log
+      // keeps the event; this is the moment's receipt.
+      flashOpResult('🎵  ' + text);
       btn.textContent = 'Sent';
       setTimeout(() => {
         btn.textContent = plOpMode ? 'Do it' : 'Send';
