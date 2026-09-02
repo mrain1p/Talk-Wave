@@ -4,6 +4,12 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.27
+
+Tagged without a page of its own (folded forward at the next storied release).
+
+- A command with no direct action now reports as a CARD, not a sentence: an accepted hand-off shows as a request receipt and lands in the Requests tab like every other action, and only a refusal stays on the row — carrying the station's own words, because those are written for a listener.
+
 ## 0.99.26
 
 Tagged without a page of its own (folded forward at the next storied release).

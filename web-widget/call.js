@@ -6289,8 +6289,11 @@
         .map((a) => [a.icon, a.label, a.detail && '— ' + a.detail]
           .filter(Boolean).join(' '))
         .join('   ·   ');
+      // A landed action or an accepted hand-off both come back as CARDS
+      // and both reach the Requests tab, so they may fade. Only a refusal
+      // has nowhere else to live, and it stays.
       if (acts) flashOpResult('✓  ' + acts);
-      else flashOpResult('→  ' + (d.note || 'handed to the request line'),
+      else flashOpResult('✗  ' + (d.note || 'the booth would not take that'),
                          true);
       if (plTab === 'booth') refreshBoothLog();
     } catch (e) {
