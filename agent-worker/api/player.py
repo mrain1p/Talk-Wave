@@ -360,6 +360,11 @@ async def handle_player_request(request: web.Request) -> web.Response:
     refuse = _door(request)
     if refuse:
         return refuse
+    # The Requests tab is the booth's receipt printer, so a request from
+    # the player belongs in it — but WITHOUT the words. This box is open
+    # to any caller the phone's door lets in, and their sentence is
+    # exactly the caller content the 48h log has never carried. The
+    # operator sees what they typed in the row's own flash instead.
     try:
         body = await request.json()
     except Exception:
@@ -370,5 +375,12 @@ async def handle_player_request(request: web.Request) -> web.Response:
         return _cors(request, web.json_response(
             {"success": False, "message": "say what you'd like to hear"},
             status=400))
-    return await _relay(request, "POST", "/request",
+    resp = await _relay(request, "POST", "/request",
                         {"text": text, "name": name})
+    if resp.status < 400:
+        from api.auth import caller_tier
+        from call import daylog
+
+        daylog.note("request", "from the player",
+                    tier=caller_tier(request))
+    return resp

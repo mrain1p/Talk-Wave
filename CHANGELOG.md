@@ -4,6 +4,13 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.28
+
+Tagged without a page of its own (folded forward at the next storied release).
+
+- The request row shows what it just sent, for about four seconds, whichever face it is wearing — a plain request used to vanish into a cleared box with only the button whispering "Sent".
+- Requests reach the Requests tab too, recorded as the event without the words: that box is open to anyone the phone's door lets in, and their sentence is exactly the caller content the 48-hour log has never carried.
+
 ## 0.99.27
 
 Tagged without a page of its own (folded forward at the next storied release).
