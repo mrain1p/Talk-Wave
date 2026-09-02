@@ -950,6 +950,24 @@
     box-shadow: 0 5px 10px rgba(0, 0, 0, .22);
     z-index: 61; pointer-events: none; display: none;
   }
+  /* THE TAB TRAVELS WITH THE EDGE. Without it the descent is a moving
+     hairline — "just a line wipe" (operator, 2026-09-01) — because the
+     thing that makes a card read as a card being pulled is its handle
+     coming with it. This is the bottom bookmark's own shape, hung under
+     the moving seam: granite fill, 2px edge, rounded feet, and the grip
+     drawn in the middle. It IS the tab that lands at the card's bottom
+     when the exchange finishes. */
+  .plcurtain::after {
+    content: ""; position: absolute; top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 66px; height: 22px; box-sizing: border-box;
+    background: var(--granite)
+      linear-gradient(var(--sage-dim), var(--sage-dim)) no-repeat center;
+    background-size: 30px 4px;
+    border: 2px solid var(--edge); border-top: 0;
+    border-radius: 0 0 max(7px, var(--skin-radius-ctl))
+                   max(7px, var(--skin-radius-ctl));
+  }
   .card.plfirst .plcurtain.on { display: block; }
   .card.plfirst .plcurtain.sweep {
     transition: top .38s cubic-bezier(.32, .72, .28, 1);
@@ -1361,7 +1379,10 @@
      long title squeezed the artist to nothing and the row read as
      title-only (operator, 2026-09-01) — the artist now keeps up to 46%
      of the line and the title ellipsizes into what is left. */
-  .plpanelbody .plrow .pltit { flex: 1 1 auto; min-width: 2ch;
+  /* shrink 100 vs the artist's 1: they stay ADJACENT (the artist reads as
+     part of the record, not a right-aligned column) and the title still
+     gives way first when the line runs out. */
+  .plpanelbody .plrow .pltit { flex: 0 100 auto; min-width: 2ch;
                                overflow: hidden; text-overflow: ellipsis;
                                /* 600/13, not the stacked layout's 700/14:
                                   three bold-capped lines in a row read as
@@ -1490,6 +1511,14 @@
     opacity: 1; transition: opacity 4s ease 2.6s; pointer-events: none;
   }
   .plopflash.fade { opacity: 0; }
+  /* An outcome with no receipt behind it stays, and can be touched away —
+     the Requests tab will never show this one. Two lines' worth of room,
+     because the station's own refusals are sentences. */
+  .plopflash.stuck {
+    pointer-events: auto; cursor: pointer; white-space: normal;
+    align-items: center; line-height: 1.25;
+    border-color: var(--coral); color: var(--sage);
+  }
   .plopflash[hidden] { display: none; }
   .plreq input {
     flex: 1 1 auto; min-width: 0; height: 44px; background: var(--pine);

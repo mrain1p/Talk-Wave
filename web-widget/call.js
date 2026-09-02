@@ -6249,6 +6249,14 @@
     if (send) send.textContent = plOpMode ? 'Do it' : 'Send';
   }
   if ($('plOpBtn')) $('plOpBtn').onclick = () => setOpMode(!plOpMode);
+  // A stuck outcome is dismissed by touching it — the only way it leaves
+  // other than being replaced by the next command's own answer.
+  if ($('plOpFlash')) {
+    $('plOpFlash').onclick = () => {
+      const f = $('plOpFlash');
+      f.hidden = true; f.classList.remove('stuck');
+    };
+  }
 
   // One command, one turn of the text line's own brain — the reply's
   // ACTIONS flash where the words were typed and fade (the operator's
@@ -6281,24 +6289,33 @@
         .map((a) => [a.icon, a.label, a.detail && '— ' + a.detail]
           .filter(Boolean).join(' '))
         .join('   ·   ');
-      flashOpResult(acts ? '✓  ' + acts : ('→  ' + (d.note || 'handed to '
-        + 'the request line')));
+      if (acts) flashOpResult('✓  ' + acts);
+      else flashOpResult('→  ' + (d.note || 'handed to the request line'),
+                         true);
       if (plTab === 'booth') refreshBoothLog();
     } catch (e) {
-      flashOpResult('✗  ' + String(e.message || e));
+      flashOpResult('✗  ' + String(e.message || e), true);
     }
     btn.textContent = plOpMode ? 'Do it' : 'Send';
     btn.disabled = false;
   }
 
   let plFlashT = 0;
-  function flashOpResult(text) {
+  // `sticky` is for every outcome that is NOT a landed action: a command
+  // handed to the request line, a refusal, an error. Those used to fade
+  // like a receipt and the operator watched one vanish unread — "it just
+  // disappears into oblivion" (2026-09-01). Actions fade because the
+  // Requests tab keeps them; everything else stays until the next send or
+  // a tap, because nothing else will ever show it.
+  function flashOpResult(text, sticky) {
     const f = $('plOpFlash');
     if (!f) return;
     f.textContent = text;
     f.hidden = false;
     f.classList.remove('fade');
+    f.classList.toggle('stuck', !!sticky);
     clearTimeout(plFlashT);
+    if (sticky) return;
     // Next frame, so the transition actually runs from opaque. Seven
     // seconds total: this line is the command's ONLY feedback now.
     requestAnimationFrame(() => f.classList.add('fade'));

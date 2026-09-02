@@ -4,6 +4,14 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.26
+
+Tagged without a page of its own (folded forward at the next storied release).
+
+- The pull tab comes down WITH the card: the handle now rides the moving seam instead of a bare hairline sweeping the screen, which is what made the exchange read as a wipe rather than a card being drawn over.
+- An operator command that lands no action no longer fades away unread — a handed-to-requests outcome or a refusal stays on the row with the station's own words until the next command replaces it or you touch it away. Landed actions still fade, because the Requests tab keeps those.
+- Queue rows keep the artist beside the title rather than pushed to the far edge, and the title is the half that gives way when the line runs out.
+
 ## 0.99.25
 
 Tagged without a page of its own (folded forward at the next storied release).
