@@ -74,9 +74,20 @@ def tier_reaches(need: Any, have: str) -> bool:
     voicemail gate) and again in api/chat.py — the duplicate that drifts —
     and an unknown `need` fails CLOSED for the same reason normalise_tier
     does: a permission that grants itself on a typo cannot be walked back.
+
+    A MISSING need fails closed too, since 2026-09-02 — it used to read as
+    "open", which is the one direction a permission must never default.
+    Nothing exploited it: every caller passes `cfg.get("allow_…")` and
+    settings.load() always supplies the field's default, so `need` was
+    never actually absent. But the player's endpoints read raw settings
+    rather than a collapsed session config, and the review that found the
+    fail-open default was one refactor away from it mattering. The
+    docstring above already claimed this behaviour; now the code agrees.
     """
+    if need is None or need == "":
+        return False
     ladder = {"open": 0, "guest": 1, "admin": 2}
-    need_s = str(need or "open")
+    need_s = str(need)
     return need_s in ladder and ladder.get(have, 0) >= ladder[need_s]
 
 
