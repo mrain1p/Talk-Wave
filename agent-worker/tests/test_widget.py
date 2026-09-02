@@ -3480,6 +3480,39 @@ class TestThePanelKeepsItsOwnRules(unittest.TestCase):
             "font sizes outside the panel's scale: %s — reach for one already "
             "there, or add it here and say why" % sorted(used - scale))
 
+    def test_the_card_keeps_its_type_scale(self):
+        import re
+
+        # The panel has had this guard since the newspaper redesign; the
+        # CARD never did, and drifted to twenty-one sizes with eight pairs
+        # inside half a pixel of each other — 8.5/9/9.5/10/10.5/11/11.5/
+        # 12/12.5/13/13.5 was a ladder, not a scale (front-end review,
+        # 2026-09-02). The half-steps were folded into their neighbours,
+        # which moved no body text by more than 0.5px. 44/46 are the mono
+        # avatar's glyph, not type.
+        scale = {"9.5px", "10px", "11px", "12px", "13px", "14px", "15px",
+                 "17px", "19px", "22px", "44px", "46px"}
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        used = {m.group(1) for m in re.finditer(r"font-size:\s*([0-9.]+px)", css)}
+        for m in re.finditer(r"font:\s*[^;]*?([0-9.]+px)", css):
+            if "clamp(" not in m.group(0):
+                used.add(m.group(1))
+        self.assertFalse(
+            sorted(used - scale),
+            "font sizes outside the card's scale: %s — reach for one already "
+            "there, or add it here and say why" % sorted(used - scale))
+
+    def test_the_touch_surface_answers_a_press(self):
+        # Twenty-nine hover rules and not one :active — on a phone, which
+        # cannot hover, every press was unacknowledged until its result
+        # arrived (front-end review, 2026-09-02).
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        self.assertIn(".card button:active:not(:disabled)", css)
+        # And iOS only fires :active on a non-anchor when the document
+        # itself carries a touch listener.
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn("touchstart", call_js)
+
     def test_a_checkbox_wears_the_checkbox_skin(self):
         import re
 

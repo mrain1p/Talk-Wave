@@ -483,7 +483,7 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .tagline {
-    font-size: 11.5px; line-height: 1.4; color: var(--sage-dim); margin: 2px 0 0;
+    font-size: 11px; line-height: 1.4; color: var(--sage-dim); margin: 2px 0 0;
     white-space: normal; overflow-wrap: anywhere;
   }
   /* The rail between the identity block and the line box: the record on the
@@ -541,7 +541,7 @@
   /* The record, in the identity block under the tagline. Same treatment as it
      had on the rail — the only thing that changed is which row it is on. */
   .track {
-    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .14em;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em;
     text-transform: var(--skin-label-case); font-weight: 700;
     color: var(--sage); margin: 3px 0 0; min-width: 0; max-width: 100%;
     white-space: nowrap; overflow: hidden;
@@ -577,7 +577,7 @@
     .track.marq .mq { animation: none; }
   }
   .npclock {
-    font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
     letter-spacing: .12em; color: var(--amber); flex: 0 0 auto;
     font-variant-numeric: tabular-nums;
   }
@@ -618,7 +618,7 @@
      treatments (§4.7), and they differ only in fill. */
   /* --- buttons, and what the Call button looks like in each state -------- */
   button {
-    font: inherit; font-weight: 600; font-size: 11.5px;
+    font: inherit; font-weight: 600; font-size: 11px;
     padding: 6px 13px; border-radius: 8px; border: none; cursor: pointer;
     background: var(--line2); color: var(--text);
     transition: filter .15s ease, opacity .15s ease, background .15s ease;
@@ -648,6 +648,33 @@
      layout, so the one-height promise holds. */
   .card button:focus-visible { outline: 2px solid var(--amber);
                                outline-offset: 1px; }
+  /* PRESSED — the touch surface's only acknowledgement. The card carried
+     29 hover rules and NOT ONE :active (front-end review, 2026-09-02), so
+     on the phone this thing actually lives on, a press changed nothing
+     until its result arrived — hundreds of milliseconds later for
+     anything that talks to the station. Opacity, never transform: the
+     ribbon, the phone tab and the ask-popup close are centred with
+     translateX(-50%), and a transform here would throw them across the
+     card. */
+  .card button:active:not(:disabled) { opacity: .68; }
+  /* HIT BOXES. Fifteen targets measured under 44px and five pairs sat 0px
+     apart, all of it in the chrome around the (well-sized) action row.
+     The fix is the BOX, never the ink: an unpainted ::after grows what a
+     thumb can hit while the glyph, the row heights and the card's fixed
+     height stay exactly as they are. */
+  .card .gear, .card .plheart, .card button.plnote, .card .ribbon,
+  .card .plphonetab, .card .plgrab, .card .pltabs .pltab, .card #npHeart {
+    position: relative;
+  }
+  .card .gear::after, .card .plheart::after, .card button.plnote::after,
+  .card .ribbon::after, .card .plphonetab::after, .card .plgrab::after,
+  .card .pltabs .pltab::after, .card #npHeart::after {
+    content: ""; position: absolute; inset: -7px -4px;
+  }
+  /* The two smallest, and the two that are DRAG handles rather than taps. */
+  .card #npHeart::after { inset: -14px -13px; }
+  .card .ribbon::after, .card .plphonetab::after,
+  .card .plgrab::after { inset: -12px -14px; }
   /* A new DJ or show brings a new palette — applyTokens() writes it onto
      :root and every var() resolves to the new colour in one frame, which
      snapped the whole card over abruptly (operator asked for a graceful
@@ -888,7 +915,7 @@
     height: auto; min-height: var(--control-h);
     display: flex; flex-direction: column; align-items: center;
     justify-content: center; gap: 3px; padding: 7px 4px;
-    white-space: normal; font-size: 10.5px; line-height: 1.15;
+    white-space: normal; font-size: 10px; line-height: 1.15;
   }
   .vmgrid .vico { display: block; font-size: 14px; line-height: 1; }
   .vmgrid button {
@@ -987,6 +1014,38 @@
   @media (max-width: 700px) {
     body:not(.compact) .player { position: fixed; inset: 0;
                                  border-radius: 0; z-index: 90; }
+    /* THE SHEET PAYS THE NOTCH. The card's eyebrow already takes
+       env(safe-area-inset-top); its header never did — and on a phone
+       the sheet is fixed to inset:0, so on a notched iPhone the header's
+       icons sat behind the status bar (front-end review, 2026-09-02).
+       max() collapses to zero where there is no furniture, so a phone
+       without a notch is untouched. */
+    body:not(.compact) .plhead {
+      height: calc(38px + max(0px, env(safe-area-inset-top)));
+      padding-top: max(0px, env(safe-area-inset-top));
+    }
+    /* The three pull handles are absolutely positioned, so the padding
+       above never reaches them — they anchor below the inset instead. */
+    /* NOT .plfirst: there the bookmark hangs from the card's BOTTOM edge
+       (top:auto; bottom:0), and this rule out-specified it — 0,3,1 against
+       0,3,0 — so the notch fix threw the handle back to the top of the
+       screen after every pull-down (operator, 2026-09-02, and the drag
+       probe caught it the moment it was re-run). A safe-area inset is a
+       TOP-anchored idea; it has no business reaching a bottom-anchored
+       tab. */
+    body:not(.compact) .card:not(.plfirst) .ribbon,
+    body:not(.compact) .card .plphonetab {
+      top: max(0px, env(safe-area-inset-top));
+    }
+    /* SHORT PHONES. Below roughly 600px of height the panels were being
+       flex-shrunk past their content and painted INTO each other — the
+       queue collapsed to 20px and overlapped the booth by 14 (measured
+       at 360x560 and 320x568). The panels hold their size now and the
+       sheet's middle scrolls, which is the surface's own rule: only the
+       middle may. */
+    body:not(.compact) .plscroll { overflow-y: auto; scrollbar-width: thin; }
+    body:not(.compact) .plscroll > .plpanel,
+    body:not(.compact) .plscroll > .plqgroup { flex: none; }
   }
 
   /* The ribbon: a BOOKMARK hanging from the card's top edge — the operator's
@@ -1064,7 +1123,7 @@
      broadcast, and it is dressed quietly for that reason. */
   .plseg {
     flex: none; margin-left: 8px; cursor: pointer;
-    font: 700 9px/1 var(--font-mono); letter-spacing: .14em;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case);
     padding: 5px 9px; border-radius: 6px;
     border: 1px solid var(--edge); background: transparent; color: var(--sage);
@@ -1079,7 +1138,7 @@
   }
   .plsegpop[hidden] { display: none; }
   .plseglab {
-    font: 700 9px/1 var(--font-mono); letter-spacing: .14em;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
   }
   .plsegpop select {
@@ -1087,15 +1146,21 @@
     border: 1px solid var(--edge); background: var(--pine);
     color: var(--alpenglow); min-width: 0; width: 100%;
   }
+  /* Outlined, not filled, and square: the transport below it is already
+     the sheet's one fill, and two filled buttons on one surface breaks
+     the rule that fill means THE action. The 7px radius was the only
+     rounded control on a square-control card (front-end review,
+     2026-09-02). */
   .plseggo {
     grid-column: 1 / -1; cursor: pointer; padding: 9px 12px;
-    border: 0; border-radius: 7px; background: var(--coral); color: #fff;
+    border: 1px solid var(--coral); border-radius: var(--skin-radius-ctl);
+    background: transparent; color: var(--coral);
     font: 700 10px/1 var(--font-mono); letter-spacing: .12em;
     text-transform: var(--skin-label-case);
   }
   .plseggo:disabled { opacity: .5; cursor: default; }
   .plsegsay {
-    grid-column: 1 / -1; margin: 0; font-size: 11.5px;
+    grid-column: 1 / -1; margin: 0; font-size: 11px;
     line-height: 1.35; color: var(--sage-dim);
   }
   .plsegsay:empty { display: none; }
@@ -1189,7 +1254,7 @@
   /* Packed so a real tag set fits TWO rows on a phone, not three
      (operator's screenshot, 2026-08-17). */
   .pltags .pill { color: var(--amber); border-color: var(--edge);
-                  font-size: 9px; letter-spacing: .08em; height: auto;
+                  font-size: 9.5px; letter-spacing: .08em; height: auto;
                   padding: 5px 6px; }
   .plprog[hidden] { display: none; }
   .plprog { display: flex; align-items: center; gap: 10px; width: 100%;
@@ -1265,7 +1330,7 @@
   .plbar .plfill { position: absolute; inset: 0 auto 0 0;
            width: var(--pl-progress, 0%); background: var(--amber);
            transition: width .9s linear; }
-  .pllen { font: 700 11px/1 var(--font-mono); color: var(--sage-dim);
+  .pllen { font: 700 11px/1 var(--font-mono); color: var(--sage);
            font-variant-numeric: tabular-nums; }
   /* The two info panels share one anatomy: pip + micro label + right meta,
      body lines beneath. The pip carries the state — coral means live. */
@@ -1350,7 +1415,7 @@
   .ppip { width: 7px; height: 7px; background: var(--edge); border-radius: 0;
           display: block; }
   .ppip.live { background: var(--coral); }
-  .plpanelmeta { margin-left: auto; color: var(--sage-dim); font-weight: 400;
+  .plpanelmeta { margin-left: auto; color: var(--sage); font-weight: 400;
                  letter-spacing: .08em; text-transform: none; }
   /* The body SCROLLS past its window instead of clamping (operator's ask:
      the whole queue, the whole booth line, reachable by thumb) — the cap
@@ -1835,7 +1900,7 @@
   .micchip {
     position: absolute; left: 0; right: 0; top: 50%;
     transform: translateY(-50%); text-align: center; pointer-events: none;
-    font-family: var(--font-mono); font-size: 9px; letter-spacing: .18em;
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .18em;
     text-transform: var(--skin-label-case); font-weight: 700; line-height: 1;
     color: var(--sage-dim); white-space: nowrap;
     /* Legible over the bars beneath it without hiding them. */
@@ -1884,7 +1949,7 @@
     height: auto; min-height: 0; margin: 0;
     background: transparent; border: 0; border-radius: 0; box-shadow: none;
     cursor: pointer; text-transform: uppercase;
-    font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font: 700 9.5px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     letter-spacing: .14em; color: var(--sage-dim);
   }
   .routeswitch .rcell .rpip {
@@ -2131,8 +2196,15 @@
      volume bar and speaker wavelengths"). Padding insets the track by the
      thumb's own half-width, so the ends of the rail are the ends of the
      control. */
+  /* 34px of TOUCH, 18px of layout: the negative margin gives the extra
+     height back so nothing moves, and both engines centre the trough and
+     thumb in the element, so the fader looks identical. 34 rather than 44
+     on purpose — in a live call this sits 11px above Hold-to-talk, and a
+     44px box would overlap the one control a caller must never hit by
+     accident (front-end review, 2026-09-02). */
   .vol input[type=range], #plVol, #stationBarVol {
-    flex: 1; min-width: 0; height: 18px; padding: 0 5px; box-sizing: border-box;
+    flex: 1; min-width: 0; height: 34px; margin: -8px 0;
+    padding: 0 5px; box-sizing: border-box;
     -webkit-appearance: none; appearance: none;
     background: transparent; cursor: pointer;
   }
@@ -2154,8 +2226,11 @@
   .vol input[type=range]::-webkit-slider-thumb, #plVol::-webkit-slider-thumb,
   #stationBarVol::-webkit-slider-thumb {
     -webkit-appearance: none; appearance: none;
-    width: 9px; height: 9px; border-radius: 0; border: 0;
-    background: var(--coral); margin-top: -3px;
+    /* 12, was 9: the knob is what a thumb actually aims at, and a 9px
+       target on a 3px trough was the smallest aim on the card. The
+       offset follows it — half the difference between knob and trough. */
+    width: 12px; height: 12px; border-radius: 0; border: 0;
+    background: var(--coral); margin-top: -4.5px;
   }
   .vol input[type=range]::-moz-range-track,
   #plVol::-moz-range-track,
@@ -2169,7 +2244,7 @@
   .vol input[type=range]::-moz-range-thumb,
   #plVol::-moz-range-thumb,
   #stationBarVol::-moz-range-thumb {
-    width: 9px; height: 9px; border-radius: 0; border: 0; background: var(--coral);
+    width: 12px; height: 12px; border-radius: 0; border: 0; background: var(--coral);
   }
   .vol input[type=range]:focus, #plVol:focus,
   #stationBarVol:focus { outline: none; }
@@ -2243,7 +2318,7 @@
     color: var(--sage);
   }
   .pttbar .pttmain {
-    font: 700 11.5px/1 var(--font-mono); letter-spacing: .14em;
+    font: 700 11px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case);
     /* The on-hold copy is a sentence in a bar sized for a label, and a
        centred flex child wider than its box clips at BOTH ends — the
@@ -2257,7 +2332,7 @@
      the only two-line control on the card. The key is drawn in the shape of
      the key it names, which says the same thing in one line's height. */
   .pttbar .keycap {
-    font: 700 9px/1 var(--font-mono); letter-spacing: .1em;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em;
     text-transform: var(--skin-label-case); padding: 3px 6px;
     border: 1px solid currentColor; border-bottom-width: 2px;
     opacity: .75; flex: 0 0 auto;
@@ -2295,14 +2370,14 @@
 
   /* Version footer in the settings panel — which build am I looking at,
      for tracking changes and troubleshooting over time. */
-  .versionline { margin-top: 16px; font-size: 10.5px; color: var(--dimmer);
+  .versionline { margin-top: 16px; font-size: 10px; color: var(--dimmer);
                  text-align: right; }
 
   /* In-place guidance when the page can't capture the mic (plain http on a
      LAN address). The whole point is a clickable way out, so it is a bordered
      block rather than a band — it has to read as an interruption. */
   /* --- microphone help, and the guest code door -------------------------- */
-  .michelp { margin: var(--band-gap) 0 0; font-size: 12.5px; line-height: 1.45;
+  .michelp { margin: var(--band-gap) 0 0; font-size: 12px; line-height: 1.45;
              color: var(--amber); border: 1px solid var(--amber);
              border-radius: 0; padding: 10px 12px; }
   .michelp a { color: inherit; font-weight: 600; }
@@ -2317,7 +2392,7 @@
      being asked about or the call is being spoken, never both. */
   .guestgate {
     position: absolute; inset: 9px 12px; text-align: left;
-    font-size: 12.5px; line-height: 1.45;
+    font-size: 12px; line-height: 1.45;
     display: flex; flex-direction: column; justify-content: center; gap: 7px;
   }
   .guestgate[hidden] { display: none; }
@@ -2344,7 +2419,7 @@
     font: 15px/1 var(--font-body); padding: 4px 6px; cursor: pointer;
   }
   .guestgate .gclose:hover { color: var(--alpenglow); }
-  .guestgate .glabel { display: block; color: var(--sage); font-size: 11.5px; }
+  .guestgate .glabel { display: block; color: var(--sage); font-size: 11px; }
   .guestgate .grow { display: flex; gap: 9px; }
   .linebox:has(.guestgate:not([hidden])) #status { display: none; }
   /* §4.8. The placeholder is deliberately smaller than the typed text so a
@@ -2352,7 +2427,7 @@
   .guestgate input {
     flex: 1 1 140px; min-width: 0;
     height: var(--control-h); padding: 0 10px; border-radius: 0;
-    font: 12.5px var(--font-body);
+    font: 12px var(--font-body);
     border: 1px solid var(--hairline); background: var(--granite-hi);
     color: var(--alpenglow);
   }
@@ -2373,7 +2448,7 @@
     box-shadow: 0 8px 30px rgba(0,0,0,.35);
   }
   .saveoverlay[hidden] { display: none; }
-  .saveoverlay span { font-size: 12.5px; color: var(--text); font-weight: 600; }
+  .saveoverlay span { font-size: 12px; color: var(--text); font-weight: 600; }
   .saveoverlay #saveOverlaySave { background: var(--accent); color: #fff; }
 
   /* One staged greeting per row: who and which voice, the words the clip
@@ -2385,7 +2460,7 @@
   .vmrow .sname { flex: 0 1 auto; white-space: nowrap; overflow: hidden;
                   text-overflow: ellipsis; max-width: 220px; }
   .vmrow .vmstate {
-    font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em;
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em;
     text-transform: var(--skin-label-case); font-weight: 700; color: var(--warn);
   }
   .vmrow .vmstate.ok { color: var(--ok); }
@@ -2422,7 +2497,7 @@
     border-top: 3px solid var(--accent);
   }
   .locktitle {
-    margin: 0; font: 700 24px/1 var(--font-mono); letter-spacing: .08em;
+    margin: 0; font: 700 22px/1 var(--font-mono); letter-spacing: .08em;
     color: var(--text);
   }
   .locksub {
@@ -2433,12 +2508,12 @@
   /* The display rule above beats the UA's [hidden] — re-assert it. */
   .lockmark[hidden] { display: none; }
   .lockline {
-    margin: 14px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--dim);
+    margin: 14px 0 0; font-size: 12px; line-height: 1.55; color: var(--dim);
     text-align: left;
   }
   .lockgate .loginrow { display: flex; gap: 8px; margin: 18px 0 0; }
   .lockgate .loginrow input {
-    flex: 1 1 auto; min-width: 0; padding: 10px 12px; font-size: 13.5px;
+    flex: 1 1 auto; min-width: 0; padding: 10px 12px; font-size: 13px;
   }
   .lockgate .loginrow button {
     flex: 0 0 auto; padding: 0 18px; cursor: pointer;
@@ -2457,7 +2532,7 @@
     margin: 18px 0 0; padding-top: 12px; border-top: 1px solid var(--line);
     font-size: 11px; line-height: 1.5; color: var(--sage-dim); text-align: left;
   }
-  .lockfoot code { font-family: var(--font-mono); font-size: 10.5px; color: var(--sage); }
+  .lockfoot code { font-family: var(--font-mono); font-size: 10px; color: var(--sage); }
 
   /* --- the connection dot ------------------------------------------------ */
   .dot { display: inline-block; width: 7px; height: 7px; border-radius: 0; background: var(--sage-dim); vertical-align: middle; }
@@ -2505,7 +2580,7 @@
   .card .callended:hover { background: var(--granite); color: var(--alpenglow);
                            border-color: var(--edge); }
   .callended[hidden] { display: none; }
-  .callended .chev { font-size: 9px; transition: transform .18s ease; }
+  .callended .chev { font-size: 9.5px; transition: transform .18s ease; }
   .callended.open .chev { transform: rotate(90deg); }
   .callended .when { display: none; }
 
@@ -2868,7 +2943,7 @@
      and the flex, never actually scrolled. The box scrolls; this is just the
      text in it. 13.5px sentence case, the prose spec. */
   .captions {
-    display: none; font-family: var(--font-body); font-size: 13.5px;
+    display: none; font-family: var(--font-body); font-size: 13px;
     line-height: 1.5;
     /* Speech WRAPS. Measured escaping the card at 348 and 300 because the
        box inherits nowrap from an ancestor — the transcript is the one thing
@@ -2886,7 +2961,7 @@
   #status {
     position: absolute; inset: 9px 12px;
     display: flex; align-items: center; gap: 8px;
-    font-family: var(--font-body); font-size: 12.5px; font-weight: 400;
+    font-family: var(--font-body); font-size: 12px; font-weight: 400;
     text-transform: none; letter-spacing: 0; color: var(--sage);
     margin: 0;
   }
@@ -2928,7 +3003,7 @@
   .cap .said {
     color: var(--alpenglow);
     white-space: normal; overflow-wrap: break-word; word-break: break-word;
-    font-size: 12.5px; font-weight: 400; line-height: 1.45;
+    font-size: 12px; font-weight: 400; line-height: 1.45;
   }
   .cap.dj .said { color: var(--alpenglow); }
   .cap.you .said { color: var(--sage); }
@@ -2963,7 +3038,7 @@
     display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 7px;
     align-items: start; line-height: 1.45;
   }
-  .cap.sys .ico { font-size: 12.5px; line-height: 1.2; text-align: center; }
+  .cap.sys .ico { font-size: 12px; line-height: 1.2; text-align: center; }
   /* ONE LINE, wrapping. The name and the detail were two blocks at two sizes,
      which spent three lines and a lot of card on "SHOW TAKEOVER SET" over
      "THE OVERLOOK · After Dark for 60 min". They are one sentence — what
@@ -2972,7 +3047,7 @@
      compact thing in the transcript, not the tallest. */
   .cap.sys .what {
     display: inline; color: var(--coral); font-weight: 700;
-    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .1em;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em;
     text-transform: var(--skin-label-case);
   }
   /* THE DETAIL IS CONTENT, NOT A LABEL — so it is set like content. It was
@@ -3017,7 +3092,7 @@
     border-bottom: 1px solid color-mix(in srgb, var(--coral) 14%, transparent);
   }
   .chattable thead th {
-    color: var(--coral); font-family: var(--font-mono); font-size: 9px;
+    color: var(--coral); font-family: var(--font-mono); font-size: 9.5px;
     letter-spacing: .12em; text-transform: var(--skin-label-case); font-weight: 700;
   }
   .chattable tbody td { color: var(--alpenglow); }
@@ -3111,7 +3186,7 @@
     width: 28px; height: 34px; padding: 0; border-radius: 0;
     border: 1px solid transparent;
     background: transparent; color: var(--sage);
-    font-family: var(--font-mono); font-size: 16px; line-height: 1;
+    font-family: var(--font-mono); font-size: 15px; line-height: 1;
     letter-spacing: 0;
   }
   .card .gear[hidden] { display: none; }
@@ -3153,19 +3228,19 @@
   }
   .askpop-head {
     display: flex; align-items: center; justify-content: space-between;
-    gap: 8px; margin-bottom: 6px; font-size: 12.5px; color: var(--text);
+    gap: 8px; margin-bottom: 6px; font-size: 12px; color: var(--text);
   }
   /* Whose menu this is — a micro-chip, not a heading: the answer matters
      once, quietly, and the list itself is the point. */
   .askrole {
     margin-left: auto; white-space: nowrap;
-    font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .1em;
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em;
     text-transform: var(--skin-label-case); font-weight: 700; color: var(--sage-dim);
     border: 1px solid var(--hairline); border-radius: 999px; padding: 2px 7px;
   }
   .askpop-close {
     background: transparent; border: 0; color: var(--dimmer);
-    font-size: 20px; line-height: 1; padding: 0 4px; cursor: pointer;
+    font-size: 19px; line-height: 1; padding: 0 4px; cursor: pointer;
   }
   .askpop-close:hover { color: var(--text); }
   .askpop-list { list-style: none; margin: 0; padding: 0; }
@@ -3546,7 +3621,7 @@
        page, but the 44px script gutter went with the transcript's. */
     display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 7px;
     align-items: baseline; padding: 0;
-    font-family: var(--font-body); font-size: 12.5px; line-height: 1.45;
+    font-family: var(--font-body); font-size: 12px; line-height: 1.45;
     color: var(--sage); opacity: 0; transition: opacity .5s ease;
   }
   /* HIDDEN MEANS HIDDEN, since 0.10.136. This used to reserve its two lines
