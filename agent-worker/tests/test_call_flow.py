@@ -953,6 +953,53 @@ class TestTheCheckInDoesNotTalkOverTheCaller(unittest.TestCase):
         self.assertTrue(self._run("speaking", seconds=7.0),
                         "a noisy room can suppress the check-in for ever")
 
+    def test_words_that_land_during_the_veto_restart_the_clock(self):
+        # 2026-09-02 17:48:44, read off the operator's box: the caller asked
+        # "so what's next?", their transcript reset the clock 45ms before the
+        # check-in fired anyway, and "Still with me?" went out over the top.
+        # The veto had waited for their voice to stop and then fired without
+        # looking at what had arrived while it waited.
+        from call import lifecycle
+
+        replies = []
+        handlers = {}
+
+        class _Session:
+            agent_state = "listening"
+            user_state = "speaking"
+
+            def on(self, event, handler):
+                handlers[event] = handler
+
+            async def generate_reply(self, **kw):
+                replies.append(kw)
+
+            async def say(self, *a, **k):
+                replies.append({"say": a})
+
+        ctx = types.SimpleNamespace(add_shutdown_callback=lambda *a: None)
+
+        async def go():
+            session = _Session()
+            lifecycle.attach_idle_watch(
+                ctx, session, {"idle_prompt_secs": 1, "idle_max_nudges": 2})
+            # The window expires at one second with the caller mid-word, so
+            # the veto is holding the nudge back when their words land.
+            await asyncio.sleep(1.3)
+            handlers["user_input_transcribed"](
+                types.SimpleNamespace(transcript="so what's next?"))
+            session.user_state = "listening"
+            await asyncio.sleep(0.7)
+            self.assertEqual([], replies,
+                             "the check-in went out on the heels of the "
+                             "caller's own sentence")
+            # And the veto is still not a mute: a second of real quiet after
+            # their words brings the check-in back.
+            await asyncio.sleep(1.4)
+            self.assertTrue(replies, "the check-in stopped firing at all")
+
+        asyncio.run(go())
+
 
 class TestTheIdleClockDoesNotRunWhileTheDJIsWorking(unittest.TestCase):
     """"Still there?" must not be asked while the DJ is the one working.
@@ -1655,6 +1702,230 @@ class TestTheStationClientOutlivesTheShutdownWork(unittest.TestCase):
         head = tail[:tail.index("async def _shutdown_work")]
         self.assertIn("finally:", head)
         self.assertIn("await self.station.aclose()", head)
+
+
+class TestEveryShutdownCallbackCanBeAwaited(_TempStores):
+    """The SDK AWAITS whatever a zero-argument shutdown callback returns
+    (livekit.agents.job.JobContext.add_shutdown_callback wraps it in
+    `await callback()`), and runs every callback under one asyncio.gather —
+    which abandons all the OTHERS the moment one raises. The come-back
+    reaper registered at 0.99.6 was `lambda: self.air._cancel_comeback()`,
+    and _cancel_comeback returns a bool. So on 2026-09-02 a taped on-air
+    call (callin-al-bed1d5bd8410) spoke its intro, aired none of the
+    exchange, and wrote no record; the only trace was one line in the worker
+    log: `TypeError: object bool can't be used in 'await' expression`. Every
+    private call since 0.99.6 had raised the same error at hangup — only a
+    playout was long enough to lose.
+
+    This calls each registered callback the way the SDK does and checks the
+    result can be awaited. Nothing here is awaited for real: the coroutines
+    are closed unrun, so no record is written and no station is touched.
+    """
+
+    ROOM = "callin-o-abcdef123456"
+
+    class _FakeCtx:
+        def __init__(self, room):
+            # Pre-join: nameless. The attach path subscribes to room events
+            # (data_received for the caller's setup note and the talk bar),
+            # and a test has no room to hear from.
+            self.room = types.SimpleNamespace(name="", on=lambda *a, **k: None)
+            self.job = types.SimpleNamespace(
+                room=types.SimpleNamespace(name=room))
+            self.shutdown_callbacks = []
+
+        def add_shutdown_callback(self, cb):
+            self.shutdown_callbacks.append(cb)
+
+    class _Session:
+        agent_state = "listening"
+        user_state = "listening"
+
+        def on(self, *a, **k):
+            pass
+
+        async def generate_reply(self, **kw):
+            return None
+
+        async def say(self, *a, **k):
+            return None
+
+    def test_the_sdk_can_await_every_callback_the_session_registers(self):
+        import inspect
+
+        from call.session import CallSession
+
+        ctx = self._FakeCtx(self.ROOM)
+
+        async def never_watch(session):          # no station polling from a test
+            await asyncio.sleep(3600)
+
+        async def go():
+            s = CallSession(ctx)
+            s.session = self._Session()
+            s.air.watch = never_watch
+            s._attach_behaviours()
+            self.assertGreater(len(ctx.shutdown_callbacks), 5,
+                               "the session registered fewer callbacks than "
+                               "it does on a real call — is this exercising "
+                               "the real wiring?")
+            for step in ctx.shutdown_callbacks:
+                # Since the isolation wrapper (see lifecycle.isolate_shutdown)
+                # every callback reaches the SDK inside a step that cannot
+                # raise, so the wrapper would pass this check for anything.
+                # The check is on the callback UNDERNEATH: the wrapper is a
+                # net, and a callback that only survives because of the net
+                # is still wrong-shaped.
+                cb = getattr(step, "__wrapped__", None)
+                self.assertIsNotNone(
+                    cb, f"{getattr(step, '__qualname__', step)} reached the "
+                    "SDK without the isolation wrapper — was it registered "
+                    "before isolate_shutdown ran?")
+                # The SDK's own rule: a callback that takes an argument is
+                # handed the shutdown reason, the rest are called bare, and
+                # the result is awaited either way.
+                wants_reason = cb.__code__.co_argcount >= (
+                    2 if inspect.ismethod(cb) else 1)
+                result = cb("test") if wants_reason else cb()
+                name = getattr(cb, "__qualname__", repr(cb))
+                self.assertTrue(
+                    inspect.isawaitable(result),
+                    f"{name} returned {type(result).__name__}: the SDK awaits "
+                    "what a shutdown callback returns, and one that cannot be "
+                    "awaited abandons every other callback, the record included")
+                if inspect.iscoroutine(result):
+                    result.close()                    # checked, never run
+            leftovers = [t for t in asyncio.all_tasks()
+                         if t is not asyncio.current_task()]
+            for t in leftovers:
+                t.cancel()
+            await asyncio.gather(*leftovers, return_exceptions=True)
+
+        asyncio.run(go())
+
+
+class TestOneFailingShutdownStepDoesNotTakeTheRestDown(unittest.TestCase):
+    """The class behind the 2026-09-02 incident, not the one instance.
+
+    reap_comeback fixed the callback that raised; but the SDK still gathers
+    every shutdown callback under one asyncio.gather with no
+    return_exceptions, so the NEXT step to raise — a closed client, a
+    provider's aclose, a lambda that forgets to be a coroutine — would take
+    the taped playout and the record down exactly the same way. Every step
+    a call registers now runs inside lifecycle.isolate_shutdown's net.
+    The runner here is the SDK's own loop (job_proc_lazy_main) copied
+    line for line, so this tests what would happen, not what we hope.
+    """
+
+    class _Ctx:
+        """A JobContext's registration rule, verbatim from the SDK, so the
+        runner below sees exactly what the SDK's would."""
+
+        def __init__(self):
+            self.callbacks = []
+
+        def add_shutdown_callback(self, cb):
+            import inspect
+
+            if cb.__code__.co_argcount >= (2 if inspect.ismethod(cb) else 1):
+                self.callbacks.append(cb)
+            else:
+                async def wrapper(_):
+                    await cb()
+                self.callbacks.append(wrapper)
+
+    @staticmethod
+    async def _run_like_the_sdk(ctx, reason="hangup"):
+        tasks = [asyncio.create_task(cb(reason)) for cb in ctx.callbacks]
+        await asyncio.gather(*tasks)
+
+    def _steps(self, ran):
+        async def raises():
+            raise RuntimeError("a provider's aclose blew up")
+
+        def returns_a_bool():                 # the 2026-09-02 shape
+            return True
+
+        async def with_reason(reason):
+            ran.append(("reason", reason))
+
+        async def record():
+            # The slow one, like a playout — and slow enough that the
+            # control's teardown reaches it mid-sleep on a Windows timer
+            # (10ms was not, and the control passed by accident).
+            await asyncio.sleep(0.2)
+            ran.append("record")
+
+        return raises, returns_a_bool, with_reason, record
+
+    def test_without_the_net_the_sdk_loses_the_record(self):
+        # The control: the failure this class exists for, reproduced with
+        # the SDK's own loop and no wrapper, so the fix below is measured
+        # against something.
+        ctx, ran = self._Ctx(), []
+        for step in self._steps(ran):
+            ctx.add_shutdown_callback(step)
+        with self.assertRaises(RuntimeError):
+            asyncio.run(self._run_like_the_sdk(ctx))
+        self.assertNotIn("record", ran, "the control no longer reproduces "
+                         "the failure — has the SDK changed its gather?")
+
+    def test_the_record_step_runs_when_an_earlier_step_raises(self):
+        from call import lifecycle
+
+        ctx, ran = self._Ctx(), []
+        lifecycle.isolate_shutdown(ctx)
+        for step in self._steps(ran):
+            ctx.add_shutdown_callback(step)
+        with self.assertLogs(lifecycle.log, level="ERROR") as logs:
+            asyncio.run(self._run_like_the_sdk(ctx))
+        self.assertIn("record", ran, "the record was lost to another step")
+        self.assertIn(("reason", "hangup"), ran,
+                      "a step that takes the reason was not handed it")
+        told = "\n".join(logs.output)
+        # Both wrong shapes are named in the log: the one that raised and
+        # the one that handed back a bool. Silent survival would hide a
+        # real bug behind the net.
+        self.assertIn("raises", told)
+        self.assertIn("returns_a_bool", told)
+        self.assertIn("bool", told)
+
+    def test_the_net_is_installed_once(self):
+        from call import lifecycle
+
+        ctx = self._Ctx()
+        lifecycle.isolate_shutdown(ctx)
+        lifecycle.isolate_shutdown(ctx)       # a second session on one ctx
+
+        async def one():
+            return None
+
+        ctx.add_shutdown_callback(one)
+        self.assertEqual(1, len(ctx.callbacks))
+        self.assertIs(ctx.callbacks[0].__wrapped__, one,
+                      "wrapped twice — the raw callback is two layers down")
+
+    def test_a_cancellation_still_lands(self):
+        # The SDK cancels its shutdown tasks on its own timeout; a net that
+        # swallowed CancelledError would leave a step running past it.
+        from call import lifecycle
+
+        ctx = self._Ctx()
+        lifecycle.isolate_shutdown(ctx)
+
+        async def slow():
+            await asyncio.sleep(10)
+
+        ctx.add_shutdown_callback(slow)
+
+        async def go():
+            task = asyncio.create_task(ctx.callbacks[0]("hangup"))
+            await asyncio.sleep(0)
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        asyncio.run(go())
 
 
 async def _noop_async(*a, **k):

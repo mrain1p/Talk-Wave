@@ -449,6 +449,21 @@ class OnAirGuard(AirVerdict):
             self.air_log.note("the return was cancelled — same break")
         return True
 
+    async def reap_comeback(self) -> None:
+        """The shutdown-callback face of _cancel_comeback.
+
+        The SDK AWAITS whatever a zero-argument shutdown callback returns,
+        and runs them all under one asyncio.gather, which abandons every
+        OTHER callback the moment one raises. Registered as a bare lambda
+        round _cancel_comeback (0.99.6), the bool it returned raised
+        TypeError inside the SDK — and on a taped call the playout and the
+        record died with it: 2026-09-02, callin-al-bed1d5bd8410 spoke its
+        intro and then nothing, and wrote no record. Private calls only
+        ever lost the error line. TestEveryShutdownCallbackCanBeAwaited
+        calls every registered callback the way the SDK does.
+        """
+        self._cancel_comeback()
+
     def _settle(self, busy: bool, now: float) -> bool:
         """Ride out the gaps INSIDE a busy spell — see SETTLE_SECS.
 

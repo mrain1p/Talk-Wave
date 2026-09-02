@@ -4,11 +4,19 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.31
+
+The taped call that never aired, worked back to its root and out to the class of it — and the DJ keeps the call moving after a request (0.99.30's one fix rides here too).
+
+- **A taped call now airs after the caller hangs up, every time.** Since 0.99.6 every hangup had tripped an error inside the worker's shutdown, and on a call taped for air that error cut the playout short: the station spoke the intro and then nothing, and the call left no record. Private calls only ever lost the error line. Fixed at the source, with a test that calls every shutdown callback the way the SDK does.
+- **"Still with me?" no longer lands on the heels of the caller's own sentence.** When the caller's words arrive while the check-in is already waiting for their voice to stop, the clock restarts on those words instead of the nudge going out anyway.
+- **A hangup step that fails now fails alone.** The fix above closed the one bad step; this closes the class. Every step the worker runs at hangup is now isolated from the others, so the next one to raise or return the wrong shape costs a log line, and the taped playout and the record still happen.
+- **After a request the call keeps moving.** The DJ would say what it did and stop, and a caller who could not see it stop talking sat in silence until the check-in. Every turn after an action now points at what's next, when the record plays and what's on after it, and one "anything else?" is allowed as the step towards wrapping up. The door guard still stops a second.
+- **A permission that isn't there now grants nothing.** The tier ladder read a missing setting as "open" — the one direction a permission must never default — while its own docstring claimed the opposite. Nothing was exploitable, because every caller reads a settings value that always carries its default; but the player's endpoints read raw settings rather than a collapsed call config, which put that gap one refactor from mattering.
+
 ## 0.99.30
 
-Tagged without a page of its own (folded forward at the next storied release).
-
-- A permission that isn't there now grants nothing. The tier ladder read a missing setting as "open" — the one direction a permission must never default — while its own docstring claimed the opposite. Nothing was exploitable, because every caller reads a settings value that always carries its default; but the player's endpoints read raw settings rather than a collapsed call config, which put that gap one refactor from mattering.
+Tagged earlier the same day as 0.99.31 and folded forward — the story rides v0.99.31's notes.
 
 ## 0.99.29
 
