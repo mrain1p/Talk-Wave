@@ -199,10 +199,21 @@ def attach_idle_watch(
             # bring that back — the nudge still goes out, just not into the
             # caller's first words.
             if _speaking_now(session):
+                words_before = state["last_words"]
                 for _ in range(SPEAKING_GRACE_BEATS):
                     await asyncio.sleep(0.5)
                     if not _speaking_now(session):
                         break
+                # If their words LANDED while the beats ran, the caller is
+                # present and the clock has already restarted on them; the
+                # nudge would go out straight after a sentence they just
+                # finished. Seen 2026-09-02 17:48:44: the caller asked "so
+                # what's next?", the transcript reset the clock 45ms before
+                # the check-in fired anyway, and "Still with me?" was talked
+                # over. Still a veto and never a reset — a transcript with
+                # words is the one thing this clock has always counted.
+                if state["last_words"] != words_before:
+                    continue
             state["nudges"] += 1
             state["last_words"] = time.time()
             first = state["nudges"] == 1

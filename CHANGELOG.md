@@ -4,6 +4,11 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+- **A taped call now airs after the caller hangs up, every time.** Since 0.99.6 every hangup had tripped an error inside the worker's shutdown, and on a call taped for air that error cut the playout short: the station spoke the intro and then nothing, and the call left no record. Private calls only ever lost the error line. Fixed at the source, with a test that calls every shutdown callback the way the SDK does.
+- **"Still with me?" no longer lands on the heels of the caller's own sentence.** When the caller's words arrive while the check-in is already waiting for their voice to stop, the clock restarts on those words instead of the nudge going out anyway.
+
 ## 0.99.30
 
 Tagged without a page of its own (folded forward at the next storied release).

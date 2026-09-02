@@ -737,12 +737,12 @@ class CallSession:
         air_task = asyncio.create_task(self.air.watch(session))
         ctx.add_shutdown_callback(lambda: lifecycle.cancel(air_task))
         # The come-back task is spawned raw inside the watch loop and is
-        # otherwise cancelled only on a new busy edge — so at shutdown an
-        # in-flight one would call generate_reply into a session being torn
-        # down (the "Task was destroyed but it is pending" case lifecycle.cancel
-        # exists for). Cancelling air_task stops the loop but not its child;
-        # this reaps the child too (top-down review, 2026-08-28).
-        ctx.add_shutdown_callback(lambda: self.air._cancel_comeback())
+        # otherwise cancelled only on a new busy edge, so cancelling air_task
+        # stops the loop but not its child; this reaps the child too. A
+        # COROUTINE, not a lambda round _cancel_comeback: the SDK awaits what
+        # a shutdown callback returns, and the bool that lambda returned took
+        # every other callback down with it (2026-09-02; see reap_comeback).
+        ctx.add_shutdown_callback(self.air.reap_comeback)
 
         # Keep this call's hush marker fresh, when this call quieted the
         # station: the janitor reads a stopped heartbeat as a dead job and

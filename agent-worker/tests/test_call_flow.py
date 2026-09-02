@@ -953,6 +953,53 @@ class TestTheCheckInDoesNotTalkOverTheCaller(unittest.TestCase):
         self.assertTrue(self._run("speaking", seconds=7.0),
                         "a noisy room can suppress the check-in for ever")
 
+    def test_words_that_land_during_the_veto_restart_the_clock(self):
+        # 2026-09-02 17:48:44, read off the operator's box: the caller asked
+        # "so what's next?", their transcript reset the clock 45ms before the
+        # check-in fired anyway, and "Still with me?" went out over the top.
+        # The veto had waited for their voice to stop and then fired without
+        # looking at what had arrived while it waited.
+        from call import lifecycle
+
+        replies = []
+        handlers = {}
+
+        class _Session:
+            agent_state = "listening"
+            user_state = "speaking"
+
+            def on(self, event, handler):
+                handlers[event] = handler
+
+            async def generate_reply(self, **kw):
+                replies.append(kw)
+
+            async def say(self, *a, **k):
+                replies.append({"say": a})
+
+        ctx = types.SimpleNamespace(add_shutdown_callback=lambda *a: None)
+
+        async def go():
+            session = _Session()
+            lifecycle.attach_idle_watch(
+                ctx, session, {"idle_prompt_secs": 1, "idle_max_nudges": 2})
+            # The window expires at one second with the caller mid-word, so
+            # the veto is holding the nudge back when their words land.
+            await asyncio.sleep(1.3)
+            handlers["user_input_transcribed"](
+                types.SimpleNamespace(transcript="so what's next?"))
+            session.user_state = "listening"
+            await asyncio.sleep(0.7)
+            self.assertEqual([], replies,
+                             "the check-in went out on the heels of the "
+                             "caller's own sentence")
+            # And the veto is still not a mute: a second of real quiet after
+            # their words brings the check-in back.
+            await asyncio.sleep(1.4)
+            self.assertTrue(replies, "the check-in stopped firing at all")
+
+        asyncio.run(go())
+
 
 class TestTheIdleClockDoesNotRunWhileTheDJIsWorking(unittest.TestCase):
     """"Still there?" must not be asked while the DJ is the one working.
@@ -1655,6 +1702,95 @@ class TestTheStationClientOutlivesTheShutdownWork(unittest.TestCase):
         head = tail[:tail.index("async def _shutdown_work")]
         self.assertIn("finally:", head)
         self.assertIn("await self.station.aclose()", head)
+
+
+class TestEveryShutdownCallbackCanBeAwaited(_TempStores):
+    """The SDK AWAITS whatever a zero-argument shutdown callback returns
+    (livekit.agents.job.JobContext.add_shutdown_callback wraps it in
+    `await callback()`), and runs every callback under one asyncio.gather —
+    which abandons all the OTHERS the moment one raises. The come-back
+    reaper registered at 0.99.6 was `lambda: self.air._cancel_comeback()`,
+    and _cancel_comeback returns a bool. So on 2026-09-02 a taped on-air
+    call (callin-al-bed1d5bd8410) spoke its intro, aired none of the
+    exchange, and wrote no record; the only trace was one line in the worker
+    log: `TypeError: object bool can't be used in 'await' expression`. Every
+    private call since 0.99.6 had raised the same error at hangup — only a
+    playout was long enough to lose.
+
+    This calls each registered callback the way the SDK does and checks the
+    result can be awaited. Nothing here is awaited for real: the coroutines
+    are closed unrun, so no record is written and no station is touched.
+    """
+
+    ROOM = "callin-o-abcdef123456"
+
+    class _FakeCtx:
+        def __init__(self, room):
+            # Pre-join: nameless. The attach path subscribes to room events
+            # (data_received for the caller's setup note and the talk bar),
+            # and a test has no room to hear from.
+            self.room = types.SimpleNamespace(name="", on=lambda *a, **k: None)
+            self.job = types.SimpleNamespace(
+                room=types.SimpleNamespace(name=room))
+            self.shutdown_callbacks = []
+
+        def add_shutdown_callback(self, cb):
+            self.shutdown_callbacks.append(cb)
+
+    class _Session:
+        agent_state = "listening"
+        user_state = "listening"
+
+        def on(self, *a, **k):
+            pass
+
+        async def generate_reply(self, **kw):
+            return None
+
+        async def say(self, *a, **k):
+            return None
+
+    def test_the_sdk_can_await_every_callback_the_session_registers(self):
+        import inspect
+
+        from call.session import CallSession
+
+        ctx = self._FakeCtx(self.ROOM)
+
+        async def never_watch(session):          # no station polling from a test
+            await asyncio.sleep(3600)
+
+        async def go():
+            s = CallSession(ctx)
+            s.session = self._Session()
+            s.air.watch = never_watch
+            s._attach_behaviours()
+            self.assertGreater(len(ctx.shutdown_callbacks), 5,
+                               "the session registered fewer callbacks than "
+                               "it does on a real call — is this exercising "
+                               "the real wiring?")
+            for cb in ctx.shutdown_callbacks:
+                # The SDK's own rule: a callback that takes an argument is
+                # handed the shutdown reason, the rest are called bare, and
+                # the result is awaited either way.
+                wants_reason = cb.__code__.co_argcount >= (
+                    2 if inspect.ismethod(cb) else 1)
+                result = cb("test") if wants_reason else cb()
+                name = getattr(cb, "__qualname__", repr(cb))
+                self.assertTrue(
+                    inspect.isawaitable(result),
+                    f"{name} returned {type(result).__name__}: the SDK awaits "
+                    "what a shutdown callback returns, and one that cannot be "
+                    "awaited abandons every other callback, the record included")
+                if inspect.iscoroutine(result):
+                    result.close()                    # checked, never run
+            leftovers = [t for t in asyncio.all_tasks()
+                         if t is not asyncio.current_task()]
+            for t in leftovers:
+                t.cancel()
+            await asyncio.gather(*leftovers, return_exceptions=True)
+
+        asyncio.run(go())
 
 
 async def _noop_async(*a, **k):
