@@ -294,21 +294,37 @@ async def handle_player_command(request: web.Request) -> web.Response:
     # request tool always has. The spoken reply is deliberately not
     # returned; it lives in the chat record for diagnostics.
     if not actions:
+        # Handed to the station's own listener request box, and reported
+        # as a CARD either way (the operator's shape, 2026-09-01): an
+        # accepted hand-off is a request receipt like any other and lands
+        # in the day-log so the Requests tab keeps it; a refusal carries
+        # the station's own sentence, which is written for a listener and
+        # better than anything invented here.
+        import json as _json
+
         relay = await _relay(request, "POST", "/request",
                              {"text": text[:200]})
-        note = "no direct action — handed to the request line"
+        body_out = {}
         try:
-            import json as _json
-
-            rb = _json.loads(relay.body.decode("utf-8"))
-            msg = str(rb.get("message") or rb.get("error") or "")
-            if msg:
-                note += ": " + msg[:120]
+            body_out = _json.loads(relay.body.decode("utf-8"))
         except Exception:                                      # noqa: BLE001
-            pass
+            body_out = {}
+        took = relay.status < 400 and body_out.get("success") is not False
+        said = str(body_out.get("message") or body_out.get("error") or "")
+        if took:
+            from call import daylog
+
+            daylog.note("request", text[:80],
+                        tier=request.get("player_tier", ""))
+            return _cors(request, web.json_response(
+                {"chat": chat.id, "fallback": "request",
+                 "actions": [{"icon": "🎵",
+                              "label": "Handed to the request line",
+                              "detail": text[:80]}]}))
         return _cors(request, web.json_response(
-            {"chat": chat.id, "actions": [],
-             "fallback": "request", "note": note}))
+            {"chat": chat.id, "fallback": "request", "refused": True,
+             "actions": [],
+             "note": said[:160] or "the booth would not take that"}))
     return _cors(request, web.json_response(
         {"chat": chat.id, "actions": actions}))
 
