@@ -3731,6 +3731,40 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         for name in ("gdHelpBtn", "gdThemeBtn", "gdGearBtn", "gdSigninBtn"):
             self.assertIn("set('" + name + "'", self.js)
 
+    def test_the_week_can_be_read_as_a_grid(self):
+        # Operator, 2026-09-03: a button that paints the schedule as a grid.
+        # Seven day rows over one hour ruler, the hour now marked, and a
+        # block is a way INTO the show rather than a dead tile.
+        for el in ('id="guideGrid"', 'id="guideViewDay"', 'id="guideViewWeek"'):
+            self.assertIn(el, self.html)
+        self.assertIn("function paintGuideGrid", self.js)
+        self.assertIn("function setGuideView", self.js)
+        grid = self.js.split("function paintGuideGrid")[1][:4200]
+        # Every run that TOUCHES a day is drawn on it, clipped — a show
+        # from last night fills this morning instead of leaving it blank.
+        self.assertIn("r.start < end && r.end > start", grid)
+        self.assertIn("Math.max(0, r.start - start)", grid)
+        self.assertIn("gdnowmark", grid)
+        self.assertIn("setGuideView('day'); openInList(r.id)", grid)
+        self.assertIn(".gdcells {", self.css)
+        self.assertIn("grid-template-columns: repeat(24, 1fr)", self.css)
+
+    def test_a_show_keeps_one_colour_and_it_comes_from_a_token(self):
+        # The station names no colour, so it is derived from the id and the
+        # same tone dresses the list's dot and the grid's block. Every tone
+        # is mixed from a palette token: nothing here may hardcode a colour
+        # (style.css's theming contract).
+        self.assertIn("function showTone", self.js)
+        self.assertIn("function toneDot", self.js)
+        import re
+        tones = re.findall(r"\.card \.gdcell\[data-tone=\"\d\"\] \{ background: ([^;]+);",
+                           self.css)
+        self.assertEqual(6, len(tones), tones)
+        for t in tones:
+            with self.subTest(tone=t):
+                self.assertTrue(t.startswith("color-mix(in srgb, var(--"), t)
+                self.assertNotIn("#", t)
+
     def test_a_host_face_opens_to_a_portrait(self):
         # The pictures are the point of the booth, and 34px of them was a
         # hint (operator, 2026-09-03). The press rides a WRAPPER, because a

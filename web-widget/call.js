@@ -6208,6 +6208,115 @@
     return groups;
   }
 
+  // A show's own colour, steady across the week and both views. The
+  // station names no colour, so it is derived from the id — same show,
+  // same tone, every paint. SIX tones, each mixed in CSS from a palette
+  // token, because nothing here may hardcode a colour (the theming
+  // contract at the top of style.css).
+  const GUIDE_TONES = 6;
+  function showTone(id) {
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+    return String(h % GUIDE_TONES);
+  }
+  function toneDot(id) {
+    const d = document.createElement('span');
+    d.className = 'gdtone'; d.dataset.tone = showTone(id);
+    d.setAttribute('aria-hidden', 'true');
+    return d;
+  }
+  // Which view the guide is in. Day is the strip, the show on air and the
+  // list; Week is the grid a listings page paints (operator, 2026-09-03).
+  let guideView = 'day';
+  function setGuideView(v) {
+    guideView = v === 'week' ? 'week' : 'day';
+    const week = guideView === 'week';
+    [['guideViewDay', !week], ['guideViewWeek', week]].forEach(([id, on]) => {
+      const b = $(id);
+      if (!b) return;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    ['guideToday', 'guideHero', 'guideListHead', 'guideList'].forEach((id) => {
+      const el = $(id);
+      if (el) el.classList.toggle('gdaway', week);
+    });
+    const grid = $('guideGrid');
+    if (grid) grid.hidden = !week;
+    const sc = $('guideScroll');
+    if (sc) sc.scrollTop = 0;
+    paintGuideTop();
+  }
+  (function bindGuideViews() {
+    const d = $('guideViewDay'), w = $('guideViewWeek');
+    if (d) d.onclick = () => setGuideView('day');
+    if (w) w.onclick = () => setGuideView('week');
+  })();
+
+  // Seven day rows over one hour ruler. A show that runs past midnight is
+  // drawn on the day it STARTS and clipped at the row's end, which is what
+  // a listings grid does — the block's own label still carries the true
+  // hours, and the Day view shows the run whole.
+  function paintGuideGrid(byId, runs, now) {
+    const grid = $('guideGrid');
+    if (!grid) return;
+    grid.textContent = '';
+    const ruler = document.createElement('div'); ruler.className = 'gdruler';
+    ruler.appendChild(document.createElement('span')).className = 'gddaycol';
+    const track = document.createElement('div'); track.className = 'gdcells';
+    for (let h = 0; h < 24; h += 3) {
+      const t = document.createElement('span');
+      t.className = 'gdhourlab'; t.style.gridColumn = (h + 1) + ' / span 3';
+      t.textContent = fmtHour(h).replace(' ', '');
+      track.appendChild(t);
+    }
+    ruler.appendChild(track);
+    grid.appendChild(ruler);
+    GUIDE_DAYS.forEach((day, dayIndex) => {
+      const row = document.createElement('div'); row.className = 'gdgridrow';
+      if (dayIndex === now.dayIndex) row.classList.add('today');
+      const lab = document.createElement('span'); lab.className = 'gddaycol';
+      lab.textContent = GUIDE_DAY_NAMES[dayIndex];
+      row.appendChild(lab);
+      const cells = document.createElement('div'); cells.className = 'gdcells';
+      const start = dayIndex * 24, end = start + 24;
+      // Every run that TOUCHES the day, clipped to it — a show that came
+      // over from last night fills this morning rather than leaving it
+      // blank, which is what a listings grid does. Its label still carries
+      // the true hours, and the Day view shows the run whole.
+      runs.filter((r) => r.start < end && r.end > start && byId[r.id])
+        .sort((a, b) => a.start - b.start)
+        .forEach((r) => {
+          const show = byId[r.id];
+          const from = Math.max(0, r.start - start);
+          const span = Math.max(1, Math.min(24, r.end - start) - from);
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'gdcell';
+          b.dataset.tone = showTone(r.id);
+          b.style.gridColumn = (from + 1) + ' / span ' + span;
+          if (r.start <= now.abs && now.abs < r.end) b.classList.add('on');
+          const n = document.createElement('span'); n.className = 'gdcellname';
+          n.textContent = show.title || show.name;
+          const t = document.createElement('span'); t.className = 'gdcelltime';
+          t.textContent = fmtRange(r.start, r.end);
+          b.append(n, t);
+          b.title = (show.title || show.name) + ' · ' + fmtRange(r.start, r.end);
+          // A block is a way INTO the show: back to the day view with that
+          // show open, which is where its description and DJs live.
+          b.onclick = () => { setGuideView('day'); openInList(r.id); };
+          cells.appendChild(b);
+        });
+      if (dayIndex === now.dayIndex) {
+        const mark = document.createElement('span');
+        mark.className = 'gdnowmark'; mark.setAttribute('aria-hidden', 'true');
+        mark.style.left = ((now.hour + 0.5) / 24 * 100).toFixed(3) + '%';
+        cells.appendChild(mark);
+      }
+      row.appendChild(cells);
+      grid.appendChild(row);
+    });
+  }
+
   function paintGuide() {
     const d = guideData || {};
     const shows = d.shows || [], grid = d.grid || {}, personas = {}, byId = {};
@@ -6276,6 +6385,9 @@
     // The strip STAYS at midnight: it is the day, read forward, and
     // scrolling it to "now" hid the morning behind the left edge.
     today.scrollLeft = 0;
+    paintGuideGrid(byId, runs, now);
+    const views = $('guideViews');
+    if (views) views.hidden = !shows.length;
     paintGuideTop();
   }
   function castOf(show, personas) {
@@ -6453,12 +6565,15 @@
     row.setAttribute('aria-expanded', 'false');
     const head = document.createElement('div'); head.className = 'gdhead';
     const metaEl = document.createElement('div'); metaEl.className = 'gdmeta';
-    const name = document.createElement('div'); name.className = 'gdshow';
+    const title = document.createElement('div'); title.className = 'gdtitle';
+    title.appendChild(toneDot(show.id));
+    const name = document.createElement('span'); name.className = 'gdshow';
     name.textContent = show.title || show.name;
+    title.appendChild(name);
     const cast = castOf(show, personas);
     const sub = document.createElement('div'); sub.className = 'gdsub';
     sub.textContent = show.tagline || (cast[0] ? cast[0].name : '');
-    metaEl.append(name, sub);
+    metaEl.append(title, sub);
     if ((show.moods || []).length) {
       const moods = document.createElement('div'); moods.className = 'gdmoods';
       show.moods.slice(0, 5).forEach((m) => {

@@ -1094,8 +1094,8 @@
     font: 10px/1 var(--font-mono); letter-spacing: .06em; color: var(--sage-dim);
   }
   .gdnext.live { color: var(--coral); font-weight: 700; }
-  .gdwho .gdav { width: 20px; height: 20px; margin-left: -6px; }
-  .gdwho .gdav.mono { font-size: 9.5px; }
+  .gdwho .gdav { width: 30px; height: 30px; margin-left: -8px; }
+  .gdwho .gdav.mono { font-size: 11px; }
   .gdline.gdangle { color: var(--amber); }
   .gdline.gdangle b { color: var(--amber); }
   /* On the schedule: day groups left, hours right, today marked. */
@@ -1169,8 +1169,8 @@
   }
   /* The figure holds the picture, so a face that falls back to initials
      keeps its size and its press. */
-  .gdfig { display: block; flex: none; width: 56px; height: 56px; }
-  .gdfig .gdav { width: 100%; height: 100%; margin-left: 0; font-size: 15px; }
+  .gdfig { display: block; flex: none; width: 76px; height: 76px; }
+  .gdfig .gdav { width: 100%; height: 100%; margin-left: 0; font-size: 19px; }
   /* A press opens it to a portrait — square, the width of the column, the
      record-sleeve shape the player's art already uses — and another press
      puts it back. */
@@ -1205,6 +1205,97 @@
   }
   .card .gdtop:hover { color: var(--coral); border-color: var(--coral); }
   .card .gdtop[hidden] { display: none; }
+  /* Day or Week — the same pair the strip's header carries, in the card's
+     smallest type so the date still leads. */
+  .gdviews { margin-left: auto; display: inline-flex; }
+  .gdviews[hidden] { display: none; }
+  .card .gdview {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    background: transparent; border: 1px solid var(--edge);
+    padding: 0 9px; margin: 0; min-height: 0; height: 22px; cursor: pointer;
+    display: inline-flex; align-items: center;
+  }
+  .card .gdview:first-child {
+    border-radius: max(5px, var(--skin-radius-ctl)) 0 0 max(5px, var(--skin-radius-ctl));
+  }
+  .card .gdview:last-child {
+    border-left: 0;
+    border-radius: 0 max(5px, var(--skin-radius-ctl)) max(5px, var(--skin-radius-ctl)) 0;
+  }
+  .card .gdview.on { color: var(--coral); border-color: var(--coral); background: var(--granite); }
+  .card .gdview.on + .gdview { border-left-color: var(--coral); }
+  /* The view that is not showing steps aside without being unbuilt: the
+     grid and the list are painted from one read. */
+  .gdaway { display: none !important; }
+  /* A show's own colour. SIX tones, every one mixed from a palette token —
+     the station names no colour, and nothing here may hardcode one. The
+     dot on a list row and the block in the grid wear the same tone. */
+  .gdtone {
+    flex: none; width: 9px; height: 9px; border-radius: 2px;
+    display: inline-block; background: var(--sage-dim);
+  }
+  .gdtitle { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .gdtone[data-tone="0"] { background: var(--coral); }
+  .gdtone[data-tone="1"] { background: var(--amber); }
+  .gdtone[data-tone="2"] { background: var(--cool); }
+  .gdtone[data-tone="3"] { background: var(--ok); }
+  .gdtone[data-tone="4"] { background: var(--sage); }
+  .gdtone[data-tone="5"] { background: var(--alpenglow); }
+  /* ---- The week, painted as a grid. Seven day rows over one hour ruler,
+     scrolled sideways as one; the day column stays put. --------------- */
+  .gdgrid {
+    margin-top: 12px; overflow-x: auto; scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y;
+    overscroll-behavior-x: contain; padding-bottom: 6px;
+  }
+  .gdgrid[hidden] { display: none; }
+  .gdruler, .gdgridrow { display: flex; align-items: stretch; min-width: 700px; }
+  .gdruler { position: sticky; top: 0; z-index: 2; background: var(--pine); }
+  .gddaycol {
+    flex: none; width: 42px; display: inline-flex; align-items: center;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .1em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    position: sticky; left: 0; background: var(--pine); z-index: 1;
+  }
+  .gdcells {
+    flex: 1; display: grid; grid-template-columns: repeat(24, 1fr);
+    gap: 2px; padding: 2px 0; position: relative; min-width: 0;
+  }
+  .gdhourlab {
+    font: 9.5px/1 var(--font-mono); letter-spacing: .04em; color: var(--sage-dim);
+    padding: 6px 0 4px; align-self: end;
+  }
+  .gdgridrow { border-top: 1px solid var(--hairline); }
+  .gdgridrow.today .gddaycol { color: var(--coral); }
+  .card .gdcell {
+    min-width: 0; overflow: hidden; text-align: left; cursor: pointer;
+    border: 1px solid transparent; border-radius: max(4px, var(--skin-radius-ctl));
+    padding: 5px 6px; margin: 0; min-height: 34px; height: auto;
+    display: flex; flex-direction: column; justify-content: center; gap: 2px;
+    background: var(--granite-hi);
+  }
+  .card .gdcell[data-tone="0"] { background: color-mix(in srgb, var(--coral) 26%, var(--granite)); }
+  .card .gdcell[data-tone="1"] { background: color-mix(in srgb, var(--amber) 26%, var(--granite)); }
+  .card .gdcell[data-tone="2"] { background: color-mix(in srgb, var(--cool) 30%, var(--granite)); }
+  .card .gdcell[data-tone="3"] { background: color-mix(in srgb, var(--ok) 26%, var(--granite)); }
+  .card .gdcell[data-tone="4"] { background: color-mix(in srgb, var(--sage) 24%, var(--granite)); }
+  .card .gdcell[data-tone="5"] { background: color-mix(in srgb, var(--alpenglow) 14%, var(--granite)); }
+  .card .gdcell.on { border-color: var(--coral); }
+  .gdcellname {
+    font: 700 9.5px/1.2 var(--font-mono); letter-spacing: .04em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .gdcelltime {
+    font: 9.5px/1 var(--font-mono); color: var(--sage);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* Where the station's clock is, today only. */
+  .gdnowmark {
+    position: absolute; top: 0; bottom: 0; width: 2px; background: var(--coral);
+    pointer-events: none; opacity: .85;
+  }
   .gdempty {
     font: 12px/1.45 var(--font-body); color: var(--sage-dim);
     text-align: center; margin: 24px 0;

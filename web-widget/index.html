@@ -503,7 +503,7 @@
     <div class="guide" id="guideView" hidden role="region" aria-label="Programme guide">
       <div class="plhead"><span class="pip" aria-hidden="true"></span>Programme guide<span class="corner"><button class="gear" id="gdHelpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="gdThemeBtn" title="Theme" aria-label="Change the theme" hidden></button><button class="gear" id="gdSigninBtn" title="Sign in for more options" aria-label="Sign in for more options" hidden><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 12H2.5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1H6"/><path d="M9 9.5 11.5 7 9 4.5"/><path d="M11.5 7H5.5"/></svg></button><button class="gear" id="gdGearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></span></div>
       <div class="gdscroll" id="guideScroll">
-        <div class="gdtodayhead" id="guideTodayHead" hidden><span class="gdtodaylab" id="guideTodayMeta"></span></div>
+        <div class="gdtodayhead" id="guideTodayHead" hidden><span class="gdtodaylab" id="guideTodayMeta"></span><span class="gdviews" id="guideViews" hidden role="group" aria-label="How to read the week"><button type="button" class="gdview on" id="guideViewDay" aria-pressed="true">Day</button><button type="button" class="gdview" id="guideViewWeek" aria-pressed="false">Week</button></span></div>
         <div class="gdtoday" id="guideToday" hidden></div>
         <!-- The show on air, open: the card's first answer is what is on
              right now, in full — the angle, the show, the DJ and their
@@ -512,6 +512,10 @@
         <div class="gdhero" id="guideHero" hidden></div>
         <div class="gdlisthead" id="guideListHead" hidden><span class="gdlistlab">Program guide</span><span class="gdlistmeta" id="guideListMeta"></span></div>
         <div class="gdlist" id="guideList"></div>
+        <!-- The week as a grid, the way a listings page paints it: seven day
+             rows over one hour ruler, each show a block in its own colour,
+             the hour now marked. Behind the Week button; call.js builds it. -->
+        <div class="gdgrid" id="guideGrid" hidden></div>
         <p class="gdempty" id="guideEmpty" hidden>The station hasn't published its week yet.</p>
       </div>
       <!-- Surfaces once the week has been scrolled into; the guide is the
