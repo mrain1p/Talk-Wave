@@ -76,7 +76,8 @@ async def build_system_prompt(
             await sc.aclose()
 
     facts = await station_context(station, cfg, snap, show,
-                                  speak_clock=speak_clock)
+                                  speak_clock=speak_clock,
+                                  persona_id=str(persona.get("id") or ""))
 
     # NAME_BUDGET: identity strings ride the opening line of the prompt on
     # every turn, and while soul/topic are clipped to CARD_BUDGET their short

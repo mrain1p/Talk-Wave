@@ -28,6 +28,7 @@ the per-call action ledger meaningful: browsing is not an action, queueing is.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from station import StationClient
@@ -35,9 +36,9 @@ from station import StationClient
 from ..actions import CallActions
 from .registry import library_search_needs_mcp
 from .rows import _drop_blocked, _fmt_track
-from .vocabulary import (_ALL_GENRES, _ENERGY, _OFFER, _THIN, _VOCAL,
-                         _close_genres, _one_of, _related_genres,
-                         _same_genre)
+from .vocabulary import (_ALL_GENRES, _COUNTS_ARE_YOURS, _ENERGY, _OFFER,
+                         _THIN, _VOCAL, _is_filed, _miss_hint, _near_genres,
+                         _one_of, _related_genres, _same_genre, _shelves)
 
 log = logging.getLogger("callin.agent")
 
@@ -306,15 +307,38 @@ def build_discovery_tools(cfg: dict, station: StationClient,
             known: list[str] = []
             fixed = ""
             related: list[str] = []
+            near: list[str] = []
+            counts: dict = {}
+            exists = False
             swapped = ""
             if genre and (not rows or len(rows) < _THIN):
-                known = await station.library_genres(limit=_ALL_GENRES)
+                # Both reads together. A miss already costs the caller one
+                # round trip; the neighbours answer a question the vocabulary
+                # list cannot answer at all, and serialising them would put a
+                # second wait in front of somebody already at a dead end.
+                # Both are cached on the station's side.
+                known, shelves = await asyncio.gather(
+                    station.library_genres(limit=_ALL_GENRES),
+                    station.genre_neighbours(),
+                )
+                counts = shelves.get("counts") or {}
                 fixed = _same_genre(genre, known)
                 # What else the caller said, so a shelf carrying their own
                 # word is offered before a commoner one that isn't.
                 related = _related_genres(
                     fixed or genre, known,
                     prefer=[use_vocal] + (moods or "").split(","))
+                # The half a word test cannot reach — see _near_genres. Only
+                # ever answers for a shelf this library really has, and never
+                # repeats one the word test already found.
+                near = _near_genres(fixed or genre,
+                                    shelves.get("related") or {},
+                                    already=related, known=known)
+                # Which of the two "nothing came back" sentences is the true
+                # one. Without this, a genre the library holds plenty of was
+                # reported as one it had never heard of, the moment the
+                # caller's year range or instrumental-only emptied it.
+                exists = _is_filed(fixed or genre, known)
             if not rows and fixed:
                 again = await look(fixed)
                 if again.get("rows"):
@@ -328,67 +352,10 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                     d, rows = again, again.get("rows") or []
                     swapped = related[0]
             if not rows:
-                # The mood vocabulary is fixed and small, and a caller's word
-                # for a feeling is usually not one of the seventeen: asking for
-                # "melancholy" matches 0 of 381,000 tracks because the station's
-                # word is "reflective". Handing the vocabulary back is what
-                # turns a dead end into a second try.
-                hint = ""
-                if moods and vocab:
-                    hint = (" The station only files moods under these words: "
-                            + ", ".join(vocab)
-                            + ". If one of them is close to what the caller "
-                            "means, try again with it — do NOT tell them the "
-                            "library has nothing.")
-                elif genre and related:
-                    # The word IS in this library's vocabulary, just not on
-                    # its own or not with these other filters. Naming what it
-                    # IS filed under is the whole difference between a useful
-                    # answer and "we haven't got any jazz".
-                    shown = ", ".join(f"\"{g}\"" for g in related[:_OFFER])
-                    seat = (f"\"{fixed}\" exists but nothing under it matches "
-                            "the rest of this, and " if fixed else "")
-                    hint = (f" {seat}this library also files {shown}"
-                            + (f" and {len(related) - _OFFER} more like it"
-                               if len(related) > _OFFER else "")
-                            + ". Those are real music here. Offer one or two "
-                            "by name and browse whichever they pick — do NOT "
-                            "tell the caller there is none of it.")
-                elif genre and fixed:
-                    # The spelling was the problem and it has already been
-                    # retried above — so the genre IS here and this exact
-                    # COMBINATION is what's empty. Saying which is the whole
-                    # difference between a useful answer and "we haven't got
-                    # any jazz".
-                    hint = (f" The station files that genre as \"{fixed}\" and "
-                            "it HAS music under it — what's empty is this "
-                            "combination, with the other filters on top. Say "
-                            "that, not that the library has none, and offer to "
-                            "drop the tightest filter (the year range, or "
-                            "instrumental-only) rather than the genre.")
-                elif genre and known:
-                    # Not a spelling and not a compound — so either the word
-                    # is close to one this library uses, or it genuinely has
-                    # none. Hundreds of genres are filed, so the full list is
-                    # useless to a model reading it down a phone line: the
-                    # nearest few, or the commonest few, and never all 894.
-                    near = _close_genres(genre, known)
-                    if near:
-                        hint = (" Nothing is filed under that exact word. The "
-                                "closest this library has are: "
-                                + ", ".join(f"\"{g}\"" for g in near)
-                                + ". Offer one if it is what they meant — do "
-                                "NOT tell them the library has none.")
-                    else:
-                        hint = (" Nothing here is filed under that word at "
-                                "all. The commonest genres in this library "
-                                "are: " + ", ".join(known[:_OFFER])
-                                + ". Say what this station DOES have rather "
-                                "than what it doesn't.")
-                if not hint:
-                    hint = (" Try loosening it — one filter at a time — or put "
-                            "the caller's own words in as a request instead.")
-                return "Nothing in the library matches that combination." + hint
+                return "Nothing in the library matches that combination." + \
+                    _miss_hint(moods=moods, vocab=vocab, genre=genre,
+                               fixed=fixed, exists=exists, related=related,
+                               near=near, known=known, counts=counts)
             rows, withheld = _drop_blocked(rows)
             if not rows:
                 return (
@@ -420,9 +387,9 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                 # "Instrumental Jazz" sat there with 740. Only ever added when
                 # the result was thin enough to be worth widening.
                 tail = ("\nThin, and this library also files "
-                        + ", ".join(f"\"{g}\"" for g in related[:_OFFER])
+                        + _shelves(related[:_OFFER], counts)
                         + " — worth a look if the caller wants more."
-                        + tail)
+                        + _COUNTS_ARE_YOURS + tail)
             return (head + ":\n"
                     + "\n".join(_fmt_track(t, with_id=True) for t in rows)
                     + tail)

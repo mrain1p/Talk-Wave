@@ -316,6 +316,7 @@ from tests.test_takeover import (  # noqa: F401
     TestTheStationEndpointsAreTheOnesUpstreamServes,
 )
 from tests.test_brain import (  # noqa: F401
+    TestAnotherHostsLinesAreNotOurs,
     TestTheDJKnowsWhenTheBroadcastIsNotNormal,
     TestTheLastCallersBusinessStaysOutOfTheBriefing,
     TestTheDJIsToldItsOwnLanguage,
@@ -370,6 +371,7 @@ from tests.test_discovery import (  # noqa: F401
     TestDiscoveryToolsRideTheirSwitches,
     TestFindingMusicByHowItSounds,
     TestNeverPlayTracksNeverReachACaller,
+    TestTheShelfNextDoor,
     TestTheStationSpellsItsOwnGenres,
     TestTheStationsFavouritesAndItsMemory,
     TestTheStationsOwnWordsForAMiss,
@@ -386,6 +388,7 @@ from tests.test_station import (  # noqa: F401
     TestTheGuideShapesTheStationsWeek,
     TestNoIdEscapesItsPathSegment,
     TestTheDJsLanguageSurvivesTheRead,
+    TestTheGenreShelvesTheStationComputesItself,
     TestTheNeverPlayWritesAndTheGenreLock,
 )
 from tests.test_tools_logic import (  # noqa: F401

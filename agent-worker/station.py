@@ -1185,6 +1185,79 @@ class StationClient:
             log.info("library genres unavailable: %s", describe(e))
             return []
 
+    async def genre_neighbours(self) -> dict:
+        """Which genres this library files NEAR each other, and how deep each
+        shelf is. Admin-only.
+
+        `library_genres` answers "what words exist" and `_related_genres`
+        finds the ones that CONTAIN the caller's word — which is why "jazz"
+        reaches Instrumental Jazz and "trip-hop" reaches nothing at all. Names
+        are the wrong instrument for that second question: trip-hop's real
+        neighbour is downtempo, and no amount of string comparison will ever
+        say so. The station already knows, from cosine similarity over a mean
+        text-embedding per genre, and caches the whole answer until the
+        library changes — so this is the cheap way to ask a question we could
+        not otherwise answer at all.
+
+        Returns `{"counts": {name: songCount}, "related": {name: [names]}}`,
+        both keyed by the station's OWN spelling. Either half may be empty and
+        an empty half means "no answer", never "no such genre": the station
+        needs at least three genre centroids before it computes neighbours at
+        all, so a library whose embeddings have never been built answers with
+        the genre list and nothing beside it.
+
+        `counts` covers the genres in the tagged index; `library_genres` is
+        the fuller list (it merges Navidrome's own genres in too), so a name
+        from there may legitimately have no count here.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {}
+        try:
+            r = await self._client.get(
+                "/library/genres/related", auth=httpx.BasicAuth(user, password),
+                timeout=LIBRARY_TIMEOUT,
+            )
+            r.raise_for_status()
+            d = _body(r)
+        except Exception as e:
+            log.info("genre neighbours unavailable: %s", describe(e))
+            return {}
+
+        def _name(row) -> str:
+            return (str(row.get("value") or "").strip()
+                    if isinstance(row, dict) else "")
+
+        counts: dict[str, int] = {}
+        for row in d.get("genres") or []:
+            name = _name(row)
+            if not name:
+                continue
+            size = row.get("songCount")
+            # songCount is a NUMBER here, unlike `energy` one listing along,
+            # which is a word — checked against the handler rather than a
+            # fixture (0.10.132's lesson). A missing one is dropped rather
+            # than shown as zero: "0 records" reads as an empty shelf, and
+            # what it really means is that nobody counted.
+            if isinstance(size, (int, float)) and not isinstance(size, bool):
+                counts[name] = int(size)
+
+        related: dict[str, list[str]] = {}
+        raw = d.get("related")
+        if isinstance(raw, dict):
+            for genre, rows in raw.items():
+                key = str(genre or "").strip()
+                if not key or not isinstance(rows, list):
+                    continue
+                near = [_name(row) for row in rows]
+                near = [n for n in near if n and n != key]
+                if near:
+                    related[key] = near
+
+        return {"counts": counts, "related": related}
+
     async def liked_tracks(self, limit: int = 12) -> list[dict]:
         """What this station's listeners have actually hearted. Admin-only.
 

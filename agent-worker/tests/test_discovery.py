@@ -18,7 +18,7 @@ class _Station:
 
     def __init__(self, sound=None, neighbours=None, browse=None,
                  now=None, liked=None, history=None, genres=None,
-                 sound_available=None) -> None:
+                 sound_available=None, shelves=None) -> None:
         self._sound = sound if sound is not None else []
         self._neighbours = neighbours if neighbours is not None else []
         self._browse = browse if browse is not None else {}
@@ -26,6 +26,11 @@ class _Station:
         self._liked = liked if liked is not None else []
         self._history = history if history is not None else []
         self._genres = genres if genres is not None else []
+        # {"counts": {...}, "related": {...}} — the station's own genre
+        # neighbours. Defaults to the empty dict a station answers with when
+        # its embeddings have never been built, so every test that does not
+        # care about shelves still exercises the no-answer path.
+        self._shelves = shelves if shelves is not None else {}
         # None is the station declining to say, which must read as "assume it
         # works" — the same default the tool takes.
         self._sound_available = sound_available
@@ -53,6 +58,10 @@ class _Station:
     async def library_genres(self, limit=40):
         self.asked.append(("genres", limit))
         return self._genres
+
+    async def genre_neighbours(self):
+        self.asked.append(("shelves", None))
+        return self._shelves
 
     async def liked_tracks(self, limit=12):
         self.asked.append(("liked", limit))
@@ -316,9 +325,12 @@ class TestTheStationsOwnWordsForAMiss(unittest.TestCase):
                            genres=["Hip-Hop", "Jazz", "Polka"])
         tools = _build(ALL_ON, station)
         out = asyncio.run(tools["subwave_browse_library"](genre="polkaa"))
-        # Nothing to retry, so nothing was retried — one browse, one genre read.
-        self.assertEqual([kind for kind, _ in station.asked],
-                         ["browse", "genres"])
+        # Nothing to retry, so nothing was retried — ONE browse. The two
+        # vocabulary reads beside it are the miss path's own and go out
+        # together, so their order between themselves is not a claim.
+        kinds = [kind for kind, _ in station.asked]
+        self.assertEqual(kinds.count("browse"), 1)
+        self.assertEqual(sorted(kinds), ["browse", "genres", "shelves"])
         self.assertIn("Polka", out)
         self.assertIn("do NOT tell them", out)
 
@@ -329,6 +341,91 @@ class TestTheStationsOwnWordsForAMiss(unittest.TestCase):
         out = asyncio.run(tools["subwave_browse_library"](genre="zzzznope"))
         self.assertIn("Hip-Hop", out)
         self.assertIn("DOES have", out)
+
+
+class TestTheShelfNextDoor(unittest.TestCase):
+    """A browse that comes back empty has two completely different causes, and
+    until the 2026-09-01 upstream pass they produced the same sentence.
+
+    "We have none of that" and "we have plenty of that, just none of it once
+    your year range is on" are not the same answer, and the second one was
+    being delivered as the first. The station also computes which genres sit
+    NEXT TO each other, by embedding rather than by spelling — the one
+    question a name test can never answer — and nothing here was asking it.
+    """
+
+    SHELVES = {
+        "counts": {"Trip-Hop": 312, "Downtempo": 208, "Polka": 4},
+        "related": {"Trip-Hop": ["Downtempo", "Acid Jazz"]},
+    }
+
+    def _out(self, genre, known, shelves=None, **kw):
+        station = _Station(browse={"rows": [], "moodVocab": []},
+                           genres=known, shelves=shelves)
+        tools = _build(ALL_ON, station)
+        return asyncio.run(tools["subwave_browse_library"](genre=genre, **kw))
+
+    def test_a_genre_the_library_holds_is_never_reported_missing(self):
+        # Typed exactly as the station files it, emptied by the year range.
+        # This used to fall through to the "nothing is filed under that word"
+        # rung — the library has 312 of them.
+        out = self._out("Trip-Hop", ["Trip-Hop", "Polka"], self.SHELVES,
+                        year_from=1990, year_to=1995)
+        self.assertIn("real here", out)
+        self.assertIn("combination", out)
+        self.assertNotIn("Nothing is filed", out)
+        self.assertNotIn("Nothing here is filed", out)
+
+    def test_the_shelf_next_door_is_offered_before_dropping_a_filter(self):
+        out = self._out("Trip-Hop", ["Trip-Hop", "Downtempo", "Acid Jazz"],
+                        self.SHELVES, year_from=1990)
+        self.assertIn("Downtempo", out)
+        self.assertIn("not a guess", out,
+                      "the model must know these came from the station's own "
+                      "reading, or it will treat them as its own invention")
+
+    def test_a_neighbour_the_library_no_longer_files_is_not_offered(self):
+        # An embedding built before a re-tag can name a genre that has since
+        # gone. Offering it sends the caller at a shelf that is not there.
+        out = self._out("Trip-Hop", ["Trip-Hop", "Downtempo"], self.SHELVES,
+                        year_from=1990)
+        self.assertIn("Downtempo", out)
+        self.assertNotIn("Acid Jazz", out)
+
+    def test_a_station_with_no_embeddings_still_answers(self):
+        # The station needs three genre centroids before it computes any
+        # neighbours, so {} is an ordinary answer and must read as "no
+        # neighbours", never as "no such genre".
+        out = self._out("Trip-Hop", ["Trip-Hop", "Polka"], {}, year_from=1990)
+        self.assertIn("real here", out)
+        self.assertNotIn("next to it", out)
+
+    def test_a_word_the_library_never_files_gets_spelling_not_neighbours(self):
+        # Neighbours are keyed by the genres the station HAS, so they can say
+        # nothing at all about a word it doesn't. Spelling is the only rung
+        # left, and claiming otherwise would be inventing a shelf.
+        out = self._out("polkaa", ["Trip-Hop", "Polka"], self.SHELVES)
+        self.assertIn("Polka", out)
+        self.assertIn("Nothing is filed under that exact word", out)
+        self.assertNotIn("next to it", out)
+
+    def test_the_track_counts_are_for_choosing_not_for_reading_out(self):
+        out = self._out("Trip-Hop", ["Trip-Hop", "Downtempo"], self.SHELVES,
+                        year_from=1990)
+        self.assertIn("(208 tracks)", out)
+        self.assertIn("don't read the numbers out", out,
+                      "a DJ reciting '208 tracks' down a phone line is the "
+                      "failure this number is one instruction away from")
+
+    def test_a_shelf_the_station_gave_no_count_for_shows_no_number(self):
+        # A genre merged in from Navidrome has no count in the tagged index.
+        # Rendering that as "(0 tracks)" would read as an empty shelf when it
+        # only means nobody counted.
+        shelves = {"counts": {}, "related": {"Trip-Hop": ["Downtempo"]}}
+        out = self._out("Trip-Hop", ["Trip-Hop", "Downtempo"], shelves,
+                        year_from=1990)
+        self.assertIn('"Downtempo"', out)
+        self.assertNotIn("0 tracks", out)
 
 
 class TestTheStationSpellsItsOwnGenres(unittest.TestCase):
@@ -627,7 +724,7 @@ class TestACompoundGenreIsAViableOption(unittest.TestCase):
                         offered.index("Vocal Jazz"))
 
     def test_promoting_a_shelf_does_not_reorder_the_rest(self):
-        from call.tools.discovery import _related_genres
+        from call.tools.vocabulary import _related_genres
 
         known = ["Vocal Jazz", "Cool Jazz", "Instrumental Jazz", "Acid Jazz"]
         self.assertEqual(
@@ -637,7 +734,7 @@ class TestACompoundGenreIsAViableOption(unittest.TestCase):
         self.assertEqual(_related_genres("jazz", known), known)
 
     def test_related_matches_whole_words_not_fragments(self):
-        from call.tools.discovery import _related_genres
+        from call.tools.vocabulary import _related_genres
 
         known = ["Rock", "Rockabilly", "Punk Rock", "Classic Rock", "Jazz"]
         self.assertEqual(_related_genres("rock", known),
@@ -645,7 +742,7 @@ class TestACompoundGenreIsAViableOption(unittest.TestCase):
         self.assertNotIn("Rockabilly", _related_genres("rock", known))
 
     def test_the_whole_genre_list_is_searched_but_never_recited(self):
-        from call.tools.discovery import _ALL_GENRES, _OFFER
+        from call.tools.vocabulary import _ALL_GENRES, _OFFER
 
         # 40 was hiding 854 of the operator's 894 genres — including
         # Instrumental Jazz, Bebop and Shoegaze.

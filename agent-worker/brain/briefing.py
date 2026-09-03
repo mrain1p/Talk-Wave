@@ -337,13 +337,49 @@ def latest_programme_intro(session: dict) -> str:
     return ""
 
 
-def _fmt_booth(session: dict, limit: int, show_name: str = "", show_topic: str = "") -> str:
+def _speaker_of(m: dict) -> str:
+    """The persona id the station stamped on a turn, or "".
+
+    Lives on `meta` in the /session feed. Guarded rather than indexed because
+    a turn without meta is ordinary — most of them have none — and because
+    the whole persona split below has to no-op cleanly on a station that
+    stamps nothing at all.
+    """
+    meta = m.get("meta")
+    if not isinstance(meta, dict):
+        return ""
+    return str(meta.get("personaId") or "").strip()
+
+
+def _fmt_booth(session: dict, limit: int, show_name: str = "", show_topic: str = "",
+               persona_id: str = "") -> str:
     """The DJ's own recent on-air lines — handed over as live material to
-    carry into the call, not just a repetition hazard."""
+    carry into the call, not just a repetition hazard.
+
+    `persona_id` is who WE are, and it splits the feed. The station's session
+    can carry turns another persona spoke: a guest co-host's half of a banter
+    exchange, and the outgoing DJ's sign-off from the handover that started
+    this session. Both used to arrive here under "things YOU said" — so the
+    DJ was handed a guest's words as its own, and the previous show's last
+    line as its own most recent thought. Mirrors SUB/WAVE's own
+    promptMemoryEntries (#1481), which draws the boundary the same way and for
+    the same reason: the sign-off is dropped outright, because feeding it back
+    rebuilds the cross-show bridge that filter exists to cut, and everything
+    else foreign is kept WITH its speaker's name, because a co-host's line is
+    real material for this call as long as nobody pretends it was ours.
+
+    The split is skipped entirely unless we know our own id — `persona_from`
+    answers "default" when the station's /dj read came back empty, and
+    treating that as our persona would make every stamped turn foreign and
+    hand the whole booth window to "another host".
+    """
     if limit <= 0:
         return ""
     messages = session.get("messages") or session.get("turns") or []
+    mine = str(persona_id or "").strip()
+    know_us = bool(mine) and mine != "default"
     lines = []
+    others = []
     # Scan deeper than the limit so filtered bookkeeping doesn't shrink the
     # window below what was asked for.
     for m in messages[-(limit * 3):]:
@@ -366,15 +402,38 @@ def _fmt_booth(session: dict, limit: int, show_name: str = "", show_topic: str =
         # Pattern fallback for payloads without kind fields.
         if _is_show_announcement(text, show_name, show_topic):
             continue
+        speaker = _speaker_of(m) if know_us else ""
+        if speaker and speaker != mine:
+            # The handover sign-off is the PREVIOUS show's last line, aired
+            # into the session that just started. It reads as our most recent
+            # thought and it is not ours at all.
+            if kind == "handoff":
+                continue
+            meta = m.get("meta") or {}
+            who = _fld(meta.get("personaName"), 120) or "another host"
+            others.append(f"{who}: " + clip(text, 220))
+            continue
         lines.append(clip(text, 220))
     lines = lines[-limit:]
-    if not lines:
-        return ""
-    joined = "\n  ".join(lines)
-    return (
-        "Things YOU said on the broadcast in the last little while — the "
-        "caller may well have heard them:\n  " + joined
-    )
+    # Half the window, and never the whole of it. context_booth_lines is a
+    # budget the operator set for the DJ's OWN recent air, paid on every turn
+    # of every call; a second block of the same size would quietly double it
+    # the first time a co-host show went out. A guest's line is context for
+    # this call, not its subject, so it gets the smaller share.
+    others = others[-max(1, limit // 2):]
+    parts = []
+    if lines:
+        parts.append(
+            "Things YOU said on the broadcast in the last little while — the "
+            "caller may well have heard them:\n  " + "\n  ".join(lines)
+        )
+    if others:
+        parts.append(
+            "Said on air beside you by somebody else — a guest or co-host. The "
+            "caller may have heard these too, but they are NOT your lines and "
+            "you must not repeat them as your own:\n  " + "\n  ".join(others)
+        )
+    return "\n".join(parts)
 
 
 def _fmt_skills(skills: list) -> str:
@@ -432,7 +491,7 @@ def _fmt_schedule(schedule: dict, active_id: str, takeover: bool = False) -> str
 
 
 async def station_context(station, cfg: dict, snap: dict, show: dict,
-                          speak_clock: bool = True) -> str:
+                          speak_clock: bool = True, persona_id: str = "") -> str:
     """Everything true about the station right now, as prompt text.
 
     Every read is already in the SNAPSHOT — including the schedule — so this
@@ -453,7 +512,8 @@ async def station_context(station, cfg: dict, snap: dict, show: dict,
         # Nothing on a normal night — see _fmt_stream_health.
         _fmt_stream_health(snap["state"]),
         _fmt_booth(snap["session"], int(cfg.get("context_booth_lines", 4)),
-                   demojibake(show.get("name", "")), show.get("topic", "")),
+                   demojibake(show.get("name", "")), show.get("topic", ""),
+                   persona_id=persona_id),
     ]
     # The roster also rides in whenever takeover is allowed, whatever the
     # context_schedule setting says: a caller who may switch the station to

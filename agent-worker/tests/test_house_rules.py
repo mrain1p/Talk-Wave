@@ -1865,12 +1865,15 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         # the ceiling — row removed, per the ratchet.
         # Batch 4 — the call tools
         "agent-worker/call/tools/removal.py::build_removal_tools.clear_from_queue": (58, "Batch 4 — queue-clear matcher"),
-        "agent-worker/call/tools/discovery.py::build_discovery_tools.browse_library": (37, "Batch 4 — library browse"),
+        # 37 -> 29 (2026-09-01): the shelf-next-door rung would have pushed
+        # this to 44, so the whole what-to-say-on-a-miss ladder moved to
+        # vocabulary._miss_hint — the seam that module was already cut on.
+        "agent-worker/call/tools/discovery.py::build_discovery_tools.browse_library": (29, "Batch 4 — library browse"),
         "agent-worker/call/tools/albums.py::build_album_tools.queue_album": (32, "Batch 4 — album queue"),
         "agent-worker/call/tools/albums.py::build_album_tools.queue_mix": (25, "Batch 4 — mix queue"),
         # Batch 5 — the brain
         "agent-worker/brain/briefing.py::_fmt_now_playing": (32, "Batch 5 — now-playing formatter"),
-        "agent-worker/brain/assemble.py::build_system_prompt": (27, "Batch 5 — prompt assembler entry"),
+        "agent-worker/brain/assemble.py::build_system_prompt": (28, "Batch 5 — prompt assembler entry; +1 2026-09-01: the persona id, so the booth window can tell our own lines from a co-host's"),
         "agent-worker/brain/tool_rules.py::_tools": (28, "Batch 5 — the prompt god-function; +1 2026-08-31: the tool_speakfirst gate, so chat can drop the dead-air rule"),
         # Batch 6 — chat / onair / openlines / voicemail
         "agent-worker/voicemail/capture.py::answer": (45, "Batch 6 — voicemail answer pipeline"),
