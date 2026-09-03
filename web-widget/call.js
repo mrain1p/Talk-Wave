@@ -6508,17 +6508,38 @@
     }
     // Then the week: every show, the one on air outlined, each opening
     // in place.
+    // THE WEEK FIRST. A show on the roster with no hour on the schedule
+    // was listed among the ones actually airing, which reads as a station
+    // running seventeen shows when twelve are on (operator, 2026-09-03).
+    // Those sit under a quiet heading of their own instead, and the
+    // operator can leave them out of the card altogether.
+    const airs = new Set(runs.map((r) => r.id));
+    const onAirThisWeek = shows.filter((s) => airs.has(s.id));
+    const shelved = shows.filter((s) => !airs.has(s.id));
     list.textContent = '';
     if (empty) empty.hidden = shows.length > 0;
-    if (listHead) listHead.hidden = !shows.length;
+    if (listHead) listHead.hidden = !onAirThisWeek.length;
     if (listMeta) {
-      const airing = new Set(runs.map((r) => r.id)).size;
-      listMeta.textContent = airing
-        ? airing + ' shows on the air this week' : shows.length + ' shows';
+      listMeta.textContent = onAirThisWeek.length
+        + (onAirThisWeek.length === 1 ? ' show' : ' shows') + ' this week';
     }
-    shows.forEach((show) => list.appendChild(guideRow(
+    onAirThisWeek.forEach((show) => list.appendChild(guideRow(
       show, personas, runs, now,
       angle && angle.id === show.id ? angle.angle : '', show.id === liveId)));
+    const shelf = $('guideShelf');
+    if (shelf) {
+      shelf.textContent = '';
+      const wanted = shelved.length && (shown || live || {}).guideShelved !== false;
+      shelf.hidden = !wanted;
+      if (wanted) {
+        const cap = document.createElement('div');
+        cap.className = 'gdcap gdshelfcap';
+        cap.textContent = 'Not on the schedule';
+        shelf.appendChild(cap);
+        shelved.forEach((show) => shelf.appendChild(
+          guideRow(show, personas, runs, now, '', false)));
+      }
+    }
     // The strip STAYS at midnight: it is the day, read forward, and
     // scrolling it to "now" hid the morning behind the left edge.
     today.scrollLeft = 0;
@@ -6657,9 +6678,14 @@
     }
     return body;
   }
+  // The show on air arrives open, and folds away: it is the tallest thing
+  // on the card, and reading the week past it meant scrolling (operator,
+  // 2026-09-03). The choice is remembered across repaints — a poll, a span
+  // change — so it does not spring back open under the reader.
+  let guideHeroOpen = true;
   function guideHero(show, cast, runs, now, angle, until) {
     const box = document.createElement('div');
-    box.className = 'gdherobox';
+    box.className = 'gdherobox' + (guideHeroOpen ? '' : ' min');
     const top = document.createElement('div'); top.className = 'gdherotop';
     const pip = document.createElement('span');
     pip.className = 'ppip live'; pip.setAttribute('aria-hidden', 'true');
@@ -6675,6 +6701,21 @@
     tail.textContent = until ? 'until ' + until
       : (next && next !== 'On air now' ? next : '');
     if (tail.textContent) top.appendChild(tail);
+    const fold = document.createElement('button');
+    fold.type = 'button'; fold.className = 'gdherofold';
+    fold.textContent = '▸';
+    const say = () => {
+      const open = !box.classList.contains('min');
+      fold.setAttribute('aria-expanded', open ? 'true' : 'false');
+      fold.setAttribute('aria-label', open
+        ? 'Hide what is on air' : 'Show what is on air');
+    };
+    fold.onclick = () => {
+      guideHeroOpen = box.classList.toggle('min') === false;
+      say();
+    };
+    say();
+    top.appendChild(fold);
     const name = document.createElement('div');
     name.className = 'gdheroname'; name.textContent = show.title || show.name;
     box.append(top, name);

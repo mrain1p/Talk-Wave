@@ -793,6 +793,8 @@ class Handler(BaseHTTPRequestHandler):
                 # The third card, same way: tick it in the panel and the
                 # row at the card's foot names the guide.
                 "guideCard": bool(settings_store.load().get("show_guide")),
+                "guideShelved": bool(
+                    settings_store.load().get("guide_shelved_shows", True)),
                 # The real reader, not bool(): the field is a dropdown now and its
                 # resting value "call" is truthy — bool() opened the sheet on every
                 # load and hid the ribbon this stub exists to show.

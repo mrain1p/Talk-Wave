@@ -896,6 +896,13 @@ SCHEMA: dict[str, dict] = {
              "station's public schedule through this server and cached "
              "five minutes. Off, and the row at the card's foot never "
              "names it."),
+    "guide_shelved_shows": dict(group="phone", kind="check",
+        label="Shelved shows in the guide", alias="schedule roster hidden",
+        needs=("show_guide", True),
+        help="The guide leads with the shows that actually air this week. A "
+             "show on the station's roster with no hour on the schedule then "
+             "sits under a quiet 'Not on the schedule' heading of its own. "
+             "Turn this off to leave those out of the card altogether."),
     "show_listener_count": dict(group="phone", kind="check",
         label="Listener count on the card", alias="listeners audience",
         help="The ON AIR line adds how many are tuned in — the station's own "

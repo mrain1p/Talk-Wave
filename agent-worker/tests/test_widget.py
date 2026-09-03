@@ -3731,6 +3731,28 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         for name in ("gdHelpBtn", "gdThemeBtn", "gdGearBtn", "gdSigninBtn"):
             self.assertIn("set('" + name + "'", self.js)
 
+    def test_the_week_leads_and_the_shelf_follows(self):
+        # A show on the roster with no hour on the schedule was listed
+        # among the ones actually airing, which reads as a station running
+        # seventeen shows when twelve are on (operator, 2026-09-03). The
+        # week leads; the rest sit under their own quiet heading, and the
+        # operator can leave them out of the card entirely.
+        import settings as settings_store
+
+        self.assertTrue(settings_store.load().get("guide_shelved_shows"))
+        self.assertIn('"guideShelved": bool(cfg.get("guide_shelved_shows", True))',
+                      self.live_py)
+        self.assertIn('id="guideShelf"', self.html)
+        self.assertIn('id="guide_shelved_shows"',
+                      (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8"))
+        block = self.js.split("const airs = new Set(runs.map")[1][:1400]
+        self.assertIn("shows.filter((s) => airs.has(s.id))", block)
+        self.assertIn("shows.filter((s) => !airs.has(s.id))", block)
+        self.assertIn("guideShelved !== false", block)
+        self.assertIn("Not on the schedule", block)
+        # And the count above the list names the week, not the roster.
+        self.assertIn("' shows') + ' this week'", block)
+
     def test_the_week_can_be_read_as_a_grid(self):
         # Operator, 2026-09-03: a button that paints the schedule as a grid.
         # Seven day rows over one hour ruler, the hour now marked, and a
@@ -3843,16 +3865,32 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
             self.assertIn(el, self.html)
         self.assertIn("function guideHero", self.js)
         self.assertIn("function guideBody", self.js)
-        hero = self.js.split("function guideHero")[1][:2000]
+        hero = self.js.split("function guideHero")[1][:3000]
         self.assertIn("guideBody(show, cast, angle, runs, now, 'gdherobody')", hero)
         row = self.js.split("function guideRow")[1][:2600]
         self.assertIn("guideBody(show, cast, angle, runs, now)", row)
         self.assertIn("(live ? ' live' : '')", row)
         self.assertIn(".card .gdrow.live { border-color: var(--coral); }", self.css)
 
+    def test_the_show_on_air_folds_out_of_the_weeks_way(self):
+        # It is the tallest thing on the card — 973px against a 812px
+        # phone — so reading the week past it meant scrolling (operator,
+        # 2026-09-03). Folded it keeps the band, the name and its line.
+        # The choice survives a repaint: a poll or a span change must not
+        # spring it open under the reader.
+        self.assertIn("let guideHeroOpen = true;", self.js)
+        self.assertIn("guideHeroOpen ? '' : ' min'", self.js)
+        self.assertIn("guideHeroOpen = box.classList.toggle('min') === false;",
+                      self.js)
+        self.assertIn(".gdherobox.min .gdherobody,", self.css)
+
     def test_the_way_back_up_surfaces_once_the_week_is_scrolled_into(self):
         block = self.js.split("function paintGuideTop")[1][:300]
         self.assertIn("sc.scrollTop < 240", block)
+        # Centred, not tucked into the corner (operator, 2026-09-03).
+        top = self.css.split("  .card .gdtop {")[1].split("}")[0]
+        self.assertIn("left: 50%; transform: translateX(-50%)", top)
+        self.assertNotIn("right: 16px", top)
         click = self.js.split("function bindGuideTop")[1][:900]
         # A smooth scroll needs frames; a tab that is not being painted
         # gets none, so the press must still land.

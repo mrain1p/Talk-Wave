@@ -477,11 +477,12 @@ async def handle_live(request: web.Request) -> web.Response:
                                    if cfg.get("tune_in_audible", True) else 0),
                     },
                     # Whether the card OFFERS the swipe-up station player.
-                    # Only the switches travel — the stream is the block
-                    # above and the widget still needs a resolved URL before
-                    # it offers the player; the guide reads /guide once told.
+                    # Only the switches travel: the widget needs a resolved
+                    # URL to offer the player, and the guide reads /guide
+                    # once told, shelved shows unless told not to.
                     "swipePlayer": bool(cfg.get("swipe_player")),
                     "guideCard": bool(cfg.get("show_guide")),
+                    "guideShelved": bool(cfg.get("guide_shelved_shows", True)),
                     # How many are tuned in, from the same /now-playing
                     # context the station's own player reads (the listener
                     # sampler parses the identical shapes). None when the
@@ -490,9 +491,8 @@ async def handle_live(request: web.Request) -> web.Response:
                     "listeners": (
                         _listener_count(now)
                         if cfg.get("show_listener_count", True) else None),
-                    # Whether the card offers the track heart — the same
-                    # public /like any listener page sends, relayed by
-                    # /player/like so LAN and mixed-content deployments work.
+                    # The card's track heart: the same public /like a
+                    # listener page sends, relayed so LAN deployments work.
                     "cardLike": bool(cfg.get("show_track_like", True)),
                     # Whether the player keeps its cast control on show.
                     # The widget still requires a casting API in the browser.

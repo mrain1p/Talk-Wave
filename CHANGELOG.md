@@ -4,6 +4,11 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.34
+
+- **The show on air folds away.** It is the tallest thing on the guide, so a chevron collapses it to its band, name and line, and the week reads without scrolling past it. The choice sticks. The return-to-top button is centred rather than tucked in the corner.
+- **The guide leads with the week.** A show on the roster with no hour on the schedule used to be listed among the ones actually airing. Those now sit quietly under "Not on the schedule", and a new Phone-page switch (Shelved shows in the guide) leaves them out of the card altogether.
+
 ## 0.99.33
 
 - **The week grid reads at any width.** A 6h / 12h / 24h control says how much of the day is on screen at once, so a folded phone or a screen in a car needs no rotating: 24h fits the whole day with no sideways scrolling. Blocks carry a name only when one fits, never a stub, and the key underneath decodes the rest. Every show that airs in the week now gets its own colour.
