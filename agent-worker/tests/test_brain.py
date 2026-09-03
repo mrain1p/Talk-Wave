@@ -841,3 +841,108 @@ class TestTheDJKnowsWhenTheBroadcastIsNotNormal(unittest.TestCase):
         out = _fmt_stream_health({"musicStarved": True})
         self.assertIn("STARVED", out)
         self.assertIn("emergency loop", out)
+
+
+class TestAnotherHostsLinesAreNotOurs(unittest.TestCase):
+    """The booth window is headed "things YOU said", and the station's session
+    can carry turns somebody else spoke.
+
+    Two of them, and they fail differently. A guest co-host's half of a banter
+    exchange is real material for this call — as long as nobody pretends it
+    was ours. The outgoing DJ's handover sign-off is the PREVIOUS show's last
+    line, aired into the session that just started, and feeding it back is the
+    cross-show bridge SUB/WAVE's own promptMemoryEntries filter (#1481) exists
+    to cut. Mirrored here on the 2026-09-01 upstream pass.
+    """
+
+    def _booth(self, messages, persona_id="p_us"):
+        from brain.briefing import _fmt_booth
+
+        return _fmt_booth({"messages": messages}, 4, persona_id=persona_id)
+
+    def test_the_previous_djs_signoff_does_not_become_our_last_thought(self):
+        out = self._booth([
+            {"kind": "handoff", "text": "That's me done — Cliff has the desk.",
+             "meta": {"personaId": "p_them", "personaName": "Wade"}},
+            {"kind": "dj-speak", "text": "Right, let's get into it."},
+        ])
+        self.assertNotIn("done", out)
+        self.assertIn("Right, let's get into it.", out)
+
+    def test_a_guest_line_is_kept_but_never_as_ours(self):
+        out = self._booth([
+            {"kind": "dj-speak", "text": "Our own link about the weather."},
+            {"kind": "banter", "text": "I'd take the B-side every time.",
+             "meta": {"personaId": "p_them", "personaName": "Wade"}},
+        ])
+        # Both survive — the caller may have heard both — but the guest's line
+        # is attributed and sits outside the "things YOU said" block.
+        own, beside = out.split("Said on air beside you")
+        self.assertIn("weather", own)
+        self.assertNotIn("B-side", own)
+        self.assertIn("Wade: I'd take the B-side every time.", beside)
+        self.assertIn("NOT your lines", beside)
+
+    def test_an_unnamed_guest_is_still_not_us(self):
+        out = self._booth([
+            {"kind": "banter", "text": "Straight through to the chorus.",
+             "meta": {"personaId": "p_them"}},
+        ])
+        self.assertIn("another host: Straight through to the chorus.", out)
+        self.assertNotIn("Things YOU said", out)
+
+    def test_our_own_stamped_lines_stay_ours(self):
+        out = self._booth([
+            {"kind": "dj-speak", "text": "A line of our own, stamped.",
+             "meta": {"personaId": "p_us", "personaName": "Cliff"}},
+        ])
+        self.assertIn("Things YOU said", out)
+        self.assertNotIn("Cliff:", out)
+
+    def test_a_station_that_stamps_nothing_is_unchanged(self):
+        # Most turns carry no meta at all. The split must be invisible there,
+        # or every line on an ordinary station moves house.
+        out = self._booth([
+            {"kind": "dj-speak", "text": "An unstamped line."},
+            {"kind": "handoff", "text": "An unstamped handover."},
+        ])
+        self.assertIn("An unstamped line.", out)
+        self.assertIn("An unstamped handover.", out)
+        self.assertNotIn("beside you", out)
+
+    def test_not_knowing_who_we_are_reclassifies_nothing(self):
+        # persona_from answers "default" when the station's /dj read came back
+        # empty. Treating that as our id would make every stamped turn foreign
+        # and hand the whole window to "another host" — a briefing that says
+        # the DJ said nothing tonight.
+        turns = [
+            {"kind": "dj-speak", "text": "A stamped line of ours.",
+             "meta": {"personaId": "p_us"}},
+            {"kind": "handoff", "text": "A stamped handover.",
+             "meta": {"personaId": "p_them"}},
+        ]
+        for unknown in ("default", ""):
+            out = self._booth(turns, persona_id=unknown)
+            self.assertIn("A stamped line of ours.", out, unknown)
+            self.assertIn("A stamped handover.", out, unknown)
+            self.assertNotIn("beside you", out, unknown)
+
+    def test_a_talkative_guest_cannot_double_the_booth_window(self):
+        # context_booth_lines is a per-turn prompt budget for the DJ's own
+        # air. A second block of the same size would silently double it the
+        # first time a co-host show went out.
+        turns = [{"kind": "banter", "text": f"Guest line {n}.",
+                  "meta": {"personaId": "p_them", "personaName": "Wade"}}
+                 for n in range(9)]
+        out = self._booth(turns)
+        self.assertEqual(out.count("Wade:"), 2, out)
+        self.assertIn("Guest line 8.", out, "the LAST lines are the live ones")
+
+    def test_the_caller_privacy_filters_still_outrank_the_split(self):
+        # A guest attribution must never become a way for a previous caller's
+        # business to re-enter the prompt.
+        out = self._booth([
+            {"kind": "callin", "text": "Piotr was on about his divorce.",
+             "meta": {"personaId": "p_them", "personaName": "Wade"}},
+        ])
+        self.assertEqual("", out)

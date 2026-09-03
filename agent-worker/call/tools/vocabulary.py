@@ -99,6 +99,97 @@ def _related_genres(wanted: str, known: list[str],
     return hit + [g for g in out if g not in hit]
 
 
+def _near_genres(wanted: str, neighbours: dict, already: list[str] | None = None,
+                 known: list[str] | None = None) -> list[str]:
+    """Genres this library files NEXT TO one it already has — by what the
+    music IS, not by how the word is spelled.
+
+    `_related_genres` above is a word test: it finds shelves whose NAME
+    carries the caller's word, which is how "jazz" reaches Instrumental Jazz.
+    It is structurally blind to everything else — trip-hop and downtempo share
+    no word, shoegaze and dream pop share no word, and no amount of string
+    comparison will ever say they belong together. The station knows, from
+    cosine similarity over a mean text-embedding per genre, and caches the
+    whole answer until the library changes.
+
+    Read what this can and cannot do, because the two are easy to confuse.
+    The station keys its neighbours by the genres it HAS, so this answers
+    "what sits beside this shelf", never "what did the caller mean". A word
+    the library files nothing under has no entry here at all, and the rung
+    below — spelling — is still the only thing that can help there. What this
+    IS for is the case that used to end in a shrug: the genre is real, the
+    caller's other filters emptied it, and the honest next move is a shelf
+    next door rather than "drop the year range".
+
+    Advisory, like `_close_genres`: the model offers these and nothing browses
+    one on its own. `already` is what the word test has offered, so the two
+    rungs never read the same shelf out twice. `known` is the station's full
+    vocabulary — a neighbour missing from it is dropped, so an embedding built
+    before a re-tag cannot name a genre the library no longer files.
+    """
+    want = _fold(wanted)
+    if not want or not isinstance(neighbours, dict):
+        return []
+    near: list[str] = []
+    for genre, rows in neighbours.items():
+        if _fold(genre) == want:
+            near = [str(n) for n in (rows or []) if str(n or "").strip()]
+            break
+    if not near:
+        return []
+    seen = {_fold(g) for g in (already or [])} | {want}
+    allowed = {_fold(g) for g in known} if known else None
+    out = []
+    for name in near:
+        folded = _fold(name)
+        if not folded or folded in seen:
+            continue
+        if allowed is not None and folded not in allowed:
+            continue
+        seen.add(folded)
+        out.append(name)
+    return out[:_OFFER]
+
+
+def _is_filed(wanted: str, known: list[str]) -> bool:
+    """Whether this library files anything under that word at all.
+
+    The difference between the two sentences a caller can be told when a
+    browse comes back empty — "there is none of that here" and "there is
+    plenty of that here, just none of it once the rest of your filters are
+    on" — and until this existed the second case was answered with the first.
+    """
+    want = _fold(wanted)
+    return bool(want) and any(_fold(real) == want for real in (known or []))
+
+
+def _shelves(names: list[str], counts: dict | None = None) -> str:
+    """Genre names as the model should see them: quoted, and carrying how much
+    music sits under each one where the station said.
+
+    The number is a CHOOSING aid, not a line to read out — offering the shelf
+    with 300 records on it beats offering the one with four, and the prompts
+    below say in words that the figure is not for the caller's ears. A genre
+    the station gave no count for is simply shown without one; inventing a
+    zero would read as an empty shelf when it only means nobody counted.
+    """
+    out = []
+    for name in names:
+        size = (counts or {}).get(name)
+        if isinstance(size, int) and size > 0:
+            out.append(f"\"{name}\" ({size} tracks)")
+        else:
+            out.append(f"\"{name}\"")
+    return ", ".join(out)
+
+
+# Said once, wherever a shelf list carries its numbers — the model is being
+# handed a figure it must not repeat, and a rule stated in one place cannot
+# drift between the three hints that use it.
+_COUNTS_ARE_YOURS = (" The track counts are for you to pick the fullest shelf "
+                     "with — don't read the numbers out to the caller.")
+
+
 def _close_genres(wanted: str, known: list[str]) -> list[str]:
     """Genres spelled nearly like the word asked for, best first.
 
@@ -118,6 +209,90 @@ def _close_genres(wanted: str, known: list[str]) -> list[str]:
             scored.append((ratio, str(real)))
     scored.sort(key=lambda pair: (-pair[0], pair[1]))
     return [name for _r, name in scored[:_OFFER]]
+
+
+def _miss_hint(*, moods: str, vocab: list[str], genre: str, fixed: str,
+               exists: bool, related: list[str], near: list[str],
+               known: list[str], counts: dict) -> str:
+    """What to say when a browse came back with nothing — the whole ladder.
+
+    Lifted out of `browse_library` at 0.99.21, when the shelf-next-door rung
+    pushed that function past its complexity ledger. The seam is the one this
+    module was cut on in the first place: every rung below is a sentence about
+    a vocabulary, and not one of them touches the station, the call or a tool.
+
+    The rungs are ordered by how much the answer is WORTH, not by how easy it
+    was to compute. Each one is a different true sentence about the same empty
+    result, and picking the wrong one is how a caller gets told this station
+    has no jazz while 54,841 jazz tracks sit on the shelf behind the answer.
+    """
+    # The mood vocabulary is fixed and small, and a caller's word for a
+    # feeling is usually not one of the seventeen: asking for "melancholy"
+    # matches 0 of 381,000 tracks because the station's word is "reflective".
+    # Handing the vocabulary back is what turns a dead end into a second try.
+    if moods and vocab:
+        return (" The station only files moods under these words: "
+                + ", ".join(vocab)
+                + ". If one of them is close to what the caller means, try "
+                "again with it — do NOT tell them the library has nothing.")
+
+    if genre and related:
+        # The word IS in this library's vocabulary, just not on its own or not
+        # with these other filters. Naming what it IS filed under is the whole
+        # difference between a useful answer and "we haven't got any jazz".
+        shown = _shelves(related[:_OFFER], counts)
+        seat = (f"\"{fixed}\" exists but nothing under it matches "
+                "the rest of this, and " if fixed else "")
+        return (f" {seat}this library also files {shown}"
+                + (f" and {len(related) - _OFFER} more like it"
+                   if len(related) > _OFFER else "")
+                + ". Those are real music here. Offer one or two by name and "
+                "browse whichever they pick — do NOT tell the caller there is "
+                "none of it." + _COUNTS_ARE_YOURS)
+
+    if genre and (fixed or exists):
+        # The genre IS here — either as typed, or under the spelling already
+        # retried before this — and what is empty is this exact COMBINATION.
+        # Until `_is_filed` existed only the re-spelled half of this reached
+        # the caller: a genre typed exactly as the station files it, emptied
+        # by a year range, fell through to the rung below and was reported as
+        # a word the library had never heard of.
+        hint = ((f" The station files that genre as \"{fixed}\" and it HAS"
+                 if fixed else " That genre is real here and it HAS")
+                + " music under it — what's empty is this combination, with "
+                "the other filters on top. Say that, not that the library has "
+                "none, and offer to drop the tightest filter (the year range, "
+                "or instrumental-only) rather than the genre.")
+        if near:
+            # Sideways beats narrower for a caller who wanted a feeling rather
+            # than a filter — and these are the station's own neighbours, so
+            # every one of them is a shelf with music on it.
+            hint += (" If they would rather move sideways than drop a filter, "
+                     "this library files these next to it: "
+                     + _shelves(near, counts)
+                     + " — that is the station's own reading of what sounds "
+                     "like what, not a guess." + _COUNTS_ARE_YOURS)
+        return hint
+
+    if genre and known:
+        # Not a spelling, not a compound, and not filed at all. The station's
+        # neighbours are keyed by the genres it HAS, so they cannot reach this
+        # case: spelling is the only rung left. Hundreds of genres are filed,
+        # so the full list is useless to a model reading it down a phone line
+        # — a few, and never all 894.
+        spelled = _close_genres(genre, known)
+        if spelled:
+            return (" Nothing is filed under that exact word. The closest this "
+                    "library has are: " + _shelves(spelled, counts)
+                    + ". Offer one if it is what they meant — do NOT tell them "
+                    "the library has none." + _COUNTS_ARE_YOURS)
+        return (" Nothing here is filed under that word at all. The commonest "
+                "genres in this library are: " + _shelves(known[:_OFFER], counts)
+                + ". Say what this station DOES have rather than what it "
+                "doesn't." + _COUNTS_ARE_YOURS)
+
+    return (" Try loosening it — one filter at a time — or put the caller's "
+            "own words in as a request instead.")
 
 
 # The two filters with a FIXED vocabulary, and the reason they are resolved

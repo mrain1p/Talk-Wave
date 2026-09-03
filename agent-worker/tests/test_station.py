@@ -1202,6 +1202,130 @@ class TestTheMintsHeadStartIsFreshOrNothing(unittest.TestCase):
         self.assertIsNotNone(got)
         self.assertEqual({"values": {"personas": []}}, got[1])
 
+
+class TestTheGenreShelvesTheStationComputesItself(unittest.TestCase):
+    """GET /library/genres/related, adopted on the 2026-09-01 upstream pass.
+
+    The station has always served this and nothing here read it. It carries
+    two things a genre NAME cannot give up: which shelves sit next to each
+    other by embedding, and how much music is on each one. Both halves may be
+    absent — the station needs three genre centroids before it computes any
+    neighbours — and an absent half has to read as "no answer", never as "no
+    such genre".
+    """
+
+    def _read(self, handler):
+        import httpx
+        from unittest import mock
+
+        import station as station_mod
+
+        async def run():
+            client = station_mod.StationClient(base_url="http://station")
+            client._client = httpx.AsyncClient(
+                base_url="http://station",
+                transport=httpx.MockTransport(handler))
+            try:
+                with mock.patch("station_config.admin_credentials",
+                                return_value=("op", "pw")):
+                    return await client.genre_neighbours()
+            finally:
+                await client.aclose()
+
+        return asyncio.run(run())
+
+    def _payload(self, body, status=200):
+        import httpx
+
+        seen = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["path"] = request.url.path
+            return httpx.Response(status, json=body)
+
+        return self._read(handler), seen
+
+    def test_the_counts_and_the_neighbours_both_come_back(self):
+        out, seen = self._payload({
+            "genres": [{"value": "Trip-Hop", "songCount": 312},
+                       {"value": "Downtempo", "songCount": 208}],
+            "related": {"Trip-Hop": [{"value": "Downtempo", "songCount": 208}]},
+        })
+        self.assertEqual(seen["path"], "/library/genres/related")
+        self.assertEqual(out["counts"], {"Trip-Hop": 312, "Downtempo": 208})
+        self.assertEqual(out["related"], {"Trip-Hop": ["Downtempo"]})
+
+    def test_a_genre_with_no_count_is_left_out_rather_than_zeroed(self):
+        # /library/genres merges Navidrome's own genres in, and those reach
+        # the tagged index with nothing counted. A zero here would read as an
+        # empty shelf when what it means is that nobody counted — the same
+        # invented-fixture trap as the energy float, one listing along.
+        out, _ = self._payload({
+            "genres": [{"value": "Polka"},
+                       {"value": "Ska", "songCount": None},
+                       {"value": "Jazz", "songCount": True},
+                       {"value": "Blues", "songCount": 12}],
+            "related": {},
+        })
+        self.assertEqual(out["counts"], {"Blues": 12})
+
+    def test_a_genre_with_no_neighbours_is_dropped_from_the_map(self):
+        out, _ = self._payload({
+            "genres": [],
+            "related": {"Polka": [], "Trip-Hop": [{"value": "Downtempo"}],
+                        "Ska": "not a list"},
+        })
+        self.assertEqual(out["related"], {"Trip-Hop": ["Downtempo"]})
+
+    def test_a_genre_is_never_its_own_neighbour(self):
+        # Nothing is gained by offering the caller the shelf they just asked
+        # for, and the station's own list has been seen to include it.
+        out, _ = self._payload({
+            "genres": [],
+            "related": {"Trip-Hop": [{"value": "Trip-Hop"},
+                                     {"value": "Downtempo"}]},
+        })
+        self.assertEqual(out["related"], {"Trip-Hop": ["Downtempo"]})
+
+    def test_a_station_that_cannot_answer_says_nothing_not_nothing_exists(self):
+        # A 404 (an older station), a 500, or a timeout must all leave the
+        # browse ladder exactly as it was. The one thing this may never do is
+        # let a failed read be read as an empty library.
+        out, _ = self._payload({"error": "nope"}, status=500)
+        self.assertEqual(out, {})
+
+    def test_a_malformed_body_is_not_a_crash_mid_call(self):
+        out, _ = self._payload({"genres": "nonsense", "related": ["wrong"]})
+        self.assertEqual(out, {"counts": {}, "related": {}})
+
+    def test_without_station_credentials_nothing_is_asked(self):
+        import httpx
+        from unittest import mock
+
+        import station as station_mod
+
+        asked = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            asked.append(request.url.path)
+            return httpx.Response(200, json={})
+
+        async def run():
+            client = station_mod.StationClient(base_url="http://station")
+            client._client = httpx.AsyncClient(
+                base_url="http://station",
+                transport=httpx.MockTransport(handler))
+            try:
+                with mock.patch("station_config.admin_credentials",
+                                return_value=("", "")):
+                    return await client.genre_neighbours()
+            finally:
+                await client.aclose()
+
+        self.assertEqual(asyncio.run(run()), {})
+        self.assertEqual(asked, [])
+
+
 class TestTheGuideShapesTheStationsWeek(unittest.TestCase):
     """The programme guide card (operator, 2026-09-02) paints from /guide,
     which normalises the station's /schedule so the browser never has to
