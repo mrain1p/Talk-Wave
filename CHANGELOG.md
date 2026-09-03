@@ -6,45 +6,46 @@ Release notes for operators. One entry per release to `main`; work in flight on
 
 ## 0.99.39
 
-- **A genre the DJ has to look up no longer costs a caller fifteen seconds of silence.** The list of what the library files under came from a station endpoint that merges in Navidrome's own genres, which takes twenty-one seconds on a cold cache; it now comes from the read beside it, which the station computes locally and caches, and which carries the same list. The slow one is the fallback.
+The card became three cards, and the DJ got better at saying what the library actually holds (0.99.32 to 0.99.38 fold in here).
+
+- **The phone, the station player and a new programme guide are cards side by side.** Swipe across the card or tap the row at its foot; the pull-down ribbon and its furniture are gone with the old model, and each new card rides its own switch.
+- **The row at the foot is the card's own band.** Flush to the edges like the header, no boxes, with one lit rule that slides to the card you are on and follows your finger through the swipe.
+- **The programme guide** (Phone page → Programme guide card, off by default) reads the station's schedule: today hour by hour with the block on air lit, then the show that is on open in full — tonight's angle, the show, its DJs with their pictures and their own descriptions — then every show of the week, the current one outlined, each opening in place.
+- **The week also reads as a grid.** Seven day rows over an hour ruler, every show in its own colour, and a 6h / 12h / 24h control that says how much of the day is on screen, so a folded phone or a screen in a car needs no rotating.
+- **It says what is actually on.** A booth takeover used to leave the guide naming the show that was merely due; the station's own answer wins now, the hour is marked Takeover or Off schedule, and nothing is lit while the two disagree. A guide left open keeps up with the card's own poll.
+- **Everything that is not this week's business folds away.** A show on the roster with no hour on the schedule sits under a folded "Not on the schedule", behind its own switch; the show on air folds too, and starts folded on a short screen so landscape shows the week rather than one card.
+- **The DJ can offer the shelf next door.** Ask for a genre the library files under another name and it used to drop the filter or say there was nothing; it now reads the station's own genre map and offers the nearest real shelf. It no longer invents a filter to explain an empty one either — asked for a single bare word, it was blaming a search it had never narrowed.
+- **Another host's words stop being the DJ's own.** The booth feed carries whoever was last on air, and the previous DJ's sign-off was reaching the prompt as this DJ's own last thought. Lines are attributed now, guests included.
+- **A genre the DJ has to look up no longer costs a caller fifteen seconds of silence.** The list of what the library files under came from a station read that waits on Navidrome; it comes from the cached read beside it now, which carries the same list.
+- **Smaller things:** DJ pictures are big enough to see and open to a portrait on a press, the guide's header carries the same chips as the other cards, and the return-to-top button is centred and never sits on the end of the week.
 
 ## 0.99.38
 
-- **The DJ stops inventing a filter to explain an empty shelf.** Asked for one bare word, it was told the emptiness came from "the other filters" even when the caller had set none, and it duly blamed a search it had never narrowed. It now says the word is real here and offers the neighbouring shelves instead.
+Tagged earlier the same day as 0.99.39 and folded forward — the story rides v0.99.39's notes.
 
 ## 0.99.37
 
-One day of building the card out into three, with the operator's eye on it throughout — and two pieces of DJ work that had been waiting for a release (0.99.32 to 0.99.36 fold in here).
-
-- **The DJ can offer the shelf next door.** Ask for a genre the library files under another name and it used to drop the filter or say there was nothing; it now reads the station's own genre map and offers the nearest real shelf instead.
-- **Another host's words stop being the DJ's own.** The booth feed carries whoever was last on air, and the previous DJ's sign-off was reaching the prompt as this DJ's own last thought. Lines are attributed now, guests included.
-- **The phone, the station player and a new programme guide are cards side by side.** Swipe across the card or tap the row at its foot; the pull-down ribbon, the foot grabber and the player-first curtain are gone with the old model, and each card rides its own switch.
-- **The row at the foot is the card's own band.** Flush to the edges like the header, no boxes, with one lit rule that slides to the card you are on and follows your finger through the swipe.
-- **The programme guide** (Phone page → Programme guide card, off by default) reads the station's public schedule: today hour by hour with the block on air lit, then the show that is on open in full — tonight's angle, the show, its DJs with their pictures and their own descriptions — then every show of the week, the current one outlined, each opening in place.
-- **The week also reads as a grid.** Seven day rows over an hour ruler, every show in its own colour, and a 6h / 12h / 24h control that says how much of the day is on screen, so a folded phone or a screen in a car needs no rotating.
-- **It says what is actually on.** A booth takeover used to leave the guide naming the show that was merely due; the station's own answer wins, the hour is marked Takeover or Off schedule, and nothing in the strip is lit while the two disagree. A guide left open keeps up with the card's own poll.
-- **Shows that are not this week's business stay out of the way.** A show on the roster with no hour on the schedule sits under a folded "Not on the schedule", behind its own switch, and the show on air folds away too — folded from the start on a short screen, so landscape shows the week rather than one card.
-- **Smaller things:** DJ pictures are big enough to see and open to a portrait on a press, the guide's header carries the same chips as the other cards, and the return-to-top button is centred and never sits on the end of the week.
+Tagged earlier the same day as 0.99.39 and folded forward — the story rides v0.99.39's notes.
 
 ## 0.99.36
 
-Tagged earlier the same day as 0.99.37 and folded forward — the story rides v0.99.37's notes.
+Tagged earlier the same day as 0.99.39 and folded forward — the story rides v0.99.39's notes.
 
 ## 0.99.35
 
-Tagged earlier the same day as 0.99.37 and folded forward — the story rides v0.99.37's notes.
+Tagged earlier the same day as 0.99.39 and folded forward — the story rides v0.99.39's notes.
 
 ## 0.99.34
 
-Tagged earlier the same day as 0.99.37 and folded forward — the story rides v0.99.37's notes.
+Tagged earlier the same day as 0.99.39 and folded forward — the story rides v0.99.39's notes.
 
 ## 0.99.33
 
-Tagged earlier the same day as 0.99.37 and folded forward — the story rides v0.99.37's notes.
+Tagged earlier the same day as 0.99.39 and folded forward — the story rides v0.99.39's notes.
 
 ## 0.99.32
 
-Tagged earlier the same day as 0.99.37 and folded forward — the story rides v0.99.37's notes.
+Tagged earlier the same day as 0.99.39 and folded forward — the story rides v0.99.39's notes.
 
 ## 0.99.31
 
