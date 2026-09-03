@@ -6210,12 +6210,40 @@
 
   // A show's own colour, steady across the week and both views. The
   // station names no colour, so it is derived from the id — same show,
-  // same tone, every paint. SIX tones, each mixed in CSS from a palette
+  // same tone, every paint. Each tone is mixed in CSS from a palette
   // token, because nothing here may hardcode a colour (the theming
   // contract at the top of style.css).
-  const GUIDE_TONES = 6;
+  // TWELVE, not six: a station with a dozen shows had three of them in
+  // the same red, and two blocks side by side in one colour say the same
+  // thing about two different shows. Six palette tokens at two strengths
+  // each — every one still mixed from a token, never a literal.
+  const GUIDE_TONES = 12;
+  // Assigned IN ORDER, not hashed: a hash over twelve tones put three of
+  // this station's shows in the same red, and two blocks in one colour
+  // say the same thing about different shows. Position in the station's
+  // own show list is stable between reads, so a show keeps its colour —
+  // it can shift when the operator adds or removes a show, which is the
+  // price of never colliding inside one week.
+  let guideToneOf = {};
+  function setToneOrder(ids) {
+    guideToneOf = {};
+    (ids || []).forEach((id, i) => { guideToneOf[id] = String(i % GUIDE_TONES); });
+  }
+  // The shows that actually AIR this week, in the order they first do —
+  // they get the tones first, so a week inside twelve shows never repeats
+  // a colour. A show on the roster but off the air this week takes what
+  // is left.
+  function airingOrder(runs, shows) {
+    const seen = [];
+    runs.filter((r) => r.start >= 0 && r.start < WEEK_H)
+      .sort((a, b) => a.start - b.start)
+      .forEach((r) => { if (!seen.includes(r.id)) seen.push(r.id); });
+    (shows || []).forEach((s) => { if (!seen.includes(s.id)) seen.push(s.id); });
+    return seen;
+  }
   function showTone(id) {
-    let h = 0;
+    if (guideToneOf[id] !== undefined) return guideToneOf[id];
+    let h = 0;                                   // a show not in the list
     for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
     return String(h % GUIDE_TONES);
   }
@@ -6241,8 +6269,11 @@
       const el = $(id);
       if (el) el.classList.toggle('gdaway', week);
     });
-    const grid = $('guideGrid');
+    const grid = $('guideGrid'), spans = $('guideSpans');
     if (grid) grid.hidden = !week;
+    if (spans) spans.hidden = !week;
+    // The room is only measurable once the grid is on screen.
+    if (week) { applyGuideSpan(); repaintGuideGrid(); }
     const sc = $('guideScroll');
     if (sc) sc.scrollTop = 0;
     paintGuideTop();
@@ -6257,9 +6288,81 @@
   // drawn on the day it STARTS and clipped at the row's end, which is what
   // a listings grid does — the block's own label still carries the true
   // hours, and the Day view shows the run whole.
+  // HOW MUCH OF THE DAY IS ON SCREEN AT ONCE. Rotating the phone is not
+  // always on offer — a folded phone, a screen in a car — so this is a
+  // control rather than a hope (operator, 2026-09-03). It names hours,
+  // not a zoom level, because that is the question a reader actually has:
+  // six hours reads every name, a whole Day fits with no sideways scroll
+  // at all and the key underneath decodes the colours.
+  const GUIDE_SPANS = [6, 12, 24];
+  const GUIDE_DAY_COL = 42;                    // .gddaycol, in CSS
+  // The reader's OWN choice, and nothing else — 0 until they press one.
+  // It is deliberately not filled in with the default: the grid is
+  // measured to pick that default, and it measures 0 while it is still
+  // hidden, so filling it in on the first paint locked a rotated phone to
+  // six hours for ever (found at 882x344, 2026-09-03).
+  let guideSpanChoice = 0;
+  function guideRoom() {
+    const grid = $('guideGrid');
+    return (grid ? grid.clientWidth : 0) - GUIDE_DAY_COL;
+  }
+  // Un-chosen, the span is the widest that still reads: a phone gets six
+  // hours, a wide card twelve — and it re-decides when the room changes,
+  // which is what turning a phone on its side does.
+  function effectiveSpan() {
+    if (guideSpanChoice) return guideSpanChoice;
+    return guideRoom() >= 620 ? 12 : 6;
+  }
+  // The hour's width follows from the span and the room there is, so the
+  // grid always fills its width exactly and never leaves a ragged edge.
+  function guideHourPx() {
+    const room = guideRoom();
+    if (room <= 0) return 56;
+    return Math.max(11, room / effectiveSpan());
+  }
+  function applyGuideSpan() {
+    const grid = $('guideGrid');
+    if (!grid) return;
+    const span = effectiveSpan();
+    grid.style.setProperty('--gd-hour', guideHourPx().toFixed(2) + 'px');
+    GUIDE_SPANS.forEach((n) => {
+      const b = $('guideSpan' + n);
+      if (!b) return;
+      const on = n === span;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  (function bindGuideSpans() {
+    GUIDE_SPANS.forEach((n) => {
+      const b = $('guideSpan' + n);
+      if (b) b.onclick = () => {
+        guideSpanChoice = n; applyGuideSpan(); repaintGuideGrid();
+      };
+    });
+    // The room changes when the window does, and on a phone that includes
+    // turning it on its side.
+    window.addEventListener('resize', () => {
+      if (guideOpen && guideView === 'week') { applyGuideSpan(); repaintGuideGrid(); }
+    });
+  })();
+  // Whether a name FITS its block, in the block's own type: 6.4px is one
+  // character of the 9.5px mono the label wears. A name that does not fit
+  // is left out rather than shown as a stub.
+  function fitsChars(span) {
+    return Math.floor((span * guideHourPx() - 14) / 6.4);
+  }
+  // The grid is painted from the last read, so the span control can
+  // repaint it without asking the station again.
+  let guideGridArgs = null;
+  function repaintGuideGrid() {
+    if (guideGridArgs) paintGuideGrid.apply(null, guideGridArgs);
+  }
   function paintGuideGrid(byId, runs, now) {
     const grid = $('guideGrid');
     if (!grid) return;
+    guideGridArgs = [byId, runs, now];
+    applyGuideSpan();
     grid.textContent = '';
     const ruler = document.createElement('div'); ruler.className = 'gdruler';
     ruler.appendChild(document.createElement('span')).className = 'gddaycol';
@@ -6295,12 +6398,20 @@
           b.dataset.tone = showTone(r.id);
           b.style.gridColumn = (from + 1) + ' / span ' + span;
           if (r.start <= now.abs && now.abs < r.end) b.classList.add('on');
-          const n = document.createElement('span'); n.className = 'gdcellname';
-          n.textContent = show.title || show.name;
-          const t = document.createElement('span'); t.className = 'gdcelltime';
-          t.textContent = fmtRange(r.start, r.end);
-          b.append(n, t);
-          b.title = (show.title || show.name) + ' · ' + fmtRange(r.start, r.end);
+          const label = show.title || show.name;
+          // NO TIME INSIDE THE BLOCK: where it sits and the ruler above
+          // already say when, and the second line was eating the room the
+          // name needed. And a name that does not FIT is left out rather
+          // than shown as a stub — "U…" tells a reader nothing, while
+          // clean colour plus the key underneath does (operator,
+          // 2026-09-03). The block keeps its full name on hover, and a
+          // press opens the show either way.
+          if (label.length <= fitsChars(span)) {
+            const n = document.createElement('span'); n.className = 'gdcellname';
+            n.textContent = label;
+            b.appendChild(n);
+          }
+          b.title = label + ' · ' + fmtRange(r.start, r.end);
           // A block is a way INTO the show: back to the day view with that
           // show open, which is where its description and DJs live.
           b.onclick = () => { setGuideView('day'); openInList(r.id); };
@@ -6315,6 +6426,31 @@
       row.appendChild(cells);
       grid.appendChild(row);
     });
+    // The key. Every show that airs this week, in the order it first
+    // does — it decodes the colour-only blocks and doubles as the week's
+    // roster. Each entry opens its show, like a block.
+    const seen = [];
+    runs.filter((r) => r.start >= 0 && r.start < WEEK_H && byId[r.id])
+      .sort((a, b) => a.start - b.start)
+      .forEach((r) => { if (!seen.includes(r.id)) seen.push(r.id); });
+    if (!seen.length) return;
+    const key = document.createElement('div'); key.className = 'gdkey';
+    const cap = document.createElement('div'); cap.className = 'gdcap';
+    cap.textContent = 'On the air this week'; key.appendChild(cap);
+    const list = document.createElement('div'); list.className = 'gdkeys';
+    seen.forEach((id) => {
+      const show = byId[id];
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'gdkeyrow';
+      b.appendChild(toneDot(id));
+      const n = document.createElement('span'); n.className = 'gdkeyname';
+      n.textContent = show.title || show.name;
+      b.appendChild(n);
+      b.onclick = () => { setGuideView('day'); openInList(id); };
+      list.appendChild(b);
+    });
+    key.appendChild(list);
+    grid.appendChild(key);
   }
 
   function paintGuide() {
@@ -6324,6 +6460,7 @@
     shows.forEach((x) => { byId[x.id] = x; });
     const now = stationNow(d.timezone);
     const runs = echoed(weekRuns(weekSlots(grid))).filter((r) => byId[r.id]);
+    setToneOrder(airingOrder(runs, shows));
     const today = $('guideToday'), list = $('guideList');
     const empty = $('guideEmpty');
     const head = $('guideTodayHead'), headMeta = $('guideTodayMeta');

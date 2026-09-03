@@ -4,6 +4,10 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.33
+
+- **The week grid reads at any width.** A 6h / 12h / 24h control says how much of the day is on screen at once, so a folded phone or a screen in a car needs no rotating: 24h fits the whole day with no sideways scrolling. Blocks carry a name only when one fits, never a stub, and the key underneath decodes the rest. Every show that airs in the week now gets its own colour.
+
 ## 0.99.32
 
 The card became three cards. The phone, the station player and a new programme guide sit side by side; swipe across them, or use the row at the card's foot.

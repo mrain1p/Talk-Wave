@@ -1236,21 +1236,62 @@
     display: inline-block; background: var(--sage-dim);
   }
   .gdtitle { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .gdtone[data-tone="0"] { background: var(--coral); }
-  .gdtone[data-tone="1"] { background: var(--amber); }
-  .gdtone[data-tone="2"] { background: var(--cool); }
-  .gdtone[data-tone="3"] { background: var(--ok); }
-  .gdtone[data-tone="4"] { background: var(--sage); }
-  .gdtone[data-tone="5"] { background: var(--alpenglow); }
+  .gdtone[data-tone="0"] { background: color-mix(in srgb, var(--coral) 100%, var(--granite)); }
+  .gdtone[data-tone="1"] { background: color-mix(in srgb, var(--amber) 100%, var(--granite)); }
+  .gdtone[data-tone="2"] { background: color-mix(in srgb, var(--cool) 100%, var(--granite)); }
+  .gdtone[data-tone="3"] { background: color-mix(in srgb, var(--ok) 100%, var(--granite)); }
+  .gdtone[data-tone="4"] { background: color-mix(in srgb, var(--sage) 100%, var(--granite)); }
+  .gdtone[data-tone="5"] { background: color-mix(in srgb, var(--alpenglow) 100%, var(--granite)); }
+  .gdtone[data-tone="6"] { background: color-mix(in srgb, var(--coral) 55%, var(--granite)); }
+  .gdtone[data-tone="7"] { background: color-mix(in srgb, var(--amber) 55%, var(--granite)); }
+  .gdtone[data-tone="8"] { background: color-mix(in srgb, var(--cool) 55%, var(--granite)); }
+  .gdtone[data-tone="9"] { background: color-mix(in srgb, var(--ok) 55%, var(--granite)); }
+  .gdtone[data-tone="10"] { background: color-mix(in srgb, var(--sage) 55%, var(--granite)); }
+  .gdtone[data-tone="11"] { background: color-mix(in srgb, var(--alpenglow) 55%, var(--granite)); }
   /* ---- The week, painted as a grid. Seven day rows over one hour ruler,
      scrolled sideways as one; the day column stays put. --------------- */
+  /* An hour has a WIDTH, and the grid scrolls — a listings grid is wide,
+     and 24 equal shares of a phone gave every block 14px and every name
+     an ellipsis (operator, 2026-09-03). One number, named here so the
+     script's fits-in-the-block measure cannot drift from the layout. It
+     narrows on a narrow screen so a folded phone still sees a useful
+     stretch of the day, and rotating simply shows more. */
+  /* An hour has a WIDTH, and the grid scrolls — a listings grid is wide,
+     and 24 equal shares of a phone gave every block 14px and every name
+     an ellipsis (operator, 2026-09-03). The number is the script's, from
+     the span control above (six hours, twelve, or the whole day) and the
+     room there is, so the grid always fills its width exactly. The value
+     here is only the one used before the first measure. */
   .gdgrid {
-    margin-top: 12px; overflow-x: auto; scrollbar-width: thin;
+    --gd-hour: 56px;
+    margin-top: 10px; overflow-x: auto; scrollbar-width: thin;
     -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y;
     overscroll-behavior-x: contain; padding-bottom: 6px;
   }
   .gdgrid[hidden] { display: none; }
-  .gdruler, .gdgridrow { display: flex; align-items: stretch; min-width: 700px; }
+  /* How much of the day is on screen at once. Rotating is not always on
+     offer — a folded phone, a screen in a car — so it is a control. */
+  .gdspans { display: flex; justify-content: flex-end; gap: 0; margin-top: 12px; }
+  .gdspans[hidden] { display: none; }
+  .card .gdspan {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    background: transparent; border: 1px solid var(--edge); border-left: 0;
+    padding: 0 10px; margin: 0; min-height: 0; height: 22px; cursor: pointer;
+    display: inline-flex; align-items: center;
+  }
+  .card .gdspan:first-child {
+    border-left: 1px solid var(--edge);
+    border-radius: max(5px, var(--skin-radius-ctl)) 0 0 max(5px, var(--skin-radius-ctl));
+  }
+  .card .gdspan:last-child {
+    border-radius: 0 max(5px, var(--skin-radius-ctl)) max(5px, var(--skin-radius-ctl)) 0;
+  }
+  .card .gdspan.on { color: var(--coral); border-color: var(--coral); background: var(--granite); }
+  .gdruler, .gdgridrow {
+    display: flex; align-items: stretch;
+    width: max-content; min-width: 100%;
+  }
   .gdruler { position: sticky; top: 0; z-index: 2; background: var(--pine); }
   .gddaycol {
     flex: none; width: 42px; display: inline-flex; align-items: center;
@@ -1259,8 +1300,9 @@
     position: sticky; left: 0; background: var(--pine); z-index: 1;
   }
   .gdcells {
-    flex: 1; display: grid; grid-template-columns: repeat(24, 1fr);
-    gap: 2px; padding: 2px 0; position: relative; min-width: 0;
+    flex: none; display: grid;
+    grid-template-columns: repeat(24, var(--gd-hour));
+    gap: 2px; padding: 2px 0; position: relative;
   }
   .gdhourlab {
     font: 9.5px/1 var(--font-mono); letter-spacing: .04em; color: var(--sage-dim);
@@ -1275,21 +1317,39 @@
     display: flex; flex-direction: column; justify-content: center; gap: 2px;
     background: var(--granite-hi);
   }
-  .card .gdcell[data-tone="0"] { background: color-mix(in srgb, var(--coral) 26%, var(--granite)); }
-  .card .gdcell[data-tone="1"] { background: color-mix(in srgb, var(--amber) 26%, var(--granite)); }
-  .card .gdcell[data-tone="2"] { background: color-mix(in srgb, var(--cool) 30%, var(--granite)); }
-  .card .gdcell[data-tone="3"] { background: color-mix(in srgb, var(--ok) 26%, var(--granite)); }
-  .card .gdcell[data-tone="4"] { background: color-mix(in srgb, var(--sage) 24%, var(--granite)); }
-  .card .gdcell[data-tone="5"] { background: color-mix(in srgb, var(--alpenglow) 14%, var(--granite)); }
+  .card .gdcell[data-tone="0"] { background: color-mix(in srgb, var(--coral) 34%, var(--granite)); }
+  .card .gdcell[data-tone="1"] { background: color-mix(in srgb, var(--amber) 34%, var(--granite)); }
+  .card .gdcell[data-tone="2"] { background: color-mix(in srgb, var(--cool) 34%, var(--granite)); }
+  .card .gdcell[data-tone="3"] { background: color-mix(in srgb, var(--ok) 34%, var(--granite)); }
+  .card .gdcell[data-tone="4"] { background: color-mix(in srgb, var(--sage) 34%, var(--granite)); }
+  .card .gdcell[data-tone="5"] { background: color-mix(in srgb, var(--alpenglow) 34%, var(--granite)); }
+  .card .gdcell[data-tone="6"] { background: color-mix(in srgb, var(--coral) 19%, var(--granite)); }
+  .card .gdcell[data-tone="7"] { background: color-mix(in srgb, var(--amber) 19%, var(--granite)); }
+  .card .gdcell[data-tone="8"] { background: color-mix(in srgb, var(--cool) 19%, var(--granite)); }
+  .card .gdcell[data-tone="9"] { background: color-mix(in srgb, var(--ok) 19%, var(--granite)); }
+  .card .gdcell[data-tone="10"] { background: color-mix(in srgb, var(--sage) 19%, var(--granite)); }
+  .card .gdcell[data-tone="11"] { background: color-mix(in srgb, var(--alpenglow) 19%, var(--granite)); }
   .card .gdcell.on { border-color: var(--coral); }
   .gdcellname {
     font: 700 9.5px/1.2 var(--font-mono); letter-spacing: .04em;
     text-transform: var(--skin-label-case); color: var(--alpenglow);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; overflow: hidden;
   }
-  .gdcelltime {
-    font: 9.5px/1 var(--font-mono); color: var(--sage);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  /* The key: colour and the FULL name, for the shows that actually air
+     this week. It decodes the blocks too narrow to carry a name, and
+     doubles as the week's roster. */
+  .gdkey { margin-top: 14px; position: sticky; left: 0; }
+  .gdkeys { display: flex; flex-wrap: wrap; gap: 6px; }
+  .card .gdkeyrow {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: transparent; border: 1px solid var(--hairline);
+    border-radius: max(5px, var(--skin-radius-ctl));
+    padding: 5px 9px; margin: 0; min-height: 0; height: auto; cursor: pointer;
+  }
+  .card .gdkeyrow:hover { border-color: var(--edge); }
+  .gdkeyname {
+    font: 700 10px/1 var(--font-mono); letter-spacing: .08em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
   }
   /* Where the station's clock is, today only. */
   .gdnowmark {
