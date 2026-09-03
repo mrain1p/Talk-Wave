@@ -653,28 +653,25 @@
      on the phone this thing actually lives on, a press changed nothing
      until its result arrived — hundreds of milliseconds later for
      anything that talks to the station. Opacity, never transform: the
-     ribbon, the phone tab and the ask-popup close are centred with
-     translateX(-50%), and a transform here would throw them across the
-     card. */
+     ask-popup close is centred with translateX(-50%), and a transform
+     here would throw it across the card. */
   .card button:active:not(:disabled) { opacity: .68; }
   /* HIT BOXES. Fifteen targets measured under 44px and five pairs sat 0px
      apart, all of it in the chrome around the (well-sized) action row.
      The fix is the BOX, never the ink: an unpainted ::after grows what a
      thumb can hit while the glyph, the row heights and the card's fixed
      height stay exactly as they are. */
-  .card .gear, .card .plheart, .card button.plnote, .card .ribbon,
-  .card .plphonetab, .card .plgrab, .card .pltabs .pltab, .card #npHeart {
+  .card .gear, .card .plheart, .card button.plnote,
+  .card .pltabs .pltab, .card .facebar .face, .card .gdtop, .card #npHeart {
     position: relative;
   }
   .card .gear::after, .card .plheart::after, .card button.plnote::after,
-  .card .ribbon::after, .card .plphonetab::after, .card .plgrab::after,
-  .card .pltabs .pltab::after, .card #npHeart::after {
+  .card .pltabs .pltab::after, .card .facebar .face::after,
+  .card #npHeart::after {
     content: ""; position: absolute; inset: -7px -4px;
   }
-  /* The two smallest, and the two that are DRAG handles rather than taps. */
+  /* The smallest. */
   .card #npHeart::after { inset: -14px -13px; }
-  .card .ribbon::after, .card .plphonetab::after,
-  .card .plgrab::after { inset: -12px -14px; }
   /* A new DJ or show brings a new palette — applyTokens() writes it onto
      :root and every var() resolves to the new colour in one frame, which
      snapped the whole card over abruptly (operator asked for a graceful
@@ -927,9 +924,10 @@
   #vmRecBtn { touch-action: none; -webkit-user-select: none; user-select: none; }
 
   /* The station player: a SHEET pulled down over the card, not a card mode.
-     The wipe is the design — the operator's ask is the player coming down
-     over the phone page like a shade, and going back up the same way — so
-     it overlays whatever the card was showing and touches none of the bands
+     A card BESIDE the phone (operator, 2026-09-02): it parks off the
+     card's right edge, slides in over the phone and back out the same
+     way — it was a shade pulled down from the top until then — so it
+     overlays whatever the card was showing and touches none of the bands
      beneath. A direct child of .card on purpose: .rig reserves visibility
      for the call's own rows, and the first build sat inside it — laid out,
      measured by every geometry probe, painting NOTHING (operator's phone,
@@ -941,72 +939,439 @@
     text-align: center; padding: 0; overflow: hidden;
     background-color: var(--pine);
     border-radius: inherit;
-    transform: translateY(-103%);
+    transform: translateX(103%);
     transition: transform .38s cubic-bezier(.32, .72, .28, 1);
     will-change: transform;
   }
-  .card.playeropen .player { transform: translateY(0); }
-  /* On a player-first page the PHONE is the screen that arrives, and a
-     pull-down tab "pulls the other screen OVER the current one" (the
-     operator's own words, third pass — first the sheet exited upward,
-     then it slid away downward, and both read as the player leaving
-     rather than the phone arriving).
-     The phone cannot slide over the player: it is the card's own content,
-     several flex children deep, and the sheet is an overlay above it. So
-     the sheet is CLIPPED from the top instead — the boundary sweeps down
-     while the player holds still, which is exactly what a curtain
-     descending over it looks like, and it costs one property rather than
-     a DOM restructure. */
-  .card.plfirst .player {
-    transform: none;
-    clip-path: inset(100% 0 0 0);
-    transition: clip-path .38s cubic-bezier(.32, .72, .28, 1);
-  }
-  .card.plfirst.playeropen .player { clip-path: inset(0 0 0 0); }
-  .card.plfirst .player.dragging { transition: none; }
-  /* The arriving screen's leading edge: the card's OWN top edge, moving.
-     A hairline in the card's neutral edge colour with a short soft shadow
-     under it — the first cut used a 2px coral rule and a deep shadow, and
-     it read as a phase ray sweeping the screen rather than a card being
-     drawn down (operator, 2026-09-01). Nothing lit, nothing station-
-     coloured; just the seam a card makes. It exists only while the two
-     screens are mid-exchange. */
-  .plcurtain {
-    position: absolute; left: 0; right: 0; top: 100%; height: 0;
-    border-top: 1px solid var(--edge);
-    box-shadow: 0 5px 10px rgba(0, 0, 0, .22);
-    z-index: 61; pointer-events: none; display: none;
-  }
-  /* THE TAB TRAVELS WITH THE EDGE. Without it the descent is a moving
-     hairline — "just a line wipe" (operator, 2026-09-01) — because the
-     thing that makes a card read as a card being pulled is its handle
-     coming with it. This is the bottom bookmark's own shape, hung under
-     the moving seam: granite fill, 2px edge, rounded feet, and the grip
-     drawn in the middle. It IS the tab that lands at the card's bottom
-     when the exchange finishes. */
-  .plcurtain::after {
-    content: ""; position: absolute; top: 0; left: 50%;
-    transform: translateX(-50%);
-    width: 66px; height: 22px; box-sizing: border-box;
-    background: var(--granite)
-      linear-gradient(var(--sage-dim), var(--sage-dim)) no-repeat center;
-    background-size: 30px 4px;
-    border: 2px solid var(--edge); border-top: 0;
-    border-radius: 0 0 max(7px, var(--skin-radius-ctl))
-                   max(7px, var(--skin-radius-ctl));
-  }
-  .card.plfirst .plcurtain.on { display: block; }
-  .card.plfirst .plcurtain.sweep {
-    transition: top .38s cubic-bezier(.32, .72, .28, 1);
-  }
+  .card.playeropen .player { transform: translateX(0); }
   /* The finger owns the sheet mid-drag; the transition takes over on release. */
   .player.dragging { transition: none; }
   /* display:flex above would beat the UA's [hidden] rule — say it explicitly.
      At rest the sheet is display:none, so nothing sits off-canvas. */
   .player[hidden] { display: none !important; }
+  /* ---- The faces row: one tab per card on offer, at the card's foot
+     (operator, 2026-09-02: "the small selector row on the bottom"). The
+     phone and the player are cards side by side now; this names them and
+     lights the one showing. Only while there is more than one — a phone-
+     only card keeps its 16px foot. The row lives in the card's bottom
+     padding, the way the bottom bookmark did, and the sheet ends above it
+     so the player's own dock never hides under the tabs. -------------- */
+  .card.faces { padding-bottom: 46px; }
+  .card.faces .player, .card.faces .guide { bottom: 38px; }
+  /* ---- The programme guide: the third card, one layer above the player,
+     same overlay shape and the same slide. Its content is the operator's
+     own guide page in the card's clothes — a strip of today's hours, then
+     the show rows. Only the middle scrolls. ------------------------------ */
+  .guide {
+    position: absolute; inset: 0; z-index: 62;
+    display: flex; flex-direction: column; align-items: stretch;
+    padding: 0; overflow: hidden;
+    background-color: var(--pine);
+    border-radius: inherit;
+    transform: translateX(103%);
+    transition: transform .38s cubic-bezier(.32, .72, .28, 1);
+    will-change: transform;
+  }
+  .card.guideopen .guide { transform: translateX(0); }
+  .guide.dragging { transition: none; }
+  .guide[hidden] { display: none !important; }
+  .gdscroll {
+    flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin;
+    width: 100%; padding: 0 16px 14px; box-sizing: border-box;
+  }
+  /* Today, hour by hour: a row of blocks, the one on air lit. */
+  /* The day, read forward from midnight, scrolled by hand: the card's
+     own swipe steps aside for it (see bindFaceSwipe), and touch-action
+     says so to the browser as well. */
+  .gdtoday {
+    display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; touch-action: pan-x;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    padding: 10px 16px; margin: 0 -16px;
+  }
+  .gdtoday::-webkit-scrollbar { display: none; }
+  .card .gdslot { scroll-snap-align: start; }
+  .gdtoday[hidden] { display: none; }
+  .card .gdslot {
+    flex: none; min-width: 118px; max-width: 170px; text-align: left;
+    background: transparent; border: 1px solid var(--edge);
+    border-radius: max(6px, var(--skin-radius-ctl));
+    padding: 8px 10px; margin: 0; min-height: 0; height: auto;
+    display: flex; flex-direction: column; gap: 4px; cursor: pointer;
+  }
+  .card .gdslot .gdname {
+    font: 700 11px/1.25 var(--font-mono); letter-spacing: .06em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card .gdslot .gdtime {
+    font: 10px/1.3 var(--font-mono); letter-spacing: .06em;
+    color: var(--sage-dim);
+  }
+  .card .gdslot.on { border-color: var(--coral); background: var(--granite); }
+  .card .gdslot.on .gdname { color: var(--coral); }
+  .card .gdslot.on .gdtime { color: var(--amber); }
+  /* The show rows: avatars, the name and its topic line, and a body that
+     opens in place with the DJ, the times and the blurb. */
+  .card .gdrow {
+    width: 100%; text-align: left; background: transparent;
+    border: 1px solid var(--hairline);
+    border-radius: max(6px, var(--skin-radius-ctl));
+    padding: 10px 12px; margin: 8px 0 0; min-height: 0; height: auto;
+    display: block; cursor: pointer;
+  }
+  .card .gdrow.open { border-color: var(--edge); background: var(--granite); }
+  .gdhead { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .gdmeta { flex: 1; min-width: 0; }
+  .gdshow {
+    font: 700 13px/1.2 var(--font-mono); letter-spacing: .04em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .gdsub {
+    font: 11px/1.35 var(--font-mono); letter-spacing: .05em;
+    color: var(--sage-dim); margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .gdavs { display: flex; flex: none; align-items: center; }
+  .gdav {
+    width: 26px; height: 26px; border-radius: 50%; object-fit: cover;
+    border: 1px solid var(--edge); background: var(--granite);
+    margin-left: -8px;
+  }
+  .gdav:first-child { margin-left: 0; }
+  .gdav.mono {
+    display: inline-flex; align-items: center; justify-content: center;
+    font: 700 10px/1 var(--font-mono); color: var(--coral);
+  }
+  .gdchev {
+    flex: none; width: 10px; height: 10px; color: var(--sage-dim);
+    transition: transform .2s ease;
+  }
+  .card .gdrow.open .gdchev { transform: rotate(90deg); color: var(--coral); }
+  .gdbody { display: none; margin-top: 10px; }
+  .card .gdrow.open .gdbody { display: block; }
+  .gdline {
+    font: 12px/1.45 var(--font-body); color: var(--alpenglow); margin: 0 0 8px;
+    white-space: normal;
+  }
+  .gdline b { font-weight: 700; color: var(--coral); }
+  .gdtimes, .gdmoods {
+    display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 0;
+  }
+  .gdmoods span, .gdtimes span {
+    font: 10px/1 var(--font-mono); letter-spacing: .08em;
+    text-transform: var(--skin-label-case); color: var(--amber);
+    border: 1px solid var(--edge); border-radius: max(4px, var(--skin-radius-ctl));
+    padding: 5px 7px;
+  }
+  /* "Today on the air", with what it is on air until and the station's
+     own date, over the strip. */
+  /* Wraps rather than truncates: on a narrow phone the date dropped to
+     "WEDNESDAY, SE…" beside a label that had itself broken over two
+     lines. The label holds one line and the date takes its own when
+     there is no room beside it. */
+  .gdtodayhead {
+    display: flex; align-items: center; padding: 12px 0 0;
+    font: 700 10px/1.4 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+  }
+  .gdtodayhead[hidden] { display: none; }
+  .gdtodaylab { white-space: nowrap; }
+  /* The row's quiet line: the faces, the host, and when it is next on. */
+  .gdwho {
+    display: flex; align-items: center; gap: 8px; margin-top: 8px;
+    min-width: 0;
+  }
+  .gdhost {
+    font: 700 10px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: var(--skin-label-case); color: var(--sage);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .gdnext {
+    margin-left: auto; flex: none;
+    font: 10px/1 var(--font-mono); letter-spacing: .06em; color: var(--sage-dim);
+  }
+  .gdnext.live { color: var(--coral); font-weight: 700; }
+  .gdwho .gdav { width: 30px; height: 30px; margin-left: -8px; }
+  .gdwho .gdav.mono { font-size: 11px; }
+  .gdline.gdangle { color: var(--amber); }
+  .gdline.gdangle b { color: var(--amber); }
+  /* On the schedule: day groups left, hours right, today marked. */
+  .gdsched { margin-top: 10px; border-top: 1px solid var(--hairline); padding-top: 8px; }
+  .gdcap {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    margin-bottom: 6px;
+  }
+  .gdschedrow {
+    display: flex; align-items: center; gap: 8px; padding: 5px 0;
+    border-bottom: 1px solid var(--hairline);
+    font: 11px/1.3 var(--font-mono); letter-spacing: .04em;
+  }
+  .gdschedrow:last-child { border-bottom: 0; }
+  .gddays { color: var(--alpenglow); display: inline-flex; align-items: center; gap: 6px; }
+  .gdhours { margin-left: auto; color: var(--amber); white-space: nowrap; }
+  .gdtodaytag {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: var(--skin-label-case); color: var(--coral);
+    border: 1px solid var(--coral); border-radius: max(4px, var(--skin-radius-ctl));
+    padding: 3px 5px;
+  }
+  /* The show ON AIR, open, under the strip: the card's first answer. */
+  .gdherobox {
+    border: 1px solid var(--coral); border-radius: max(8px, var(--skin-radius-ctl));
+    background: var(--granite); padding: 12px 14px 14px; margin-top: 12px;
+  }
+  .gdherotop { display: flex; align-items: center; gap: 7px; }
+  .gdherolab {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--coral);
+  }
+  .gdheronext {
+    margin-left: auto; font: 10px/1 var(--font-mono); letter-spacing: .06em;
+    color: var(--sage-dim);
+  }
+  .gdheroname {
+    font: 700 17px/1.2 var(--font-mono); letter-spacing: .03em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+    margin-top: 8px;
+  }
+  .gdherotag {
+    font: 12px/1.35 var(--font-body); color: var(--amber); margin-top: 3px;
+  }
+  .gdherobody { display: block; margin-top: 10px; }
+  /* "Program guide", and how much of the week is on the air. */
+  .gdlisthead {
+    display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px;
+    margin-top: 18px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .gdlisthead[hidden] { display: none; }
+  .gdlistlab {
+    font: 700 11px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+  }
+  .gdlistmeta {
+    margin-left: auto; font: 10px/1.3 var(--font-mono); letter-spacing: .06em;
+    color: var(--sage-dim);
+  }
+  /* The show on air keeps its outline in the list too, so the week can be
+     read without hunting for where "now" sits. */
+  .card .gdrow.live { border-color: var(--coral); }
+  .card .gdrow.live .gdshow { color: var(--coral); }
+  /* Who is in the booth, per person: the face, the role, the name and
+     their line, then their soul underneath. */
+  .gdperson {
+    display: flex; align-items: center; gap: 12px; margin: 10px 0 6px;
+    flex-wrap: wrap;
+  }
+  /* The figure holds the picture, so a face that falls back to initials
+     keeps its size and its press. */
+  .gdfig { display: block; flex: none; width: 76px; height: 76px; }
+  .gdfig .gdav { width: 100%; height: 100%; margin-left: 0; font-size: 19px; }
+  /* A press opens it to a portrait — square, the width of the column, the
+     record-sleeve shape the player's art already uses — and another press
+     puts it back. */
+  .card .gdzoom { cursor: zoom-in; }
+  .card .gdzoom.big {
+    width: 100%; max-width: 260px; height: auto; aspect-ratio: 1 / 1;
+    cursor: zoom-out;
+  }
+  .card .gdzoom.big .gdav {
+    border-radius: max(8px, var(--skin-radius-ctl));
+    object-fit: cover; font-size: 44px;
+  }
+  .gdpmeta { min-width: 0; }
+  .gdrole {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+  }
+  .gdpname {
+    font: 700 13px/1.2 var(--font-mono); letter-spacing: .03em;
+    text-transform: var(--skin-label-case); color: var(--coral); margin-top: 3px;
+  }
+  .gdptag { font: 11px/1.35 var(--font-body); color: var(--amber); margin-top: 2px; }
+  /* The way back up, floating over the week's foot. */
+  .card .gdtop {
+    position: absolute; right: 16px; bottom: 14px; z-index: 3;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+    background: var(--granite); border: 1px solid var(--edge);
+    border-radius: max(12px, var(--skin-radius-ctl));
+    padding: 0 12px; margin: 0; min-height: 0; height: 28px; cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, .3);
+  }
+  .card .gdtop:hover { color: var(--coral); border-color: var(--coral); }
+  .card .gdtop[hidden] { display: none; }
+  /* Day or Week — the same pair the strip's header carries, in the card's
+     smallest type so the date still leads. */
+  .gdviews { margin-left: auto; display: inline-flex; }
+  .gdviews[hidden] { display: none; }
+  .card .gdview {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    background: transparent; border: 1px solid var(--edge);
+    padding: 0 9px; margin: 0; min-height: 0; height: 22px; cursor: pointer;
+    display: inline-flex; align-items: center;
+  }
+  .card .gdview:first-child {
+    border-radius: max(5px, var(--skin-radius-ctl)) 0 0 max(5px, var(--skin-radius-ctl));
+  }
+  .card .gdview:last-child {
+    border-left: 0;
+    border-radius: 0 max(5px, var(--skin-radius-ctl)) max(5px, var(--skin-radius-ctl)) 0;
+  }
+  .card .gdview.on { color: var(--coral); border-color: var(--coral); background: var(--granite); }
+  .card .gdview.on + .gdview { border-left-color: var(--coral); }
+  /* The view that is not showing steps aside without being unbuilt: the
+     grid and the list are painted from one read. */
+  .gdaway { display: none !important; }
+  /* A show's own colour. SIX tones, every one mixed from a palette token —
+     the station names no colour, and nothing here may hardcode one. The
+     dot on a list row and the block in the grid wear the same tone. */
+  .gdtone {
+    flex: none; width: 9px; height: 9px; border-radius: 2px;
+    display: inline-block; background: var(--sage-dim);
+  }
+  .gdtitle { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .gdtone[data-tone="0"] { background: var(--coral); }
+  .gdtone[data-tone="1"] { background: var(--amber); }
+  .gdtone[data-tone="2"] { background: var(--cool); }
+  .gdtone[data-tone="3"] { background: var(--ok); }
+  .gdtone[data-tone="4"] { background: var(--sage); }
+  .gdtone[data-tone="5"] { background: var(--alpenglow); }
+  /* ---- The week, painted as a grid. Seven day rows over one hour ruler,
+     scrolled sideways as one; the day column stays put. --------------- */
+  .gdgrid {
+    margin-top: 12px; overflow-x: auto; scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y;
+    overscroll-behavior-x: contain; padding-bottom: 6px;
+  }
+  .gdgrid[hidden] { display: none; }
+  .gdruler, .gdgridrow { display: flex; align-items: stretch; min-width: 700px; }
+  .gdruler { position: sticky; top: 0; z-index: 2; background: var(--pine); }
+  .gddaycol {
+    flex: none; width: 42px; display: inline-flex; align-items: center;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .1em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    position: sticky; left: 0; background: var(--pine); z-index: 1;
+  }
+  .gdcells {
+    flex: 1; display: grid; grid-template-columns: repeat(24, 1fr);
+    gap: 2px; padding: 2px 0; position: relative; min-width: 0;
+  }
+  .gdhourlab {
+    font: 9.5px/1 var(--font-mono); letter-spacing: .04em; color: var(--sage-dim);
+    padding: 6px 0 4px; align-self: end;
+  }
+  .gdgridrow { border-top: 1px solid var(--hairline); }
+  .gdgridrow.today .gddaycol { color: var(--coral); }
+  .card .gdcell {
+    min-width: 0; overflow: hidden; text-align: left; cursor: pointer;
+    border: 1px solid transparent; border-radius: max(4px, var(--skin-radius-ctl));
+    padding: 5px 6px; margin: 0; min-height: 34px; height: auto;
+    display: flex; flex-direction: column; justify-content: center; gap: 2px;
+    background: var(--granite-hi);
+  }
+  .card .gdcell[data-tone="0"] { background: color-mix(in srgb, var(--coral) 26%, var(--granite)); }
+  .card .gdcell[data-tone="1"] { background: color-mix(in srgb, var(--amber) 26%, var(--granite)); }
+  .card .gdcell[data-tone="2"] { background: color-mix(in srgb, var(--cool) 30%, var(--granite)); }
+  .card .gdcell[data-tone="3"] { background: color-mix(in srgb, var(--ok) 26%, var(--granite)); }
+  .card .gdcell[data-tone="4"] { background: color-mix(in srgb, var(--sage) 24%, var(--granite)); }
+  .card .gdcell[data-tone="5"] { background: color-mix(in srgb, var(--alpenglow) 14%, var(--granite)); }
+  .card .gdcell.on { border-color: var(--coral); }
+  .gdcellname {
+    font: 700 9.5px/1.2 var(--font-mono); letter-spacing: .04em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .gdcelltime {
+    font: 9.5px/1 var(--font-mono); color: var(--sage);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* Where the station's clock is, today only. */
+  .gdnowmark {
+    position: absolute; top: 0; bottom: 0; width: 2px; background: var(--coral);
+    pointer-events: none; opacity: .85;
+  }
+  .gdempty {
+    font: 12px/1.45 var(--font-body); color: var(--sage-dim);
+    text-align: center; margin: 24px 0;
+  }
+  .gdempty[hidden] { display: none; }
+/* The card's FOOTER BAND — the eyebrow's twin at the other edge
+     (operator, 2026-09-03: the tray "looks a bit weak and mismatched").
+     It was a rounded segmented tray, which is the shape this project uses
+     for a SETTING (the panel's On/Off master), so navigation was wearing a
+     control's clothes and floating over a card whose whole grammar is
+     full-bleed bands. Now: flush to the card's edges, one hairline rule on
+     top, the same micro-type as the header band, no boxes at all — and one
+     lit rule that SLIDES to the card you are on, so the band reads as the
+     pager's position rather than as three buttons. The rule follows the
+     finger mid-swipe; see paintFaceIndicator. */
+  .facebar {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 38px;
+    display: flex; align-items: stretch;
+    background: var(--granite); border-top: 1px solid var(--hairline);
+    z-index: 70;
+  }
+  .facebar[hidden] { display: none; }
+  /* The rule rides the band's top edge, over the card it belongs to. Width
+     and offset are written by the script, in faces. */
+  .faceind {
+    position: absolute; top: -1px; left: 0; height: 2px; width: 33.3333%;
+    background: var(--coral); pointer-events: none;
+    transition: transform .28s cubic-bezier(.32, .72, .28, 1);
+  }
+  .faceind[hidden] { display: none; }
+  /* The finger owns it mid-drag; the transition takes over on release. */
+  .faceind.dragging { transition: none; }
+  .card .facebar .face {
+    flex: 1 1 0; min-width: 0;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    background: transparent; border: 0; border-radius: 0;
+    padding: 0 10px; margin: 0; min-height: 0; height: auto;
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .card .facebar .face.on { color: var(--coral); }
+  .card .facebar .face:hover:not(.on):not(:disabled) { color: var(--alpenglow); }
+  .card .facebar .face:disabled { opacity: .45; cursor: default; }
+  .card .facebar .face[hidden] { display: none; }
+  /* On a phone the player is the whole screen, so the row is the screen's
+     own foot: fixed, above the sheet, with the safe area paid once here
+     rather than by the dock beneath it. */
+  @media (max-width: 700px) {
+    body:not(.compact) .card.faces .facebar {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      height: calc(38px + env(safe-area-inset-bottom));
+      padding-bottom: env(safe-area-inset-bottom);
+      z-index: 95;
+    }
+    body:not(.compact) .card.faces .player,
+    body:not(.compact) .card.faces .guide {
+      bottom: calc(38px + env(safe-area-inset-bottom));
+    }
+    /* The guide is the whole screen on a phone too, one layer above the
+       player, and its header pays the notch the way the player's does. */
+    body:not(.compact) .guide { position: fixed; inset: 0;
+                                border-radius: 0; z-index: 92; }
+    body:not(.compact) .card.faces .pldock { padding-bottom: 8px; }
+    /* Specific enough to beat `body:not(.panelpage):not(.compact) .card`,
+       which owns the phone's padding further down and quietly won the
+       first cut (the row sat on the Call button; measured at 375x812). */
+    body .card.faces,
+    body:not(.compact) .card.faces,
+    body:not(.panelpage):not(.compact) .card.faces {
+      padding-bottom: calc(46px + env(safe-area-inset-bottom));
+    }
+  }
   /* While the sheet is rendered the card clips, so the wipe stays inside the
      card's own corners. The ask popup is position:fixed and does not care. */
-  .card:has(.player:not([hidden])) { overflow: clip; }
+  .card:has(.player:not([hidden])), .card:has(.guide:not([hidden])) { overflow: clip; }
   /* On a phone the player IS the screen (the operator's ask: "the full
      space allotment") — fixed to the viewport, square corners, out from
      under the body's gutters. position:fixed escapes the card's clip, which
@@ -1024,19 +1389,6 @@
       height: calc(38px + max(0px, env(safe-area-inset-top)));
       padding-top: max(0px, env(safe-area-inset-top));
     }
-    /* The three pull handles are absolutely positioned, so the padding
-       above never reaches them — they anchor below the inset instead. */
-    /* NOT .plfirst: there the bookmark hangs from the card's BOTTOM edge
-       (top:auto; bottom:0), and this rule out-specified it — 0,3,1 against
-       0,3,0 — so the notch fix threw the handle back to the top of the
-       screen after every pull-down (operator, 2026-09-02, and the drag
-       probe caught it the moment it was re-run). A safe-area inset is a
-       TOP-anchored idea; it has no business reaching a bottom-anchored
-       tab. */
-    body:not(.compact) .card:not(.plfirst) .ribbon,
-    body:not(.compact) .card .plphonetab {
-      top: max(0px, env(safe-area-inset-top));
-    }
     /* SHORT PHONES. Below roughly 600px of height the panels were being
        flex-shrunk past their content and painted INTO each other — the
        queue collapsed to 20px and overlapped the booth by 14 (measured
@@ -1048,51 +1400,7 @@
     body:not(.compact) .plscroll > .plqgroup { flex: none; }
   }
 
-  /* The ribbon: a BOOKMARK hanging from the card's top edge — the operator's
-     correction to a bare floating grip ("it should look more like a
-     pulldown/tab/bookmark"). Visible only while the player is closed; the
-     way back up is the grabber at the dock's foot. Neutral surface tones on
-     purpose: nothing red rides the handle. */
-  /* .card-prefixed: the card's own `.card button` costume outranks a bare
-     class, and it dressed the bookmark as a control-height button. */
-  /* An inline pull-down tab, IN the eyebrow row between the state and the
-     corner icons (operator, 2026-08-24, third ruling — it hung above the
-     row for a day and crowded the phone's top edge). Grip only, no words:
-     the bottom-rounded tab shape says "pull me" itself. */
-  /* The tab HANGS from the card's top edge, dead centre — absolute, so the
-     eyebrow's text and icons cannot push it off centre and it cannot squeeze
-     them into an ellipsis (both happened on the operator's phone when it sat
-     in the flex flow between two spacers). No top border and no gap above:
-     attached is what makes it read as a pull tab rather than a floating
-     button. --card-pad-top bridges whatever padding this surface has. */
   .card .eyebrow { position: relative; }
-  .card .ribbon {
-    position: absolute; left: 50%; transform: translateX(-50%);
-    top: calc(-1 * var(--card-pad-top, 0px));
-    height: calc(var(--card-pad-top, 0px) + 24px);
-    padding: var(--card-pad-top, 0px) 17px 0; box-sizing: border-box;
-    z-index: 2;
-    background: var(--granite); border: 1px solid var(--edge); border-top: 0;
-    /* The feet keep the tab's own 7px so it reads as a handle even in the
-       square default, and follow a skin whose controls are rounder. */
-    border-radius: 0 0 max(7px, var(--skin-radius-ctl))
-                   max(7px, var(--skin-radius-ctl));
-    cursor: grab;
-    display: flex; align-items: center; justify-content: center;
-    touch-action: none;
-  }
-  .card .ribbon .grip {
-    width: 30px; height: 4px; border-radius: 2px;
-    background: var(--sage-dim); display: block;
-  }
-  /* The narrowest phones: the centred tab and a full row of corner icons
-     can meet in the middle, so both give a little. */
-  @container card (max-width: 359px) {
-    /* (the gear's own narrowing moved to its base rule — 28px everywhere) */
-    .card .ribbon { padding-left: 10px; padding-right: 10px; }
-  }
-  .card .ribbon:hover .grip { background: var(--alpenglow); }
-  .card .ribbon[hidden] { display: none; }
 
   /* ---- The player's own anatomy: the operator's 3a handoff, token for
      token. Header ribbon / glow art / title block / chips / progress /
@@ -1262,62 +1570,6 @@
   .plel { font: 700 11px/1 var(--font-mono); color: var(--amber);
           font-variant-numeric: tabular-nums; }
   .plel:empty { display: none; }
-  /* The phone's ribbon on a player-first page: same grip, the sheet's own
-     top strip — IN FLOW, never floating (its absolute first cut sat on
-     the header clock, operator's screenshot 2026-09-01). All the inverted
-     furniture rides the card's plfirst class in one place: the phone
-     ribbon exists, the card's bookmark and the foot grabber stand down. */
-  .card .plphonetab { display: none; }
-  /* A real TAB, not a bare grip: the phone's handle wears the card
-     bookmark's own shape — granite fill, feet rounded, hanging from the
-     sheet's top edge and sticking out past it — with a heavier outline
-     (operator, 2026-09-01). Absolute like the bookmark, so the head's
-     text and icons cannot push it off centre. */
-  .card.plfirst .plphonetab {
-    display: flex; justify-content: center; align-items: center;
-    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-    width: auto; flex: none; padding: 7px 18px 6px; min-height: 0;
-    height: auto; z-index: 5; cursor: pointer;
-    background: var(--granite);
-    border: 2px solid var(--edge); border-top: 0;
-    border-radius: 0 0 max(7px, var(--skin-radius-ctl))
-                   max(7px, var(--skin-radius-ctl));
-  }
-  .card.plfirst .plphonetab .grip {
-    width: 34px; height: 4px; border-radius: 2px; background: var(--sage-dim);
-    display: block;
-  }
-  .card.plfirst .plphonetab:hover .grip { background: var(--alpenglow); }
-  /* The card's bookmark does NOT disappear on a player-first page — hiding
-     it left the phone face with no way back at all (operator, 2026-09-01,
-     and they were right to be cross). It MOVES: the player hangs below
-     now, so its handle hangs from the card's BOTTOM edge, radius flipped,
-     sitting in the card's own 16px bottom padding so it covers no control.
-     The eyebrow gives up its anchor for the same reason — the ribbon has
-     to measure from the card, not from the top band. */
-  /* The bottom bookmark needs a strip of its own: at the card's 16px
-     bottom padding it sat ON the Call row (operator's screenshot,
-     2026-09-01). The extra room lifts the whole action row off the edge,
-     which is the "punch that row up" they asked for in the same breath. */
-  /* Specific enough to beat `body:not(.compact) .card`, which owns the
-     phone's padding and quietly won the first attempt (measured: 2px of
-     clearance instead of the intended eighteen). */
-  body .card.plfirst,
-  body:not(.compact) .card.plfirst,
-  body:not(.panelpage):not(.compact) .card.plfirst {
-    padding-bottom: max(34px, calc(20px + env(safe-area-inset-bottom)));
-  }
-  /* The rail was 30px around a chip nearly that tall, so PLAYING touched
-     both hairlines. Only on this face, where the rail carries the record. */
-  .card.plfirst .nprail { height: 42px; }
-  .card.plfirst .eyebrow { position: static; }
-  .card.plfirst .ribbon {
-    top: auto; bottom: 0; height: 22px; padding: 0 18px;
-    border: 2px solid var(--edge); border-bottom: 0;
-    border-radius: max(7px, var(--skin-radius-ctl))
-                   max(7px, var(--skin-radius-ctl)) 0 0;
-  }
-  .card.plfirst .plgrab { display: none; }
   /* The cast control lit while a session is CONNECTED — same coral the
      card's live states wear, so "the TV has it" is readable at a glance. */
   .card #plCastBtn.casting { color: var(--coral); border-color: var(--coral); }
@@ -1626,18 +1878,6 @@
      not the refusal coral. */
   .plreqmsg.info { color: var(--sage); font-size: 12px; line-height: 1.4; }
   .plreqmsg:empty { display: none; }
-  /* The way home: the same grip as the top bookmark, now at the sheet's
-     foot — "the pulldown stays on the bottom when the page is switched". */
-  .card .plgrab {
-    align-self: center; width: auto; min-width: 76px; height: 20px; padding: 0 10px;
-    background: transparent; border: 0; cursor: grab;
-    display: flex; align-items: center; justify-content: center; gap: 7px;
-    touch-action: none;
-  }
-  .card .plgrab .grip { width: 34px; height: 4px; border-radius: 2px;
-                  background: var(--sage-dim); display: block; }
-  .card .plgrab:hover .grip { background: var(--alpenglow); }
-
   /* The DESKTOP card is 544px tall — the phone's stacked litany overflowed
      it, scrolled the art half out of view and buried the booth panel under
      the dock (operator's screenshot, 2026-08-17). Side-by-side header: the
@@ -1708,7 +1948,6 @@
     .card .plheart, .card button.plnote { width: 38px; }
     .card button.plnote { height: 38px; }
     #plPlayBtn { height: 38px; }
-    .card .plgrab { height: 14px; }
   }
 
   /* The door into the player is a chip that is pressed, not read — the one

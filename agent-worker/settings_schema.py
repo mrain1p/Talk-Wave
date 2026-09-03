@@ -881,11 +881,21 @@ SCHEMA: dict[str, dict] = {
              "one and hide it. Inherit matches the page the widget is embedded "
              "in; on this page it behaves as auto."),
     "swipe_player": dict(group="phone", kind="check",
-        label="Swipe-up station player", alias="mobile phone",
-        help="The ribbon at the card's top pulls down the full station "
-             "player. It plays the Stream URL from Calls → Tune the caller in "
-             "— behind TLS, the public https stream. This page and the "
-             "installed app only, never an embed. A call stops the music."),
+        label="Station player card", alias="mobile phone swipe",
+        help="A second card beside the phone: swipe across, or tap the row "
+             "at the card's foot, for the full station player. It plays the "
+             "Stream URL from Calls → Tune the caller in — behind TLS, the "
+             "public https stream. This page and the installed app only, "
+             "never an embed. A call stops the music."),
+    "show_guide": dict(group="phone", kind="check",
+        label="Programme guide card", alias="schedule shows week guide",
+        help="A third card beside the phone and the player: the station's "
+             "week — today's shows hour by hour, then every show with its "
+             "description, its DJs and their souls, and its times, opening "
+             "in place. Read from the "
+             "station's public schedule through this server and cached "
+             "five minutes. Off, and the row at the card's foot never "
+             "names it."),
     "show_listener_count": dict(group="phone", kind="check",
         label="Listener count on the card", alias="listeners audience",
         help="The ON AIR line adds how many are tuned in — the station's own "
@@ -925,11 +935,10 @@ SCHEMA: dict[str, dict] = {
     "start_on_player": dict(group="phone", kind="select",
         label="Opens on",
         needs=("swipe_player", True),
-        help="Which of the two faces a caller lands on; the other is always "
-             "one swipe away, and the pull-down tab sits on whichever face "
-             "is the visitor — the gesture follows the start you chose. "
-             "Browsers still wait for one tap before any audio starts, "
-             "whichever you pick — that is their rule, not a fault."),
+        help="Which card a caller lands on; the other is always one swipe "
+             "away, and the row at the card's foot names both. Browsers "
+             "still wait for one tap before any audio starts, whichever you "
+             "pick — that is their rule, not a fault."),
     "vm_player_duck": dict(group="phone", kind="number",
         label="Player under the machine", unit="%", alias="loudness duck voicemail",
         help="While the machine rings, greets and records, the station plays "
@@ -1429,8 +1438,8 @@ STATIC_CHOICES = {
         ("off", "Off — wait for the caller to type first"),
     ],
     "start_on_player": [
-        ("call", "The phone — the call card, with the player a swipe up (default)"),
-        ("player", "The player — music first, the call button a swipe down"),
+        ("call", "The phone — the call card, with the player a swipe away (default)"),
+        ("player", "The player — music first, the phone a swipe away"),
     ],
     "chat_reveal": [
         ("typing", "As it's typed — the words appear as the DJ writes them (default)"),

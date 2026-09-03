@@ -3586,3 +3586,277 @@ class TestThePanelKeepsItsOwnRules(unittest.TestCase):
         bare = sorted(n for n, m in settings_store.SCHEMA.items()
                       if m["kind"] == "text" and not m.get("placeholder"))
         self.assertFalse(bare, "text settings with no placeholder: %s" % bare)
+
+
+class TestTheFacesSitSideBySide(unittest.TestCase):
+    """The phone and the player are cards SIDE BY SIDE (operator, 2026-09-02:
+    "swipe left and right to switch between them, and the small selector row
+    on the bottom"). Until then the player was a sheet pulled down over the
+    phone by a ribbon, with a second ribbon, a foot grabber and a travelling
+    curtain for the player-first page. All of that is gone, and this holds
+    the new shape: the sheet parks off the RIGHT edge, the card carries the
+    faces row with one static tab per card, and nothing reaches for the
+    pull-down's ids any more."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = widget_js()["call.js"]
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        cls.html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+
+    def test_the_player_parks_beside_the_phone_not_above_it(self):
+        base = self.css.split("\n  .player {")[1].split("}")[0]
+        self.assertIn("transform: translateX(103%)", base)
+        self.assertNotIn("translateY", base)
+        self.assertIn(".card.playeropen .player { transform: translateX(0); }",
+                      self.css)
+        # The finger paints the same axis the transition runs on.
+        self.assertIn("'translateX(' + ((1 - pct) * 100).toFixed(2) + '%)'",
+                      self.js)
+
+    def test_the_faces_row_names_every_card_on_offer(self):
+        for el in ('id="faceBar"', 'id="facePhone"', 'id="facePlayer"'):
+            self.assertIn(el, self.html)
+        # One definition of which cards exist, and the row is painted from
+        # it wherever the listen chip already repaints.
+        self.assertIn("function faceDefs()", self.js)
+        self.assertIn("paintFaceBar();", self.js.split("function paintListenChip")[1][:900])
+        # The row makes room at the card's foot only while it is there.
+        self.assertIn(".card.faces { padding-bottom: 46px; }", self.css)
+        self.assertIn(".card.faces .player, .card.faces .guide { bottom: 38px; }",
+                      self.css)
+
+    def test_the_swipe_owns_one_axis_for_the_whole_gesture(self):
+        # A scroll through the queue must never turn into a page turn
+        # halfway down: the axis is decided once, in the first pixels.
+        swipe = self.js.split("function bindFaceSwipe")[1]
+        self.assertIn("axis = 'wait'", swipe)
+        self.assertIn("if (Math.abs(dy) > Math.abs(dx)", swipe)
+        self.assertIn("axis = 'v'", swipe)
+        # The fader and the request box keep their own finger.
+        self.assertIn("closest('input, select, textarea')", swipe)
+
+    def test_the_pull_down_is_gone_from_every_file(self):
+        for name, text in (("call.js", self.js), ("style.css", self.css),
+                           ("index.html", self.html)):
+            for token in ("playerTab", "phoneTab", "plGrab", "plCurtain",
+                          "plfirst", "plphonetab", "plcurtain"):
+                with self.subTest(file=name, token=token):
+                    self.assertNotIn(token, text)
+
+
+class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
+    """The third card is the operator's to switch on. Off, the row never
+    names it, /live never says so, and /guide is a 404 rather than an empty
+    week that reads as a station with no schedule. On, the widget reads
+    /guide once per five minutes and paints the week from it."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.js = widget_js()["call.js"]
+        cls.html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        cls.live_py = (AGENT_WORKER / "api" / "live.py").read_text(encoding="utf-8")
+
+    def test_the_switch_is_off_until_the_operator_says_and_travels_on_live(self):
+        import settings as settings_store
+
+        self.assertFalse(settings_store.load().get("show_guide"))
+        self.assertIn('"guideCard": bool(cfg.get("show_guide"))', self.live_py)
+        self.assertIn("d.guideCard", self.js)
+
+    def test_the_route_is_in_the_table_and_answers_404_while_off(self):
+        import asyncio
+
+        from aiohttp import web
+
+        from api import guide
+        from tests.support import _FakeRequest
+
+        routes = (AGENT_WORKER / "token_server.py").read_text(encoding="utf-8")
+        self.assertIn('add_get("/guide", handle_guide)', routes)
+        with self.assertRaises(web.HTTPNotFound):
+            asyncio.run(guide.handle_guide(_FakeRequest()))
+
+    def test_the_card_has_its_frames_and_its_tab(self):
+        for el in ('id="guideView"', 'id="guideToday"', 'id="guideList"',
+                   'id="guideEmpty"', 'id="faceGuide"'):
+            self.assertIn(el, self.html)
+        # The third face is in the one list the row and the swipe read.
+        defs = self.js.split("function faceDefs()")[1][:600]
+        self.assertIn("id: 'guide'", defs)
+        self.assertIn("guideOffered()", defs)
+        self.assertIn("fetch('/guide'", self.js)
+        # Built as nodes, never markup: the station's words are not tags.
+        painter = self.js.split("function guideRow")[1].split("function paintFaceProgress")[0]
+        self.assertNotIn("innerHTML", painter)
+        self.assertIn("textContent", painter)
+
+    def test_the_day_reads_forward_from_midnight(self):
+        # Operator, 2026-09-03: the strip is a DAY view, so it starts at
+        # 12 AM and proceeds. It used to scroll itself to the block on air,
+        # which hid the morning behind the left edge.
+        block = self.js.split("const todays = runs.filter")[1][:400]
+        self.assertIn("12 AM first, then the day", block)
+        self.assertIn("today.scrollLeft = 0;", self.js)
+        self.assertNotIn("inline: 'center'", self.js)
+
+    def test_the_strip_keeps_its_own_sideways_drag(self):
+        # Every swipe across the day's hours turned the page instead of
+        # scrolling them (operator, 2026-09-03).
+        swipe = self.js.split("function bindFaceSwipe")[1][:1400]
+        self.assertIn("closest('.gdtoday')", swipe)
+        strip = self.css.split("  .gdtoday {")[1].split("}")[0]
+        self.assertIn("touch-action: pan-x", strip)
+        self.assertIn("overflow-x: auto", strip)
+
+    def test_one_saying_per_fact_in_the_guides_furniture(self):
+        # Four things said the same thing: the header's meta, the strip's
+        # label, its "on air until", and the hero (operator, 2026-09-03:
+        # "a little crazy"). The header names the card, the strip names the
+        # day, and the hero is the only place that says what is on.
+        self.assertNotIn("guideMeta", self.js)
+        self.assertNotIn('id="guideMeta"', self.html)
+        self.assertIn("if (headMeta) headMeta.textContent = now.label;", self.js)
+        hero = self.js.split("const tail = document.createElement")[1][:400]
+        self.assertIn("'until ' + until", hero)
+
+    def test_the_guides_header_wears_the_cards_own_chips(self):
+        for el in ('id="gdHelpBtn"', 'id="gdThemeBtn"', 'id="gdSigninBtn"',
+                   'id="gdGearBtn"'):
+            self.assertIn(el, self.html)
+        # Offered by the same answers the card's own corner reads, so one
+        # switch governs both and there is no second copy to drift.
+        for name in ("gdHelpBtn", "gdThemeBtn", "gdGearBtn", "gdSigninBtn"):
+            self.assertIn("set('" + name + "'", self.js)
+
+    def test_the_week_can_be_read_as_a_grid(self):
+        # Operator, 2026-09-03: a button that paints the schedule as a grid.
+        # Seven day rows over one hour ruler, the hour now marked, and a
+        # block is a way INTO the show rather than a dead tile.
+        for el in ('id="guideGrid"', 'id="guideViewDay"', 'id="guideViewWeek"'):
+            self.assertIn(el, self.html)
+        self.assertIn("function paintGuideGrid", self.js)
+        self.assertIn("function setGuideView", self.js)
+        grid = self.js.split("function paintGuideGrid")[1][:4200]
+        # Every run that TOUCHES a day is drawn on it, clipped — a show
+        # from last night fills this morning instead of leaving it blank.
+        self.assertIn("r.start < end && r.end > start", grid)
+        self.assertIn("Math.max(0, r.start - start)", grid)
+        self.assertIn("gdnowmark", grid)
+        self.assertIn("setGuideView('day'); openInList(r.id)", grid)
+        self.assertIn(".gdcells {", self.css)
+        self.assertIn("grid-template-columns: repeat(24, 1fr)", self.css)
+
+    def test_a_show_keeps_one_colour_and_it_comes_from_a_token(self):
+        # The station names no colour, so it is derived from the id and the
+        # same tone dresses the list's dot and the grid's block. Every tone
+        # is mixed from a palette token: nothing here may hardcode a colour
+        # (style.css's theming contract).
+        self.assertIn("function showTone", self.js)
+        self.assertIn("function toneDot", self.js)
+        import re
+        tones = re.findall(r"\.card \.gdcell\[data-tone=\"\d\"\] \{ background: ([^;]+);",
+                           self.css)
+        self.assertEqual(6, len(tones), tones)
+        for t in tones:
+            with self.subTest(tone=t):
+                self.assertTrue(t.startswith("color-mix(in srgb, var(--"), t)
+                self.assertNotIn("#", t)
+
+    def test_a_host_face_opens_to_a_portrait(self):
+        # The pictures are the point of the booth, and 34px of them was a
+        # hint (operator, 2026-09-03). The press rides a WRAPPER, because a
+        # face that fails swaps the img for initials and a binding on the
+        # img went with it.
+        self.assertIn("function bindFaceZoom", self.js)
+        self.assertIn("bindFaceZoom(fig, p)", self.js)
+        self.assertIn(".card .gdzoom.big {", self.css)
+        # And it must never toggle the row it sits in.
+        zoom = self.js.split("function bindFaceZoom")[1][:600]
+        self.assertIn("e.stopPropagation()", zoom)
+
+    def test_the_lit_block_follows_the_stations_clock_not_the_readers(self):
+        block = self.js.split("function stationNow")[1][:900]
+        self.assertIn("timeZone: tz", block)
+        self.assertIn("weekday: 'short'", block)
+
+    def test_the_week_is_one_line_so_a_show_can_cross_midnight(self):
+        # The operator's guide shows "10 PM – 6 AM" as one block; a grid
+        # read day by day would show two halves. The week is flattened to
+        # 168 hours and its ends joined, and everything the card says
+        # about time — the strip, "next", the grouped schedule — reads
+        # from those runs.
+        self.assertIn("const WEEK_H = 168;", self.js)
+        wrap = self.js.split("function weekRuns")[1][:900]
+        self.assertIn("last.end = WEEK_H + first.end", wrap)
+        for fn in ("function nextAiring", "function scheduleGroups", "function echoed"):
+            self.assertIn(fn, self.js)
+        # The angle rides /guide from now-playing, not from the schedule.
+        self.assertIn('"onAir": _on_air(now)',
+                      (AGENT_WORKER / "api" / "guide.py").read_text(encoding="utf-8"))
+
+    def test_the_show_on_air_gets_the_hero_and_the_list_marks_it(self):
+        # The card reads top to bottom the way the operator asked
+        # (2026-09-02): the strip, then the show ON AIR open in full, then
+        # the program guide listing every show with the current one
+        # outlined. The hero and the rows share one body builder, so the
+        # two can never say different things about a show.
+        for el in ('id="guideHero"', 'id="guideListHead"', 'id="guideTop"',
+                   'id="guideScroll"'):
+            self.assertIn(el, self.html)
+        self.assertIn("function guideHero", self.js)
+        self.assertIn("function guideBody", self.js)
+        hero = self.js.split("function guideHero")[1][:2000]
+        self.assertIn("guideBody(show, cast, angle, runs, now, 'gdherobody')", hero)
+        row = self.js.split("function guideRow")[1][:2600]
+        self.assertIn("guideBody(show, cast, angle, runs, now)", row)
+        self.assertIn("(live ? ' live' : '')", row)
+        self.assertIn(".card .gdrow.live { border-color: var(--coral); }", self.css)
+
+    def test_the_way_back_up_surfaces_once_the_week_is_scrolled_into(self):
+        block = self.js.split("function paintGuideTop")[1][:300]
+        self.assertIn("sc.scrollTop < 240", block)
+        click = self.js.split("function bindGuideTop")[1][:900]
+        # A smooth scroll needs frames; a tab that is not being painted
+        # gets none, so the press must still land.
+        self.assertIn("sc.scrollTop === was", click)
+
+    def test_the_faces_are_the_cards_footer_band(self):
+        # Operator, 2026-09-03: the rounded tray "looks a bit weak and
+        # mismatched". It wore the shape this project uses for a SETTING
+        # (the panel's On/Off master) and floated over a card whose grammar
+        # is full-bleed bands. It is the eyebrow's twin now: flush to the
+        # card's edges, one hairline rule, no boxes.
+        band = self.css.split("  .facebar {")[1].split("}")[0]
+        self.assertIn("left: 0; right: 0; bottom: 0", band)
+        self.assertIn("border-top: 1px solid var(--hairline)", band)
+        face = self.css.split(".card .facebar .face {")[1].split("}")[0]
+        self.assertIn("flex: 1 1 0", face)
+        self.assertIn("border: 0", face)
+        self.assertNotIn("faceseg", self.css)
+
+    def test_the_lit_rule_follows_the_finger_across_the_band(self):
+        # What makes the band a PAGER rather than three buttons: the rule
+        # tracks the drag, and only settles when the swipe does.
+        self.assertIn('id="faceInd"', self.html)
+        self.assertIn("function paintFaceIndicator", self.js)
+        move = self.js.split("paintFaceIndicator(from + (to - from)")[1][:120]
+        self.assertTrue(move.startswith(" * (incoming ? shown : 1 - shown))"), move)
+        # A repaint mid-drag must not snap it back to the face being left.
+        self.assertIn("if (!faceDragging) {", self.js)
+        self.assertIn(".faceind.dragging { transition: none; }", self.css)
+
+    def test_a_placeholder_picture_becomes_initials(self):
+        # The station answers 200 with a 1x1 for a persona that has no
+        # picture (p_50fe86 on the operator's own station), so onerror
+        # never fires and one pixel gets stretched across the circle. The
+        # card's DJ ring already knew this; the guide's faces do now.
+        block = self.js.split("const fallback = () =>")[1][:300]
+        self.assertIn("img.onerror = fallback", block)
+        self.assertIn("naturalWidth <= 1", block)
+        # And NOT lazy: these rows are built only when the card opens, and
+        # a lazy image in an overlay the browser is not painting never
+        # loads at all.
+        self.assertNotIn("img.loading = 'lazy'", self.js)

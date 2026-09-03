@@ -477,11 +477,11 @@ async def handle_live(request: web.Request) -> web.Response:
                                    if cfg.get("tune_in_audible", True) else 0),
                     },
                     # Whether the card OFFERS the swipe-up station player.
-                    # Only the operator's switch travels — the stream itself
-                    # is the block above, and the widget also requires a
-                    # resolved URL before it shows the gesture, so a switch
-                    # flipped on with no reachable stream offers nothing.
+                    # Only the switches travel — the stream is the block
+                    # above and the widget still needs a resolved URL before
+                    # it offers the player; the guide reads /guide once told.
                     "swipePlayer": bool(cfg.get("swipe_player")),
+                    "guideCard": bool(cfg.get("show_guide")),
                     # How many are tuned in, from the same /now-playing
                     # context the station's own player reads (the listener
                     # sampler parses the identical shapes). None when the

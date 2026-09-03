@@ -99,6 +99,15 @@
         && (!d || d.canOpenSettings !== false));
     set('plSigninBtn', c.signin !== false && !!(d && d.signinAvailable)
         && !callKey());
+    // The guide's header wears the same chips as the player's, for the same
+    // reason: it covers the card's corner, so reaching them meant leaving
+    // the card you were on (operator, 2026-09-03).
+    set('gdHelpBtn', c.help !== false && !!(d && d.canAsk));
+    set('gdThemeBtn', c.theme !== false && !themeForcedByHost);
+    set('gdGearBtn', c.settings !== false && !compact
+        && (!d || d.canOpenSettings !== false));
+    set('gdSigninBtn', c.signin !== false && !!(d && d.signinAvailable)
+        && !callKey());
     // The operator's link out. `link` is already both gates (the feature and
     // this surface); an address that survived the server's http(s) check is
     // the third — a button that goes nowhere is worse than an empty corner.
@@ -234,8 +243,9 @@
     btn.title = 'Theme: ' + T[here] + ' — tap for ' + T[next];
     // The player header's copy wears the same glyph and forwards its press —
     // one cycle, two doors.
-    const pl = $('plThemeBtn');
-    if (pl) { pl.innerHTML = G[here]; pl.title = btn.title; }
+    [$('plThemeBtn'), $('gdThemeBtn')].forEach((b) => {
+      if (b) { b.innerHTML = G[here]; b.title = btn.title; }
+    });
   }
 
   (function bindThemeCycle() {
@@ -249,8 +259,9 @@
       else localStorage.removeItem('callinTheme');
       applyThemeChoice(next);
     };
-    const pl = $('plThemeBtn');
-    if (pl) pl.onclick = () => btn.onclick();
+    [$('plThemeBtn'), $('gdThemeBtn')].forEach((b) => {
+      if (b) b.onclick = () => btn.onclick();
+    });
   })();
 
   // "The station's own colours" follow the PROGRAMME — the server resolves
@@ -1949,7 +1960,7 @@
             && !inConversation()) {
           playerStartApplied = true;
           const sheet = $('playerView');
-          sheet.classList.add('dragging');
+          sheet.classList.add('dragging');    // no slide: this is the start
           openPlayer();
           void sheet.offsetHeight;
           sheet.classList.remove('dragging');
@@ -2321,12 +2332,21 @@
       setTimeout(() => { const b = $('helpBtn'); if (b) b.click(); }, 80);
     };
   }
+  if ($('gdHelpBtn')) {
+    $('gdHelpBtn').onclick = () => {
+      showFace('phone');
+      setTimeout(() => { const b = $('helpBtn'); if (b) b.click(); }, 80);
+    };
+  }
   // The player head's copy forwards; the overlay itself lives on the card.
   if ($('plSigninBtn')) {
     $('plSigninBtn').onclick = () => {
       closePlayer(true);
       openSignin();
     };
+  }
+  if ($('gdSigninBtn')) {
+    $('gdSigninBtn').onclick = () => { showFace('phone'); openSignin(); };
   }
   if ($('guestClose')) $('guestClose').onclick = closeSignin;
 
@@ -4960,6 +4980,8 @@
     return (card && card.dataset.mode) || 'idle';
   }
 
+  // The guide face's own state — see THE FACES, further down.
+  let guideOpen = false, guideHideTimer = 0, guideData = null, guideAt = 0;
   let playerOpen = false, playerHideTimer = 0;
 
   // Whether this surface can EVER carry the player, whatever the operator has
@@ -4983,10 +5005,9 @@
     return playerVisual && !!d.swipePlayer && !!(d.stream && d.stream.url);
   }
 
-  // Which face is HOME. When the operator starts the page on the player,
-  // the whole pull-down metaphor flips (operator, 2026-09-01): the phone
-  // hangs above the player, the sheet's own top ribbon pulls it down, and
-  // the swipes run the other way — the gesture follows the start.
+  // Which face the page OPENS on (operator's "Opens on"): the phone, or
+  // the player card already slid in. The other is one swipe away either
+  // way; nothing about the gesture flips with the start any more.
   function playerIsHome() {
     const d = shown || live || {};
     return !!d.playerStart && playerOffered();
@@ -5288,7 +5309,6 @@
     void sheet.offsetHeight;
     document.querySelector('.card').classList.add('playeropen');
     playerOpen = true;
-    sweepCurtain(true);
     paintPlayer();
     fitPlayerArt();
     // What this caller's key unlocks (skip, unlike, operator mode) — the
@@ -5305,7 +5325,6 @@
     if (!keepAudio) stopPlayerAudio();
     if (!playerOpen) { $('playerView').hidden = true; paintListenChip(); return; }
     playerOpen = false;
-    sweepCurtain(false);
     document.querySelector('.card').classList.remove('playeropen');
     // display:none only after the wipe has left. A timer, not transitionend:
     // transition events never fire in a hidden pane, and a sheet stuck
@@ -5815,36 +5834,27 @@
   }
 
   function paintListenChip() {
-    const chip = $('listenChip'), tab = $('playerTab');
+    const chip = $('listenChip');
     if (!chip) return;
     if (!playerOffered()) {
       // The operator can pull the player out from under a caller mid-song —
       // honour it on the next poll rather than playing on with the door gone.
       chip.hidden = true;
-      if (tab) tab.hidden = true;
       // Nothing to carry next door either: the door the music came through
       // has gone.
       if (playerWanted) wantPlayer(false);
       if (playerEl) stopPlayerAudio();
       if (playerOpen) closePlayer();
+      paintFaceBar();
       return;
     }
     const idle = cardMode() === 'idle';
     chip.hidden = !idle || playerOpen;
     chip.classList.toggle('playing', !!playerEl);
     chip.textContent = playerEl ? 'Playing' : 'Listen';
-    if (tab) {
-      // The bookmark only hangs while the player is closed — the way back
-      // up is the grabber at the dock's foot, where the finger already is.
-      tab.hidden = !idle || playerOpen;
-    }
-    // The inverted furniture rides ONE class, owned by CSS: on a
-    // player-first page the sheet's TOP ribbon is the way to the phone,
-    // and the card's bookmark and the foot grabber stand down. It was
-    // per-element hidden fiddling first, and the pieces disagreed on the
-    // operator's phone (grabber up AND ribbon up, 2026-09-01).
-    const card = document.querySelector('.card');
-    if (card) card.classList.toggle('plfirst', playerIsHome());
+    // The faces row tracks the same state the chip does: which card is
+    // showing, and whether the player may be gone to at all right now.
+    paintFaceBar();
   }
 
   // The lock screen's idea of what is playing, on the platforms that ask.
@@ -5896,205 +5906,865 @@
     } catch (e) {}
   }
 
-  // The plain swipe, anywhere on the card: down pulls the station in, up
-  // pushes it away. Touch, not pointer: this is a phone move, and the mouse
-  // path is the ribbon, the chip and the hint button. A swipe that starts
-  // on a control is a press, not a gesture, and a slow or mostly-horizontal
-  // drag is a scroll — both fall through untouched.
-  (function bindSwipe() {
-    const card = document.querySelector('.card');
-    if (!card) return;
-    let sx = 0, sy = 0, st = 0, armed = false;
-    card.addEventListener('touchstart', (e) => {
-      armed = false;
-      if (e.touches.length !== 1) return;
-      if (e.target.closest('button, a, input, select, textarea')) return;
-      if (playerOpen ? false : (cardMode() !== 'idle' || !playerOffered())) return;
-      armed = true;
-      sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now();
-    }, { passive: true });
-    card.addEventListener('touchend', (e) => {
-      if (!armed) return;
-      armed = false;
-      const t = e.changedTouches && e.changedTouches[0];
-      if (!t || Date.now() - st > 800) return;
-      const dx = t.clientX - sx, dy = t.clientY - sy;
-      if (Math.abs(dy) < 60 || Math.abs(dy) < Math.abs(dx) * 1.5) return;
-      if (playerIsHome()) {
-        // Player-first page: the phone hangs ABOVE — push up from the
-        // phone to go home, pull the sheet down to fetch the phone.
-        if (dy < 0 && !playerOpen) openPlayer();
-        else if (dy > 0 && playerOpen) closePlayer(true);
-      } else if (dy > 0 && !playerOpen) openPlayer();
-      else if (dy < 0 && playerOpen) closePlayer(true);
-    }, { passive: true });
-  })();
-
-  // The ribbon: press it and the sheet FOLLOWS the finger — the page wipe
-  // the operator asked for, not a tap that teleports. Release past a fifth
-  // of the card and it commits; short of that it settles back. A plain tap
-  // (no travel) toggles, which is also the mouse's way in.
-  // ONE binder, both handles, both directions (operator, 2026-09-01: the
-  // phone ribbon was tap-only because only the card's tab was ever bound,
-  // and the drag maths was hardcoded to a sheet that rests ABOVE).
-  // `dir` is +1 when the player hangs above (pull DOWN to open) and -1 on
-  // a player-first page, where the phone hangs above instead and the sheet
-  // rests below — so every sign, and the resting offset itself, follows
-  // playerIsHome() rather than a constant.
-  // How far the sheet is shown, 0..1, painted the way THIS page's metaphor
-  // says: normally the sheet travels (it arrives over the phone), and on a
-  // player-first page it is clipped from the top instead, so the boundary
-  // sweeps down like a phone drawn over a player that holds still.
-  // The arriving screen's own EDGE. Clipping alone reads as a scan — no
-  // seam, nothing that says a second card is coming over the first
-  // (operator, 2026-09-01) — so a lit rule with a shadow under it travels
-  // with the boundary and gives the phone a leading edge.
-  function paintCurtain(pct, on) {
-    const c = $('plCurtain');
-    if (!c) return;
-    c.style.top = (pct * 100).toFixed(2) + '%';
-    c.classList.toggle('on', !!on);
+  // ---- THE FACES. The phone, the player and the programme guide are
+  // cards SIDE BY SIDE (operator, 2026-09-02: "swipe left and right to
+  // switch between them, and the small selector row on the bottom").
+  // Until then the player was a sheet pulled down over the phone by a
+  // ribbon, with a second ribbon, a foot grabber and a travelling curtain
+  // for the player-first page — all of it went with that model. The phone
+  // is the base; each later card is an overlay one layer above the one
+  // before it, sliding in from the right following the finger and back out
+  // the same way, and the row at the card's foot names every face on offer
+  // and switches on a tap. A face the operator switched off is simply not
+  // in the row. Touch, not pointer: on a desktop the row is the way across
+  // (and the arrow keys). A drag that starts on a field is typing or the
+  // fader, and one that runs mostly up or down is a scroll — the axis is
+  // decided in the first eight pixels and then OWNED for the rest of the
+  // gesture, so a scroll through the queue never turns into a page turn
+  // halfway down.
+  // Functions, not consts: paintListenChip runs from the first /live paint,
+  // and a const this far down the file would still be unassigned.
+  function guideOffered() {
+    const d = shown || live || {};
+    return playerVisual && !!d.guideCard;
   }
-
-  // A tap has no finger to follow, so the edge is swept by hand over the
-  // same duration the sheet's own transition runs.
-  function sweepCurtain(toOpen) {
-    if (!playerIsHome()) { paintCurtain(0, false); return; }
-    const c = $('plCurtain');
-    if (!c) return;
-    paintCurtain(toOpen ? 1 : 0, true);
-    c.classList.add('sweep');
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => paintCurtain(toOpen ? 0 : 1, true));
-    });
-    clearTimeout(plCurtainT);
-    plCurtainT = setTimeout(() => {
-      c.classList.remove('sweep', 'on');
-    }, 460);
+  function faceDefs() {
+    return [
+      { id: 'phone',  btn: 'facePhone',  el: '',           offered: () => true },
+      { id: 'player', btn: 'facePlayer', el: 'playerView', offered: () => playerOffered() },
+      { id: 'guide',  btn: 'faceGuide',  el: 'guideView',  offered: () => guideOffered() },
+    ];
   }
-  let plCurtainT = 0;
-
-  function paintSheetProgress(sheet, shownPct) {
-    const p = Math.min(1, Math.max(0, shownPct));
-    if (playerIsHome()) {
-      sheet.style.transform = '';
-      sheet.style.clipPath = 'inset(' + ((1 - p) * 100).toFixed(2) + '% 0 0 0)';
-      paintCurtain(1 - p, p > 0.001 && p < 0.999);
+  function faceList() { return faceDefs().filter((f) => f.offered()); }
+  function currentFace() {
+    return guideOpen ? 'guide' : playerOpen ? 'player' : 'phone';
+  }
+  // The player with no slide: the page's own start, or a card laid UNDER
+  // the guide before the guide slides away to reveal it.
+  function openPlayerInstant() {
+    const sheet = $('playerView');
+    sheet.classList.add('dragging');
+    openPlayer();
+    void sheet.offsetHeight;
+    sheet.classList.remove('dragging');
+  }
+  function showFace(id) {
+    const now = currentFace();
+    if (id === now) return;
+    if (id === 'guide') { openGuide(); return; }
+    if (id === 'player') {
+      if (guideOpen) { openPlayerInstant(); closeGuide(); }
+      else openPlayer();
       return;
     }
-    paintCurtain(0, false);
-    sheet.style.clipPath = '';
-    sheet.style.transform =
-      'translateY(' + (-103 * (1 - p)).toFixed(2) + '%)';
+    if (guideOpen) closeGuide();
+    if (playerOpen) closePlayer(true);
   }
 
-  function bindSheetDrag(tabId) {
-    const tab = $(tabId), sheet = $('playerView');
-    const card = document.querySelector('.card');
-    if (!tab || !sheet || !card) return;
-    const dir = () => (playerIsHome() ? -1 : 1);
-    let startY = 0, dragging = false, moved = false, wasOpen = false;
-
-    tab.addEventListener('touchstart', (e) => {
-      if (!playerOffered() || inConversation()) return;
-      dragging = true; moved = false; wasOpen = playerOpen;
-      startY = e.touches[0].clientY;
-      if (!wasOpen) {
-        // Rendered under the finger from the first pixel of travel.
-        clearTimeout(playerHideTimer);
-        sheet.hidden = false;
-        paintPlayer();
-        fitPlayerArt();
-      }
-      sheet.classList.add('dragging');
-    }, { passive: true });
-
-    tab.addEventListener('touchmove', (e) => {
-      if (!dragging) return;
-      const dy = (e.touches[0].clientY - startY) * dir();
-      const h = card.getBoundingClientRect().height || 1;
-      if (Math.abs(dy) > 6) moved = true;
-      const shownPct = wasOpen
-        ? 1 - Math.min(1, Math.max(0, -dy / h))
-        : Math.min(1, Math.max(0, dy / h));
-      paintSheetProgress(sheet, shownPct);
-    }, { passive: true });
-
-    const settle = (e) => {
-      if (!dragging) return;
-      dragging = false;
-      sheet.classList.remove('dragging');
-      const t = e.changedTouches && e.changedTouches[0];
-      const dy = (t ? t.clientY - startY : 0) * dir();
-      const h = card.getBoundingClientRect().height || 1;
-      const shouldOpen = wasOpen ? (-dy / h) < 0.2 : (dy / h) > 0.2;
-      if (shouldOpen && !playerOpen) openPlayer();
-      else if (!shouldOpen && playerOpen) closePlayer(true);
-      else if (!shouldOpen && !playerOpen) {
-        // Released short of the threshold: slide home, then put it away.
-        clearTimeout(playerHideTimer);
-        playerHideTimer = setTimeout(() => {
-          if (!playerOpen) sheet.hidden = true;
-        }, 450);
-      }
-      // Cleared AFTER the state settles, so the transition animates from
-      // wherever the finger left the sheet rather than snapping first.
-      sheet.style.transform = '';
-      sheet.style.clipPath = '';
-    };
-    tab.addEventListener('touchend', settle);
-    tab.addEventListener('touchcancel', settle);
-    tab.addEventListener('click', () => {
-      if (moved) { moved = false; return; }   // the click after a real drag
-      if (playerOpen) closePlayer(true); else openPlayer();
-    });
+  // Where the lit rule sits, in faces: 0 is the first, 1.5 is halfway
+  // between the second and third. The swipe writes fractions into it as the
+  // finger moves, which is what makes the band read as a pager rather than
+  // a row of buttons (operator, 2026-09-03: "less like little chips").
+  function paintFaceIndicator(pos) {
+    const bar = $('faceBar'), ind = $('faceInd');
+    if (!bar || !ind) return;
+    const n = faceList().length;
+    if (n < 2) return;
+    const i = Math.max(0, Math.min(n - 1, pos));
+    bar.style.setProperty('--face-n', String(n));
+    ind.style.width = (100 / n).toFixed(4) + '%';
+    ind.style.transform = 'translateX(' + (i * 100).toFixed(3) + '%)';
   }
-  // The card's bookmark, and — on a player-first page — the sheet's own
-  // phone ribbon. Both drag; the binder reads the direction per gesture,
-  // so a mid-session settings change cannot leave one of them backwards.
-  bindSheetDrag('playerTab');
-  bindSheetDrag('phoneTab');
-
-  // The grabber at the dock's foot: the way back up, with the same
-  // finger-following drag as the bookmark — always from the open state.
-  (function bindGrab() {
-    const grab = $('plGrab'), sheet = $('playerView');
-    const card = document.querySelector('.card');
-    if (!grab || !sheet || !card) return;
-    let startY = 0, dragging = false, moved = false;
-
-    grab.addEventListener('touchstart', (e) => {
-      if (!playerOpen) return;
-      dragging = true; moved = false;
-      startY = e.touches[0].clientY;
-      sheet.classList.add('dragging');
-    }, { passive: true });
-    grab.addEventListener('touchmove', (e) => {
-      if (!dragging) return;
-      const dy = e.touches[0].clientY - startY;
-      const h = card.getBoundingClientRect().height || 1;
-      if (Math.abs(dy) > 6) moved = true;
-      const hiddenPct = Math.min(1, Math.max(0, -dy / h));
-      sheet.style.transform = 'translateY(' + (-103 * hiddenPct).toFixed(2) + '%)';
-    }, { passive: true });
-    const settle = (e) => {
-      if (!dragging) return;
-      dragging = false;
-      sheet.classList.remove('dragging');
-      const t = e.changedTouches && e.changedTouches[0];
-      const dy = t ? t.clientY - startY : 0;
-      const h = card.getBoundingClientRect().height || 1;
-      if ((-dy / h) > 0.2 && playerOpen) closePlayer(true);
-      sheet.style.transform = '';
-      sheet.style.clipPath = '';
-    };
-    grab.addEventListener('touchend', settle);
-    grab.addEventListener('touchcancel', settle);
-    grab.addEventListener('click', () => {
-      if (moved) { moved = false; return; }
-      closePlayer(true);
+  function paintFaceBar() {
+    const bar = $('faceBar'), card = document.querySelector('.card');
+    if (!bar || !card) return;
+    // The operator can switch the guide off under a reader — honour it on
+    // the next poll, the way the player's own offer is honoured.
+    if (guideOpen && !guideOffered()) closeGuide();
+    const list = faceList();
+    // Looks, not sound: the settings preview shows the row like it shows
+    // the sheet (playerVisual), and a compact card or an embed never has
+    // a second face to name.
+    const many = playerVisual && list.length > 1;
+    bar.hidden = !many;
+    // The card's foot makes room only while the row is there — a phone-
+    // only card keeps its 16px, and the height the embed reports never
+    // moves (an embed is compact, so it never gets the row at all).
+    card.classList.toggle('faces', many);
+    const now = currentFace();
+    const idle = cardMode() === 'idle';
+    faceDefs().forEach((f) => {
+      const b = $(f.btn);
+      if (!b) return;
+      b.hidden = !list.some((x) => x.id === f.id);
+      b.classList.toggle('on', f.id === now);
+      b.setAttribute('aria-current', f.id === now ? 'true' : 'false');
+      // A call is not a page to turn: the other tabs stay in the row (so
+      // the foot doesn't jump) but sleep until the line is idle again —
+      // openPlayer refuses mid-conversation for the same reason.
+      b.disabled = f.id !== 'phone' && now === 'phone' && !idle;
     });
+    const ind = $('faceInd');
+    if (ind) {
+      ind.hidden = !many;
+      // Not while the finger owns it — a repaint mid-drag would snap the
+      // rule back to the face being left.
+      if (!faceDragging) {
+        ind.classList.remove('dragging');
+        paintFaceIndicator(list.findIndex((f) => f.id === now));
+      }
+    }
+  }
+  let faceDragging = false;
+  faceDefs().forEach((f) => {
+    const b = $(f.btn);
+    if (b) b.onclick = () => showFace(f.id);
+  });
+
+  // ---- The programme guide itself: the station's week, in the shape of
+  // the operator's own guide page — today's shows hour by hour in a strip,
+  // then every show with its DJ, tagline and times, opening in place. The
+  // payload is /guide's, already normalised: a 7x24 grid of show ids, the
+  // shows, a persona index with avatars proxied through this server, and
+  // the station's timezone. Built as nodes, never markup: every word here
+  // is the station's, and a show named with an angle bracket is a show,
+  // not a tag.
+  function openGuide() {
+    if (!guideOffered() || guideOpen) return;
+    if (cardMode() !== 'idle' && !playerOpen) return;
+    clearTimeout(guideHideTimer);
+    const el = $('guideView');
+    el.hidden = false;
+    void el.offsetHeight;                   // rendered before the slide
+    document.querySelector('.card').classList.add('guideopen');
+    guideOpen = true;
+    loadGuide();
+    paintFaceBar();
+  }
+  function closeGuide() {
+    if (!guideOpen) { $('guideView').hidden = true; return; }
+    guideOpen = false;
+    document.querySelector('.card').classList.remove('guideopen');
+    clearTimeout(guideHideTimer);
+    guideHideTimer = setTimeout(() => {
+      if (!guideOpen) $('guideView').hidden = true;
+    }, 450);
+    paintFaceBar();
+  }
+  // Put a face away after a slide that did not commit — a timer, not
+  // transitionend, for the same reason the player's own hide is one.
+  function parkFace(id) {
+    if (id === 'player') {
+      clearTimeout(playerHideTimer);
+      playerHideTimer = setTimeout(() => {
+        if (!playerOpen) $('playerView').hidden = true;
+      }, 450);
+    } else if (id === 'guide') {
+      clearTimeout(guideHideTimer);
+      guideHideTimer = setTimeout(() => {
+        if (!guideOpen) $('guideView').hidden = true;
+      }, 450);
+    }
+  }
+
+  async function loadGuide(force) {
+    // The server caches the week for five minutes; so does this, so a
+    // reader flicking between cards costs the station nothing.
+    if (!force && guideData && Date.now() - guideAt < 300000) {
+      paintGuide();
+      return;
+    }
+    try {
+      const r = await fetch('/guide', { cache: 'no-store' });
+      if (!r.ok) throw new Error('guide ' + r.status);
+      guideData = await r.json();
+      guideAt = Date.now();
+    } catch (e) {
+      if (!guideData) guideData = { shows: [], personas: [], grid: {}, timezone: '' };
+    }
+    paintGuide();
+  }
+
+  const GUIDE_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  const GUIDE_DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const WEEK_H = 168;
+  // The station's OWN clock — which weekday and hour it is there, from
+  // the timezone the schedule was painted in. A listener two zones away
+  // still sees the block that is on air, not the one their wall clock
+  // would pick. `abs` is the hour of the week, Monday 0h = 0.
+  function stationNow(tz) {
+    const opts = { weekday: 'short', hour: 'numeric', hour12: false,
+                   month: 'short', day: 'numeric' };
+    let parts = null;
+    try {
+      parts = new Intl.DateTimeFormat('en-US', { timeZone: tz || undefined, ...opts })
+        .formatToParts(new Date());
+    } catch (e) {
+      // An unknown zone: the reader's clock, which is at least a clock.
+      parts = new Intl.DateTimeFormat('en-US', opts).formatToParts(new Date());
+    }
+    const get = (type) => (parts.find((x) => x.type === type) || {}).value || '';
+    let dayIndex = GUIDE_DAYS.indexOf(get('weekday').slice(0, 3).toLowerCase());
+    let hour = parseInt(get('hour'), 10);
+    if (dayIndex < 0) dayIndex = (new Date().getDay() + 6) % 7;
+    if (isNaN(hour)) hour = new Date().getHours();
+    hour %= 24;
+    const longDay = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday',
+                     'Saturday', 'Sunday'][dayIndex];
+    return { dayIndex, hour, abs: dayIndex * 24 + hour,
+             label: longDay + ', ' + get('month') + ' ' + get('day') };
+  }
+  function fmtHour(h) {
+    h = ((h % 24) + 24) % 24;
+    return (h % 12 || 12) + (h < 12 ? ' AM' : ' PM');
+  }
+  function fmtRange(start, end) { return fmtHour(start) + ' – ' + fmtHour(end); }
+  // The week as one flat line of 168 hours, Monday first, so a show that
+  // runs past midnight is ONE run (10 PM – 6 AM) and not two halves.
+  function weekSlots(grid) {
+    const out = [];
+    GUIDE_DAYS.forEach((d) => {
+      const day = (grid && grid[d]) || [];
+      for (let h = 0; h < 24; h++) out.push(day[h] || null);
+    });
+    return out;
+  }
+  // Runs over the flat week, { id, start, end } in hours of the week, end
+  // exclusive. The week is a circle: a run still going at Sunday's last
+  // hour joins the one at Monday's first, so `end` can pass 168.
+  function weekRuns(slots) {
+    const runs = [];
+    let cur = null;
+    slots.forEach((id, h) => {
+      if (id && cur && cur.id === id && cur.end === h) { cur.end = h + 1; return; }
+      cur = id ? { id, start: h, end: h + 1 } : null;
+      if (cur) runs.push(cur);
+    });
+    if (runs.length > 1) {
+      const first = runs[0], last = runs[runs.length - 1];
+      if (first.start === 0 && last.end === WEEK_H && first.id === last.id) {
+        last.end = WEEK_H + first.end;
+        runs.shift();
+      }
+    }
+    return runs;
+  }
+  // Every run, plus its echo a week earlier and a week later, so windows
+  // near either end of the week see the runs that cross into them.
+  function echoed(runs) {
+    const out = [];
+    runs.forEach((r) => {
+      [-WEEK_H, 0, WEEK_H].forEach((d) => out.push({ id: r.id, start: r.start + d, end: r.end + d }));
+    });
+    return out;
+  }
+  function onAt(runs, abs) { return runs.find((r) => r.start <= abs && abs < r.end) || null; }
+  // The next time this show starts, from the station's now: "On air now",
+  // "Today 6 PM", "Tomorrow 6 AM", "Fri 7 AM".
+  function nextAiring(runs, id, now) {
+    const mine = runs.filter((r) => r.id === id);
+    if (onAt(mine, now.abs)) return 'On air now';
+    const ahead = mine.filter((r) => r.start > now.abs).sort((a, b) => a.start - b.start)[0];
+    if (!ahead) return '';
+    const days = Math.floor(ahead.start / 24) - now.dayIndex;
+    const when = days === 0 ? 'Today' : days === 1 ? 'Tomorrow'
+      : GUIDE_DAY_NAMES[((Math.floor(ahead.start / 24) % 7) + 7) % 7];
+    return when + ' ' + fmtHour(ahead.start);
+  }
+  // Which days a show airs, grouped by an identical day's pattern:
+  // "Mon–Thu 6 AM – 9 AM", "Sat–Sun 6 AM – 10 AM", the way the
+  // operator's own guide lists them. A run past midnight belongs to the
+  // day it STARTS on.
+  function scheduleGroups(runs, id) {
+    const byDay = GUIDE_DAYS.map(() => []);
+    runs.filter((r) => r.id === id && r.start >= 0 && r.start < WEEK_H).forEach((r) => {
+      const day = Math.floor(r.start / 24);
+      byDay[day].push([r.start - day * 24, r.end - day * 24]);
+    });
+    const groups = [];
+    byDay.forEach((ranges, day) => {
+      if (!ranges.length) return;
+      ranges.sort((a, b) => a[0] - b[0]);
+      const key = ranges.map((x) => x.join('-')).join(',');
+      let g = groups.find((x) => x.key === key);
+      if (!g) { g = { key, days: [], ranges }; groups.push(g); }
+      g.days.push(day);
+    });
+    groups.forEach((g) => {
+      // Consecutive days read as a span; the rest as a list.
+      const parts = [];
+      let i = 0;
+      while (i < g.days.length) {
+        let j = i;
+        while (j + 1 < g.days.length && g.days[j + 1] === g.days[j] + 1) j++;
+        parts.push(j - i >= 2
+          ? GUIDE_DAY_NAMES[g.days[i]] + '–' + GUIDE_DAY_NAMES[g.days[j]]
+          : g.days.slice(i, j + 1).map((d) => GUIDE_DAY_NAMES[d]).join(', '));
+        i = j + 1;
+      }
+      g.label = parts.join(', ');
+      g.times = g.ranges.map((x) => fmtRange(x[0], x[1])).join(' · ');
+    });
+    return groups;
+  }
+
+  // A show's own colour, steady across the week and both views. The
+  // station names no colour, so it is derived from the id — same show,
+  // same tone, every paint. SIX tones, each mixed in CSS from a palette
+  // token, because nothing here may hardcode a colour (the theming
+  // contract at the top of style.css).
+  const GUIDE_TONES = 6;
+  function showTone(id) {
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+    return String(h % GUIDE_TONES);
+  }
+  function toneDot(id) {
+    const d = document.createElement('span');
+    d.className = 'gdtone'; d.dataset.tone = showTone(id);
+    d.setAttribute('aria-hidden', 'true');
+    return d;
+  }
+  // Which view the guide is in. Day is the strip, the show on air and the
+  // list; Week is the grid a listings page paints (operator, 2026-09-03).
+  let guideView = 'day';
+  function setGuideView(v) {
+    guideView = v === 'week' ? 'week' : 'day';
+    const week = guideView === 'week';
+    [['guideViewDay', !week], ['guideViewWeek', week]].forEach(([id, on]) => {
+      const b = $(id);
+      if (!b) return;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    ['guideToday', 'guideHero', 'guideListHead', 'guideList'].forEach((id) => {
+      const el = $(id);
+      if (el) el.classList.toggle('gdaway', week);
+    });
+    const grid = $('guideGrid');
+    if (grid) grid.hidden = !week;
+    const sc = $('guideScroll');
+    if (sc) sc.scrollTop = 0;
+    paintGuideTop();
+  }
+  (function bindGuideViews() {
+    const d = $('guideViewDay'), w = $('guideViewWeek');
+    if (d) d.onclick = () => setGuideView('day');
+    if (w) w.onclick = () => setGuideView('week');
   })();
+
+  // Seven day rows over one hour ruler. A show that runs past midnight is
+  // drawn on the day it STARTS and clipped at the row's end, which is what
+  // a listings grid does — the block's own label still carries the true
+  // hours, and the Day view shows the run whole.
+  function paintGuideGrid(byId, runs, now) {
+    const grid = $('guideGrid');
+    if (!grid) return;
+    grid.textContent = '';
+    const ruler = document.createElement('div'); ruler.className = 'gdruler';
+    ruler.appendChild(document.createElement('span')).className = 'gddaycol';
+    const track = document.createElement('div'); track.className = 'gdcells';
+    for (let h = 0; h < 24; h += 3) {
+      const t = document.createElement('span');
+      t.className = 'gdhourlab'; t.style.gridColumn = (h + 1) + ' / span 3';
+      t.textContent = fmtHour(h).replace(' ', '');
+      track.appendChild(t);
+    }
+    ruler.appendChild(track);
+    grid.appendChild(ruler);
+    GUIDE_DAYS.forEach((day, dayIndex) => {
+      const row = document.createElement('div'); row.className = 'gdgridrow';
+      if (dayIndex === now.dayIndex) row.classList.add('today');
+      const lab = document.createElement('span'); lab.className = 'gddaycol';
+      lab.textContent = GUIDE_DAY_NAMES[dayIndex];
+      row.appendChild(lab);
+      const cells = document.createElement('div'); cells.className = 'gdcells';
+      const start = dayIndex * 24, end = start + 24;
+      // Every run that TOUCHES the day, clipped to it — a show that came
+      // over from last night fills this morning rather than leaving it
+      // blank, which is what a listings grid does. Its label still carries
+      // the true hours, and the Day view shows the run whole.
+      runs.filter((r) => r.start < end && r.end > start && byId[r.id])
+        .sort((a, b) => a.start - b.start)
+        .forEach((r) => {
+          const show = byId[r.id];
+          const from = Math.max(0, r.start - start);
+          const span = Math.max(1, Math.min(24, r.end - start) - from);
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'gdcell';
+          b.dataset.tone = showTone(r.id);
+          b.style.gridColumn = (from + 1) + ' / span ' + span;
+          if (r.start <= now.abs && now.abs < r.end) b.classList.add('on');
+          const n = document.createElement('span'); n.className = 'gdcellname';
+          n.textContent = show.title || show.name;
+          const t = document.createElement('span'); t.className = 'gdcelltime';
+          t.textContent = fmtRange(r.start, r.end);
+          b.append(n, t);
+          b.title = (show.title || show.name) + ' · ' + fmtRange(r.start, r.end);
+          // A block is a way INTO the show: back to the day view with that
+          // show open, which is where its description and DJs live.
+          b.onclick = () => { setGuideView('day'); openInList(r.id); };
+          cells.appendChild(b);
+        });
+      if (dayIndex === now.dayIndex) {
+        const mark = document.createElement('span');
+        mark.className = 'gdnowmark'; mark.setAttribute('aria-hidden', 'true');
+        mark.style.left = ((now.hour + 0.5) / 24 * 100).toFixed(3) + '%';
+        cells.appendChild(mark);
+      }
+      row.appendChild(cells);
+      grid.appendChild(row);
+    });
+  }
+
+  function paintGuide() {
+    const d = guideData || {};
+    const shows = d.shows || [], grid = d.grid || {}, personas = {}, byId = {};
+    (d.personas || []).forEach((x) => { personas[x.id] = x; });
+    shows.forEach((x) => { byId[x.id] = x; });
+    const now = stationNow(d.timezone);
+    const runs = echoed(weekRuns(weekSlots(grid))).filter((r) => byId[r.id]);
+    const today = $('guideToday'), list = $('guideList');
+    const empty = $('guideEmpty');
+    const head = $('guideTodayHead'), headMeta = $('guideTodayMeta');
+    const hero = $('guideHero'), listHead = $('guideListHead');
+    const listMeta = $('guideListMeta');
+    if (!today || !list) return;
+    // Today, hour by hour: every run that touches today's twenty-four
+    // hours, the one on air lit, a run from last night shown from where
+    // it started.
+    const dayStart = now.dayIndex * 24, dayEnd = dayStart + 24;
+    const todays = runs.filter((r) => r.start < dayEnd && r.end > dayStart)
+      .sort((a, b) => a.start - b.start);   // 12 AM first, then the day
+    today.textContent = '';
+    today.hidden = !todays.length;
+    if (head) head.hidden = !todays.length;
+    let onAir = null;
+    todays.forEach((r) => {
+      const show = byId[r.id];
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'gdslot';
+      if (r.start <= now.abs && now.abs < r.end) { b.classList.add('on'); onAir = r; }
+      const n = document.createElement('span'); n.className = 'gdname';
+      n.textContent = show.title || show.name;
+      const t = document.createElement('span'); t.className = 'gdtime';
+      t.textContent = fmtRange(r.start, r.end);
+      b.append(n, t);
+      b.onclick = () => openInList(show.id);
+      today.appendChild(b);
+    });
+    if (headMeta) headMeta.textContent = now.label;
+    const angle = d.onAir && d.onAir.angle ? d.onAir : null;
+    const liveId = onAir ? onAir.id : (d.onAir && d.onAir.id) || '';
+    const liveShow = byId[liveId];
+    // The show on air, open, under the strip: the angle, the show, the DJ
+    // and their soul, and where it sits on the week.
+    if (hero) {
+      hero.textContent = '';
+      hero.hidden = !liveShow;
+      if (liveShow) {
+        hero.appendChild(guideHero(
+          liveShow, castOf(liveShow, personas), runs, now,
+          angle && angle.id === liveShow.id ? angle.angle : '',
+          onAir ? fmtHour(onAir.end) : ''));
+      }
+    }
+    // Then the week: every show, the one on air outlined, each opening
+    // in place.
+    list.textContent = '';
+    if (empty) empty.hidden = shows.length > 0;
+    if (listHead) listHead.hidden = !shows.length;
+    if (listMeta) {
+      const airing = new Set(runs.map((r) => r.id)).size;
+      listMeta.textContent = airing
+        ? airing + ' shows on the air this week' : shows.length + ' shows';
+    }
+    shows.forEach((show) => list.appendChild(guideRow(
+      show, personas, runs, now,
+      angle && angle.id === show.id ? angle.angle : '', show.id === liveId)));
+    // The strip STAYS at midnight: it is the day, read forward, and
+    // scrolling it to "now" hid the morning behind the left edge.
+    today.scrollLeft = 0;
+    paintGuideGrid(byId, runs, now);
+    const views = $('guideViews');
+    if (views) views.hidden = !shows.length;
+    paintGuideTop();
+  }
+  function castOf(show, personas) {
+    return [show.personaId].concat(show.guestPersonaIds || [])
+      .filter(Boolean).map((id) => personas[id]).filter(Boolean);
+  }
+  // Open a show in the list and bring it into view — what the strip's
+  // blocks do, and what the hero's own "on the schedule" is beside.
+  function openInList(id) {
+    const list = $('guideList');
+    if (!list) return;
+    const row = [...list.children].find((el) => el.dataset.show === id);
+    if (!row) return;
+    row.classList.add('open');
+    row.setAttribute('aria-expanded', 'true');
+    row.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+  // One picture, or the initials when the station has none.
+  function guideFace(p) {
+    const mono = () => {
+      const m = document.createElement('span');
+      m.className = 'gdav mono';
+      m.textContent = (p.name || '?').slice(0, 2).toUpperCase();
+      return m;
+    };
+    if (!p.avatar) return mono();
+    const img = document.createElement('img');
+    // NOT loading="lazy": the rows are built only when the card is
+    // opened, so they are deferred by construction already — and a lazy
+    // image inside an overlay the browser is not painting never enters a
+    // viewport at all, so every face stayed pending (found driving the
+    // real station, 2026-09-02).
+    img.className = 'gdav'; img.src = p.avatar; img.alt = '';
+    // A picture the station won't serve becomes the initials, the way the
+    // card's own DJ ring does. And a 1x1 PLACEHOLDER is the same nothing
+    // wearing a 200: it loads without erroring and stretches one pixel
+    // across the circle (p_50fe86 on the operator's own station).
+    const fallback = () => { if (img.parentNode) img.replaceWith(mono()); };
+    img.onerror = fallback;
+    img.onload = () => { if (img.naturalWidth <= 1) fallback(); };
+    return img;
+  }
+  // A press on a face opens it to a portrait, and again puts it back —
+  // the pictures are the point of the booth and 34px of them is a hint
+  // (operator, 2026-09-03).
+  // The WRAPPER carries the press, never the picture itself: a face that
+  // fails swaps the <img> for initials, and a binding on the img went with
+  // it — the fallback was a dead circle (found on the real station,
+  // 2026-09-03).
+  function bindFaceZoom(el, person) {
+    el.classList.add('gdzoom');
+    el.setAttribute('role', 'button');
+    el.tabIndex = 0;
+    el.title = person.name || '';
+    const toggle = (e) => {
+      e.stopPropagation();          // never the row's own open/close
+      el.classList.toggle('big');
+    };
+    el.addEventListener('click', toggle);
+    el.addEventListener('keydown', (e) => {
+      if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); toggle(e); }
+    });
+    return el;
+  }
+  function guideFaces(cast, cls) {
+    const avs = document.createElement('span');
+    avs.className = 'gdavs' + (cls ? ' ' + cls : '');
+    cast.slice(0, 4).forEach((p) => avs.appendChild(guideFace(p)));
+    return avs;
+  }
+  // What a show SAYS: the angle when it is on air, the show itself, then
+  // the DJ and each guest with their own line and soul. Shared by the
+  // hero and the rows, so the two can never say different things.
+  function guideBody(show, cast, angle, runs, now, cls) {
+    const body = document.createElement('div');
+    body.className = 'gdbody' + (cls ? ' ' + cls : '');
+    const line = (text, lead, klass) => {
+      const l = document.createElement('p');
+      l.className = 'gdline' + (klass ? ' ' + klass : '');
+      if (lead) { const b = document.createElement('b'); b.textContent = lead; l.append(b); }
+      if (text) l.append((lead ? ' — ' : '') + text);
+      body.appendChild(l);
+    };
+    if (angle) line(angle, "Tonight's angle", 'gdangle');
+    if (show.description) line(show.description);
+    if (cast.length) {
+      const cap = document.createElement('div'); cap.className = 'gdcap';
+      cap.textContent = 'In the booth'; body.appendChild(cap);
+    }
+    cast.forEach((p, i) => {
+      const who = document.createElement('div'); who.className = 'gdperson';
+      const fig = document.createElement('span');
+      fig.className = 'gdfig';
+      fig.appendChild(guideFace(p));
+      who.appendChild(bindFaceZoom(fig, p));
+      const m = document.createElement('div'); m.className = 'gdpmeta';
+      const role = document.createElement('div'); role.className = 'gdrole';
+      role.textContent = i === 0 ? 'Host' : 'Guest';
+      const nm = document.createElement('div'); nm.className = 'gdpname';
+      nm.textContent = p.name;
+      m.append(role, nm);
+      if (p.tagline) {
+        const tg = document.createElement('div'); tg.className = 'gdptag';
+        tg.textContent = p.tagline; m.appendChild(tg);
+      }
+      who.appendChild(m);
+      body.appendChild(who);
+      if (p.soul) line(p.soul);
+    });
+    const groups = scheduleGroups(runs, show.id);
+    if (groups.length) {
+      const sched = document.createElement('div'); sched.className = 'gdsched';
+      const cap = document.createElement('div'); cap.className = 'gdcap';
+      cap.textContent = 'On the schedule'; sched.appendChild(cap);
+      groups.forEach((g) => {
+        const r = document.createElement('div'); r.className = 'gdschedrow';
+        const dl = document.createElement('span'); dl.className = 'gddays';
+        dl.textContent = g.label;
+        if (g.days.includes(now.dayIndex)) {
+          const t = document.createElement('span');
+          t.className = 'gdtodaytag'; t.textContent = 'Today';
+          dl.appendChild(t);
+        }
+        const tm = document.createElement('span'); tm.className = 'gdhours';
+        tm.textContent = g.times;
+        r.append(dl, tm);
+        sched.appendChild(r);
+      });
+      body.appendChild(sched);
+    }
+    return body;
+  }
+  function guideHero(show, cast, runs, now, angle, until) {
+    const box = document.createElement('div');
+    box.className = 'gdherobox';
+    const top = document.createElement('div'); top.className = 'gdherotop';
+    const pip = document.createElement('span');
+    pip.className = 'ppip live'; pip.setAttribute('aria-hidden', 'true');
+    const lab = document.createElement('span');
+    lab.className = 'gdherolab'; lab.textContent = 'On air now';
+    top.append(pip, lab);
+    // The one place the "until" is said. It used to be in the strip's
+    // header as well, beside a header meta and a strip label that both
+    // named the same show (operator, 2026-09-03: "a little crazy").
+    const tail = document.createElement('span');
+    tail.className = 'gdheronext';
+    const next = nextAiring(runs, show.id, now);
+    tail.textContent = until ? 'until ' + until
+      : (next && next !== 'On air now' ? next : '');
+    if (tail.textContent) top.appendChild(tail);
+    const name = document.createElement('div');
+    name.className = 'gdheroname'; name.textContent = show.title || show.name;
+    box.append(top, name);
+    if (show.tagline) {
+      const t = document.createElement('div');
+      t.className = 'gdherotag'; t.textContent = show.tagline;
+      box.appendChild(t);
+    }
+    if ((show.moods || []).length) {
+      const moods = document.createElement('div'); moods.className = 'gdmoods';
+      show.moods.slice(0, 5).forEach((m) => {
+        const t = document.createElement('span'); t.textContent = m;
+        moods.appendChild(t);
+      });
+      box.appendChild(moods);
+    }
+    box.appendChild(guideBody(show, cast, angle, runs, now, 'gdherobody'));
+    return box;
+  }
+  function guideRow(show, personas, runs, now, angle, live) {
+    const row = document.createElement('div');
+    row.className = 'gdrow' + (live ? ' live' : '');
+    row.dataset.show = show.id;
+    row.setAttribute('role', 'button'); row.tabIndex = 0;
+    row.setAttribute('aria-expanded', 'false');
+    const head = document.createElement('div'); head.className = 'gdhead';
+    const metaEl = document.createElement('div'); metaEl.className = 'gdmeta';
+    const title = document.createElement('div'); title.className = 'gdtitle';
+    title.appendChild(toneDot(show.id));
+    const name = document.createElement('span'); name.className = 'gdshow';
+    name.textContent = show.title || show.name;
+    title.appendChild(name);
+    const cast = castOf(show, personas);
+    const sub = document.createElement('div'); sub.className = 'gdsub';
+    sub.textContent = show.tagline || (cast[0] ? cast[0].name : '');
+    metaEl.append(title, sub);
+    if ((show.moods || []).length) {
+      const moods = document.createElement('div'); moods.className = 'gdmoods';
+      show.moods.slice(0, 5).forEach((m) => {
+        const t = document.createElement('span'); t.textContent = m;
+        moods.appendChild(t);
+      });
+      metaEl.appendChild(moods);
+    }
+    // Who runs it and when it is next on, on one quiet line.
+    const who = document.createElement('div'); who.className = 'gdwho';
+    if (cast.length) who.appendChild(guideFaces(cast));
+    if (cast[0]) {
+      const h = document.createElement('span'); h.className = 'gdhost';
+      h.textContent = cast[0].name; who.appendChild(h);
+    }
+    const next = nextAiring(runs, show.id, now);
+    if (next) {
+      const n = document.createElement('span'); n.className = 'gdnext';
+      n.textContent = (next === 'On air now' ? '' : 'next · ') + next;
+      if (next === 'On air now') n.classList.add('live');
+      who.appendChild(n);
+    }
+    metaEl.appendChild(who);
+    const chev = document.createElement('span'); chev.className = 'gdchev';
+    chev.textContent = '\u25B8'; chev.setAttribute('aria-hidden', 'true');
+    head.append(metaEl, chev);
+    row.append(head, guideBody(show, cast, angle, runs, now));
+    const toggle = () => {
+      const open = row.classList.toggle('open');
+      row.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    row.onclick = toggle;
+    row.addEventListener('keydown', (e) => {
+      if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); toggle(); }
+    });
+    return row;
+  }
+  // The way back up: the guide is the one face long enough to get lost
+  // in — seventeen shows, each with a paragraph — so the button surfaces
+  // once the week has been scrolled into and stands down at the top.
+  function paintGuideTop() {
+    const sc = $('guideScroll'), btn = $('guideTop');
+    if (!sc || !btn) return;
+    btn.hidden = sc.scrollTop < 240;
+  }
+  (function bindGuideTop() {
+    const sc = $('guideScroll'), btn = $('guideTop');
+    if (!sc || !btn) return;
+    sc.addEventListener('scroll', paintGuideTop, { passive: true });
+    btn.onclick = () => {
+      const was = sc.scrollTop;
+      const smooth = !window.matchMedia
+        || !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      try { sc.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' }); }
+      catch (e) { sc.scrollTop = 0; }
+      // A smooth scroll is animated, and an animation needs frames — a
+      // tab the browser is not painting gets none, and the press would
+      // do nothing at all. If nothing has moved by now, jump.
+      setTimeout(() => {
+        if (sc.scrollTop > 0 && sc.scrollTop === was) sc.scrollTop = 0;
+      }, 400);
+    };
+  })();
+
+  // How far an overlay face is shown, 0..1: parked off the right edge at 0.
+  function paintFaceProgress(el, shownPct) {
+    const pct = Math.min(1, Math.max(0, shownPct));
+    el.style.transform = 'translateX(' + ((1 - pct) * 100).toFixed(2) + '%)';
+  }
+
+  (function bindFaceSwipe() {
+    const card = document.querySelector('.card');
+    if (!card) return;
+    let sx = 0, sy = 0, st = 0, axis = '', fromId = '', toId = '';
+    let moving = null, incoming = false, lastX = 0, lastT = 0, vx = 0;
+
+    card.addEventListener('touchstart', (e) => {
+      axis = '';
+      if (e.touches.length !== 1) return;
+      // The fader, the request box, a select: a finger there is using it.
+      if (e.target.closest('input, select, textarea')) return;
+      // And a strip that scrolls sideways owns its own horizontal drag —
+      // the day's hours were unreachable because every swipe across them
+      // turned the page instead (operator, 2026-09-03).
+      if (e.target.closest('.gdtoday')) return;
+      if (faceList().length < 2) return;
+      fromId = currentFace();
+      if (fromId === 'phone' && cardMode() !== 'idle') return;
+      sx = lastX = e.touches[0].clientX; sy = e.touches[0].clientY;
+      st = lastT = Date.now(); vx = 0;
+      moving = null;
+      axis = 'wait';
+    }, { passive: true });
+
+    card.addEventListener('touchmove', (e) => {
+      if (!axis || axis === 'v') return;
+      const t = e.touches[0];
+      const dx = t.clientX - sx, dy = t.clientY - sy;
+      if (axis === 'wait') {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        // Mostly vertical: a scroll, and it stays one.
+        if (Math.abs(dy) > Math.abs(dx)) { axis = 'v'; return; }
+        const list = faceList();
+        const i = list.findIndex((f) => f.id === fromId);
+        const to = list[i + (dx < 0 ? 1 : -1)];
+        // Pulling towards a face that isn't there is a scroll too.
+        if (!to) { axis = 'v'; return; }
+        axis = 'h';
+        toId = to.id;
+        incoming = dx < 0;
+        if (incoming) {
+          // The arriving card, rendered under the finger from the first
+          // pixel of travel.
+          moving = $(to.el);
+          if (toId === 'player') {
+            clearTimeout(playerHideTimer);
+            moving.hidden = false;
+            paintPlayer();
+            fitPlayerArt();
+          } else {
+            clearTimeout(guideHideTimer);
+            moving.hidden = false;
+            loadGuide();
+          }
+        } else {
+          // The leaving card, with the one beneath it laid in place first.
+          moving = $(faceDefs().find((f) => f.id === fromId).el);
+          if (toId === 'player' && !playerOpen) openPlayerInstant();
+        }
+        moving.classList.add('dragging');
+        faceDragging = true;
+        const ind = $('faceInd');
+        if (ind) ind.classList.add('dragging');
+      }
+      const now = Date.now();
+      if (now > lastT) {
+        vx = (t.clientX - lastX) / (now - lastT);   // px per ms, signed
+        lastX = t.clientX; lastT = now;
+      }
+      const w = moving.getBoundingClientRect().width || 1;
+      const shown = incoming
+        ? Math.min(1, Math.max(0, -dx / w))
+        : 1 - Math.min(1, Math.max(0, dx / w));
+      paintFaceProgress(moving, shown);
+      // The rule travels with the card: leaving `from` for `to` is the
+      // same journey, so it reads the same fraction.
+      const list = faceList();
+      const from = list.findIndex((f) => f.id === fromId);
+      const to = list.findIndex((f) => f.id === toId);
+      paintFaceIndicator(from + (to - from) * (incoming ? shown : 1 - shown));
+    }, { passive: true });
+
+    const settle = (e) => {
+      if (axis !== 'h') { axis = ''; return; }
+      axis = '';
+      moving.classList.remove('dragging');
+      faceDragging = false;
+      const ind = $('faceInd');
+      if (ind) ind.classList.remove('dragging');
+      const t = e.changedTouches && e.changedTouches[0];
+      const dx = t ? t.clientX - sx : 0;
+      const w = moving.getBoundingClientRect().width || 1;
+      // Past a fifth of the width it commits; short of that a quick flick
+      // in the same direction commits too, the way a page turn feels.
+      const flick = Math.abs(vx) > 0.5 && Date.now() - st < 500;
+      const commit = incoming
+        ? ((-dx / w) > 0.2 || (flick && vx < 0))
+        : ((dx / w) > 0.2 || (flick && vx > 0));
+      if (commit) showFace(toId);
+      else if (incoming) parkFace(toId);   // released short: slide home, put away
+      paintFaceBar();                      // the rule settles where it landed
+      // Cleared AFTER the state settles, so the transition animates from
+      // wherever the finger left the card rather than snapping first.
+      moving.style.transform = '';
+    };
+    card.addEventListener('touchend', settle, { passive: true });
+    card.addEventListener('touchcancel', settle, { passive: true });
+  })();
+
+  // The keyboard's swipe: left and right arrows walk the row, unless a
+  // field has the focus.
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'ArrowLeft' && e.code !== 'ArrowRight') return;
+    const t = e.target;
+    if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    const list = faceList();
+    if (list.length < 2) return;
+    const i = list.findIndex((f) => f.id === currentFace());
+    const next = list[i + (e.code === 'ArrowRight' ? 1 : -1)];
+    if (next) showFace(next.id);
+  });
 
   // The VU meter: eleven bars built once, each with its own height, pace
   // and phase, so the strip breathes rather than marches. CSS pauses them
@@ -6439,10 +7109,8 @@
   $('listenChip').onclick = () => {
     if (cardMode() === 'idle') openPlayer();
   };
-  // The strip's phone square: the one-press road to the card underneath,
-  // audio untouched. (The sheet's phone ribbon is a DRAG handle — bound by
-  // bindSheetDrag, which owns its click too; a second handler here toggled
-  // it straight back.)
+  // The strip's phone square: the one-press road to the phone card,
+  // audio untouched — the same move as the row's PHONE tab.
   if ($('plPhoneBtn')) $('plPhoneBtn').onclick = () => closePlayer(true);
   $('plPlayBtn').onclick = () => {
     // A framework session: the transport drives the TV, nothing local.
@@ -6725,9 +7393,8 @@
   // Inert in a preview: the frame is already inside the panel, and following
   // the link would load the settings page into a corner of the settings page.
   if (gear) gear.onclick = () => { if (!previewMode) location.href = '/settings'; };
-  const plGear = $('plGearBtn');
-  if (plGear) {
-    plGear.onclick = () => { if (!previewMode) location.href = '/settings'; };
-  }
+  [$('plGearBtn'), $('gdGearBtn')].forEach((b) => {
+    if (b) b.onclick = () => { if (!previewMode) location.href = '/settings'; };
+  });
 })();
 
