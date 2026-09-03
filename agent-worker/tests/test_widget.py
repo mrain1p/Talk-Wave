@@ -3843,16 +3843,32 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
             self.assertIn(el, self.html)
         self.assertIn("function guideHero", self.js)
         self.assertIn("function guideBody", self.js)
-        hero = self.js.split("function guideHero")[1][:2000]
+        hero = self.js.split("function guideHero")[1][:3000]
         self.assertIn("guideBody(show, cast, angle, runs, now, 'gdherobody')", hero)
         row = self.js.split("function guideRow")[1][:2600]
         self.assertIn("guideBody(show, cast, angle, runs, now)", row)
         self.assertIn("(live ? ' live' : '')", row)
         self.assertIn(".card .gdrow.live { border-color: var(--coral); }", self.css)
 
+    def test_the_show_on_air_folds_out_of_the_weeks_way(self):
+        # It is the tallest thing on the card — 973px against a 812px
+        # phone — so reading the week past it meant scrolling (operator,
+        # 2026-09-03). Folded it keeps the band, the name and its line.
+        # The choice survives a repaint: a poll or a span change must not
+        # spring it open under the reader.
+        self.assertIn("let guideHeroOpen = true;", self.js)
+        self.assertIn("guideHeroOpen ? '' : ' min'", self.js)
+        self.assertIn("guideHeroOpen = box.classList.toggle('min') === false;",
+                      self.js)
+        self.assertIn(".gdherobox.min .gdherobody,", self.css)
+
     def test_the_way_back_up_surfaces_once_the_week_is_scrolled_into(self):
         block = self.js.split("function paintGuideTop")[1][:300]
         self.assertIn("sc.scrollTop < 240", block)
+        # Centred, not tucked into the corner (operator, 2026-09-03).
+        top = self.css.split("  .card .gdtop {")[1].split("}")[0]
+        self.assertIn("left: 50%; transform: translateX(-50%)", top)
+        self.assertNotIn("right: 16px", top)
         click = self.js.split("function bindGuideTop")[1][:900]
         # A smooth scroll needs frames; a tab that is not being painted
         # gets none, so the press must still land.

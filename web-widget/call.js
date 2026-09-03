@@ -6657,9 +6657,14 @@
     }
     return body;
   }
+  // The show on air arrives open, and folds away: it is the tallest thing
+  // on the card, and reading the week past it meant scrolling (operator,
+  // 2026-09-03). The choice is remembered across repaints — a poll, a span
+  // change — so it does not spring back open under the reader.
+  let guideHeroOpen = true;
   function guideHero(show, cast, runs, now, angle, until) {
     const box = document.createElement('div');
-    box.className = 'gdherobox';
+    box.className = 'gdherobox' + (guideHeroOpen ? '' : ' min');
     const top = document.createElement('div'); top.className = 'gdherotop';
     const pip = document.createElement('span');
     pip.className = 'ppip live'; pip.setAttribute('aria-hidden', 'true');
@@ -6675,6 +6680,21 @@
     tail.textContent = until ? 'until ' + until
       : (next && next !== 'On air now' ? next : '');
     if (tail.textContent) top.appendChild(tail);
+    const fold = document.createElement('button');
+    fold.type = 'button'; fold.className = 'gdherofold';
+    fold.textContent = '▸';
+    const say = () => {
+      const open = !box.classList.contains('min');
+      fold.setAttribute('aria-expanded', open ? 'true' : 'false');
+      fold.setAttribute('aria-label', open
+        ? 'Hide what is on air' : 'Show what is on air');
+    };
+    fold.onclick = () => {
+      guideHeroOpen = box.classList.toggle('min') === false;
+      say();
+    };
+    say();
+    top.appendChild(fold);
     const name = document.createElement('div');
     name.className = 'gdheroname'; name.textContent = show.title || show.name;
     box.append(top, name);

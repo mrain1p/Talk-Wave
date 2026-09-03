@@ -662,12 +662,13 @@
      thumb can hit while the glyph, the row heights and the card's fixed
      height stay exactly as they are. */
   .card .gear, .card .plheart, .card button.plnote,
-  .card .pltabs .pltab, .card .facebar .face, .card .gdtop, .card #npHeart {
+  .card .pltabs .pltab, .card .facebar .face, .card .gdtop,
+  .card .gdherofold, .card #npHeart {
     position: relative;
   }
   .card .gear::after, .card .plheart::after, .card button.plnote::after,
   .card .pltabs .pltab::after, .card .facebar .face::after,
-  .card #npHeart::after {
+  .card .gdherofold::after, .card #npHeart::after {
     content: ""; position: absolute; inset: -7px -4px;
   }
   /* The smallest. */
@@ -1142,6 +1143,20 @@
     font: 12px/1.35 var(--font-body); color: var(--amber); margin-top: 3px;
   }
   .gdherobody { display: block; margin-top: 10px; }
+  /* Folded: the band, the name and its line — enough to know what is on,
+     and out of the week's way. */
+  .gdherobox.min .gdherobody,
+  .gdherobox.min .gdmoods { display: none; }
+  .gdherobox.min .gdheroname { font-size: 15px; }
+  .card .gdherofold {
+    flex: none; margin-left: 8px; width: 22px; height: 22px; padding: 0;
+    min-height: 0; background: transparent; border: 0; cursor: pointer;
+    color: var(--coral); font-size: 11px; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+    transform: rotate(90deg); transition: transform .2s ease;
+  }
+  .gdherobox.min .gdherofold { transform: rotate(0deg); }
+  .card .gdherofold:hover { color: var(--alpenglow); }
   /* "Program guide", and how much of the week is on the air. */
   .gdlisthead {
     display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px;
@@ -1194,8 +1209,10 @@
   }
   .gdptag { font: 11px/1.35 var(--font-body); color: var(--amber); margin-top: 2px; }
   /* The way back up, floating over the week's foot. */
+  /* Centred, not tucked in the corner (operator, 2026-09-03). */
   .card .gdtop {
-    position: absolute; right: 16px; bottom: 14px; z-index: 3;
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: 14px; z-index: 3;
     font: 700 10px/1 var(--font-mono); letter-spacing: .12em;
     text-transform: var(--skin-label-case); color: var(--alpenglow);
     background: var(--granite); border: 1px solid var(--edge);
