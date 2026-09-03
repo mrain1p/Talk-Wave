@@ -662,7 +662,7 @@
      thumb can hit while the glyph, the row heights and the card's fixed
      height stay exactly as they are. */
   .card .gear, .card .plheart, .card button.plnote,
-  .card .pltabs .pltab, .card .facebar .face, .card #npHeart {
+  .card .pltabs .pltab, .card .facebar .face, .card .gdtop, .card #npHeart {
     position: relative;
   }
   .card .gear::after, .card .plheart::after, .card button.plnote::after,
@@ -1117,27 +1117,117 @@
     border: 1px solid var(--coral); border-radius: max(4px, var(--skin-radius-ctl));
     padding: 3px 5px;
   }
+  /* The show ON AIR, open, under the strip: the card's first answer. */
+  .gdherobox {
+    border: 1px solid var(--coral); border-radius: max(8px, var(--skin-radius-ctl));
+    background: var(--granite); padding: 12px 14px 14px; margin-top: 12px;
+  }
+  .gdherotop { display: flex; align-items: center; gap: 7px; }
+  .gdherolab {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--coral);
+  }
+  .gdheronext {
+    margin-left: auto; font: 10px/1 var(--font-mono); letter-spacing: .06em;
+    color: var(--sage-dim);
+  }
+  .gdheroname {
+    font: 700 17px/1.2 var(--font-mono); letter-spacing: .03em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+    margin-top: 8px;
+  }
+  .gdherotag {
+    font: 12px/1.35 var(--font-body); color: var(--amber); margin-top: 3px;
+  }
+  .gdherobody { display: block; margin-top: 10px; }
+  /* "Program guide", and how much of the week is on the air. */
+  .gdlisthead {
+    display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px;
+    margin-top: 18px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .gdlisthead[hidden] { display: none; }
+  .gdlistlab {
+    font: 700 11px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+  }
+  .gdlistmeta {
+    margin-left: auto; font: 10px/1.3 var(--font-mono); letter-spacing: .06em;
+    color: var(--sage-dim);
+  }
+  /* The show on air keeps its outline in the list too, so the week can be
+     read without hunting for where "now" sits. */
+  .card .gdrow.live { border-color: var(--coral); }
+  .card .gdrow.live .gdshow { color: var(--coral); }
+  /* Who is in the booth, per person: the face, the role, the name and
+     their line, then their soul underneath. */
+  .gdperson { display: flex; align-items: center; gap: 10px; margin: 8px 0 6px; }
+  .gdperson .gdav { width: 34px; height: 34px; margin-left: 0; }
+  .gdpmeta { min-width: 0; }
+  .gdrole {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+  }
+  .gdpname {
+    font: 700 13px/1.2 var(--font-mono); letter-spacing: .03em;
+    text-transform: var(--skin-label-case); color: var(--coral); margin-top: 3px;
+  }
+  .gdptag { font: 11px/1.35 var(--font-body); color: var(--amber); margin-top: 2px; }
+  /* The way back up, floating over the week's foot. */
+  .card .gdtop {
+    position: absolute; right: 16px; bottom: 14px; z-index: 3;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+    background: var(--granite); border: 1px solid var(--edge);
+    border-radius: max(12px, var(--skin-radius-ctl));
+    padding: 0 12px; margin: 0; min-height: 0; height: 28px; cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, .3);
+  }
+  .card .gdtop:hover { color: var(--coral); border-color: var(--coral); }
+  .card .gdtop[hidden] { display: none; }
   .gdempty {
     font: 12px/1.45 var(--font-body); color: var(--sage-dim);
     text-align: center; margin: 24px 0;
   }
   .gdempty[hidden] { display: none; }
+/* One segmented control, not three loose chips (operator, 2026-09-02):
+     the faces are pages of one card, so they read as segments of one
+     object — a single tray, equal shares, the current page filled with a
+     lit rule over it. The tray sizes itself to however many faces the
+     operator has switched on, which is the whole point of it being a
+     flex row rather than a fixed three. */
   .facebar {
     position: absolute; left: 16px; right: 16px; bottom: 8px; height: 30px;
-    display: flex; justify-content: center; align-items: center; gap: 6px;
+    display: flex; justify-content: center; align-items: stretch;
     z-index: 70;
   }
   .facebar[hidden] { display: none; }
+  .faceseg {
+    display: flex; align-items: stretch; overflow: hidden;
+    min-width: min(300px, 100%);
+    background: var(--pine); border: 1px solid var(--edge);
+    border-radius: max(8px, var(--skin-radius-ctl));
+  }
   .card .facebar .face {
-    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
+    flex: 1 1 0; min-width: 0;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
-    background: transparent; border: 1px solid var(--edge);
-    border-radius: max(12px, var(--skin-radius-ctl));
-    padding: 0 14px; margin: 0; min-height: 0; height: 24px; cursor: pointer;
-    display: inline-flex; align-items: center;
+    background: transparent; border: 0; border-left: 1px solid var(--hairline);
+    border-radius: 0; padding: 0 12px; margin: 0; min-height: 0; height: auto;
+    cursor: pointer; position: relative;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .card .facebar .face:first-child, .card .facebar .face[hidden] + .face {
+    border-left: 0;
   }
   .card .facebar .face.on {
-    color: var(--coral); border-color: var(--coral); background: var(--pine);
+    color: var(--coral); background: var(--granite);
+  }
+  /* The lit rule over the current page — the thing that says "this is the
+     card you are on" without a border around a chip. */
+  .card .facebar .face.on::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+    background: var(--coral);
   }
   .card .facebar .face:hover:not(.on):not(:disabled) { color: var(--alpenglow); }
   .card .facebar .face:disabled { opacity: .45; cursor: default; }

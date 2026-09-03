@@ -3656,6 +3656,7 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         super().setUpClass()
         cls.js = widget_js()["call.js"]
         cls.html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
         cls.live_py = (AGENT_WORKER / "api" / "live.py").read_text(encoding="utf-8")
 
     def test_the_switch_is_off_until_the_operator_says_and_travels_on_live(self):
@@ -3712,15 +3713,40 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         self.assertIn('"onAir": _on_air(now)',
                       (AGENT_WORKER / "api" / "guide.py").read_text(encoding="utf-8"))
 
-    def test_the_show_on_air_arrives_open(self):
-        # The card's first answer is what is on RIGHT NOW (operator,
-        # 2026-09-02); every other show is one tap away. The open row is
-        # decided at paint, so reopening the card follows the schedule
-        # rather than the last visit.
-        block = self.js.split("const live = onAir ? onAir.id")[1][:400]
-        self.assertIn("show.id === live", block)
-        row = self.js.split("function guideRow")[1][:400]
-        self.assertIn("(open ? ' open' : '')", row)
+    def test_the_show_on_air_gets_the_hero_and_the_list_marks_it(self):
+        # The card reads top to bottom the way the operator asked
+        # (2026-09-02): the strip, then the show ON AIR open in full, then
+        # the program guide listing every show with the current one
+        # outlined. The hero and the rows share one body builder, so the
+        # two can never say different things about a show.
+        for el in ('id="guideHero"', 'id="guideListHead"', 'id="guideTop"',
+                   'id="guideScroll"'):
+            self.assertIn(el, self.html)
+        self.assertIn("function guideHero", self.js)
+        self.assertIn("function guideBody", self.js)
+        hero = self.js.split("function guideHero")[1][:1400]
+        self.assertIn("guideBody(show, cast, angle, runs, now, 'gdherobody')", hero)
+        row = self.js.split("function guideRow")[1][:2600]
+        self.assertIn("guideBody(show, cast, angle, runs, now)", row)
+        self.assertIn("(live ? ' live' : '')", row)
+        self.assertIn(".card .gdrow.live { border-color: var(--coral); }", self.css)
+
+    def test_the_way_back_up_surfaces_once_the_week_is_scrolled_into(self):
+        block = self.js.split("function paintGuideTop")[1][:300]
+        self.assertIn("sc.scrollTop < 240", block)
+        click = self.js.split("function bindGuideTop")[1][:900]
+        # A smooth scroll needs frames; a tab that is not being painted
+        # gets none, so the press must still land.
+        self.assertIn("sc.scrollTop === was", click)
+
+    def test_the_faces_are_one_segmented_tray_not_three_chips(self):
+        # Operator, 2026-09-02: they are pages of one card, so they read
+        # as segments of one object rather than loose chips.
+        self.assertIn('class="faceseg"', self.html)
+        self.assertIn(".faceseg {", self.css)
+        seg = self.css.split(".card .facebar .face {")[1][:400]
+        self.assertIn("flex: 1 1 0", seg)
+        self.assertIn(".card .facebar .face.on::before", self.css)
 
     def test_a_placeholder_picture_becomes_initials(self):
         # The station answers 200 with a 1x1 for a persona that has no

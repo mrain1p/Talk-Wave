@@ -502,14 +502,23 @@
          here. -->
     <div class="guide" id="guideView" hidden role="region" aria-label="Programme guide">
       <div class="plhead"><span class="pip" aria-hidden="true"></span>Programme guide<span class="plheadmeta" id="guideMeta"></span></div>
-      <div class="gdscroll">
+      <div class="gdscroll" id="guideScroll">
         <div class="gdtodayhead" id="guideTodayHead" hidden><span class="ppip live" aria-hidden="true"></span><span class="gdtodaylab">Today on the air</span><span class="gdtodaymeta" id="guideTodayMeta"></span></div>
         <div class="gdtoday" id="guideToday" hidden></div>
+        <!-- The show on air, open: the card's first answer is what is on
+             right now, in full — the angle, the show, the DJ and their
+             soul (operator, 2026-09-02). The list below repeats it with
+             its own outline, collapsed like every other show. -->
+        <div class="gdhero" id="guideHero" hidden></div>
+        <div class="gdlisthead" id="guideListHead" hidden><span class="gdlistlab">Program guide</span><span class="gdlistmeta" id="guideListMeta"></span></div>
         <div class="gdlist" id="guideList"></div>
         <p class="gdempty" id="guideEmpty" hidden>The station hasn't published its week yet.</p>
       </div>
+      <!-- Surfaces once the week has been scrolled into; the guide is the
+           one face long enough to get lost in. -->
+      <button class="gdtop" id="guideTop" type="button" hidden aria-label="Back to the top">&#8593; Top</button>
     </div>
-    <nav class="facebar" id="faceBar" hidden aria-label="Cards"><button type="button" class="face on" id="facePhone" aria-current="true">Phone</button><button type="button" class="face" id="facePlayer" hidden aria-current="false">Player</button><button type="button" class="face" id="faceGuide" hidden aria-current="false">Guide</button></nav>
+    <nav class="facebar" id="faceBar" hidden aria-label="Cards"><span class="faceseg"><button type="button" class="face on" id="facePhone" aria-current="true">Phone</button><button type="button" class="face" id="facePlayer" hidden aria-current="false">Player</button><button type="button" class="face" id="faceGuide" hidden aria-current="false">Guide</button></span></nav>
   </div>
 
 <script src="/shared.js"></script>

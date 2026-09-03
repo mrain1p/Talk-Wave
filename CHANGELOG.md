@@ -6,8 +6,8 @@ Release notes for operators. One entry per release to `main`; work in flight on
 
 ## Unreleased
 
-- **The phone and the player are cards side by side.** Swipe across the card, or tap the row at its foot, to move between them; the pull-down ribbon, the foot grabber and the player-first curtain are gone with the old model. Opens-on still picks which card a caller lands on. The `beta` lane only for now.
-- **A programme guide card.** A third card, off by default (Phone page → Programme guide card): the station's week read from its public schedule through this server and cached five minutes. Today's shows hour by hour in a strip with the one on air lit, then every show with its description, its DJs and their souls, and its times, opening in place.
+- **The phone and the player are cards side by side.** Swipe across the card, or tap the segmented bar at its foot, to move between them; the pull-down ribbon, the foot grabber and the player-first curtain are gone with the old model. Opens-on still picks which card a caller lands on. The `beta` lane only for now.
+- **A programme guide card.** A third card, off by default (Phone page → Programme guide card): the station's week read from its public schedule through this server and cached five minutes. Today's shows hour by hour in a strip with the one on air lit, then the show ON AIR open in full — tonight's angle, the show, the DJs with their pictures and their own descriptions, and where it sits on the week — then the program guide listing every show, the current one outlined, each opening in place. A return-to-top button surfaces once the week is scrolled into.
 
 ## 0.99.31
 

@@ -6173,6 +6173,8 @@
     const today = $('guideToday'), list = $('guideList');
     const empty = $('guideEmpty'), meta = $('guideMeta');
     const head = $('guideTodayHead'), headMeta = $('guideTodayMeta');
+    const hero = $('guideHero'), listHead = $('guideListHead');
+    const listMeta = $('guideListMeta');
     if (!today || !list) return;
     // Today, hour by hour: every run that touches today's twenty-four
     // hours, the one on air lit, a run from last night shown from where
@@ -6194,94 +6196,211 @@
       const t = document.createElement('span'); t.className = 'gdtime';
       t.textContent = fmtRange(r.start, r.end);
       b.append(n, t);
-      b.onclick = () => {
-        const row = [...list.children].find((el) => el.dataset.show === show.id);
-        if (!row) return;
-        row.classList.add('open');
-        row.setAttribute('aria-expanded', 'true');
-        row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      };
+      b.onclick = () => openInList(show.id);
       today.appendChild(b);
     });
     if (headMeta) {
       headMeta.textContent = (onAir ? 'On air until ' + fmtHour(onAir.end) + ' · ' : '')
         + now.label;
     }
-    if (meta) {
-      const onTheAir = new Set(runs.map((r) => r.id)).size;
-      meta.textContent = onTheAir ? onTheAir + ' shows on the air this week'
-        : (shows.length ? shows.length + ' shows' : '');
+    const angle = d.onAir && d.onAir.angle ? d.onAir : null;
+    const liveId = onAir ? onAir.id : (d.onAir && d.onAir.id) || '';
+    const liveShow = byId[liveId];
+    if (meta) meta.textContent = liveShow ? 'On air · ' + (liveShow.title || liveShow.name) : '';
+    // The show on air, open, under the strip: the angle, the show, the DJ
+    // and their soul, and where it sits on the week.
+    if (hero) {
+      hero.textContent = '';
+      hero.hidden = !liveShow;
+      if (liveShow) {
+        hero.appendChild(guideHero(
+          liveShow, castOf(liveShow, personas), runs, now,
+          angle && angle.id === liveShow.id ? angle.angle : ''));
+      }
     }
+    // Then the week: every show, the one on air outlined, each opening
+    // in place.
     list.textContent = '';
     if (empty) empty.hidden = shows.length > 0;
-    const angle = d.onAir && d.onAir.angle ? d.onAir : null;
-    // The show on air arrives OPEN (operator, 2026-09-02): the card's
-    // first answer is what is on right now, and every other show is one
-    // tap away. Reopening the card re-reads the clock, so the row that
-    // stands open follows the schedule rather than the last visit.
-    const live = onAir ? onAir.id : (d.onAir && d.onAir.id) || '';
+    if (listHead) listHead.hidden = !shows.length;
+    if (listMeta) {
+      const airing = new Set(runs.map((r) => r.id)).size;
+      listMeta.textContent = airing
+        ? airing + ' shows on the air this week' : shows.length + ' shows';
+    }
     shows.forEach((show) => list.appendChild(guideRow(
       show, personas, runs, now,
-      angle && angle.id === show.id ? angle.angle : '',
-      show.id === live)));
+      angle && angle.id === show.id ? angle.angle : '', show.id === liveId)));
     const lit = today.querySelector('.gdslot.on');
     if (lit && lit.scrollIntoView) {
       try { lit.scrollIntoView({ inline: 'center', block: 'nearest' }); } catch (e) {}
     }
+    paintGuideTop();
   }
-  function guideRow(show, personas, runs, now, angle, open) {
+  function castOf(show, personas) {
+    return [show.personaId].concat(show.guestPersonaIds || [])
+      .filter(Boolean).map((id) => personas[id]).filter(Boolean);
+  }
+  // Open a show in the list and bring it into view — what the strip's
+  // blocks do, and what the hero's own "on the schedule" is beside.
+  function openInList(id) {
+    const list = $('guideList');
+    if (!list) return;
+    const row = [...list.children].find((el) => el.dataset.show === id);
+    if (!row) return;
+    row.classList.add('open');
+    row.setAttribute('aria-expanded', 'true');
+    row.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+  // One picture, or the initials when the station has none.
+  function guideFace(p) {
+    const mono = () => {
+      const m = document.createElement('span');
+      m.className = 'gdav mono';
+      m.textContent = (p.name || '?').slice(0, 2).toUpperCase();
+      return m;
+    };
+    if (!p.avatar) return mono();
+    const img = document.createElement('img');
+    // NOT loading="lazy": the rows are built only when the card is
+    // opened, so they are deferred by construction already — and a lazy
+    // image inside an overlay the browser is not painting never enters a
+    // viewport at all, so every face stayed pending (found driving the
+    // real station, 2026-09-02).
+    img.className = 'gdav'; img.src = p.avatar; img.alt = '';
+    // A picture the station won't serve becomes the initials, the way the
+    // card's own DJ ring does. And a 1x1 PLACEHOLDER is the same nothing
+    // wearing a 200: it loads without erroring and stretches one pixel
+    // across the circle (p_50fe86 on the operator's own station).
+    const fallback = () => { if (img.parentNode) img.replaceWith(mono()); };
+    img.onerror = fallback;
+    img.onload = () => { if (img.naturalWidth <= 1) fallback(); };
+    return img;
+  }
+  function guideFaces(cast, cls) {
+    const avs = document.createElement('span');
+    avs.className = 'gdavs' + (cls ? ' ' + cls : '');
+    cast.slice(0, 4).forEach((p) => avs.appendChild(guideFace(p)));
+    return avs;
+  }
+  // What a show SAYS: the angle when it is on air, the show itself, then
+  // the DJ and each guest with their own line and soul. Shared by the
+  // hero and the rows, so the two can never say different things.
+  function guideBody(show, cast, angle, runs, now, cls) {
+    const body = document.createElement('div');
+    body.className = 'gdbody' + (cls ? ' ' + cls : '');
+    const line = (text, lead, klass) => {
+      const l = document.createElement('p');
+      l.className = 'gdline' + (klass ? ' ' + klass : '');
+      if (lead) { const b = document.createElement('b'); b.textContent = lead; l.append(b); }
+      if (text) l.append((lead ? ' — ' : '') + text);
+      body.appendChild(l);
+    };
+    if (angle) line(angle, "Tonight's angle", 'gdangle');
+    if (show.description) line(show.description);
+    if (cast.length) {
+      const cap = document.createElement('div'); cap.className = 'gdcap';
+      cap.textContent = 'In the booth'; body.appendChild(cap);
+    }
+    cast.forEach((p, i) => {
+      const who = document.createElement('div'); who.className = 'gdperson';
+      who.appendChild(guideFace(p));
+      const m = document.createElement('div'); m.className = 'gdpmeta';
+      const role = document.createElement('div'); role.className = 'gdrole';
+      role.textContent = i === 0 ? 'Host' : 'Guest';
+      const nm = document.createElement('div'); nm.className = 'gdpname';
+      nm.textContent = p.name;
+      m.append(role, nm);
+      if (p.tagline) {
+        const tg = document.createElement('div'); tg.className = 'gdptag';
+        tg.textContent = p.tagline; m.appendChild(tg);
+      }
+      who.appendChild(m);
+      body.appendChild(who);
+      if (p.soul) line(p.soul);
+    });
+    const groups = scheduleGroups(runs, show.id);
+    if (groups.length) {
+      const sched = document.createElement('div'); sched.className = 'gdsched';
+      const cap = document.createElement('div'); cap.className = 'gdcap';
+      cap.textContent = 'On the schedule'; sched.appendChild(cap);
+      groups.forEach((g) => {
+        const r = document.createElement('div'); r.className = 'gdschedrow';
+        const dl = document.createElement('span'); dl.className = 'gddays';
+        dl.textContent = g.label;
+        if (g.days.includes(now.dayIndex)) {
+          const t = document.createElement('span');
+          t.className = 'gdtodaytag'; t.textContent = 'Today';
+          dl.appendChild(t);
+        }
+        const tm = document.createElement('span'); tm.className = 'gdhours';
+        tm.textContent = g.times;
+        r.append(dl, tm);
+        sched.appendChild(r);
+      });
+      body.appendChild(sched);
+    }
+    return body;
+  }
+  function guideHero(show, cast, runs, now, angle) {
+    const box = document.createElement('div');
+    box.className = 'gdherobox';
+    const top = document.createElement('div'); top.className = 'gdherotop';
+    const pip = document.createElement('span');
+    pip.className = 'ppip live'; pip.setAttribute('aria-hidden', 'true');
+    const lab = document.createElement('span');
+    lab.className = 'gdherolab'; lab.textContent = 'On air now';
+    top.append(pip, lab);
+    const next = nextAiring(runs, show.id, now);
+    if (next && next !== 'On air now') {
+      const n = document.createElement('span');
+      n.className = 'gdheronext'; n.textContent = next;
+      top.appendChild(n);
+    }
+    const name = document.createElement('div');
+    name.className = 'gdheroname'; name.textContent = show.title || show.name;
+    box.append(top, name);
+    if (show.tagline) {
+      const t = document.createElement('div');
+      t.className = 'gdherotag'; t.textContent = show.tagline;
+      box.appendChild(t);
+    }
+    if ((show.moods || []).length) {
+      const moods = document.createElement('div'); moods.className = 'gdmoods';
+      show.moods.slice(0, 5).forEach((m) => {
+        const t = document.createElement('span'); t.textContent = m;
+        moods.appendChild(t);
+      });
+      box.appendChild(moods);
+    }
+    box.appendChild(guideBody(show, cast, angle, runs, now, 'gdherobody'));
+    return box;
+  }
+  function guideRow(show, personas, runs, now, angle, live) {
     const row = document.createElement('div');
-    row.className = 'gdrow' + (open ? ' open' : ''); row.dataset.show = show.id;
+    row.className = 'gdrow' + (live ? ' live' : '');
+    row.dataset.show = show.id;
     row.setAttribute('role', 'button'); row.tabIndex = 0;
-    row.setAttribute('aria-expanded', open ? 'true' : 'false');
+    row.setAttribute('aria-expanded', 'false');
     const head = document.createElement('div'); head.className = 'gdhead';
     const metaEl = document.createElement('div'); metaEl.className = 'gdmeta';
     const name = document.createElement('div'); name.className = 'gdshow';
     name.textContent = show.title || show.name;
-    const cast = [show.personaId].concat(show.guestPersonaIds || [])
-      .filter(Boolean).map((id) => personas[id]).filter(Boolean);
+    const cast = castOf(show, personas);
     const sub = document.createElement('div'); sub.className = 'gdsub';
     sub.textContent = show.tagline || (cast[0] ? cast[0].name : '');
     metaEl.append(name, sub);
     if ((show.moods || []).length) {
       const moods = document.createElement('div'); moods.className = 'gdmoods';
       show.moods.slice(0, 5).forEach((m) => {
-        const t = document.createElement('span'); t.textContent = m; moods.appendChild(t);
+        const t = document.createElement('span'); t.textContent = m;
+        moods.appendChild(t);
       });
       metaEl.appendChild(moods);
     }
-    // Who runs it and when it is next on, on one quiet line: the faces,
-    // the host's name, and "next · Tomorrow 6 AM".
+    // Who runs it and when it is next on, on one quiet line.
     const who = document.createElement('div'); who.className = 'gdwho';
-    const avs = document.createElement('span'); avs.className = 'gdavs';
-    cast.slice(0, 4).forEach((p) => {
-      const mono = () => {
-        const m = document.createElement('span');
-        m.className = 'gdav mono'; m.textContent = (p.name || '?').slice(0, 2).toUpperCase();
-        return m;
-      };
-      if (p.avatar) {
-        const img = document.createElement('img');
-        // NOT loading="lazy": the rows are built only when the card is
-        // opened, so they are deferred by construction already — and a
-        // lazy image inside an overlay the browser is not painting never
-        // enters a viewport at all, so every face stayed pending (found
-        // driving the real station, 2026-09-02).
-        img.className = 'gdav'; img.src = p.avatar; img.alt = '';
-        // A picture the station won't serve becomes the initials, the way
-        // the card's own DJ ring does — never a broken-image glyph. And a
-        // 1x1 PLACEHOLDER is the same nothing wearing a 200: it loads
-        // without erroring and stretches one pixel across the circle
-        // (p_50fe86 on the operator's own station, 2026-09-02).
-        const fallback = () => { if (img.parentNode) img.replaceWith(mono()); };
-        img.onerror = fallback;
-        img.onload = () => { if (img.naturalWidth <= 1) fallback(); };
-        avs.appendChild(img);
-      } else {
-        avs.appendChild(mono());
-      }
-    });
-    if (avs.childElementCount) who.appendChild(avs);
+    if (cast.length) who.appendChild(guideFaces(cast));
     if (cast[0]) {
       const h = document.createElement('span'); h.className = 'gdhost';
       h.textContent = cast[0].name; who.appendChild(h);
@@ -6297,45 +6416,7 @@
     const chev = document.createElement('span'); chev.className = 'gdchev';
     chev.textContent = '\u25B8'; chev.setAttribute('aria-hidden', 'true');
     head.append(metaEl, chev);
-    const body = document.createElement('div'); body.className = 'gdbody';
-    const line = (text, lead, cls) => {
-      const l = document.createElement('p'); l.className = 'gdline' + (cls ? ' ' + cls : '');
-      if (lead) { const b = document.createElement('b'); b.textContent = lead; l.append(b); }
-      if (text) l.append((lead ? ' — ' : '') + text);
-      body.appendChild(l);
-    };
-    // Tonight's angle first when the show is the one on air, then the
-    // show, then who runs it and what they are like — the order the
-    // operator's guide reads in.
-    if (angle) line(angle, "Tonight's angle", 'gdangle');
-    if (show.description) line(show.description);
-    const host = cast[0];
-    if (host) line(host.tagline, host.name);
-    if (host && host.soul) line(host.soul);
-    cast.slice(1).forEach((p) => {
-      line(p.tagline, 'With ' + p.name);
-      if (p.soul) line(p.soul);
-    });
-    // On the schedule: days grouped by their pattern, today's marked.
-    const groups = scheduleGroups(runs, show.id);
-    if (groups.length) {
-      const sched = document.createElement('div'); sched.className = 'gdsched';
-      const cap = document.createElement('div'); cap.className = 'gdcap';
-      cap.textContent = 'On the schedule'; sched.appendChild(cap);
-      groups.forEach((g) => {
-        const r = document.createElement('div'); r.className = 'gdschedrow';
-        const dl = document.createElement('span'); dl.className = 'gddays'; dl.textContent = g.label;
-        if (g.days.includes(now.dayIndex)) {
-          const t = document.createElement('span'); t.className = 'gdtodaytag'; t.textContent = 'Today';
-          dl.appendChild(t);
-        }
-        const tm = document.createElement('span'); tm.className = 'gdhours'; tm.textContent = g.times;
-        r.append(dl, tm);
-        sched.appendChild(r);
-      });
-      body.appendChild(sched);
-    }
-    row.append(head, body);
+    row.append(head, guideBody(show, cast, angle, runs, now));
     const toggle = () => {
       const open = row.classList.toggle('open');
       row.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -6346,6 +6427,32 @@
     });
     return row;
   }
+  // The way back up: the guide is the one face long enough to get lost
+  // in — seventeen shows, each with a paragraph — so the button surfaces
+  // once the week has been scrolled into and stands down at the top.
+  function paintGuideTop() {
+    const sc = $('guideScroll'), btn = $('guideTop');
+    if (!sc || !btn) return;
+    btn.hidden = sc.scrollTop < 240;
+  }
+  (function bindGuideTop() {
+    const sc = $('guideScroll'), btn = $('guideTop');
+    if (!sc || !btn) return;
+    sc.addEventListener('scroll', paintGuideTop, { passive: true });
+    btn.onclick = () => {
+      const was = sc.scrollTop;
+      const smooth = !window.matchMedia
+        || !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      try { sc.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' }); }
+      catch (e) { sc.scrollTop = 0; }
+      // A smooth scroll is animated, and an animation needs frames — a
+      // tab the browser is not painting gets none, and the press would
+      // do nothing at all. If nothing has moved by now, jump.
+      setTimeout(() => {
+        if (sc.scrollTop > 0 && sc.scrollTop === was) sc.scrollTop = 0;
+      }, 400);
+    };
+  })();
 
   // How far an overlay face is shown, 0..1: parked off the right edge at 0.
   function paintFaceProgress(el, shownPct) {
