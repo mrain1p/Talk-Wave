@@ -6,23 +6,26 @@ Release notes for operators. One entry per release to `main`; work in flight on
 
 ## 0.99.35
 
-- **The shelved shows fold away.** "Not on the schedule" is one line with a count until you open it, and it starts closed. The return-to-top button no longer sits on the end of the week: the guide keeps a foot clear for it.
+One day of building the card out into three, with the operator's eye on it throughout (0.99.32 to 0.99.34 fold in here).
+
+- **The phone, the station player and a new programme guide are cards side by side.** Swipe across the card or tap the row at its foot; the pull-down ribbon, the foot grabber and the player-first curtain are gone with the old model, and each card rides its own switch.
+- **The row at the foot is the card's own band.** Flush to the edges like the header, no boxes, with one lit rule that slides to the card you are on and follows your finger through the swipe.
+- **The programme guide** (Phone page → Programme guide card, off by default) reads the station's public schedule: today hour by hour with the block on air lit, then the show that is on open in full — tonight's angle, the show, its DJs with their pictures and their own descriptions — then every show of the week, the current one outlined, each opening in place.
+- **The week also reads as a grid.** Seven day rows over an hour ruler, every show in its own colour, and a 6h / 12h / 24h control that says how much of the day is on screen, so a folded phone or a screen in a car needs no rotating.
+- **Shows that are not this week's business stay out of the way.** A show on the roster with no hour on the schedule sits under a folded "Not on the schedule", behind its own switch, and the show on air folds away too once you have read it.
+- **Smaller things:** DJ pictures are big enough to see and open to a portrait on a press, the guide's header carries the same chips as the other cards, and the return-to-top button is centred and never sits on the end of the week.
 
 ## 0.99.34
 
-- **The show on air folds away.** It is the tallest thing on the guide, so a chevron collapses it to its band, name and line, and the week reads without scrolling past it. The choice sticks. The return-to-top button is centred rather than tucked in the corner.
-- **The guide leads with the week.** A show on the roster with no hour on the schedule used to be listed among the ones actually airing. Those now sit quietly under "Not on the schedule", and a new Phone-page switch (Shelved shows in the guide) leaves them out of the card altogether.
+Tagged earlier the same day as 0.99.35 and folded forward — the story rides v0.99.35's notes.
 
 ## 0.99.33
 
-- **The week grid reads at any width.** A 6h / 12h / 24h control says how much of the day is on screen at once, so a folded phone or a screen in a car needs no rotating: 24h fits the whole day with no sideways scrolling. Blocks carry a name only when one fits, never a stub, and the key underneath decodes the rest. Every show that airs in the week now gets its own colour.
+Tagged earlier the same day as 0.99.35 and folded forward — the story rides v0.99.35's notes.
 
 ## 0.99.32
 
-The card became three cards. The phone, the station player and a new programme guide sit side by side; swipe across them, or use the row at the card's foot.
-
-- **The phone and the player are cards side by side.** Swipe across the card, or tap the segmented bar at its foot, to move between them; the pull-down ribbon, the foot grabber and the player-first curtain are gone with the old model. Opens-on still picks which card a caller lands on. The `beta` lane only for now.
-- **A programme guide card.** A third card, off by default (Phone page → Programme guide card): the station's week read from its public schedule through this server and cached five minutes. Today's shows hour by hour in a strip with the one on air lit, then the show ON AIR open in full — tonight's angle, the show, the DJs with their pictures and their own descriptions, and where it sits on the week — then the program guide listing every show, the current one outlined, each opening in place. A return-to-top button surfaces once the week is scrolled into, and a Day/Week pair reads the same week as a listings grid: seven day rows over one hour ruler, every show a coloured block, the hour now marked, and a block opens that show. Each show keeps one colour across both views.
+Tagged earlier the same day as 0.99.35 and folded forward — the story rides v0.99.35's notes.
 
 ## 0.99.31
 
