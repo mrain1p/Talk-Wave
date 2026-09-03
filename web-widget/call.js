@@ -6041,60 +6041,158 @@
   }
 
   const GUIDE_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  const GUIDE_DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const WEEK_H = 168;
   // The station's OWN clock — which weekday and hour it is there, from
   // the timezone the schedule was painted in. A listener two zones away
   // still sees the block that is on air, not the one their wall clock
-  // would pick.
+  // would pick. `abs` is the hour of the week, Monday 0h = 0.
   function stationNow(tz) {
+    const opts = { weekday: 'short', hour: 'numeric', hour12: false,
+                   month: 'short', day: 'numeric' };
+    let parts = null;
     try {
-      const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: tz || undefined, weekday: 'short', hour: 'numeric', hour12: false,
-      }).formatToParts(new Date());
-      const wd = (parts.find((x) => x.type === 'weekday') || {}).value || '';
-      const hr = parseInt((parts.find((x) => x.type === 'hour') || {}).value, 10);
-      const day = wd.slice(0, 3).toLowerCase();
-      if (GUIDE_DAYS.includes(day) && !isNaN(hr)) return { day, hour: hr % 24 };
-    } catch (e) { /* an unknown zone: the reader's clock below */ }
-    const d = new Date();
-    return { day: ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][d.getDay()],
-             hour: d.getHours() };
+      parts = new Intl.DateTimeFormat('en-US', { timeZone: tz || undefined, ...opts })
+        .formatToParts(new Date());
+    } catch (e) {
+      // An unknown zone: the reader's clock, which is at least a clock.
+      parts = new Intl.DateTimeFormat('en-US', opts).formatToParts(new Date());
+    }
+    const get = (type) => (parts.find((x) => x.type === type) || {}).value || '';
+    let dayIndex = GUIDE_DAYS.indexOf(get('weekday').slice(0, 3).toLowerCase());
+    let hour = parseInt(get('hour'), 10);
+    if (dayIndex < 0) dayIndex = (new Date().getDay() + 6) % 7;
+    if (isNaN(hour)) hour = new Date().getHours();
+    hour %= 24;
+    const longDay = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday',
+                     'Saturday', 'Sunday'][dayIndex];
+    return { dayIndex, hour, abs: dayIndex * 24 + hour,
+             label: longDay + ', ' + get('month') + ' ' + get('day') };
   }
   function fmtHour(h) {
     h = ((h % 24) + 24) % 24;
     return (h % 12 || 12) + (h < 12 ? ' AM' : ' PM');
   }
-  // Consecutive hours of one show -> { id, from, to }, `to` exclusive.
-  function runsOf(slots) {
+  function fmtRange(start, end) { return fmtHour(start) + ' – ' + fmtHour(end); }
+  // The week as one flat line of 168 hours, Monday first, so a show that
+  // runs past midnight is ONE run (10 PM – 6 AM) and not two halves.
+  function weekSlots(grid) {
     const out = [];
-    let cur = null;
-    (slots || []).forEach((id, h) => {
-      if (id && cur && cur.id === id && cur.to === h) { cur.to = h + 1; return; }
-      cur = id ? { id, from: h, to: h + 1 } : null;
-      if (cur) out.push(cur);
+    GUIDE_DAYS.forEach((d) => {
+      const day = (grid && grid[d]) || [];
+      for (let h = 0; h < 24; h++) out.push(day[h] || null);
     });
     return out;
   }
+  // Runs over the flat week, { id, start, end } in hours of the week, end
+  // exclusive. The week is a circle: a run still going at Sunday's last
+  // hour joins the one at Monday's first, so `end` can pass 168.
+  function weekRuns(slots) {
+    const runs = [];
+    let cur = null;
+    slots.forEach((id, h) => {
+      if (id && cur && cur.id === id && cur.end === h) { cur.end = h + 1; return; }
+      cur = id ? { id, start: h, end: h + 1 } : null;
+      if (cur) runs.push(cur);
+    });
+    if (runs.length > 1) {
+      const first = runs[0], last = runs[runs.length - 1];
+      if (first.start === 0 && last.end === WEEK_H && first.id === last.id) {
+        last.end = WEEK_H + first.end;
+        runs.shift();
+      }
+    }
+    return runs;
+  }
+  // Every run, plus its echo a week earlier and a week later, so windows
+  // near either end of the week see the runs that cross into them.
+  function echoed(runs) {
+    const out = [];
+    runs.forEach((r) => {
+      [-WEEK_H, 0, WEEK_H].forEach((d) => out.push({ id: r.id, start: r.start + d, end: r.end + d }));
+    });
+    return out;
+  }
+  function onAt(runs, abs) { return runs.find((r) => r.start <= abs && abs < r.end) || null; }
+  // The next time this show starts, from the station's now: "On air now",
+  // "Today 6 PM", "Tomorrow 6 AM", "Fri 7 AM".
+  function nextAiring(runs, id, now) {
+    const mine = runs.filter((r) => r.id === id);
+    if (onAt(mine, now.abs)) return 'On air now';
+    const ahead = mine.filter((r) => r.start > now.abs).sort((a, b) => a.start - b.start)[0];
+    if (!ahead) return '';
+    const days = Math.floor(ahead.start / 24) - now.dayIndex;
+    const when = days === 0 ? 'Today' : days === 1 ? 'Tomorrow'
+      : GUIDE_DAY_NAMES[((Math.floor(ahead.start / 24) % 7) + 7) % 7];
+    return when + ' ' + fmtHour(ahead.start);
+  }
+  // Which days a show airs, grouped by an identical day's pattern:
+  // "Mon–Thu 6 AM – 9 AM", "Sat–Sun 6 AM – 10 AM", the way the
+  // operator's own guide lists them. A run past midnight belongs to the
+  // day it STARTS on.
+  function scheduleGroups(runs, id) {
+    const byDay = GUIDE_DAYS.map(() => []);
+    runs.filter((r) => r.id === id && r.start >= 0 && r.start < WEEK_H).forEach((r) => {
+      const day = Math.floor(r.start / 24);
+      byDay[day].push([r.start - day * 24, r.end - day * 24]);
+    });
+    const groups = [];
+    byDay.forEach((ranges, day) => {
+      if (!ranges.length) return;
+      ranges.sort((a, b) => a[0] - b[0]);
+      const key = ranges.map((x) => x.join('-')).join(',');
+      let g = groups.find((x) => x.key === key);
+      if (!g) { g = { key, days: [], ranges }; groups.push(g); }
+      g.days.push(day);
+    });
+    groups.forEach((g) => {
+      // Consecutive days read as a span; the rest as a list.
+      const parts = [];
+      let i = 0;
+      while (i < g.days.length) {
+        let j = i;
+        while (j + 1 < g.days.length && g.days[j + 1] === g.days[j] + 1) j++;
+        parts.push(j - i >= 2
+          ? GUIDE_DAY_NAMES[g.days[i]] + '–' + GUIDE_DAY_NAMES[g.days[j]]
+          : g.days.slice(i, j + 1).map((d) => GUIDE_DAY_NAMES[d]).join(', '));
+        i = j + 1;
+      }
+      g.label = parts.join(', ');
+      g.times = g.ranges.map((x) => fmtRange(x[0], x[1])).join(' · ');
+    });
+    return groups;
+  }
+
   function paintGuide() {
     const d = guideData || {};
     const shows = d.shows || [], grid = d.grid || {}, personas = {}, byId = {};
     (d.personas || []).forEach((x) => { personas[x.id] = x; });
     shows.forEach((x) => { byId[x.id] = x; });
     const now = stationNow(d.timezone);
+    const runs = echoed(weekRuns(weekSlots(grid))).filter((r) => byId[r.id]);
     const today = $('guideToday'), list = $('guideList');
     const empty = $('guideEmpty'), meta = $('guideMeta');
+    const head = $('guideTodayHead'), headMeta = $('guideTodayMeta');
     if (!today || !list) return;
+    // Today, hour by hour: every run that touches today's twenty-four
+    // hours, the one on air lit, a run from last night shown from where
+    // it started.
+    const dayStart = now.dayIndex * 24, dayEnd = dayStart + 24;
+    const todays = runs.filter((r) => r.start < dayEnd && r.end > dayStart)
+      .sort((a, b) => a.start - b.start);
     today.textContent = '';
-    const runs = runsOf(grid[now.day]).filter((r) => byId[r.id]);
-    today.hidden = !runs.length;
+    today.hidden = !todays.length;
+    if (head) head.hidden = !todays.length;
     let onAir = null;
-    runs.forEach((r) => {
+    todays.forEach((r) => {
       const show = byId[r.id];
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'gdslot';
-      if (now.hour >= r.from && now.hour < r.to) { b.classList.add('on'); onAir = show; }
-      const n = document.createElement('span'); n.className = 'gdname'; n.textContent = show.name;
+      if (r.start <= now.abs && now.abs < r.end) { b.classList.add('on'); onAir = r; }
+      const n = document.createElement('span'); n.className = 'gdname';
+      n.textContent = show.title || show.name;
       const t = document.createElement('span'); t.className = 'gdtime';
-      t.textContent = fmtHour(r.from) + ' – ' + fmtHour(r.to);
+      t.textContent = fmtRange(r.start, r.end);
       b.append(n, t);
       b.onclick = () => {
         const row = [...list.children].find((el) => el.dataset.show === show.id);
@@ -6105,76 +6203,138 @@
       };
       today.appendChild(b);
     });
+    if (headMeta) {
+      headMeta.textContent = (onAir ? 'On air until ' + fmtHour(onAir.end) + ' · ' : '')
+        + now.label;
+    }
     if (meta) {
-      meta.textContent = onAir ? 'On air · ' + onAir.name
-        : (shows.length ? shows.length + ' shows this week' : '');
+      const onTheAir = new Set(runs.map((r) => r.id)).size;
+      meta.textContent = onTheAir ? onTheAir + ' shows on the air this week'
+        : (shows.length ? shows.length + ' shows' : '');
     }
     list.textContent = '';
     if (empty) empty.hidden = shows.length > 0;
-    shows.forEach((show) => list.appendChild(guideRow(show, personas, grid)));
+    const angle = d.onAir && d.onAir.angle ? d.onAir : null;
+    // The show on air arrives OPEN (operator, 2026-09-02): the card's
+    // first answer is what is on right now, and every other show is one
+    // tap away. Reopening the card re-reads the clock, so the row that
+    // stands open follows the schedule rather than the last visit.
+    const live = onAir ? onAir.id : (d.onAir && d.onAir.id) || '';
+    shows.forEach((show) => list.appendChild(guideRow(
+      show, personas, runs, now,
+      angle && angle.id === show.id ? angle.angle : '',
+      show.id === live)));
     const lit = today.querySelector('.gdslot.on');
     if (lit && lit.scrollIntoView) {
       try { lit.scrollIntoView({ inline: 'center', block: 'nearest' }); } catch (e) {}
     }
   }
-  function guideRow(show, personas, grid) {
+  function guideRow(show, personas, runs, now, angle, open) {
     const row = document.createElement('div');
-    row.className = 'gdrow'; row.dataset.show = show.id;
+    row.className = 'gdrow' + (open ? ' open' : ''); row.dataset.show = show.id;
     row.setAttribute('role', 'button'); row.tabIndex = 0;
-    row.setAttribute('aria-expanded', 'false');
+    row.setAttribute('aria-expanded', open ? 'true' : 'false');
     const head = document.createElement('div'); head.className = 'gdhead';
-    const avs = document.createElement('span'); avs.className = 'gdavs';
+    const metaEl = document.createElement('div'); metaEl.className = 'gdmeta';
+    const name = document.createElement('div'); name.className = 'gdshow';
+    name.textContent = show.title || show.name;
     const cast = [show.personaId].concat(show.guestPersonaIds || [])
       .filter(Boolean).map((id) => personas[id]).filter(Boolean);
-    cast.slice(0, 4).forEach((who) => {
+    const sub = document.createElement('div'); sub.className = 'gdsub';
+    sub.textContent = show.tagline || (cast[0] ? cast[0].name : '');
+    metaEl.append(name, sub);
+    if ((show.moods || []).length) {
+      const moods = document.createElement('div'); moods.className = 'gdmoods';
+      show.moods.slice(0, 5).forEach((m) => {
+        const t = document.createElement('span'); t.textContent = m; moods.appendChild(t);
+      });
+      metaEl.appendChild(moods);
+    }
+    // Who runs it and when it is next on, on one quiet line: the faces,
+    // the host's name, and "next · Tomorrow 6 AM".
+    const who = document.createElement('div'); who.className = 'gdwho';
+    const avs = document.createElement('span'); avs.className = 'gdavs';
+    cast.slice(0, 4).forEach((p) => {
       const mono = () => {
         const m = document.createElement('span');
-        m.className = 'gdav mono'; m.textContent = (who.name || '?').slice(0, 2).toUpperCase();
+        m.className = 'gdav mono'; m.textContent = (p.name || '?').slice(0, 2).toUpperCase();
         return m;
       };
-      if (who.avatar) {
+      if (p.avatar) {
         const img = document.createElement('img');
-        img.className = 'gdav'; img.src = who.avatar; img.alt = ''; img.loading = 'lazy';
-        // A picture the station won't serve becomes the initials, the
-        // way the card's own DJ ring does — never a broken-image glyph.
-        img.onerror = () => { if (img.parentNode) img.replaceWith(mono()); };
+        // NOT loading="lazy": the rows are built only when the card is
+        // opened, so they are deferred by construction already — and a
+        // lazy image inside an overlay the browser is not painting never
+        // enters a viewport at all, so every face stayed pending (found
+        // driving the real station, 2026-09-02).
+        img.className = 'gdav'; img.src = p.avatar; img.alt = '';
+        // A picture the station won't serve becomes the initials, the way
+        // the card's own DJ ring does — never a broken-image glyph. And a
+        // 1x1 PLACEHOLDER is the same nothing wearing a 200: it loads
+        // without erroring and stretches one pixel across the circle
+        // (p_50fe86 on the operator's own station, 2026-09-02).
+        const fallback = () => { if (img.parentNode) img.replaceWith(mono()); };
+        img.onerror = fallback;
+        img.onload = () => { if (img.naturalWidth <= 1) fallback(); };
         avs.appendChild(img);
       } else {
         avs.appendChild(mono());
       }
     });
-    const metaEl = document.createElement('div'); metaEl.className = 'gdmeta';
-    const name = document.createElement('div'); name.className = 'gdshow'; name.textContent = show.name;
-    const sub = document.createElement('div'); sub.className = 'gdsub';
-    sub.textContent = [show.topic, show.mood].filter(Boolean).join(' · ')
-      || (cast[0] ? cast[0].name : '');
-    metaEl.append(name, sub);
+    if (avs.childElementCount) who.appendChild(avs);
+    if (cast[0]) {
+      const h = document.createElement('span'); h.className = 'gdhost';
+      h.textContent = cast[0].name; who.appendChild(h);
+    }
+    const next = nextAiring(runs, show.id, now);
+    if (next) {
+      const n = document.createElement('span'); n.className = 'gdnext';
+      n.textContent = (next === 'On air now' ? '' : 'next · ') + next;
+      if (next === 'On air now') n.classList.add('live');
+      who.appendChild(n);
+    }
+    metaEl.appendChild(who);
     const chev = document.createElement('span'); chev.className = 'gdchev';
     chev.textContent = '\u25B8'; chev.setAttribute('aria-hidden', 'true');
-    if (avs.childElementCount) head.appendChild(avs);
     head.append(metaEl, chev);
     const body = document.createElement('div'); body.className = 'gdbody';
-    const line = (text, lead) => {
-      const l = document.createElement('p'); l.className = 'gdline';
+    const line = (text, lead, cls) => {
+      const l = document.createElement('p'); l.className = 'gdline' + (cls ? ' ' + cls : '');
       if (lead) { const b = document.createElement('b'); b.textContent = lead; l.append(b); }
       if (text) l.append((lead ? ' — ' : '') + text);
       body.appendChild(l);
     };
+    // Tonight's angle first when the show is the one on air, then the
+    // show, then who runs it and what they are like — the order the
+    // operator's guide reads in.
+    if (angle) line(angle, "Tonight's angle", 'gdangle');
+    if (show.description) line(show.description);
     const host = cast[0];
     if (host) line(host.tagline, host.name);
-    if (cast.length > 1) line('With ' + cast.slice(1).map((x) => x.name).join(', '));
-    if (show.description) line(show.description);
-    else if (host && host.soul) line(host.soul);
-    const times = document.createElement('div'); times.className = 'gdtimes';
-    GUIDE_DAYS.forEach((day) => {
-      runsOf(grid[day]).filter((r) => r.id === show.id).forEach((r) => {
-        const t = document.createElement('span');
-        t.textContent = day.charAt(0).toUpperCase() + day.slice(1) + ' '
-          + fmtHour(r.from) + '–' + fmtHour(r.to);
-        times.appendChild(t);
-      });
+    if (host && host.soul) line(host.soul);
+    cast.slice(1).forEach((p) => {
+      line(p.tagline, 'With ' + p.name);
+      if (p.soul) line(p.soul);
     });
-    if (times.childElementCount) body.appendChild(times);
+    // On the schedule: days grouped by their pattern, today's marked.
+    const groups = scheduleGroups(runs, show.id);
+    if (groups.length) {
+      const sched = document.createElement('div'); sched.className = 'gdsched';
+      const cap = document.createElement('div'); cap.className = 'gdcap';
+      cap.textContent = 'On the schedule'; sched.appendChild(cap);
+      groups.forEach((g) => {
+        const r = document.createElement('div'); r.className = 'gdschedrow';
+        const dl = document.createElement('span'); dl.className = 'gddays'; dl.textContent = g.label;
+        if (g.days.includes(now.dayIndex)) {
+          const t = document.createElement('span'); t.className = 'gdtodaytag'; t.textContent = 'Today';
+          dl.appendChild(t);
+        }
+        const tm = document.createElement('span'); tm.className = 'gdhours'; tm.textContent = g.times;
+        r.append(dl, tm);
+        sched.appendChild(r);
+      });
+      body.appendChild(sched);
+    }
     row.append(head, body);
     const toggle = () => {
       const open = row.classList.toggle('open');

@@ -3696,3 +3696,41 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         block = self.js.split("function stationNow")[1][:900]
         self.assertIn("timeZone: tz", block)
         self.assertIn("weekday: 'short'", block)
+
+    def test_the_week_is_one_line_so_a_show_can_cross_midnight(self):
+        # The operator's guide shows "10 PM – 6 AM" as one block; a grid
+        # read day by day would show two halves. The week is flattened to
+        # 168 hours and its ends joined, and everything the card says
+        # about time — the strip, "next", the grouped schedule — reads
+        # from those runs.
+        self.assertIn("const WEEK_H = 168;", self.js)
+        wrap = self.js.split("function weekRuns")[1][:900]
+        self.assertIn("last.end = WEEK_H + first.end", wrap)
+        for fn in ("function nextAiring", "function scheduleGroups", "function echoed"):
+            self.assertIn(fn, self.js)
+        # The angle rides /guide from now-playing, not from the schedule.
+        self.assertIn('"onAir": _on_air(now)',
+                      (AGENT_WORKER / "api" / "guide.py").read_text(encoding="utf-8"))
+
+    def test_the_show_on_air_arrives_open(self):
+        # The card's first answer is what is on RIGHT NOW (operator,
+        # 2026-09-02); every other show is one tap away. The open row is
+        # decided at paint, so reopening the card follows the schedule
+        # rather than the last visit.
+        block = self.js.split("const live = onAir ? onAir.id")[1][:400]
+        self.assertIn("show.id === live", block)
+        row = self.js.split("function guideRow")[1][:400]
+        self.assertIn("(open ? ' open' : '')", row)
+
+    def test_a_placeholder_picture_becomes_initials(self):
+        # The station answers 200 with a 1x1 for a persona that has no
+        # picture (p_50fe86 on the operator's own station), so onerror
+        # never fires and one pixel gets stretched across the circle. The
+        # card's DJ ring already knew this; the guide's faces do now.
+        block = self.js.split("const fallback = () =>")[1][:300]
+        self.assertIn("img.onerror = fallback", block)
+        self.assertIn("naturalWidth <= 1", block)
+        # And NOT lazy: these rows are built only when the card opens, and
+        # a lazy image in an overlay the browser is not painting never
+        # loads at all.
+        self.assertNotIn("img.loading = 'lazy'", self.js)

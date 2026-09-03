@@ -891,7 +891,8 @@ SCHEMA: dict[str, dict] = {
         label="Programme guide card", alias="schedule shows week guide",
         help="A third card beside the phone and the player: the station's "
              "week — today's shows hour by hour, then every show with its "
-             "DJ, tagline and times, opening in place. Read from the "
+             "description, its DJs and their souls, and its times, opening "
+             "in place. Read from the "
              "station's public schedule through this server and cached "
              "five minutes. Off, and the row at the card's foot never "
              "names it."),

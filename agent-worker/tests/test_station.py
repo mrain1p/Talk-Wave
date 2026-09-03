@@ -1293,3 +1293,122 @@ class TestTheGuideShapesTheStationsWeek(unittest.TestCase):
                 self.assertEqual([], d["shows"])
                 self.assertEqual([], d["personas"])
                 self.assertEqual(24, len(d["grid"]["mon"]))
+
+class TestTheGuideShapesTheStationsWeek(unittest.TestCase):
+    """The programme guide card (operator, 2026-09-02) paints from /guide,
+    which normalises the station's /schedule so the browser never has to
+    know what the grid looks like. Read against the operator's own station
+    the same day: days are NUMBERED, "0".."6" with 0 the Sunday, each a
+    list of twenty-four show ids; a show's name carries its tagline after
+    a middle dot, `moods` is a list, and its `topic` is a paragraph — the
+    description. The first cut accepted day names only and dropped every
+    day of the real week. `_hours` still accepts the other shapes a grid
+    could come in, and a shape it cannot read is an empty day rather than
+    a broken card. The avatar is rewritten onto this server's own proxy,
+    because the browser cannot reach the station on most deployments."""
+
+    def test_one_entry_per_hour_is_the_grid_as_given(self):
+        from api import guide
+
+        day = ["late"] * 6 + [None] * 12 + ["drive"] * 6
+        self.assertEqual(guide._hours(day)[:2], ["late", "late"])
+        self.assertEqual(guide._hours(day)[12], None)
+        self.assertEqual(guide._hours(day)[23], "drive")
+        # A cell that is an object names its show one of three ways.
+        self.assertEqual(guide._hours([{"showId": "a"}, {"id": "b"},
+                                       {"show": {"id": "c"}}])[:3], ["a", "b", "c"])
+
+    def test_a_list_of_ranges_is_expanded(self):
+        from api import guide
+
+        slots = guide._hours([{"showId": "late", "start": 22, "end": 24},
+                              {"showId": "drive", "from": 6, "to": 9}])
+        self.assertEqual(slots[22], "late")
+        self.assertEqual(slots[23], "late")
+        self.assertEqual(slots[6], "drive")
+        self.assertEqual(slots[8], "drive")
+        self.assertIsNone(slots[9])
+        self.assertIsNone(slots[0])
+
+    def test_an_hour_keyed_map_and_an_unreadable_day_both_land_on_their_feet(self):
+        from api import guide
+
+        slots = guide._hours({"7": "morning", "8": {"showId": "morning"}, "x": "?"})
+        self.assertEqual(slots[7], "morning")
+        self.assertEqual(slots[8], "morning")
+        self.assertEqual([None] * 24, guide._hours("not a day"))
+        self.assertEqual([None] * 24, guide._hours(None))
+
+    def test_the_week_is_shaped_for_the_card(self):
+        from api import guide
+
+        raw = {
+            "timezone": "America/New_York",
+            "soulsPublished": True,
+            "personas": [
+                {"id": "fr", "name": "Francesca", "tagline": "velvet",
+                 "avatar": "/persona-avatar/fr", "soul": "A long blurb."},
+                {"id": "no-pic", "name": "Nobody"},
+                {"id": ""}, "junk",
+            ],
+            "shows": [
+                {"id": "piazza", "name": "THE PIAZZA · Golden-Era Pop",
+                 "topic": "Sixties pop from the Mediterranean.",
+                 "mood": "romantic", "moods": ["romantic", "warm"],
+                 "personaId": "fr", "guestPersonaIds": ["no-pic", ""]},
+                {"id": "piazza", "name": "dupe"},
+                {"name": "no id"},
+            ],
+            # The real station's keys are day numbers, 0 the Sunday; a day
+            # NAME is read too, a day it left out is empty, and a key that is
+            # neither is dropped.
+            "schedule": {"0": ["piazza"] * 24, "3": ["piazza"] * 2 + [None] * 22,
+                         "Monday": ["piazza"] * 24, "funday": ["piazza"] * 24},
+        }
+        d = guide.shape(raw)
+        self.assertEqual("America/New_York", d["timezone"])
+        self.assertTrue(d["soulsPublished"])
+        self.assertEqual(["fr", "no-pic"], [p["id"] for p in d["personas"]])
+        # Through OUR proxy, never the station's path; no picture, no path.
+        self.assertEqual("/avatar/fr", d["personas"][0]["avatar"])
+        self.assertEqual("", d["personas"][1]["avatar"])
+        self.assertEqual("A long blurb.", d["personas"][0]["soul"])
+        show = d["shows"][0]
+        self.assertEqual(["piazza"], [s["id"] for s in d["shows"]])
+        self.assertEqual(["no-pic"], show["guestPersonaIds"])
+        # The title and the tagline come apart at the dot; the moods list
+        # wins over the single mood; the topic is the description.
+        self.assertEqual("THE PIAZZA", show["title"])
+        self.assertEqual("Golden-Era Pop", show["tagline"])
+        self.assertEqual(["romantic", "warm"], show["moods"])
+        self.assertEqual("Sixties pop from the Mediterranean.", show["description"])
+        self.assertEqual(sorted(guide.DAYS), sorted(d["grid"]))
+        self.assertEqual(["piazza"] * 24, d["grid"]["sun"])       # "0"
+        self.assertEqual("piazza", d["grid"]["wed"][1])          # "3"
+        self.assertIsNone(d["grid"]["wed"][2])
+        self.assertEqual(["piazza"] * 24, d["grid"]["mon"])       # "Monday"
+        self.assertEqual([None] * 24, d["grid"]["tue"])
+
+    def test_the_show_on_air_brings_its_angle_from_now_playing(self):
+        # /schedule is the show as CONFIGURED; the episode's angle lives on
+        # /now-playing's activeShow — "Tonight's angle" on the operator's
+        # guide — so the two are read together.
+        from api import guide
+
+        now = {"context": {"activeShow": {"id": "s_709aeb",
+                                          "episodeAngle": "Quiet textures."}}}
+        self.assertEqual({"id": "s_709aeb", "angle": "Quiet textures."},
+                         guide.shape({}, now)["onAir"])
+        for bad in (None, {}, {"context": "x"}, {"context": {"activeShow": {}}}):
+            with self.subTest(now=bad):
+                self.assertEqual({}, guide.shape({}, bad)["onAir"])
+
+    def test_nothing_from_the_station_is_an_empty_week_not_a_crash(self):
+        from api import guide
+
+        for raw in ({}, None, {"shows": "x", "personas": 3, "schedule": []}):
+            with self.subTest(raw=raw):
+                d = guide.shape(raw)
+                self.assertEqual([], d["shows"])
+                self.assertEqual([], d["personas"])
+                self.assertEqual(24, len(d["grid"]["mon"]))

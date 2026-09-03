@@ -689,32 +689,52 @@ class Handler(BaseHTTPRequestHandler):
                                "livekit": "ws://stub", "onAirLive": False})
         # The programme guide's week, through the REAL shaper (api.guide)
         # so the fixture cannot drift from what the card is painted from:
-        # a station-shaped payload in, the card's shape out. Three shows,
-        # a guest, one persona with no picture, and a grid dense enough
-        # that whatever hour it is here, something is on.
+        # a station-shaped payload in, the card's shape out. In the REAL
+        # station's shape (read 2026-09-02): days numbered "0".."6" with 0
+        # the Sunday, names carrying their tagline after a middle dot,
+        # `moods` a list, `topic` the show's paragraph, souls published.
+        # Three shows, a guest, one persona with no picture, and a grid
+        # dense enough that whatever hour it is here, something is on.
         if path == "/guide":
             from api.guide import shape
             week = ["morning"] * 6 + ["piazza"] * 8 + ["overlook"] * 6 + ["morning"] * 4
             return self._json(shape({
-                "timezone": "America/New_York", "soulsPublished": True,
+                "timezone": "America/New_York", "locale": "en-US",
+                "soulsPublished": True, "override": None,
                 "personas": [
-                    {"id": "fr", "name": "Francesca", "tagline": "velvet selector",
+                    {"id": "fr", "name": "Francesca",
+                     "tagline": "Velvet Harmonies & Mediterranean Dreams.",
                      "avatar": "/persona-avatar/fr",
-                     "soul": "Sings along under her breath and never apologises."},
-                    {"id": "wade", "name": "Wade", "tagline": "the long shadow",
-                     "avatar": "/persona-avatar/wade"},
-                    {"id": "murph", "name": "Murph"},
+                     "soul": "Sings along under her breath and never apologises. "
+                             "Broadcasts from a sun-bleached balcony with the "
+                             "shutters half closed."},
+                    {"id": "wade", "name": "Wade", "tagline": "Swimming against the current.",
+                     "avatar": "/persona-avatar/wade",
+                     "soul": "Says less, means more, and never plays the obvious cut."},
+                    {"id": "murph", "name": "Murph", "tagline": "Up before the birds."},
                 ],
                 "shows": [
-                    {"id": "morning", "name": "The Trail Ahead", "topic": "Morning",
-                     "mood": "bright", "personaId": "murph"},
-                    {"id": "piazza", "name": "The Piazza", "topic": "Golden-era pop",
-                     "mood": "romantic", "personaId": "fr", "guestPersonaIds": ["wade"]},
-                    {"id": "overlook", "name": "The Overlook", "topic": "After dark",
-                     "mood": "reflective", "personaId": "wade"},
+                    {"id": "morning", "name": "THE TRAIL AHEAD · Morning Show",
+                     "topic": "The long way into the day: warm records, a "
+                              "weather line, and nothing that shouts.",
+                     "mood": "morning", "moods": ["morning", "bright"], "personaId": "murph"},
+                    {"id": "piazza", "name": "THE PIAZZA · Golden-Era Pop",
+                     "topic": "Sixties and seventies pop from the Mediterranean "
+                              "and the people who loved it: Mina, Battisti, "
+                              "Ornella Vanoni, and the odd Bacharach.",
+                     "mood": "romantic", "moods": ["romantic"], "personaId": "fr",
+                     "guestPersonaIds": ["wade"]},
+                    {"id": "overlook", "name": "THE OVERLOOK · After Dark",
+                     "topic": "Slow, expansive modern classical and low beats "
+                              "for when the world has gone quiet but you haven't.",
+                     "mood": "night", "moods": ["night", "calm", "reflective"],
+                     "personaId": "wade"},
                 ],
-                "schedule": {d: week for d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")},
-            }))
+                "schedule": {str(i): week for i in range(7)},
+            }, {"context": {"activeShow": {
+                "id": "overlook",
+                "episodeAngle": "Tonight, the quiet hum of a valley "
+                                "preparing for rest."}}}))
         if path == "/live":
             return self._json({
                 "reachable": True, "onAir": True, "guestRequired": False,

@@ -11,13 +11,15 @@ caches it for five minutes — a schedule changes weekly, not by the poll —
 and hands the card a shape it can paint without knowing what the station's
 grid looks like.
 
-The grid's exact shape is the one thing here written DEFENSIVELY rather than
-from a captured payload: the station was off the LAN when this was built,
-and the API document shows the day keys and an array per day but not what
-the array holds. `_hours` accepts the three shapes a schedule grid comes in —
-one entry per hour, a list of ranges, or an hour-keyed map — and normalises
-all of them to twenty-four slots of show id or None. A shape it cannot read
-degrades to an empty day, never to a broken card.
+Read against the operator's own station (2026-09-02): the grid is keyed by
+day NUMBER, "0" to "6" with 0 the Sunday (the browser's getDay order), each
+day twenty-four show ids; a show's `name` carries its tagline after a middle
+dot ("THE PIAZZA · Golden-Era Pop"), its `topic` is a paragraph — the show's
+description, not a label — and `moods` is a list beside the single `mood`.
+Persona `soul` is the DJ's own description, published when the operator
+says so. `_hours` still accepts the other two shapes a grid could come in
+(ranges, an hour-keyed map) and day NAMES as well as numbers, so a station
+on another build degrades to an empty day, never to a broken card.
 
 Gated on the operator's `show_guide` switch: with the card off there is
 nothing to read, and the answer is a plain 404 rather than an empty guide
@@ -26,6 +28,7 @@ that looks like a station with no schedule.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from urllib.parse import quote
@@ -40,6 +43,9 @@ from station import StationClient
 log = logging.getLogger("callin.token")
 
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+# The station numbers its days the way a browser does: 0 is Sunday.
+_DAY_NUMBERS = {"0": "sun", "1": "mon", "2": "tue", "3": "wed", "4": "thu",
+                "5": "fri", "6": "sat", "7": "sun"}
 GUIDE_TTL = 300
 _guide_cache: dict = {"at": 0.0, "data": None}
 
@@ -102,71 +108,113 @@ def _hours(day) -> list:
 
 
 def _day_key(name) -> str | None:
-    k = str(name or "").strip().lower()[:3]
-    return k if k in DAYS else None
+    k = str(name or "").strip().lower()
+    if k in _DAY_NUMBERS:
+        return _DAY_NUMBERS[k]
+    return k[:3] if k[:3] in DAYS else None
 
 
-def shape(raw: dict) -> dict:
-    """The station's /schedule, normalised for the card."""
-    raw = raw if isinstance(raw, dict) else {}
+def _persona(p) -> dict | None:
+    """One persona row for the card, or None for a row that is not one."""
+    if not isinstance(p, dict):
+        return None
+    pid = _text(p.get("id"), 80)
+    if not pid:
+        return None
+    return {
+        "id": pid,
+        "name": _text(p.get("name"), 80) or pid,
+        "tagline": _text(p.get("tagline"), 160),
+        # Through this server's own proxy, never the station's path:
+        # the browser cannot reach the station on most deployments.
+        "avatar": f"/avatar/{quote(pid, safe='')}" if p.get("avatar") else "",
+        # The DJ's own description — the operator's souls run to two
+        # thousand characters and they are the point of the card.
+        "soul": _text(p.get("soul"), 2500),
+    }
 
-    def rows(key: str) -> list:
-        v = raw.get(key)
-        return v if isinstance(v, list) else []
 
-    personas = []
-    seen = set()
-    for p in rows("personas"):
-        if not isinstance(p, dict):
-            continue
-        pid = _text(p.get("id"), 80)
-        if not pid or pid in seen:
-            continue
-        seen.add(pid)
-        personas.append({
-            "id": pid,
-            "name": _text(p.get("name"), 80) or pid,
-            "tagline": _text(p.get("tagline"), 160),
-            # Through this server's own proxy, never the station's path:
-            # the browser cannot reach the station on most deployments.
-            "avatar": f"/avatar/{quote(pid, safe='')}" if p.get("avatar") else "",
-            "soul": _text(p.get("soul"), 600),
-        })
-    shows = []
-    seen_shows = set()
-    for s in rows("shows"):
-        if not isinstance(s, dict):
-            continue
-        sid = _text(s.get("id"), 80)
-        if not sid or sid in seen_shows:
-            continue
-        seen_shows.add(sid)
-        raw_guests = s.get("guestPersonaIds")
-        guests = [_text(g, 80) for g in (raw_guests if isinstance(raw_guests, list) else [])
-                  if isinstance(g, str) and g.strip()]
-        shows.append({
-            "id": sid,
-            "name": _text(s.get("name"), 120) or sid,
-            "topic": _text(s.get("topic"), 160),
-            "mood": _text(s.get("mood"), 80),
-            "personaId": _text(s.get("personaId"), 80),
-            "guestPersonaIds": guests,
-            "description": _text(s.get("description") or s.get("blurb")
-                                 or s.get("summary"), 600),
-        })
+def _show(s) -> dict | None:
+    """One show row for the card, or None for a row that is not one."""
+    if not isinstance(s, dict):
+        return None
+    sid = _text(s.get("id"), 80)
+    if not sid:
+        return None
+    raw_guests = s.get("guestPersonaIds")
+    guests = [_text(g, 80) for g in (raw_guests if isinstance(raw_guests, list) else [])
+              if isinstance(g, str) and g.strip()]
+    # "THE PIAZZA · Golden-Era Pop": the name is the title and its
+    # tagline in one string; the card wants them apart.
+    full = _text(s.get("name"), 160) or sid
+    title, _, tagline = full.partition(" · ")
+    raw_moods = s.get("moods")
+    moods = [_text(m, 40) for m in (raw_moods if isinstance(raw_moods, list) else [])
+             if isinstance(m, str) and m.strip()]
+    if not moods and _text(s.get("mood"), 40):
+        moods = [_text(s.get("mood"), 40)]
+    return {
+        "id": sid,
+        "name": full,
+        "title": title.strip() or full,
+        "tagline": tagline.strip(),
+        "moods": moods,
+        "personaId": _text(s.get("personaId"), 80),
+        "guestPersonaIds": guests,
+        # The show's description IS its topic on this station (a
+        # paragraph, the DJ's Show Card); other builds may name it.
+        "description": _text(s.get("description") or s.get("blurb")
+                             or s.get("summary") or s.get("topic"), 1500),
+    }
+
+
+def _grid(sched) -> dict:
+    """Seven named days of twenty-four slots, from whatever the station keyed."""
     grid = {d: [None] * 24 for d in DAYS}
-    sched = raw.get("schedule")
     if isinstance(sched, dict):
         for name, day in sched.items():
             key = _day_key(name)
             if key:
                 grid[key] = _hours(day)
+    return grid
+
+
+def _unique(rows, make) -> list:
+    """Shaped rows, first of each id kept, junk dropped."""
+    out, seen = [], set()
+    for r in (rows if isinstance(rows, list) else []):
+        row = make(r)
+        if row and row["id"] not in seen:
+            seen.add(row["id"])
+            out.append(row)
+    return out
+
+
+def _on_air(now) -> dict:
+    """The show on air as it is RUNNING, from /now-playing: its id and this
+    episode's angle — "Tonight's angle" on the operator's guide — which the
+    schedule (the show as configured) never carries."""
+    ctx = (now or {}).get("context") if isinstance(now, dict) else None
+    active = (ctx or {}).get("activeShow") if isinstance(ctx, dict) else None
+    if not isinstance(active, dict):
+        return {}
+    sid = _text(active.get("id"), 80)
+    if not sid:
+        return {}
+    return {"id": sid, "angle": _text(active.get("episodeAngle"), 600)}
+
+
+def shape(raw: dict, now: dict | None = None) -> dict:
+    """The station's /schedule, normalised for the card; `now` is the
+    station's /now-playing, for the angle of the show on air."""
+    raw = raw if isinstance(raw, dict) else {}
     return {
         "timezone": _text(raw.get("timezone"), 64),
-        "personas": personas,
-        "shows": shows,
-        "grid": grid,
+        "personas": _unique(raw.get("personas"), _persona),
+        "shows": _unique(raw.get("shows"), _show),
+        "grid": _grid(raw.get("schedule")),
         "soulsPublished": bool(raw.get("soulsPublished")),
+        "onAir": _on_air(now),
     }
 
 
@@ -179,13 +227,13 @@ async def handle_guide(request: web.Request) -> web.Response:
         return _cors(request, web.json_response(_guide_cache["data"]))
     station = StationClient()
     try:
-        raw = await station.schedule()
+        raw, playing = await asyncio.gather(station.schedule(), station.now_playing())
     except Exception as e:                                     # noqa: BLE001
-        log.info("guide: schedule read failed: %s", describe(e))
-        raw = {}
+        log.info("guide: station read failed: %s", describe(e))
+        raw, playing = {}, {}
     finally:
         await station.aclose()
-    data = shape(raw)
+    data = shape(raw, playing)
     # A station that answered nothing is not cached: the next open asks
     # again, rather than showing an empty week for five minutes.
     if data["shows"]:
