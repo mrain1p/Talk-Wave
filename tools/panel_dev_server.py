@@ -687,6 +687,34 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/health":
             return self._json({"ok": True, "version": "dev",
                                "livekit": "ws://stub", "onAirLive": False})
+        # The programme guide's week, through the REAL shaper (api.guide)
+        # so the fixture cannot drift from what the card is painted from:
+        # a station-shaped payload in, the card's shape out. Three shows,
+        # a guest, one persona with no picture, and a grid dense enough
+        # that whatever hour it is here, something is on.
+        if path == "/guide":
+            from api.guide import shape
+            week = ["morning"] * 6 + ["piazza"] * 8 + ["overlook"] * 6 + ["morning"] * 4
+            return self._json(shape({
+                "timezone": "America/New_York", "soulsPublished": True,
+                "personas": [
+                    {"id": "fr", "name": "Francesca", "tagline": "velvet selector",
+                     "avatar": "/persona-avatar/fr",
+                     "soul": "Sings along under her breath and never apologises."},
+                    {"id": "wade", "name": "Wade", "tagline": "the long shadow",
+                     "avatar": "/persona-avatar/wade"},
+                    {"id": "murph", "name": "Murph"},
+                ],
+                "shows": [
+                    {"id": "morning", "name": "The Trail Ahead", "topic": "Morning",
+                     "mood": "bright", "personaId": "murph"},
+                    {"id": "piazza", "name": "The Piazza", "topic": "Golden-era pop",
+                     "mood": "romantic", "personaId": "fr", "guestPersonaIds": ["wade"]},
+                    {"id": "overlook", "name": "The Overlook", "topic": "After dark",
+                     "mood": "reflective", "personaId": "wade"},
+                ],
+                "schedule": {d: week for d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")},
+            }))
         if path == "/live":
             return self._json({
                 "reachable": True, "onAir": True, "guestRequired": False,
@@ -742,6 +770,9 @@ class Handler(BaseHTTPRequestHandler):
                 # Like callsPaused above: from the stub's own settings, so
                 # ticking the box in the panel offers the player on the card.
                 "swipePlayer": bool(settings_store.load().get("swipe_player")),
+                # The third card, same way: tick it in the panel and the
+                # row at the card's foot names the guide.
+                "guideCard": bool(settings_store.load().get("show_guide")),
                 # The real reader, not bool(): the field is a dropdown now and its
                 # resting value "call" is truthy — bool() opened the sheet on every
                 # load and hid the ribbon this stub exists to show.

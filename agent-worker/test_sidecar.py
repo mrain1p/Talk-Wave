@@ -80,6 +80,7 @@ from tests.test_http import (  # noqa: F401
 )
 from tests.test_widget import (
     TestTheFacesSitSideBySide,
+    TestTheGuideCardRidesItsOwnSwitch,
     TestSectionTagsCanShowTheirState,  # noqa: F401
     TestThePanelKeepsItsOwnRules,
     TestThePanelStylesStayOffTheCallPage,
@@ -382,6 +383,7 @@ from tests.test_takeover import (  # noqa: F401
     TestLockingTheStationToAGenre,
 )
 from tests.test_station import (  # noqa: F401
+    TestTheGuideShapesTheStationsWeek,
     TestNoIdEscapesItsPathSegment,
     TestTheDJsLanguageSurvivesTheRead,
     TestTheNeverPlayWritesAndTheGenreLock,

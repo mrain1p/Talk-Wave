@@ -43,6 +43,7 @@ from api.stats import handle_stats_listeners, sample_listeners
 from api.hook_receiver import handle_hooks_recent, handle_station_hook
 from api.hooks import handle_hooks_test, keep_station_warm
 from api.auth import handle_guest_login, handle_set_password
+from api.guide import handle_guide
 from api.live import (
     handle_avatar,
     handle_cover,
@@ -206,6 +207,9 @@ def build_app() -> web.Application:
     app.router.add_options("/on-air/dump", handle_options)
     app.router.add_get("/avatar/{persona_id}", handle_avatar)
     app.router.add_get("/cover/{track_id}", handle_cover)
+    # The programme guide card's week — the station's public schedule,
+    # cached five minutes, 404 while the card is switched off.
+    app.router.add_get("/guide", handle_guide)
     app.router.add_get("/player/like", handle_player_like_status)
     app.router.add_post("/player/like", handle_player_like)
     app.router.add_options("/player/like", handle_options)

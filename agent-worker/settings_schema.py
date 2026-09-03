@@ -887,6 +887,14 @@ SCHEMA: dict[str, dict] = {
              "Stream URL from Calls → Tune the caller in — behind TLS, the "
              "public https stream. This page and the installed app only, "
              "never an embed. A call stops the music."),
+    "show_guide": dict(group="phone", kind="check",
+        label="Programme guide card", alias="schedule shows week guide",
+        help="A third card beside the phone and the player: the station's "
+             "week — today's shows hour by hour, then every show with its "
+             "DJ, tagline and times, opening in place. Read from the "
+             "station's public schedule through this server and cached "
+             "five minutes. Off, and the row at the card's foot never "
+             "names it."),
     "show_listener_count": dict(group="phone", kind="check",
         label="Listener count on the card", alias="listeners audience",
         help="The ON AIR line adds how many are tuned in — the station's own "

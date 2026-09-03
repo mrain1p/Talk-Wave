@@ -4960,6 +4960,8 @@
     return (card && card.dataset.mode) || 'idle';
   }
 
+  // The guide face's own state — see THE FACES, further down.
+  let guideOpen = false, guideHideTimer = 0, guideData = null, guideAt = 0;
   let playerOpen = false, playerHideTimer = 0;
 
   // Whether this surface can EVER carry the player, whatever the operator has
@@ -5884,14 +5886,15 @@
     } catch (e) {}
   }
 
-  // ---- THE FACES. The phone and the player are cards SIDE BY SIDE
-  // (operator, 2026-09-02: "swipe left and right to switch between them,
-  // and the small selector row on the bottom"). Until then the player was
-  // a sheet pulled down over the phone by a ribbon, with a second ribbon,
-  // a foot grabber and a travelling curtain for the player-first page —
-  // all of it went with that model. The phone is the base; the player
-  // slides in from the right over it and back out the same way, following
-  // the finger, and the row at the card's foot names every face on offer
+  // ---- THE FACES. The phone, the player and the programme guide are
+  // cards SIDE BY SIDE (operator, 2026-09-02: "swipe left and right to
+  // switch between them, and the small selector row on the bottom").
+  // Until then the player was a sheet pulled down over the phone by a
+  // ribbon, with a second ribbon, a foot grabber and a travelling curtain
+  // for the player-first page — all of it went with that model. The phone
+  // is the base; each later card is an overlay one layer above the one
+  // before it, sliding in from the right following the finger and back out
+  // the same way, and the row at the card's foot names every face on offer
   // and switches on a tap. A face the operator switched off is simply not
   // in the row. Touch, not pointer: on a desktop the row is the way across
   // (and the arrow keys). A drag that starts on a field is typing or the
@@ -5899,25 +5902,51 @@
   // decided in the first eight pixels and then OWNED for the rest of the
   // gesture, so a scroll through the queue never turns into a page turn
   // halfway down.
-  // A function, not a const: paintListenChip runs from the first /live
-  // paint, and a const this far down the file would still be unassigned.
+  // Functions, not consts: paintListenChip runs from the first /live paint,
+  // and a const this far down the file would still be unassigned.
+  function guideOffered() {
+    const d = shown || live || {};
+    return playerVisual && !!d.guideCard;
+  }
   function faceDefs() {
     return [
-      { id: 'phone',  btn: 'facePhone',  offered: () => true },
-      { id: 'player', btn: 'facePlayer', offered: () => playerOffered() },
+      { id: 'phone',  btn: 'facePhone',  el: '',           offered: () => true },
+      { id: 'player', btn: 'facePlayer', el: 'playerView', offered: () => playerOffered() },
+      { id: 'guide',  btn: 'faceGuide',  el: 'guideView',  offered: () => guideOffered() },
     ];
   }
   function faceList() { return faceDefs().filter((f) => f.offered()); }
-  function currentFace() { return playerOpen ? 'player' : 'phone'; }
+  function currentFace() {
+    return guideOpen ? 'guide' : playerOpen ? 'player' : 'phone';
+  }
+  // The player with no slide: the page's own start, or a card laid UNDER
+  // the guide before the guide slides away to reveal it.
+  function openPlayerInstant() {
+    const sheet = $('playerView');
+    sheet.classList.add('dragging');
+    openPlayer();
+    void sheet.offsetHeight;
+    sheet.classList.remove('dragging');
+  }
   function showFace(id) {
-    if (id === currentFace()) return;
-    if (id === 'player') openPlayer();
-    else closePlayer(true);
+    const now = currentFace();
+    if (id === now) return;
+    if (id === 'guide') { openGuide(); return; }
+    if (id === 'player') {
+      if (guideOpen) { openPlayerInstant(); closeGuide(); }
+      else openPlayer();
+      return;
+    }
+    if (guideOpen) closeGuide();
+    if (playerOpen) closePlayer(true);
   }
 
   function paintFaceBar() {
     const bar = $('faceBar'), card = document.querySelector('.card');
     if (!bar || !card) return;
+    // The operator can switch the guide off under a reader — honour it on
+    // the next poll, the way the player's own offer is honoured.
+    if (guideOpen && !guideOffered()) closeGuide();
     const list = faceList();
     // Looks, not sound: the settings preview shows the row like it shows
     // the sheet (playerVisual), and a compact card or an embed never has
@@ -5936,10 +5965,10 @@
       b.hidden = !list.some((x) => x.id === f.id);
       b.classList.toggle('on', f.id === now);
       b.setAttribute('aria-current', f.id === now ? 'true' : 'false');
-      // A call is not a page to turn: the player's tab stays in the row
-      // (so the foot doesn't jump) but sleeps until the line is idle again
-      // — openPlayer refuses mid-conversation for the same reason.
-      b.disabled = f.id === 'player' && !playerOpen && !idle;
+      // A call is not a page to turn: the other tabs stay in the row (so
+      // the foot doesn't jump) but sleep until the line is idle again —
+      // openPlayer refuses mid-conversation for the same reason.
+      b.disabled = f.id !== 'phone' && now === 'phone' && !idle;
     });
   }
   faceDefs().forEach((f) => {
@@ -5947,17 +5976,228 @@
     if (b) b.onclick = () => showFace(f.id);
   });
 
-  // How far the player is shown, 0..1: parked off the right edge at 0.
-  function paintFaceProgress(sheet, shownPct) {
-    const p = Math.min(1, Math.max(0, shownPct));
-    sheet.style.transform = 'translateX(' + ((1 - p) * 100).toFixed(2) + '%)';
+  // ---- The programme guide itself: the station's week, in the shape of
+  // the operator's own guide page — today's shows hour by hour in a strip,
+  // then every show with its DJ, tagline and times, opening in place. The
+  // payload is /guide's, already normalised: a 7x24 grid of show ids, the
+  // shows, a persona index with avatars proxied through this server, and
+  // the station's timezone. Built as nodes, never markup: every word here
+  // is the station's, and a show named with an angle bracket is a show,
+  // not a tag.
+  function openGuide() {
+    if (!guideOffered() || guideOpen) return;
+    if (cardMode() !== 'idle' && !playerOpen) return;
+    clearTimeout(guideHideTimer);
+    const el = $('guideView');
+    el.hidden = false;
+    void el.offsetHeight;                   // rendered before the slide
+    document.querySelector('.card').classList.add('guideopen');
+    guideOpen = true;
+    loadGuide();
+    paintFaceBar();
+  }
+  function closeGuide() {
+    if (!guideOpen) { $('guideView').hidden = true; return; }
+    guideOpen = false;
+    document.querySelector('.card').classList.remove('guideopen');
+    clearTimeout(guideHideTimer);
+    guideHideTimer = setTimeout(() => {
+      if (!guideOpen) $('guideView').hidden = true;
+    }, 450);
+    paintFaceBar();
+  }
+  // Put a face away after a slide that did not commit — a timer, not
+  // transitionend, for the same reason the player's own hide is one.
+  function parkFace(id) {
+    if (id === 'player') {
+      clearTimeout(playerHideTimer);
+      playerHideTimer = setTimeout(() => {
+        if (!playerOpen) $('playerView').hidden = true;
+      }, 450);
+    } else if (id === 'guide') {
+      clearTimeout(guideHideTimer);
+      guideHideTimer = setTimeout(() => {
+        if (!guideOpen) $('guideView').hidden = true;
+      }, 450);
+    }
+  }
+
+  async function loadGuide(force) {
+    // The server caches the week for five minutes; so does this, so a
+    // reader flicking between cards costs the station nothing.
+    if (!force && guideData && Date.now() - guideAt < 300000) {
+      paintGuide();
+      return;
+    }
+    try {
+      const r = await fetch('/guide', { cache: 'no-store' });
+      if (!r.ok) throw new Error('guide ' + r.status);
+      guideData = await r.json();
+      guideAt = Date.now();
+    } catch (e) {
+      if (!guideData) guideData = { shows: [], personas: [], grid: {}, timezone: '' };
+    }
+    paintGuide();
+  }
+
+  const GUIDE_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  // The station's OWN clock — which weekday and hour it is there, from
+  // the timezone the schedule was painted in. A listener two zones away
+  // still sees the block that is on air, not the one their wall clock
+  // would pick.
+  function stationNow(tz) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz || undefined, weekday: 'short', hour: 'numeric', hour12: false,
+      }).formatToParts(new Date());
+      const wd = (parts.find((x) => x.type === 'weekday') || {}).value || '';
+      const hr = parseInt((parts.find((x) => x.type === 'hour') || {}).value, 10);
+      const day = wd.slice(0, 3).toLowerCase();
+      if (GUIDE_DAYS.includes(day) && !isNaN(hr)) return { day, hour: hr % 24 };
+    } catch (e) { /* an unknown zone: the reader's clock below */ }
+    const d = new Date();
+    return { day: ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][d.getDay()],
+             hour: d.getHours() };
+  }
+  function fmtHour(h) {
+    h = ((h % 24) + 24) % 24;
+    return (h % 12 || 12) + (h < 12 ? ' AM' : ' PM');
+  }
+  // Consecutive hours of one show -> { id, from, to }, `to` exclusive.
+  function runsOf(slots) {
+    const out = [];
+    let cur = null;
+    (slots || []).forEach((id, h) => {
+      if (id && cur && cur.id === id && cur.to === h) { cur.to = h + 1; return; }
+      cur = id ? { id, from: h, to: h + 1 } : null;
+      if (cur) out.push(cur);
+    });
+    return out;
+  }
+  function paintGuide() {
+    const d = guideData || {};
+    const shows = d.shows || [], grid = d.grid || {}, personas = {}, byId = {};
+    (d.personas || []).forEach((x) => { personas[x.id] = x; });
+    shows.forEach((x) => { byId[x.id] = x; });
+    const now = stationNow(d.timezone);
+    const today = $('guideToday'), list = $('guideList');
+    const empty = $('guideEmpty'), meta = $('guideMeta');
+    if (!today || !list) return;
+    today.textContent = '';
+    const runs = runsOf(grid[now.day]).filter((r) => byId[r.id]);
+    today.hidden = !runs.length;
+    let onAir = null;
+    runs.forEach((r) => {
+      const show = byId[r.id];
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'gdslot';
+      if (now.hour >= r.from && now.hour < r.to) { b.classList.add('on'); onAir = show; }
+      const n = document.createElement('span'); n.className = 'gdname'; n.textContent = show.name;
+      const t = document.createElement('span'); t.className = 'gdtime';
+      t.textContent = fmtHour(r.from) + ' – ' + fmtHour(r.to);
+      b.append(n, t);
+      b.onclick = () => {
+        const row = [...list.children].find((el) => el.dataset.show === show.id);
+        if (!row) return;
+        row.classList.add('open');
+        row.setAttribute('aria-expanded', 'true');
+        row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      };
+      today.appendChild(b);
+    });
+    if (meta) {
+      meta.textContent = onAir ? 'On air · ' + onAir.name
+        : (shows.length ? shows.length + ' shows this week' : '');
+    }
+    list.textContent = '';
+    if (empty) empty.hidden = shows.length > 0;
+    shows.forEach((show) => list.appendChild(guideRow(show, personas, grid)));
+    const lit = today.querySelector('.gdslot.on');
+    if (lit && lit.scrollIntoView) {
+      try { lit.scrollIntoView({ inline: 'center', block: 'nearest' }); } catch (e) {}
+    }
+  }
+  function guideRow(show, personas, grid) {
+    const row = document.createElement('div');
+    row.className = 'gdrow'; row.dataset.show = show.id;
+    row.setAttribute('role', 'button'); row.tabIndex = 0;
+    row.setAttribute('aria-expanded', 'false');
+    const head = document.createElement('div'); head.className = 'gdhead';
+    const avs = document.createElement('span'); avs.className = 'gdavs';
+    const cast = [show.personaId].concat(show.guestPersonaIds || [])
+      .filter(Boolean).map((id) => personas[id]).filter(Boolean);
+    cast.slice(0, 4).forEach((who) => {
+      const mono = () => {
+        const m = document.createElement('span');
+        m.className = 'gdav mono'; m.textContent = (who.name || '?').slice(0, 2).toUpperCase();
+        return m;
+      };
+      if (who.avatar) {
+        const img = document.createElement('img');
+        img.className = 'gdav'; img.src = who.avatar; img.alt = ''; img.loading = 'lazy';
+        // A picture the station won't serve becomes the initials, the
+        // way the card's own DJ ring does — never a broken-image glyph.
+        img.onerror = () => { if (img.parentNode) img.replaceWith(mono()); };
+        avs.appendChild(img);
+      } else {
+        avs.appendChild(mono());
+      }
+    });
+    const metaEl = document.createElement('div'); metaEl.className = 'gdmeta';
+    const name = document.createElement('div'); name.className = 'gdshow'; name.textContent = show.name;
+    const sub = document.createElement('div'); sub.className = 'gdsub';
+    sub.textContent = [show.topic, show.mood].filter(Boolean).join(' · ')
+      || (cast[0] ? cast[0].name : '');
+    metaEl.append(name, sub);
+    const chev = document.createElement('span'); chev.className = 'gdchev';
+    chev.textContent = '\u25B8'; chev.setAttribute('aria-hidden', 'true');
+    if (avs.childElementCount) head.appendChild(avs);
+    head.append(metaEl, chev);
+    const body = document.createElement('div'); body.className = 'gdbody';
+    const line = (text, lead) => {
+      const l = document.createElement('p'); l.className = 'gdline';
+      if (lead) { const b = document.createElement('b'); b.textContent = lead; l.append(b); }
+      if (text) l.append((lead ? ' — ' : '') + text);
+      body.appendChild(l);
+    };
+    const host = cast[0];
+    if (host) line(host.tagline, host.name);
+    if (cast.length > 1) line('With ' + cast.slice(1).map((x) => x.name).join(', '));
+    if (show.description) line(show.description);
+    else if (host && host.soul) line(host.soul);
+    const times = document.createElement('div'); times.className = 'gdtimes';
+    GUIDE_DAYS.forEach((day) => {
+      runsOf(grid[day]).filter((r) => r.id === show.id).forEach((r) => {
+        const t = document.createElement('span');
+        t.textContent = day.charAt(0).toUpperCase() + day.slice(1) + ' '
+          + fmtHour(r.from) + '–' + fmtHour(r.to);
+        times.appendChild(t);
+      });
+    });
+    if (times.childElementCount) body.appendChild(times);
+    row.append(head, body);
+    const toggle = () => {
+      const open = row.classList.toggle('open');
+      row.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    row.onclick = toggle;
+    row.addEventListener('keydown', (e) => {
+      if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); toggle(); }
+    });
+    return row;
+  }
+
+  // How far an overlay face is shown, 0..1: parked off the right edge at 0.
+  function paintFaceProgress(el, shownPct) {
+    const pct = Math.min(1, Math.max(0, shownPct));
+    el.style.transform = 'translateX(' + ((1 - pct) * 100).toFixed(2) + '%)';
   }
 
   (function bindFaceSwipe() {
-    const card = document.querySelector('.card'), sheet = $('playerView');
-    if (!card || !sheet) return;
-    let sx = 0, sy = 0, st = 0, axis = '', wasOpen = false;
-    let lastX = 0, lastT = 0, vx = 0;
+    const card = document.querySelector('.card');
+    if (!card) return;
+    let sx = 0, sy = 0, st = 0, axis = '', fromId = '', toId = '';
+    let moving = null, incoming = false, lastX = 0, lastT = 0, vx = 0;
 
     card.addEventListener('touchstart', (e) => {
       axis = '';
@@ -5965,10 +6205,11 @@
       // The fader, the request box, a select: a finger there is using it.
       if (e.target.closest('input, select, textarea')) return;
       if (faceList().length < 2) return;
-      if (!playerOpen && cardMode() !== 'idle') return;
+      fromId = currentFace();
+      if (fromId === 'phone' && cardMode() !== 'idle') return;
       sx = lastX = e.touches[0].clientX; sy = e.touches[0].clientY;
       st = lastT = Date.now(); vx = 0;
-      wasOpen = playerOpen;
+      moving = null;
       axis = 'wait';
     }, { passive: true });
 
@@ -5978,58 +6219,66 @@
       const dx = t.clientX - sx, dy = t.clientY - sy;
       if (axis === 'wait') {
         if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-        // Mostly vertical, or pulling towards a face that isn't there:
-        // this is a scroll, and it stays one.
-        if (Math.abs(dy) > Math.abs(dx) || (wasOpen ? dx < 0 : dx > 0)) {
-          axis = 'v';
-          return;
-        }
+        // Mostly vertical: a scroll, and it stays one.
+        if (Math.abs(dy) > Math.abs(dx)) { axis = 'v'; return; }
+        const list = faceList();
+        const i = list.findIndex((f) => f.id === fromId);
+        const to = list[i + (dx < 0 ? 1 : -1)];
+        // Pulling towards a face that isn't there is a scroll too.
+        if (!to) { axis = 'v'; return; }
         axis = 'h';
-        if (!wasOpen) {
-          // Rendered under the finger from the first pixel of travel.
-          clearTimeout(playerHideTimer);
-          sheet.hidden = false;
-          paintPlayer();
-          fitPlayerArt();
+        toId = to.id;
+        incoming = dx < 0;
+        if (incoming) {
+          // The arriving card, rendered under the finger from the first
+          // pixel of travel.
+          moving = $(to.el);
+          if (toId === 'player') {
+            clearTimeout(playerHideTimer);
+            moving.hidden = false;
+            paintPlayer();
+            fitPlayerArt();
+          } else {
+            clearTimeout(guideHideTimer);
+            moving.hidden = false;
+            loadGuide();
+          }
+        } else {
+          // The leaving card, with the one beneath it laid in place first.
+          moving = $(faceDefs().find((f) => f.id === fromId).el);
+          if (toId === 'player' && !playerOpen) openPlayerInstant();
         }
-        sheet.classList.add('dragging');
+        moving.classList.add('dragging');
       }
       const now = Date.now();
       if (now > lastT) {
         vx = (t.clientX - lastX) / (now - lastT);   // px per ms, signed
         lastX = t.clientX; lastT = now;
       }
-      const w = sheet.getBoundingClientRect().width || 1;
-      paintFaceProgress(sheet, wasOpen
-        ? 1 - Math.min(1, Math.max(0, dx / w))
-        : Math.min(1, Math.max(0, -dx / w)));
+      const w = moving.getBoundingClientRect().width || 1;
+      paintFaceProgress(moving, incoming
+        ? Math.min(1, Math.max(0, -dx / w))
+        : 1 - Math.min(1, Math.max(0, dx / w)));
     }, { passive: true });
 
     const settle = (e) => {
       if (axis !== 'h') { axis = ''; return; }
       axis = '';
-      sheet.classList.remove('dragging');
+      moving.classList.remove('dragging');
       const t = e.changedTouches && e.changedTouches[0];
       const dx = t ? t.clientX - sx : 0;
-      const w = sheet.getBoundingClientRect().width || 1;
+      const w = moving.getBoundingClientRect().width || 1;
       // Past a fifth of the width it commits; short of that a quick flick
       // in the same direction commits too, the way a page turn feels.
       const flick = Math.abs(vx) > 0.5 && Date.now() - st < 500;
-      const shouldOpen = wasOpen
-        ? !((dx / w) > 0.2 || (flick && vx > 0))
-        : ((-dx / w) > 0.2 || (flick && vx < 0));
-      if (shouldOpen && !playerOpen) openPlayer();
-      else if (!shouldOpen && playerOpen) closePlayer(true);
-      else if (!shouldOpen && !playerOpen) {
-        // Released short of the threshold: slide home, then put it away.
-        clearTimeout(playerHideTimer);
-        playerHideTimer = setTimeout(() => {
-          if (!playerOpen) sheet.hidden = true;
-        }, 450);
-      }
+      const commit = incoming
+        ? ((-dx / w) > 0.2 || (flick && vx < 0))
+        : ((dx / w) > 0.2 || (flick && vx > 0));
+      if (commit) showFace(toId);
+      else if (incoming) parkFace(toId);   // released short: slide home, put away
       // Cleared AFTER the state settles, so the transition animates from
-      // wherever the finger left the sheet rather than snapping first.
-      sheet.style.transform = '';
+      // wherever the finger left the card rather than snapping first.
+      moving.style.transform = '';
     };
     card.addEventListener('touchend', settle, { passive: true });
     card.addEventListener('touchcancel', settle, { passive: true });

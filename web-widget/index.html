@@ -493,7 +493,22 @@
          the screen's foot, above the full-screen player. Static buttons,
          so the ids the script reaches for are here for the contract test
          to see; call.js only shows, hides and lights them. -->
-    <nav class="facebar" id="faceBar" hidden aria-label="Cards"><button type="button" class="face on" id="facePhone" aria-current="true">Phone</button><button type="button" class="face" id="facePlayer" hidden aria-current="false">Player</button></nav>
+    <!-- The programme guide: the third card (operator, 2026-09-02) — the
+         station's week in the shape of the operator's own guide page: today's
+         shows hour by hour in a strip, then every show with its DJ, tagline
+         and times, opening in place. Read from /guide, which this server
+         caches. The same overlay shape as the player, one layer above it;
+         call.js builds the rows from the payload, so only the frames are
+         here. -->
+    <div class="guide" id="guideView" hidden role="region" aria-label="Programme guide">
+      <div class="plhead"><span class="pip" aria-hidden="true"></span>Programme guide<span class="plheadmeta" id="guideMeta"></span></div>
+      <div class="gdscroll">
+        <div class="gdtoday" id="guideToday" hidden></div>
+        <div class="gdlist" id="guideList"></div>
+        <p class="gdempty" id="guideEmpty" hidden>The station hasn't published its week yet.</p>
+      </div>
+    </div>
+    <nav class="facebar" id="faceBar" hidden aria-label="Cards"><button type="button" class="face on" id="facePhone" aria-current="true">Phone</button><button type="button" class="face" id="facePlayer" hidden aria-current="false">Player</button><button type="button" class="face" id="faceGuide" hidden aria-current="false">Guide</button></nav>
   </div>
 
 <script src="/shared.js"></script>

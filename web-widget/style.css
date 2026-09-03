@@ -957,7 +957,112 @@
      padding, the way the bottom bookmark did, and the sheet ends above it
      so the player's own dock never hides under the tabs. -------------- */
   .card.faces { padding-bottom: 46px; }
-  .card.faces .player { bottom: 46px; }
+  .card.faces .player, .card.faces .guide { bottom: 46px; }
+  /* ---- The programme guide: the third card, one layer above the player,
+     same overlay shape and the same slide. Its content is the operator's
+     own guide page in the card's clothes — a strip of today's hours, then
+     the show rows. Only the middle scrolls. ------------------------------ */
+  .guide {
+    position: absolute; inset: 0; z-index: 62;
+    display: flex; flex-direction: column; align-items: stretch;
+    padding: 0; overflow: hidden;
+    background-color: var(--pine);
+    border-radius: inherit;
+    transform: translateX(103%);
+    transition: transform .38s cubic-bezier(.32, .72, .28, 1);
+    will-change: transform;
+  }
+  .card.guideopen .guide { transform: translateX(0); }
+  .guide.dragging { transition: none; }
+  .guide[hidden] { display: none !important; }
+  .gdscroll {
+    flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin;
+    width: 100%; padding: 0 16px 14px; box-sizing: border-box;
+  }
+  /* Today, hour by hour: a row of blocks, the one on air lit. */
+  .gdtoday {
+    display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+    padding: 12px 0 10px; margin: 0 -16px; padding-left: 16px;
+    padding-right: 16px;
+  }
+  .gdtoday[hidden] { display: none; }
+  .card .gdslot {
+    flex: none; min-width: 118px; max-width: 170px; text-align: left;
+    background: transparent; border: 1px solid var(--edge);
+    border-radius: max(6px, var(--skin-radius-ctl));
+    padding: 8px 10px; margin: 0; min-height: 0; height: auto;
+    display: flex; flex-direction: column; gap: 4px; cursor: pointer;
+  }
+  .card .gdslot .gdname {
+    font: 700 11px/1.25 var(--font-mono); letter-spacing: .06em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card .gdslot .gdtime {
+    font: 10px/1.3 var(--font-mono); letter-spacing: .06em;
+    color: var(--sage-dim);
+  }
+  .card .gdslot.on { border-color: var(--coral); background: var(--granite); }
+  .card .gdslot.on .gdname { color: var(--coral); }
+  .card .gdslot.on .gdtime { color: var(--amber); }
+  /* The show rows: avatars, the name and its topic line, and a body that
+     opens in place with the DJ, the times and the blurb. */
+  .card .gdrow {
+    width: 100%; text-align: left; background: transparent;
+    border: 1px solid var(--hairline);
+    border-radius: max(6px, var(--skin-radius-ctl));
+    padding: 10px 12px; margin: 8px 0 0; min-height: 0; height: auto;
+    display: block; cursor: pointer;
+  }
+  .card .gdrow.open { border-color: var(--edge); background: var(--granite); }
+  .gdhead { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .gdmeta { flex: 1; min-width: 0; }
+  .gdshow {
+    font: 700 13px/1.2 var(--font-mono); letter-spacing: .04em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .gdsub {
+    font: 11px/1.35 var(--font-mono); letter-spacing: .05em;
+    color: var(--sage-dim); margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .gdavs { display: flex; flex: none; align-items: center; }
+  .gdav {
+    width: 26px; height: 26px; border-radius: 50%; object-fit: cover;
+    border: 1px solid var(--edge); background: var(--granite);
+    margin-left: -8px;
+  }
+  .gdav:first-child { margin-left: 0; }
+  .gdav.mono {
+    display: inline-flex; align-items: center; justify-content: center;
+    font: 700 10px/1 var(--font-mono); color: var(--coral);
+  }
+  .gdchev {
+    flex: none; width: 10px; height: 10px; color: var(--sage-dim);
+    transition: transform .2s ease;
+  }
+  .card .gdrow.open .gdchev { transform: rotate(90deg); color: var(--coral); }
+  .gdbody { display: none; margin-top: 10px; }
+  .card .gdrow.open .gdbody { display: block; }
+  .gdline {
+    font: 12px/1.45 var(--font-body); color: var(--alpenglow); margin: 0 0 6px;
+  }
+  .gdline b { font-weight: 700; color: var(--coral); }
+  .gdtimes {
+    display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 0;
+  }
+  .gdtimes span {
+    font: 10px/1 var(--font-mono); letter-spacing: .08em;
+    text-transform: var(--skin-label-case); color: var(--amber);
+    border: 1px solid var(--edge); border-radius: max(4px, var(--skin-radius-ctl));
+    padding: 5px 7px;
+  }
+  .gdempty {
+    font: 12px/1.45 var(--font-body); color: var(--sage-dim);
+    text-align: center; margin: 24px 0;
+  }
+  .gdempty[hidden] { display: none; }
   .facebar {
     position: absolute; left: 16px; right: 16px; bottom: 8px; height: 30px;
     display: flex; justify-content: center; align-items: center; gap: 6px;
@@ -989,9 +1094,14 @@
       background: var(--granite); border-top: 1px solid var(--hairline);
       z-index: 95;
     }
-    body:not(.compact) .card.faces .player {
+    body:not(.compact) .card.faces .player,
+    body:not(.compact) .card.faces .guide {
       bottom: calc(38px + env(safe-area-inset-bottom));
     }
+    /* The guide is the whole screen on a phone too, one layer above the
+       player, and its header pays the notch the way the player's does. */
+    body:not(.compact) .guide { position: fixed; inset: 0;
+                                border-radius: 0; z-index: 92; }
     body:not(.compact) .card.faces .pldock { padding-bottom: 8px; }
     /* Specific enough to beat `body:not(.panelpage):not(.compact) .card`,
        which owns the phone's padding further down and quietly won the
@@ -1004,7 +1114,7 @@
   }
   /* While the sheet is rendered the card clips, so the wipe stays inside the
      card's own corners. The ask popup is position:fixed and does not care. */
-  .card:has(.player:not([hidden])) { overflow: clip; }
+  .card:has(.player:not([hidden])), .card:has(.guide:not([hidden])) { overflow: clip; }
   /* On a phone the player IS the screen (the operator's ask: "the full
      space allotment") — fixed to the viewport, square corners, out from
      under the body's gutters. position:fixed escapes the card's clip, which

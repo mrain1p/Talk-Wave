@@ -1201,3 +1201,95 @@ class TestTheMintsHeadStartIsFreshOrNothing(unittest.TestCase):
         got = station_prefetch.recall(with_skills=False)
         self.assertIsNotNone(got)
         self.assertEqual({"values": {"personas": []}}, got[1])
+
+class TestTheGuideShapesTheStationsWeek(unittest.TestCase):
+    """The programme guide card (operator, 2026-09-02) paints from /guide,
+    which normalises the station's /schedule so the browser never has to
+    know what the grid looks like. The station was off the LAN when this was
+    built, so the grid's exact shape was never captured: `_hours` accepts
+    the three shapes a schedule grid comes in and turns each into twenty-
+    four slots, and a shape it cannot read is an empty day rather than a
+    broken card. The avatar is rewritten onto this server's own proxy,
+    because the browser cannot reach the station on most deployments."""
+
+    def test_one_entry_per_hour_is_the_grid_as_given(self):
+        from api import guide
+
+        day = ["late"] * 6 + [None] * 12 + ["drive"] * 6
+        self.assertEqual(guide._hours(day)[:2], ["late", "late"])
+        self.assertEqual(guide._hours(day)[12], None)
+        self.assertEqual(guide._hours(day)[23], "drive")
+        # A cell that is an object names its show one of three ways.
+        self.assertEqual(guide._hours([{"showId": "a"}, {"id": "b"},
+                                       {"show": {"id": "c"}}])[:3], ["a", "b", "c"])
+
+    def test_a_list_of_ranges_is_expanded(self):
+        from api import guide
+
+        slots = guide._hours([{"showId": "late", "start": 22, "end": 24},
+                              {"showId": "drive", "from": 6, "to": 9}])
+        self.assertEqual(slots[22], "late")
+        self.assertEqual(slots[23], "late")
+        self.assertEqual(slots[6], "drive")
+        self.assertEqual(slots[8], "drive")
+        self.assertIsNone(slots[9])
+        self.assertIsNone(slots[0])
+
+    def test_an_hour_keyed_map_and_an_unreadable_day_both_land_on_their_feet(self):
+        from api import guide
+
+        slots = guide._hours({"7": "morning", "8": {"showId": "morning"}, "x": "?"})
+        self.assertEqual(slots[7], "morning")
+        self.assertEqual(slots[8], "morning")
+        self.assertEqual([None] * 24, guide._hours("not a day"))
+        self.assertEqual([None] * 24, guide._hours(None))
+
+    def test_the_week_is_shaped_for_the_card(self):
+        from api import guide
+
+        raw = {
+            "timezone": "America/New_York",
+            "soulsPublished": True,
+            "personas": [
+                {"id": "fr", "name": "Francesca", "tagline": "velvet",
+                 "avatar": "/persona-avatar/fr", "soul": "A long blurb."},
+                {"id": "no-pic", "name": "Nobody"},
+                {"id": ""}, "junk",
+            ],
+            "shows": [
+                {"id": "piazza", "name": "The Piazza", "topic": "Golden-era pop",
+                 "mood": "romantic", "personaId": "fr", "guestPersonaIds": ["no-pic", ""]},
+                {"id": "piazza", "name": "dupe"},
+                {"name": "no id"},
+            ],
+            "schedule": {"Monday": ["piazza"] * 2 + [None] * 22, "tue": [],
+                         "funday": ["piazza"] * 24},
+        }
+        d = guide.shape(raw)
+        self.assertEqual("America/New_York", d["timezone"])
+        self.assertTrue(d["soulsPublished"])
+        self.assertEqual(["fr", "no-pic"], [p["id"] for p in d["personas"]])
+        # Through OUR proxy, never the station's path; no picture, no path.
+        self.assertEqual("/avatar/fr", d["personas"][0]["avatar"])
+        self.assertEqual("", d["personas"][1]["avatar"])
+        self.assertEqual("A long blurb.", d["personas"][0]["soul"])
+        self.assertEqual(["piazza"], [s["id"] for s in d["shows"]])
+        self.assertEqual(["no-pic"], d["shows"][0]["guestPersonaIds"])
+        # Every day is present with twenty-four slots, whatever the station
+        # sent: a full day name is read, a day it left out is empty, and a
+        # day that is not a day is dropped.
+        self.assertEqual(sorted(guide.DAYS), sorted(d["grid"]))
+        self.assertEqual("piazza", d["grid"]["mon"][1])
+        self.assertIsNone(d["grid"]["mon"][2])
+        self.assertEqual([None] * 24, d["grid"]["tue"])
+        self.assertEqual([None] * 24, d["grid"]["sun"])
+
+    def test_nothing_from_the_station_is_an_empty_week_not_a_crash(self):
+        from api import guide
+
+        for raw in ({}, None, {"shows": "x", "personas": 3, "schedule": []}):
+            with self.subTest(raw=raw):
+                d = guide.shape(raw)
+                self.assertEqual([], d["shows"])
+                self.assertEqual([], d["personas"])
+                self.assertEqual(24, len(d["grid"]["mon"]))

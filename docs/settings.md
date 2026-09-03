@@ -371,7 +371,8 @@ The Behaviour band — nothing visual:
 - whether calls start on the **loudspeaker**
 - the card's **listener count** — "On air now · 2 listening", shown from one listener up, so a quiet hour never paints a zero
 - its **heart button** — the same public like any listener page sends, beside the record on the card. Both on by default
-- the station player card, and **which card it opens on** — the phone or the player, the other a swipe across; the row at the card's foot names both
+- the station player card, and **which card it opens on** — the phone or the player, the other a swipe across; the row at the card's foot names every card that is on
+- the **programme guide card** — the station's week, read from its public schedule through this server and cached five minutes: today's shows hour by hour, then every show with its DJ, tagline and times. Off by default
 - the player's **cast button** — Chromecast on Chrome, AirPlay on Safari, on by default and always on show while the switch is on; pressing it starts the stream if needed, and reopening the picker is how you switch speakers or stop casting
 - the player's **operator side**, off by default: a **skip button** beside the heart and an **operator mode** on the request line — one-shot commands through the text line's own brain, receipts flashed in place and a Booth tab reading the 48-hour action log. Both are doors onto admin-backed writes, so each is gated twice: these switches put the furniture on the sheet, and the permission matrix decides which tier's key may use it
 - how loud the station plays under the answering machine

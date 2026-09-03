@@ -42,6 +42,10 @@ class TestExposedSurface(unittest.TestCase):
         # station's own /cover/:id, which answers unauthenticated listeners.
         # It reads art by track id and writes nothing.
         "GET /cover/{track_id}": "public",
+        # The programme guide card's week — the station's own listener-facing
+        # /schedule (no admin fields), read by this server, cached five
+        # minutes, and a 404 while the operator's show_guide switch is off.
+        "GET /guide": "public",
         # The player's listener actions. "public" here means not admin-gated;
         # each self-gates in api/player._door — the player switch must be ON
         # and the caller through the phone's own guest door — and the station

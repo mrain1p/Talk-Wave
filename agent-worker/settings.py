@@ -635,6 +635,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # a public https tune_in_url the player would open onto silence behind
     # TLS.
     "swipe_player":       (None, False),
+    # The third card: the station's week. OFF by default for the same reason
+    # as the player — a new surface on every deployed card unasked — and it
+    # is one tick in the panel. Reads the station's public /schedule.
+    "show_guide":         (None, False),
     # The card's own listener count and track heart. ON by default, unlike
     # the player: they are one line of text and one small button on furniture
     # the card already has, not a new surface — and both degrade to nothing

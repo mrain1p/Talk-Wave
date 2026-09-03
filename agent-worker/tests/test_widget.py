@@ -3611,7 +3611,7 @@ class TestTheFacesSitSideBySide(unittest.TestCase):
         self.assertIn(".card.playeropen .player { transform: translateX(0); }",
                       self.css)
         # The finger paints the same axis the transition runs on.
-        self.assertIn("'translateX(' + ((1 - p) * 100).toFixed(2) + '%)'",
+        self.assertIn("'translateX(' + ((1 - pct) * 100).toFixed(2) + '%)'",
                       self.js)
 
     def test_the_faces_row_names_every_card_on_offer(self):
@@ -3623,7 +3623,8 @@ class TestTheFacesSitSideBySide(unittest.TestCase):
         self.assertIn("paintFaceBar();", self.js.split("function paintListenChip")[1][:900])
         # The row makes room at the card's foot only while it is there.
         self.assertIn(".card.faces { padding-bottom: 46px; }", self.css)
-        self.assertIn(".card.faces .player { bottom: 46px; }", self.css)
+        self.assertIn(".card.faces .player, .card.faces .guide { bottom: 46px; }",
+                      self.css)
 
     def test_the_swipe_owns_one_axis_for_the_whole_gesture(self):
         # A scroll through the queue must never turn into a page turn
@@ -3642,3 +3643,56 @@ class TestTheFacesSitSideBySide(unittest.TestCase):
                           "plfirst", "plphonetab", "plcurtain"):
                 with self.subTest(file=name, token=token):
                     self.assertNotIn(token, text)
+
+
+class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
+    """The third card is the operator's to switch on. Off, the row never
+    names it, /live never says so, and /guide is a 404 rather than an empty
+    week that reads as a station with no schedule. On, the widget reads
+    /guide once per five minutes and paints the week from it."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.js = widget_js()["call.js"]
+        cls.html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        cls.live_py = (AGENT_WORKER / "api" / "live.py").read_text(encoding="utf-8")
+
+    def test_the_switch_is_off_until_the_operator_says_and_travels_on_live(self):
+        import settings as settings_store
+
+        self.assertFalse(settings_store.load().get("show_guide"))
+        self.assertIn('"guideCard": bool(cfg.get("show_guide"))', self.live_py)
+        self.assertIn("d.guideCard", self.js)
+
+    def test_the_route_is_in_the_table_and_answers_404_while_off(self):
+        import asyncio
+
+        from aiohttp import web
+
+        from api import guide
+        from tests.support import _FakeRequest
+
+        routes = (AGENT_WORKER / "token_server.py").read_text(encoding="utf-8")
+        self.assertIn('add_get("/guide", handle_guide)', routes)
+        with self.assertRaises(web.HTTPNotFound):
+            asyncio.run(guide.handle_guide(_FakeRequest()))
+
+    def test_the_card_has_its_frames_and_its_tab(self):
+        for el in ('id="guideView"', 'id="guideToday"', 'id="guideList"',
+                   'id="guideEmpty"', 'id="faceGuide"'):
+            self.assertIn(el, self.html)
+        # The third face is in the one list the row and the swipe read.
+        defs = self.js.split("function faceDefs()")[1][:600]
+        self.assertIn("id: 'guide'", defs)
+        self.assertIn("guideOffered()", defs)
+        self.assertIn("fetch('/guide'", self.js)
+        # Built as nodes, never markup: the station's words are not tags.
+        painter = self.js.split("function guideRow")[1].split("function paintFaceProgress")[0]
+        self.assertNotIn("innerHTML", painter)
+        self.assertIn("textContent", painter)
+
+    def test_the_lit_block_follows_the_stations_clock_not_the_readers(self):
+        block = self.js.split("function stationNow")[1][:900]
+        self.assertIn("timeZone: tz", block)
+        self.assertIn("weekday: 'short'", block)
