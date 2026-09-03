@@ -213,7 +213,7 @@ def _close_genres(wanted: str, known: list[str]) -> list[str]:
 
 def _miss_hint(*, moods: str, vocab: list[str], genre: str, fixed: str,
                exists: bool, related: list[str], near: list[str],
-               known: list[str], counts: dict) -> str:
+               known: list[str], counts: dict, narrowed: bool = False) -> str:
     """What to say when a browse came back with nothing — the whole ladder.
 
     Lifted out of `browse_library` at 0.99.21, when the shelf-next-door rung
@@ -257,19 +257,38 @@ def _miss_hint(*, moods: str, vocab: list[str], genre: str, fixed: str,
         # the caller: a genre typed exactly as the station files it, emptied
         # by a year range, fell through to the rung below and was reported as
         # a word the library had never heard of.
-        hint = ((f" The station files that genre as \"{fixed}\" and it HAS"
-                 if fixed else " That genre is real here and it HAS")
-                + " music under it — what's empty is this combination, with "
-                "the other filters on top. Say that, not that the library has "
-                "none, and offer to drop the tightest filter (the year range, "
-                "or instrumental-only) rather than the genre.")
+        #
+        # `narrowed` is whether there IS another filter. Without it this
+        # sentence blamed "the other filters" unconditionally, and a caller
+        # who had asked for one bare word got a filter invented to explain
+        # the silence: "I've got the search set a little too tight for it"
+        # and "I might have been a bit too fussy with the filters there",
+        # both to a caller who set none (SCENARIO_SET=misses, 2026-09-03).
+        # That is a cover story, which is the one thing say_the_true_thing
+        # is most against. With nothing else on, the true sentence is that
+        # the shelf itself came back empty, and the neighbours below are the
+        # answer rather than a filter to drop.
+        head = (f" The station files that genre as \"{fixed}\" and it HAS"
+                if fixed else " That genre is real here and it HAS")
+        hint = (head + " music under it — what's empty is this combination, "
+                "with the other filters on top. Say that, not that the "
+                "library has none, and offer to drop the tightest filter "
+                "(the year range, or instrumental-only) rather than the "
+                "genre.") if narrowed else (
+            head + " music under it, but that shelf came back empty just now "
+            "— so say the word is real here and DON'T invent a reason for "
+            "the silence: no filters were set, so there are none to blame "
+            "and nothing to drop.")
         if near:
             # Sideways beats narrower for a caller who wanted a feeling rather
             # than a filter — and these are the station's own neighbours, so
             # every one of them is a shelf with music on it.
-            hint += (" If they would rather move sideways than drop a filter, "
-                     "this library files these next to it: "
-                     + _shelves(near, counts)
+            lead = ((" If they would rather move sideways than drop a "
+                     "filter, this library files these next to it: ")
+                    if narrowed else
+                    (" This library files these next to it, and they are the "
+                     "answer here — offer one or two by name: "))
+            hint += (lead + _shelves(near, counts)
                      + " — that is the station's own reading of what sounds "
                      "like what, not a guess." + _COUNTS_ARE_YOURS)
         return hint
