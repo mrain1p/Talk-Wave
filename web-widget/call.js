@@ -6532,9 +6532,29 @@
       const wanted = shelved.length && (shown || live || {}).guideShelved !== false;
       shelf.hidden = !wanted;
       if (wanted) {
-        const cap = document.createElement('div');
-        cap.className = 'gdcap gdshelfcap';
-        cap.textContent = 'Not on the schedule';
+        // Folded to its heading by default, and the whole section at once
+        // (operator, 2026-09-03): these shows are not this week's
+        // business, so they cost one line until somebody asks for them.
+        shelf.classList.toggle('min', !guideShelfOpen);
+        const cap = document.createElement('button');
+        cap.type = 'button'; cap.className = 'gdcap gdshelfcap';
+        const lab = document.createElement('span');
+        lab.textContent = 'Not on the schedule';
+        const n = document.createElement('span');
+        n.className = 'gdshelfn'; n.textContent = String(shelved.length);
+        const chev = document.createElement('span');
+        chev.className = 'gdshelfchev'; chev.textContent = '▸';
+        chev.setAttribute('aria-hidden', 'true');
+        cap.append(lab, n, chev);
+        const say = () => {
+          const open = !shelf.classList.contains('min');
+          cap.setAttribute('aria-expanded', open ? 'true' : 'false');
+        };
+        cap.onclick = () => {
+          guideShelfOpen = shelf.classList.toggle('min') === false;
+          say();
+        };
+        say();
         shelf.appendChild(cap);
         shelved.forEach((show) => shelf.appendChild(
           guideRow(show, personas, runs, now, '', false)));
@@ -6683,6 +6703,8 @@
   // 2026-09-03). The choice is remembered across repaints — a poll, a span
   // change — so it does not spring back open under the reader.
   let guideHeroOpen = true;
+  // The shelved section starts FOLDED — see the shelf below.
+  let guideShelfOpen = false;
   function guideHero(show, cast, runs, now, angle, until) {
     const box = document.createElement('div');
     box.className = 'gdherobox' + (guideHeroOpen ? '' : ' min');

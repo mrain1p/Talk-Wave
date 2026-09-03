@@ -663,7 +663,7 @@
      height stay exactly as they are. */
   .card .gear, .card .plheart, .card button.plnote,
   .card .pltabs .pltab, .card .facebar .face, .card .gdtop,
-  .card .gdherofold, .card #npHeart {
+  .card .gdherofold, .card .gdshelfcap, .card #npHeart {
     position: relative;
   }
   .card .gear::after, .card .plheart::after, .card button.plnote::after,
@@ -978,7 +978,12 @@
   .guide[hidden] { display: none !important; }
   .gdscroll {
     flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin;
-    width: 100%; padding: 0 16px 14px; box-sizing: border-box;
+    width: 100%; box-sizing: border-box;
+    /* The foot clears the floating way-back-up button, which otherwise
+       sits ON the last thing in the week — it was covering the shelved
+       section's own heading (operator, 2026-09-03). Its height, its
+       offset and a breath: 28 + 14 + 14. */
+    padding: 0 16px 56px;
   }
   /* Today, hour by hour: a row of blocks, the one on air lit. */
   /* The day, read forward from midnight, scrolled by hand: the card's
@@ -1377,9 +1382,25 @@
      business — dimmed, under a heading that says so. */
   .gdshelf { margin-top: 18px; }
   .gdshelf[hidden] { display: none; }
-  .gdshelfcap {
-    padding-top: 10px; border-top: 1px solid var(--hairline); margin-bottom: 2px;
+  .card .gdshelfcap {
+    width: 100%; display: flex; align-items: center; gap: 8px;
+    padding: 10px 0 6px; margin: 0 0 2px; min-height: 0; height: auto;
+    background: transparent; border: 0; border-top: 1px solid var(--hairline);
+    border-radius: 0; cursor: pointer; text-align: left;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
   }
+  .card .gdshelfcap:hover { color: var(--alpenglow); }
+  .gdshelfn {
+    font-weight: 400; letter-spacing: .06em; color: var(--sage-dim);
+    border: 1px solid var(--hairline); border-radius: 999px; padding: 3px 7px;
+  }
+  .gdshelfchev {
+    margin-left: auto; font-size: 11px; color: var(--sage-dim);
+    transform: rotate(90deg); transition: transform .2s ease;
+  }
+  .gdshelf.min .gdshelfchev { transform: rotate(0deg); }
+  .gdshelf.min .gdrow { display: none; }
   .gdshelf .gdrow { opacity: .72; }
   .gdshelf .gdrow.open { opacity: 1; }
   .gdempty {
