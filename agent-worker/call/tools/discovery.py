@@ -355,7 +355,15 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                 return "Nothing in the library matches that combination." + \
                     _miss_hint(moods=moods, vocab=vocab, genre=genre,
                                fixed=fixed, exists=exists, related=related,
-                               near=near, known=known, counts=counts)
+                               near=near, known=known, counts=counts,
+                               # Whether anything BUT the genre was asked
+                               # for. Without it the miss blamed filters
+                               # that were never set (2026-09-03). any() of
+                               # a tuple rather than an `or` chain: four
+                               # more branches would put this function over
+                               # its complexity ledger.
+                               narrowed=any((moods, energy, year_from,
+                                             year_to, use_vocal)))
             rows, withheld = _drop_blocked(rows)
             if not rows:
                 return (

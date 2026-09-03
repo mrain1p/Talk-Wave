@@ -365,6 +365,31 @@ class TestTheShelfNextDoor(unittest.TestCase):
         tools = _build(ALL_ON, station)
         return asyncio.run(tools["subwave_browse_library"](genre=genre, **kw))
 
+    def test_a_bare_ask_is_never_blamed_on_filters_that_were_not_set(self):
+        # A caller who says one word and nothing else, on a genre the
+        # library files but whose shelf came back empty, was told "what's
+        # empty is this combination, with the other filters on top" — so
+        # the DJ invented the filters to explain the silence: "I've got the
+        # search set a little too tight for it" and "I might have been a
+        # bit too fussy with the filters there", both to a caller who set
+        # none (SCENARIO_SET=misses, 2026-09-03). A cover story is the one
+        # thing say_the_true_thing is most against.
+        known = ["Trip-Hop", "Downtempo", "Polka"]
+        bare = self._out("Trip-Hop", known, self.SHELVES)
+        self.assertIn("real here", bare)
+        for blame in ("the other filters", "drop the tightest filter",
+                      "year range", "instrumental-only"):
+            with self.subTest(blame=blame):
+                self.assertNotIn(blame, bare)
+        self.assertIn("no filters were set", bare)
+        # The neighbours are the answer here, not a sideways option.
+        self.assertIn("they are the answer here", bare)
+        # And with a filter actually on, the old sentence is exactly right.
+        narrowed = self._out("Trip-Hop", known, self.SHELVES,
+                             year_from=1990, year_to=1995)
+        self.assertIn("the other filters on top", narrowed)
+        self.assertNotIn("no filters were set", narrowed)
+
     def test_a_genre_the_library_holds_is_never_reported_missing(self):
         # Typed exactly as the station files it, emptied by the year range.
         # This used to fall through to the "nothing is filed under that word"
