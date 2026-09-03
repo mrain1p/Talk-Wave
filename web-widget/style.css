@@ -1373,6 +1373,15 @@
     position: absolute; top: 0; bottom: 0; width: 2px; background: var(--coral);
     pointer-events: none; opacity: .85;
   }
+  /* The shelved shows: present, findable, and plainly not this week's
+     business — dimmed, under a heading that says so. */
+  .gdshelf { margin-top: 18px; }
+  .gdshelf[hidden] { display: none; }
+  .gdshelfcap {
+    padding-top: 10px; border-top: 1px solid var(--hairline); margin-bottom: 2px;
+  }
+  .gdshelf .gdrow { opacity: .72; }
+  .gdshelf .gdrow.open { opacity: 1; }
   .gdempty {
     font: 12px/1.45 var(--font-body); color: var(--sage-dim);
     text-align: center; margin: 24px 0;

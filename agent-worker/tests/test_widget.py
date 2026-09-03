@@ -3731,6 +3731,28 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         for name in ("gdHelpBtn", "gdThemeBtn", "gdGearBtn", "gdSigninBtn"):
             self.assertIn("set('" + name + "'", self.js)
 
+    def test_the_week_leads_and_the_shelf_follows(self):
+        # A show on the roster with no hour on the schedule was listed
+        # among the ones actually airing, which reads as a station running
+        # seventeen shows when twelve are on (operator, 2026-09-03). The
+        # week leads; the rest sit under their own quiet heading, and the
+        # operator can leave them out of the card entirely.
+        import settings as settings_store
+
+        self.assertTrue(settings_store.load().get("guide_shelved_shows"))
+        self.assertIn('"guideShelved": bool(cfg.get("guide_shelved_shows", True))',
+                      self.live_py)
+        self.assertIn('id="guideShelf"', self.html)
+        self.assertIn('id="guide_shelved_shows"',
+                      (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8"))
+        block = self.js.split("const airs = new Set(runs.map")[1][:1400]
+        self.assertIn("shows.filter((s) => airs.has(s.id))", block)
+        self.assertIn("shows.filter((s) => !airs.has(s.id))", block)
+        self.assertIn("guideShelved !== false", block)
+        self.assertIn("Not on the schedule", block)
+        # And the count above the list names the week, not the roster.
+        self.assertIn("' shows') + ' this week'", block)
+
     def test_the_week_can_be_read_as_a_grid(self):
         # Operator, 2026-09-03: a button that paints the schedule as a grid.
         # Seven day rows over one hour ruler, the hour now marked, and a

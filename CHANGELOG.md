@@ -7,6 +7,7 @@ Release notes for operators. One entry per release to `main`; work in flight on
 ## 0.99.34
 
 - **The show on air folds away.** It is the tallest thing on the guide, so a chevron collapses it to its band, name and line, and the week reads without scrolling past it. The choice sticks. The return-to-top button is centred rather than tucked in the corner.
+- **The guide leads with the week.** A show on the roster with no hour on the schedule used to be listed among the ones actually airing. Those now sit quietly under "Not on the schedule", and a new Phone-page switch (Shelved shows in the guide) leaves them out of the card altogether.
 
 ## 0.99.33
 

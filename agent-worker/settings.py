@@ -639,6 +639,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # as the player — a new surface on every deployed card unasked — and it
     # is one tick in the panel. Reads the station's public /schedule.
     "show_guide":         (None, False),
+    # Shows on the roster with no hour on the week's schedule. ON: the
+    # guide lists the week first and puts these under a quiet heading of
+    # their own, which is what the operator asked for over dropping them
+    # (2026-09-03). Off leaves them out of the card entirely.
+    "guide_shelved_shows": (None, True),
     # The card's own listener count and track heart. ON by default, unlike
     # the player: they are one line of text and one small button on furniture
     # the card already has, not a new surface — and both degrade to nothing
