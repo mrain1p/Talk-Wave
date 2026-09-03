@@ -4,6 +4,12 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.36
+
+- **The guide says what is actually on.** It read the schedule's clock, so a booth takeover left it naming the show that was merely due — now the station's own answer wins, the hour is marked "Takeover" or "Off schedule", and no block in the strip is lit while the two disagree.
+- **A guide left open keeps up.** It refreshes on the card's own poll instead of holding a five-minute-old read, without closing a show you had opened.
+- **Landscape is usable.** On a short screen the on-air card arrives folded, so the week is there rather than a letterbox of one show.
+
 ## 0.99.35
 
 One day of building the card out into three, with the operator's eye on it throughout (0.99.32 to 0.99.34 fold in here).

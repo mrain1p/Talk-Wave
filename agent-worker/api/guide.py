@@ -193,7 +193,13 @@ def _unique(rows, make) -> list:
 def _on_air(now) -> dict:
     """The show on air as it is RUNNING, from /now-playing: its id and this
     episode's angle — "Tonight's angle" on the operator's guide — which the
-    schedule (the show as configured) never carries."""
+    schedule (the show as configured) never carries.
+
+    This is the AUTHORITY on what is on. The grid says what is scheduled,
+    and the two disagree whenever the booth has taken the air: a takeover
+    pins a show outside its slot, and a card that reads the clock alone
+    would name the scheduled show while a different one is playing.
+    """
     ctx = (now or {}).get("context") if isinstance(now, dict) else None
     active = (ctx or {}).get("activeShow") if isinstance(ctx, dict) else None
     if not isinstance(active, dict):
@@ -202,6 +208,23 @@ def _on_air(now) -> dict:
     if not sid:
         return {}
     return {"id": sid, "angle": _text(active.get("episodeAngle"), 600)}
+
+
+def _override(raw: dict) -> dict:
+    """The station's takeover pin, if one is up. Shape-tolerant: the field
+    is null on a station running its own schedule, and this has only ever
+    been seen null — so it is read for the show it names and nothing else,
+    and an unreadable one is simply no pin."""
+    o = raw.get("override") if isinstance(raw, dict) else None
+    if not isinstance(o, dict):
+        return {}
+    for key in ("showId", "show", "id"):
+        v = o.get(key)
+        if isinstance(v, str) and v.strip():
+            return {"showId": v.strip()}
+        if isinstance(v, dict) and isinstance(v.get("id"), str):
+            return {"showId": v["id"].strip()}
+    return {}
 
 
 def shape(raw: dict, now: dict | None = None) -> dict:
@@ -215,6 +238,7 @@ def shape(raw: dict, now: dict | None = None) -> dict:
         "grid": _grid(raw.get("schedule")),
         "soulsPublished": bool(raw.get("soulsPublished")),
         "onAir": _on_air(now),
+        "override": _override(raw),
     }
 
 
