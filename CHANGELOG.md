@@ -6,32 +6,31 @@ Release notes for operators. One entry per release to `main`; work in flight on
 
 ## 0.99.36
 
-- **The guide says what is actually on.** It read the schedule's clock, so a booth takeover left it naming the show that was merely due — now the station's own answer wins, the hour is marked "Takeover" or "Off schedule", and no block in the strip is lit while the two disagree.
-- **A guide left open keeps up.** It refreshes on the card's own poll instead of holding a five-minute-old read, without closing a show you had opened.
-- **Landscape is usable.** On a short screen the on-air card arrives folded, so the week is there rather than a letterbox of one show.
-
-## 0.99.35
-
-One day of building the card out into three, with the operator's eye on it throughout (0.99.32 to 0.99.34 fold in here).
+One day of building the card out into three, with the operator's eye on it throughout (0.99.32 to 0.99.35 fold in here).
 
 - **The phone, the station player and a new programme guide are cards side by side.** Swipe across the card or tap the row at its foot; the pull-down ribbon, the foot grabber and the player-first curtain are gone with the old model, and each card rides its own switch.
 - **The row at the foot is the card's own band.** Flush to the edges like the header, no boxes, with one lit rule that slides to the card you are on and follows your finger through the swipe.
 - **The programme guide** (Phone page → Programme guide card, off by default) reads the station's public schedule: today hour by hour with the block on air lit, then the show that is on open in full — tonight's angle, the show, its DJs with their pictures and their own descriptions — then every show of the week, the current one outlined, each opening in place.
 - **The week also reads as a grid.** Seven day rows over an hour ruler, every show in its own colour, and a 6h / 12h / 24h control that says how much of the day is on screen, so a folded phone or a screen in a car needs no rotating.
-- **Shows that are not this week's business stay out of the way.** A show on the roster with no hour on the schedule sits under a folded "Not on the schedule", behind its own switch, and the show on air folds away too once you have read it.
+- **It says what is actually on.** A booth takeover used to leave the guide naming the show that was merely due; the station's own answer wins, the hour is marked Takeover or Off schedule, and nothing in the strip is lit while the two disagree. A guide left open keeps up with the card's own poll.
+- **Shows that are not this week's business stay out of the way.** A show on the roster with no hour on the schedule sits under a folded "Not on the schedule", behind its own switch, and the show on air folds away too — folded from the start on a short screen, so landscape shows the week rather than one card.
 - **Smaller things:** DJ pictures are big enough to see and open to a portrait on a press, the guide's header carries the same chips as the other cards, and the return-to-top button is centred and never sits on the end of the week.
+
+## 0.99.35
+
+Tagged earlier the same day as 0.99.36 and folded forward — the story rides v0.99.36's notes.
 
 ## 0.99.34
 
-Tagged earlier the same day as 0.99.35 and folded forward — the story rides v0.99.35's notes.
+Tagged earlier the same day as 0.99.36 and folded forward — the story rides v0.99.36's notes.
 
 ## 0.99.33
 
-Tagged earlier the same day as 0.99.35 and folded forward — the story rides v0.99.35's notes.
+Tagged earlier the same day as 0.99.36 and folded forward — the story rides v0.99.36's notes.
 
 ## 0.99.32
 
-Tagged earlier the same day as 0.99.35 and folded forward — the story rides v0.99.35's notes.
+Tagged earlier the same day as 0.99.36 and folded forward — the story rides v0.99.36's notes.
 
 ## 0.99.31
 
