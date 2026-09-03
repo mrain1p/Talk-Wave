@@ -4,6 +4,10 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.39
+
+- **A genre the DJ has to look up no longer costs a caller fifteen seconds of silence.** The list of what the library files under came from a station endpoint that merges in Navidrome's own genres, which takes twenty-one seconds on a cold cache; it now comes from the read beside it, which the station computes locally and caches, and which carries the same list. The slow one is the fallback.
+
 ## 0.99.38
 
 - **The DJ stops inventing a filter to explain an empty shelf.** Asked for one bare word, it was told the emptiness came from "the other filters" even when the caller had set none, and it duly blamed a search it had never narrowed. It now says the word is real here and offers the neighbouring shelves instead.

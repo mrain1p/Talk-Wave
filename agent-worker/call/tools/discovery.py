@@ -312,16 +312,35 @@ def build_discovery_tools(cfg: dict, station: StationClient,
             exists = False
             swapped = ""
             if genre and (not rows or len(rows) < _THIN):
-                # Both reads together. A miss already costs the caller one
-                # round trip; the neighbours answer a question the vocabulary
-                # list cannot answer at all, and serialising them would put a
-                # second wait in front of somebody already at a dead end.
-                # Both are cached on the station's side.
-                known, shelves = await asyncio.gather(
-                    station.library_genres(limit=_ALL_GENRES),
-                    station.genre_neighbours(),
-                )
+                # ONE read, not two. The neighbours endpoint carries the full
+                # genre list itself — "every known genre, descending by track
+                # count", its own words — and the station computes it from the
+                # tagged index and the embedding centroids alone, cached until
+                # the library changes. `/library/genres` merges Navidrome's
+                # own genres in on top, which is a round trip to Navidrome
+                # that costs TWENTY-ONE SECONDS on a cold cache and 0.04
+                # warm; measured by hand against the operator's station,
+                # 2026-09-03, with the controller already warm, so the whole
+                # cost is Navidrome's. Our own timeout is fifteen, so the
+                # first caller after a restart who asked for a genre waited
+                # out the clock and then got the weakest sentence in the
+                # ladder, because `known` came back empty.
+                #
+                # What the merge added is genres Navidrome knows and nothing
+                # is TAGGED with — three of this library's 896 — and browse
+                # filters the tagged index, so offering one of those was
+                # offering a shelf this tool cannot serve. Dropping them is
+                # the more honest list, not a lesser one.
+                shelves = await station.genre_neighbours()
                 counts = shelves.get("counts") or {}
+                # Commonest first, which is the order the station sends and
+                # the order `_close_genres` and the last rung both assume.
+                known = list(counts)
+                if not known:
+                    # No embeddings, no centroids, or a station too old to
+                    # serve them: fall back to the slow list rather than
+                    # losing the whole ladder.
+                    known = await station.library_genres(limit=_ALL_GENRES)
                 fixed = _same_genre(genre, known)
                 # What else the caller said, so a shelf carrying their own
                 # word is offered before a commoner one that isn't.

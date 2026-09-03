@@ -365,6 +365,37 @@ class TestTheShelfNextDoor(unittest.TestCase):
         tools = _build(ALL_ON, station)
         return asyncio.run(tools["subwave_browse_library"](genre=genre, **kw))
 
+    def test_the_genre_list_comes_from_the_read_that_is_cached(self):
+        # /library/genres merges Navidrome's own genres into the tagged
+        # index, and that merge is a round trip to Navidrome: TWENTY-ONE
+        # SECONDS on a cold cache against the operator's station, 0.04 warm,
+        # measured with the controller already loaded so the whole cost was
+        # Navidrome's. Our timeout is fifteen — so the first caller after a
+        # restart waited it out and got the weakest sentence in the ladder,
+        # because the list came back empty. The neighbours read carries the
+        # same list ("every known genre, descending by track count", the
+        # station's words), computed from the tagged index and the embedding
+        # centroids alone and cached until the library changes. One read now,
+        # and the slow one only when that comes back empty.
+        station = _Station(browse={"rows": [], "moodVocab": []},
+                           genres=["Trip-Hop", "Downtempo"],
+                           shelves=self.SHELVES)
+        tools = _build(ALL_ON, station)
+        asyncio.run(tools["subwave_browse_library"](genre="Trip-Hop"))
+        asked = [name for name, _ in station.asked]
+        self.assertIn("shelves", asked)
+        self.assertNotIn("genres", asked)
+
+    def test_a_station_with_no_shelves_still_gets_its_genre_list(self):
+        # No embeddings, no centroids, or a station too old to serve them:
+        # the slow list is the fallback rather than losing the whole ladder.
+        station = _Station(browse={"rows": [], "moodVocab": []},
+                           genres=["Trip-Hop", "Polka"], shelves={})
+        tools = _build(ALL_ON, station)
+        out = asyncio.run(tools["subwave_browse_library"](genre="trip hop"))
+        self.assertIn("genres", [name for name, _ in station.asked])
+        self.assertIn("real here", out)
+
     def test_a_bare_ask_is_never_blamed_on_filters_that_were_not_set(self):
         # A caller who says one word and nothing else, on a genre the
         # library files but whose shelf came back empty, was told "what's
