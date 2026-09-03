@@ -3767,6 +3767,45 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         block = self.css.split("  .gdscroll {")[1].split("}")[0]
         self.assertIn("padding: 0 16px 56px", block)
 
+    def test_the_station_says_what_is_on_not_the_clock(self):
+        # The grid says what is SCHEDULED; the station's own now-playing
+        # says what is PLAYING, and a takeover parts them. Reading the
+        # clock alone named the scheduled show while another was on — a
+        # show listed for a different time, shown as current (operator,
+        # 2026-09-03). The clock is the fallback for a station that will
+        # not say.
+        self.assertIn("const stationId = (d.onAir && d.onAir.id) || '';", self.js)
+        self.assertIn("const liveId = stationId || (onAir ? onAir.id : '');", self.js)
+        block = self.js.split("const offSchedule =")[1][:900]
+        self.assertIn("!onAir || onAir.id !== stationId", block)
+        # Nothing in the strip is lit then: lighting the scheduled block
+        # would be the lie this fixes.
+        self.assertIn("today.querySelectorAll('.gdslot.on').forEach", block)
+        # Named a takeover when the station says a pin is up.
+        self.assertIn("pinned ? 'Takeover' : 'Off schedule'", self.js)
+        self.assertIn('"override": _override(raw)',
+                      (AGENT_WORKER / "api" / "guide.py").read_text(encoding="utf-8"))
+
+    def test_an_open_guide_follows_the_air(self):
+        # It painted on open and held its read for five minutes, so
+        # sitting on it through a show change showed the old one until you
+        # left and came back. Every poll repaints from what it has; a poll
+        # that says the SHOW changed throws the read away.
+        block = self.js.split("function guideFollowsTheAir")[1][:600]
+        self.assertIn("if (changed) loadGuide(true);", block)
+        self.assertIn("else if (guideData) paintGuide();", block)
+        self.assertIn("guideFollowsTheAir();", self.js.split("function paintListenChip")[1][:1200])
+        # And a repaint must not close the row somebody is reading.
+        self.assertIn("const guideOpenRows = new Set();", self.js)
+        self.assertIn("guideOpenRows.has(show.id)", self.js)
+
+    def test_a_short_screen_opens_with_the_on_air_card_folded(self):
+        # Landscape leaves about 270px for the week and the on-air card
+        # alone is 639, so it arrived filling the letterbox. Decided once,
+        # from the room; the reader's own press outranks it after that.
+        self.assertIn("let guideHeroOpen = null;", self.js)
+        self.assertIn("guideHeroOpen = !sc || sc.clientHeight >= 420;", self.js)
+
     def test_the_week_can_be_read_as_a_grid(self):
         # Operator, 2026-09-03: a button that paints the schedule as a grid.
         # Seven day rows over one hour ruler, the hour now marked, and a
@@ -3892,7 +3931,6 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         # 2026-09-03). Folded it keeps the band, the name and its line.
         # The choice survives a repaint: a poll or a span change must not
         # spring it open under the reader.
-        self.assertIn("let guideHeroOpen = true;", self.js)
         self.assertIn("guideHeroOpen ? '' : ' min'", self.js)
         self.assertIn("guideHeroOpen = box.classList.toggle('min') === false;",
                       self.js)

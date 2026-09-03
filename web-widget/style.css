@@ -1139,6 +1139,17 @@
     margin-left: auto; font: 10px/1 var(--font-mono); letter-spacing: .06em;
     color: var(--sage-dim);
   }
+  /* The station is running this outside its slot — a takeover, or an
+     override the schedule does not hold. Said plainly, because a show
+     listed for a different time shown as current is confusing. */
+  .gdheroflag {
+    margin-left: auto;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: var(--skin-label-case); color: var(--amber);
+    border: 1px solid var(--amber); border-radius: max(4px, var(--skin-radius-ctl));
+    padding: 3px 6px;
+  }
+  .gdheroflag + .gdheronext { margin-left: 8px; }
   .gdheroname {
     font: 700 17px/1.2 var(--font-mono); letter-spacing: .03em;
     text-transform: var(--skin-label-case); color: var(--alpenglow);

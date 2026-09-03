@@ -5855,6 +5855,7 @@
     // The faces row tracks the same state the chip does: which card is
     // showing, and whether the player may be gone to at all right now.
     paintFaceBar();
+    guideFollowsTheAir();
   }
 
   // The lock screen's idea of what is playing, on the platforms that ask.
@@ -6065,6 +6066,23 @@
         if (!guideOpen) $('guideView').hidden = true;
       }, 450);
     }
+  }
+
+  // A guide left OPEN went stale: it paints when opened and holds its
+  // read for five minutes, so sitting on it through a show change showed
+  // the old one until you left and came back (2026-09-03). The card polls
+  // every twenty seconds anyway — so every poll repaints the guide from
+  // what it already has, which re-reads the clock, and a poll that says
+  // the SHOW has changed throws the read away and asks again.
+  let guideLastShow = null;
+  function guideFollowsTheAir() {
+    const d = shown || live || {};
+    const name = d.show || '';
+    const changed = guideLastShow !== null && name !== guideLastShow;
+    guideLastShow = name;
+    if (!guideOpen) return;
+    if (changed) loadGuide(true);          // a new show: read it again
+    else if (guideData) paintGuide();      // same show: just the clock
   }
 
   async function loadGuide(force) {
@@ -6492,18 +6510,43 @@
     });
     if (headMeta) headMeta.textContent = now.label;
     const angle = d.onAir && d.onAir.angle ? d.onAir : null;
-    const liveId = onAir ? onAir.id : (d.onAir && d.onAir.id) || '';
+    // WHAT IS ON is the station's answer, not the clock's. The grid says
+    // what is SCHEDULED, and the two part company the moment the booth
+    // takes the air: a takeover pins a show outside its slot, and reading
+    // the clock alone would name the scheduled show while a different one
+    // is playing — a show listed for a different time, shown as current
+    // (operator, 2026-09-03). The clock is the fallback for a station
+    // that will not say.
+    const stationId = (d.onAir && d.onAir.id) || '';
+    const liveId = stationId || (onAir ? onAir.id : '');
     const liveShow = byId[liveId];
+    // Off schedule: the station is running something this hour does not
+    // hold. Named a takeover when the station says a pin is up.
+    const offSchedule = !!(stationId && byId[stationId]
+                           && (!onAir || onAir.id !== stationId));
+    const pinned = !!(d.override && d.override.showId);
+    if (offSchedule) {
+      // Nothing in the strip is lit: the scheduled block is not what is
+      // playing, and lighting it would be the lie this fixes.
+      today.querySelectorAll('.gdslot.on').forEach((b) => b.classList.remove('on'));
+    }
     // The show on air, open, under the strip: the angle, the show, the DJ
     // and their soul, and where it sits on the week.
     if (hero) {
       hero.textContent = '';
       hero.hidden = !liveShow;
+      if (guideHeroOpen === null) {
+        const sc = $('guideScroll');
+        guideHeroOpen = !sc || sc.clientHeight >= 420;
+      }
       if (liveShow) {
         hero.appendChild(guideHero(
           liveShow, castOf(liveShow, personas), runs, now,
           angle && angle.id === liveShow.id ? angle.angle : '',
-          onAir ? fmtHour(onAir.end) : ''));
+          // The "until" is the SCHEDULE's, so it is only true while the
+          // station is running the schedule.
+          offSchedule ? '' : (onAir ? fmtHour(onAir.end) : ''),
+          offSchedule ? (pinned ? 'Takeover' : 'Off schedule') : ''));
       }
     }
     // Then the week: every show, the one on air outlined, each opening
@@ -6579,6 +6622,7 @@
     if (!list) return;
     const row = [...list.children].find((el) => el.dataset.show === id);
     if (!row) return;
+    guideOpenRows.add(id);
     row.classList.add('open');
     row.setAttribute('aria-expanded', 'true');
     row.scrollIntoView({ block: 'start', behavior: 'smooth' });
@@ -6702,10 +6746,19 @@
   // on the card, and reading the week past it meant scrolling (operator,
   // 2026-09-03). The choice is remembered across repaints — a poll, a span
   // change — so it does not spring back open under the reader.
-  let guideHeroOpen = true;
+  // null until the first paint decides from the room: open on a normal
+  // phone, FOLDED on a short one. A landscape phone leaves about 270px
+  // for the week, and the on-air card alone is 639 — so it arrived
+  // filling the letterbox with nothing of the week behind it. The
+  // reader's own press outranks this from then on.
+  let guideHeroOpen = null;
   // The shelved section starts FOLDED — see the shelf below.
   let guideShelfOpen = false;
-  function guideHero(show, cast, runs, now, angle, until) {
+  // Which shows the reader has opened. Remembered because the guide
+  // repaints on every poll now, and a repaint that closed the row someone
+  // was reading would be worse than the staleness it fixes.
+  const guideOpenRows = new Set();
+  function guideHero(show, cast, runs, now, angle, until, flag) {
     const box = document.createElement('div');
     box.className = 'gdherobox' + (guideHeroOpen ? '' : ' min');
     const top = document.createElement('div'); top.className = 'gdherotop';
@@ -6720,9 +6773,17 @@
     const tail = document.createElement('span');
     tail.className = 'gdheronext';
     const next = nextAiring(runs, show.id, now);
+    // Off schedule, the show's next SLOT is not the story and reads as
+    // one: "Takeover · Today 2 PM" looks like the takeover starts at two.
     tail.textContent = until ? 'until ' + until
-      : (next && next !== 'On air now' ? next : '');
+      : (!flag && next && next !== 'On air now' ? next : '');
     if (tail.textContent) top.appendChild(tail);
+    if (flag) {
+      const f = document.createElement('span');
+      f.className = 'gdheroflag'; f.textContent = flag;
+      f.title = 'The station is running this outside its scheduled slot';
+      top.insertBefore(f, tail);
+    }
     const fold = document.createElement('button');
     fold.type = 'button'; fold.className = 'gdherofold';
     fold.textContent = '▸';
@@ -6759,10 +6820,11 @@
   }
   function guideRow(show, personas, runs, now, angle, live) {
     const row = document.createElement('div');
-    row.className = 'gdrow' + (live ? ' live' : '');
+    const wasOpen = guideOpenRows.has(show.id);
+    row.className = 'gdrow' + (live ? ' live' : '') + (wasOpen ? ' open' : '');
     row.dataset.show = show.id;
     row.setAttribute('role', 'button'); row.tabIndex = 0;
-    row.setAttribute('aria-expanded', 'false');
+    row.setAttribute('aria-expanded', wasOpen ? 'true' : 'false');
     const head = document.createElement('div'); head.className = 'gdhead';
     const metaEl = document.createElement('div'); metaEl.className = 'gdmeta';
     const title = document.createElement('div'); title.className = 'gdtitle';
@@ -6804,6 +6866,8 @@
     const toggle = () => {
       const open = row.classList.toggle('open');
       row.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) guideOpenRows.add(show.id);
+      else guideOpenRows.delete(show.id);
     };
     row.onclick = toggle;
     row.addEventListener('keydown', (e) => {
