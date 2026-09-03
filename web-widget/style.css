@@ -957,7 +957,7 @@
      padding, the way the bottom bookmark did, and the sheet ends above it
      so the player's own dock never hides under the tabs. -------------- */
   .card.faces { padding-bottom: 46px; }
-  .card.faces .player, .card.faces .guide { bottom: 46px; }
+  .card.faces .player, .card.faces .guide { bottom: 38px; }
   /* ---- The programme guide: the third card, one layer above the player,
      same overlay shape and the same slide. Its content is the operator's
      own guide page in the card's clothes — a strip of today's hours, then
@@ -980,11 +980,18 @@
     width: 100%; padding: 0 16px 14px; box-sizing: border-box;
   }
   /* Today, hour by hour: a row of blocks, the one on air lit. */
+  /* The day, read forward from midnight, scrolled by hand: the card's
+     own swipe steps aside for it (see bindFaceSwipe), and touch-action
+     says so to the browser as well. */
   .gdtoday {
     display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
-    padding: 12px 0 10px; margin: 0 -16px; padding-left: 16px;
-    padding-right: 16px;
+    -webkit-overflow-scrolling: touch; touch-action: pan-x;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    padding: 10px 16px; margin: 0 -16px;
   }
+  .gdtoday::-webkit-scrollbar { display: none; }
+  .card .gdslot { scroll-snap-align: start; }
   .gdtoday[hidden] { display: none; }
   .card .gdslot {
     flex: none; min-width: 118px; max-width: 170px; text-align: left;
@@ -1066,17 +1073,12 @@
      lines. The label holds one line and the date takes its own when
      there is no room beside it. */
   .gdtodayhead {
-    display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px;
-    padding: 12px 0 0;
+    display: flex; align-items: center; padding: 12px 0 0;
     font: 700 10px/1.4 var(--font-mono); letter-spacing: .16em;
-    text-transform: var(--skin-label-case); color: var(--alpenglow);
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
   }
   .gdtodayhead[hidden] { display: none; }
   .gdtodaylab { white-space: nowrap; }
-  .gdtodaymeta {
-    margin-left: auto; font-weight: 400; letter-spacing: .06em;
-    color: var(--amber);
-  }
   /* The row's quiet line: the faces, the host, and when it is next on. */
   .gdwho {
     display: flex; align-items: center; gap: 8px; margin-top: 8px;
@@ -1161,8 +1163,26 @@
   .card .gdrow.live .gdshow { color: var(--coral); }
   /* Who is in the booth, per person: the face, the role, the name and
      their line, then their soul underneath. */
-  .gdperson { display: flex; align-items: center; gap: 10px; margin: 8px 0 6px; }
-  .gdperson .gdav { width: 34px; height: 34px; margin-left: 0; }
+  .gdperson {
+    display: flex; align-items: center; gap: 12px; margin: 10px 0 6px;
+    flex-wrap: wrap;
+  }
+  /* The figure holds the picture, so a face that falls back to initials
+     keeps its size and its press. */
+  .gdfig { display: block; flex: none; width: 56px; height: 56px; }
+  .gdfig .gdav { width: 100%; height: 100%; margin-left: 0; font-size: 15px; }
+  /* A press opens it to a portrait — square, the width of the column, the
+     record-sleeve shape the player's art already uses — and another press
+     puts it back. */
+  .card .gdzoom { cursor: zoom-in; }
+  .card .gdzoom.big {
+    width: 100%; max-width: 260px; height: auto; aspect-ratio: 1 / 1;
+    cursor: zoom-out;
+  }
+  .card .gdzoom.big .gdav {
+    border-radius: max(8px, var(--skin-radius-ctl));
+    object-fit: cover; font-size: 44px;
+  }
   .gdpmeta { min-width: 0; }
   .gdrole {
     font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
@@ -1190,45 +1210,43 @@
     text-align: center; margin: 24px 0;
   }
   .gdempty[hidden] { display: none; }
-/* One segmented control, not three loose chips (operator, 2026-09-02):
-     the faces are pages of one card, so they read as segments of one
-     object — a single tray, equal shares, the current page filled with a
-     lit rule over it. The tray sizes itself to however many faces the
-     operator has switched on, which is the whole point of it being a
-     flex row rather than a fixed three. */
+/* The card's FOOTER BAND — the eyebrow's twin at the other edge
+     (operator, 2026-09-03: the tray "looks a bit weak and mismatched").
+     It was a rounded segmented tray, which is the shape this project uses
+     for a SETTING (the panel's On/Off master), so navigation was wearing a
+     control's clothes and floating over a card whose whole grammar is
+     full-bleed bands. Now: flush to the card's edges, one hairline rule on
+     top, the same micro-type as the header band, no boxes at all — and one
+     lit rule that SLIDES to the card you are on, so the band reads as the
+     pager's position rather than as three buttons. The rule follows the
+     finger mid-swipe; see paintFaceIndicator. */
   .facebar {
-    position: absolute; left: 16px; right: 16px; bottom: 8px; height: 30px;
-    display: flex; justify-content: center; align-items: stretch;
+    position: absolute; left: 0; right: 0; bottom: 0; height: 38px;
+    display: flex; align-items: stretch;
+    background: var(--granite); border-top: 1px solid var(--hairline);
     z-index: 70;
   }
   .facebar[hidden] { display: none; }
-  .faceseg {
-    display: flex; align-items: stretch; overflow: hidden;
-    min-width: min(300px, 100%);
-    background: var(--pine); border: 1px solid var(--edge);
-    border-radius: max(8px, var(--skin-radius-ctl));
+  /* The rule rides the band's top edge, over the card it belongs to. Width
+     and offset are written by the script, in faces. */
+  .faceind {
+    position: absolute; top: -1px; left: 0; height: 2px; width: 33.3333%;
+    background: var(--coral); pointer-events: none;
+    transition: transform .28s cubic-bezier(.32, .72, .28, 1);
   }
+  .faceind[hidden] { display: none; }
+  /* The finger owns it mid-drag; the transition takes over on release. */
+  .faceind.dragging { transition: none; }
   .card .facebar .face {
     flex: 1 1 0; min-width: 0;
-    font: 700 10px/1 var(--font-mono); letter-spacing: .14em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
-    background: transparent; border: 0; border-left: 1px solid var(--hairline);
-    border-radius: 0; padding: 0 12px; margin: 0; min-height: 0; height: auto;
-    cursor: pointer; position: relative;
+    background: transparent; border: 0; border-radius: 0;
+    padding: 0 10px; margin: 0; min-height: 0; height: auto;
+    cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center;
   }
-  .card .facebar .face:first-child, .card .facebar .face[hidden] + .face {
-    border-left: 0;
-  }
-  .card .facebar .face.on {
-    color: var(--coral); background: var(--granite);
-  }
-  /* The lit rule over the current page — the thing that says "this is the
-     card you are on" without a border around a chip. */
-  .card .facebar .face.on::before {
-    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
-    background: var(--coral);
-  }
+  .card .facebar .face.on { color: var(--coral); }
   .card .facebar .face:hover:not(.on):not(:disabled) { color: var(--alpenglow); }
   .card .facebar .face:disabled { opacity: .45; cursor: default; }
   .card .facebar .face[hidden] { display: none; }
@@ -1240,7 +1258,6 @@
       position: fixed; left: 0; right: 0; bottom: 0;
       height: calc(38px + env(safe-area-inset-bottom));
       padding-bottom: env(safe-area-inset-bottom);
-      background: var(--granite); border-top: 1px solid var(--hairline);
       z-index: 95;
     }
     body:not(.compact) .card.faces .player,

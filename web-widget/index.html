@@ -501,9 +501,9 @@
          call.js builds the rows from the payload, so only the frames are
          here. -->
     <div class="guide" id="guideView" hidden role="region" aria-label="Programme guide">
-      <div class="plhead"><span class="pip" aria-hidden="true"></span>Programme guide<span class="plheadmeta" id="guideMeta"></span></div>
+      <div class="plhead"><span class="pip" aria-hidden="true"></span>Programme guide<span class="corner"><button class="gear" id="gdHelpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="gdThemeBtn" title="Theme" aria-label="Change the theme" hidden></button><button class="gear" id="gdSigninBtn" title="Sign in for more options" aria-label="Sign in for more options" hidden><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 12H2.5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1H6"/><path d="M9 9.5 11.5 7 9 4.5"/><path d="M11.5 7H5.5"/></svg></button><button class="gear" id="gdGearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></span></div>
       <div class="gdscroll" id="guideScroll">
-        <div class="gdtodayhead" id="guideTodayHead" hidden><span class="ppip live" aria-hidden="true"></span><span class="gdtodaylab">Today on the air</span><span class="gdtodaymeta" id="guideTodayMeta"></span></div>
+        <div class="gdtodayhead" id="guideTodayHead" hidden><span class="gdtodaylab" id="guideTodayMeta"></span></div>
         <div class="gdtoday" id="guideToday" hidden></div>
         <!-- The show on air, open: the card's first answer is what is on
              right now, in full — the angle, the show, the DJ and their
@@ -518,7 +518,7 @@
            one face long enough to get lost in. -->
       <button class="gdtop" id="guideTop" type="button" hidden aria-label="Back to the top">&#8593; Top</button>
     </div>
-    <nav class="facebar" id="faceBar" hidden aria-label="Cards"><span class="faceseg"><button type="button" class="face on" id="facePhone" aria-current="true">Phone</button><button type="button" class="face" id="facePlayer" hidden aria-current="false">Player</button><button type="button" class="face" id="faceGuide" hidden aria-current="false">Guide</button></span></nav>
+    <nav class="facebar" id="faceBar" hidden aria-label="Cards"><span class="faceind" id="faceInd" aria-hidden="true"></span><button type="button" class="face on" id="facePhone" aria-current="true">Phone</button><button type="button" class="face" id="facePlayer" hidden aria-current="false">Player</button><button type="button" class="face" id="faceGuide" hidden aria-current="false">Guide</button></nav>
   </div>
 
 <script src="/shared.js"></script>

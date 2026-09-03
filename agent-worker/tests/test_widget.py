@@ -3623,7 +3623,7 @@ class TestTheFacesSitSideBySide(unittest.TestCase):
         self.assertIn("paintFaceBar();", self.js.split("function paintListenChip")[1][:900])
         # The row makes room at the card's foot only while it is there.
         self.assertIn(".card.faces { padding-bottom: 46px; }", self.css)
-        self.assertIn(".card.faces .player, .card.faces .guide { bottom: 46px; }",
+        self.assertIn(".card.faces .player, .card.faces .guide { bottom: 38px; }",
                       self.css)
 
     def test_the_swipe_owns_one_axis_for_the_whole_gesture(self):
@@ -3693,6 +3693,56 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         self.assertNotIn("innerHTML", painter)
         self.assertIn("textContent", painter)
 
+    def test_the_day_reads_forward_from_midnight(self):
+        # Operator, 2026-09-03: the strip is a DAY view, so it starts at
+        # 12 AM and proceeds. It used to scroll itself to the block on air,
+        # which hid the morning behind the left edge.
+        block = self.js.split("const todays = runs.filter")[1][:400]
+        self.assertIn("12 AM first, then the day", block)
+        self.assertIn("today.scrollLeft = 0;", self.js)
+        self.assertNotIn("inline: 'center'", self.js)
+
+    def test_the_strip_keeps_its_own_sideways_drag(self):
+        # Every swipe across the day's hours turned the page instead of
+        # scrolling them (operator, 2026-09-03).
+        swipe = self.js.split("function bindFaceSwipe")[1][:1400]
+        self.assertIn("closest('.gdtoday')", swipe)
+        strip = self.css.split("  .gdtoday {")[1].split("}")[0]
+        self.assertIn("touch-action: pan-x", strip)
+        self.assertIn("overflow-x: auto", strip)
+
+    def test_one_saying_per_fact_in_the_guides_furniture(self):
+        # Four things said the same thing: the header's meta, the strip's
+        # label, its "on air until", and the hero (operator, 2026-09-03:
+        # "a little crazy"). The header names the card, the strip names the
+        # day, and the hero is the only place that says what is on.
+        self.assertNotIn("guideMeta", self.js)
+        self.assertNotIn('id="guideMeta"', self.html)
+        self.assertIn("if (headMeta) headMeta.textContent = now.label;", self.js)
+        hero = self.js.split("const tail = document.createElement")[1][:400]
+        self.assertIn("'until ' + until", hero)
+
+    def test_the_guides_header_wears_the_cards_own_chips(self):
+        for el in ('id="gdHelpBtn"', 'id="gdThemeBtn"', 'id="gdSigninBtn"',
+                   'id="gdGearBtn"'):
+            self.assertIn(el, self.html)
+        # Offered by the same answers the card's own corner reads, so one
+        # switch governs both and there is no second copy to drift.
+        for name in ("gdHelpBtn", "gdThemeBtn", "gdGearBtn", "gdSigninBtn"):
+            self.assertIn("set('" + name + "'", self.js)
+
+    def test_a_host_face_opens_to_a_portrait(self):
+        # The pictures are the point of the booth, and 34px of them was a
+        # hint (operator, 2026-09-03). The press rides a WRAPPER, because a
+        # face that fails swaps the img for initials and a binding on the
+        # img went with it.
+        self.assertIn("function bindFaceZoom", self.js)
+        self.assertIn("bindFaceZoom(fig, p)", self.js)
+        self.assertIn(".card .gdzoom.big {", self.css)
+        # And it must never toggle the row it sits in.
+        zoom = self.js.split("function bindFaceZoom")[1][:600]
+        self.assertIn("e.stopPropagation()", zoom)
+
     def test_the_lit_block_follows_the_stations_clock_not_the_readers(self):
         block = self.js.split("function stationNow")[1][:900]
         self.assertIn("timeZone: tz", block)
@@ -3724,7 +3774,7 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
             self.assertIn(el, self.html)
         self.assertIn("function guideHero", self.js)
         self.assertIn("function guideBody", self.js)
-        hero = self.js.split("function guideHero")[1][:1400]
+        hero = self.js.split("function guideHero")[1][:2000]
         self.assertIn("guideBody(show, cast, angle, runs, now, 'gdherobody')", hero)
         row = self.js.split("function guideRow")[1][:2600]
         self.assertIn("guideBody(show, cast, angle, runs, now)", row)
@@ -3739,14 +3789,30 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         # gets none, so the press must still land.
         self.assertIn("sc.scrollTop === was", click)
 
-    def test_the_faces_are_one_segmented_tray_not_three_chips(self):
-        # Operator, 2026-09-02: they are pages of one card, so they read
-        # as segments of one object rather than loose chips.
-        self.assertIn('class="faceseg"', self.html)
-        self.assertIn(".faceseg {", self.css)
-        seg = self.css.split(".card .facebar .face {")[1][:400]
-        self.assertIn("flex: 1 1 0", seg)
-        self.assertIn(".card .facebar .face.on::before", self.css)
+    def test_the_faces_are_the_cards_footer_band(self):
+        # Operator, 2026-09-03: the rounded tray "looks a bit weak and
+        # mismatched". It wore the shape this project uses for a SETTING
+        # (the panel's On/Off master) and floated over a card whose grammar
+        # is full-bleed bands. It is the eyebrow's twin now: flush to the
+        # card's edges, one hairline rule, no boxes.
+        band = self.css.split("  .facebar {")[1].split("}")[0]
+        self.assertIn("left: 0; right: 0; bottom: 0", band)
+        self.assertIn("border-top: 1px solid var(--hairline)", band)
+        face = self.css.split(".card .facebar .face {")[1].split("}")[0]
+        self.assertIn("flex: 1 1 0", face)
+        self.assertIn("border: 0", face)
+        self.assertNotIn("faceseg", self.css)
+
+    def test_the_lit_rule_follows_the_finger_across_the_band(self):
+        # What makes the band a PAGER rather than three buttons: the rule
+        # tracks the drag, and only settles when the swipe does.
+        self.assertIn('id="faceInd"', self.html)
+        self.assertIn("function paintFaceIndicator", self.js)
+        move = self.js.split("paintFaceIndicator(from + (to - from)")[1][:120]
+        self.assertTrue(move.startswith(" * (incoming ? shown : 1 - shown))"), move)
+        # A repaint mid-drag must not snap it back to the face being left.
+        self.assertIn("if (!faceDragging) {", self.js)
+        self.assertIn(".faceind.dragging { transition: none; }", self.css)
 
     def test_a_placeholder_picture_becomes_initials(self):
         # The station answers 200 with a 1x1 for a persona that has no
