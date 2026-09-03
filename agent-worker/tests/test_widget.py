@@ -3747,7 +3747,37 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         self.assertIn("gdnowmark", grid)
         self.assertIn("setGuideView('day'); openInList(r.id)", grid)
         self.assertIn(".gdcells {", self.css)
-        self.assertIn("grid-template-columns: repeat(24, 1fr)", self.css)
+        self.assertIn("grid-template-columns: repeat(24, var(--gd-hour))", self.css)
+
+    def test_the_grid_says_how_much_of_the_day_is_on_screen(self):
+        # Rotating is not always on offer — a folded phone, a screen in a
+        # car (operator, 2026-09-03) — so the span is a control, and it
+        # names hours rather than a zoom level. The hour's width follows
+        # from the span and the room, so the grid fills its width exactly.
+        for el in ('id="guideSpan6"', 'id="guideSpan12"', 'id="guideSpan24"'):
+            self.assertIn(el, self.html)
+        self.assertIn("const GUIDE_SPANS = [6, 12, 24];", self.js)
+        self.assertIn("room / effectiveSpan()", self.js)
+        # The default is re-decided from the room, never written into the
+        # reader's choice: the grid measures 0 while hidden, and filling it
+        # in on the first paint locked a rotated phone to six hours.
+        span = self.js.split("function effectiveSpan")[1][:300]
+        self.assertIn("if (guideSpanChoice) return guideSpanChoice;", span)
+        self.assertIn("guideRoom() >= 620 ? 12 : 6", span)
+        # Turning a phone on its side changes the room.
+        self.assertIn("if (guideOpen && guideView === 'week') "
+                      "{ applyGuideSpan(); repaintGuideGrid(); }", self.js)
+
+    def test_a_block_carries_a_name_only_when_one_fits(self):
+        # "U…" tells a reader nothing; clean colour plus the key does. And
+        # no time inside a block — its place and the ruler say when.
+        self.assertIn("function fitsChars", self.js)
+        self.assertIn("label.length <= fitsChars(span)", self.js)
+        self.assertNotIn("gdcelltime", self.js)
+        self.assertNotIn("gdcelltime", self.css)
+        # The key decodes them, and each entry opens its show.
+        self.assertIn("On the air this week", self.js)
+        self.assertIn(".card .gdkeyrow {", self.css)
 
     def test_a_show_keeps_one_colour_and_it_comes_from_a_token(self):
         # The station names no colour, so it is derived from the id and the
@@ -3757,9 +3787,14 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         self.assertIn("function showTone", self.js)
         self.assertIn("function toneDot", self.js)
         import re
-        tones = re.findall(r"\.card \.gdcell\[data-tone=\"\d\"\] \{ background: ([^;]+);",
+        tones = re.findall(r"\.card \.gdcell\[data-tone=\"\d+\"\] \{ background: ([^;]+);",
                            self.css)
-        self.assertEqual(6, len(tones), tones)
+        self.assertEqual(12, len(tones), tones)
+        # Assigned IN ORDER over the shows that actually air, so a week
+        # inside twelve shows never repeats a colour — a hash put three of
+        # the operator's shows in the same red.
+        self.assertIn("function airingOrder", self.js)
+        self.assertIn("setToneOrder(airingOrder(runs, shows))", self.js)
         for t in tones:
             with self.subTest(tone=t):
                 self.assertTrue(t.startswith("color-mix(in srgb, var(--"), t)
