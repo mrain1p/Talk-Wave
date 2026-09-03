@@ -4,6 +4,10 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.35
+
+- **The shelved shows fold away.** "Not on the schedule" is one line with a count until you open it, and it starts closed. The return-to-top button no longer sits on the end of the week: the guide keeps a foot clear for it.
+
 ## 0.99.34
 
 - **The show on air folds away.** It is the tallest thing on the guide, so a chevron collapses it to its band, name and line, and the week reads without scrolling past it. The choice sticks. The return-to-top button is centred rather than tucked in the corner.

@@ -3745,13 +3745,27 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         self.assertIn('id="guideShelf"', self.html)
         self.assertIn('id="guide_shelved_shows"',
                       (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8"))
-        block = self.js.split("const airs = new Set(runs.map")[1][:1400]
+        block = self.js.split("const airs = new Set(runs.map")[1][:2600]
         self.assertIn("shows.filter((s) => airs.has(s.id))", block)
         self.assertIn("shows.filter((s) => !airs.has(s.id))", block)
         self.assertIn("guideShelved !== false", block)
         self.assertIn("Not on the schedule", block)
         # And the count above the list names the week, not the roster.
         self.assertIn("' shows') + ' this week'", block)
+        # The whole section folds, and starts folded: these shows are not
+        # this week's business, so they cost one line until asked for.
+        self.assertIn("let guideShelfOpen = false;", self.js)
+        self.assertIn("shelf.classList.toggle('min', !guideShelfOpen);", block)
+        self.assertIn("guideShelfOpen = shelf.classList.toggle('min') === false;",
+                      block)
+        self.assertIn(".gdshelf.min .gdrow { display: none; }", self.css)
+
+    def test_the_way_back_up_never_sits_on_the_end_of_the_week(self):
+        # The floating button was covering the shelved section's own
+        # heading (operator, 2026-09-03), so the scroll area keeps a foot
+        # the height of the button plus its offset.
+        block = self.css.split("  .gdscroll {")[1].split("}")[0]
+        self.assertIn("padding: 0 16px 56px", block)
 
     def test_the_week_can_be_read_as_a_grid(self):
         # Operator, 2026-09-03: a button that paints the schedule as a grid.
