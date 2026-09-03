@@ -1868,7 +1868,12 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         # 37 -> 29 (2026-09-01): the shelf-next-door rung would have pushed
         # this to 44, so the whole what-to-say-on-a-miss ladder moved to
         # vocabulary._miss_hint — the seam that module was already cut on.
-        "agent-worker/call/tools/discovery.py::build_discovery_tools.browse_library": (29, "Batch 4 — library browse"),
+        # 29 -> 30 (2026-09-03): one branch, and it buys the removal of a
+        # station read that cost twenty-one seconds cold. The genre list now
+        # comes from the neighbours read, which the station computes locally
+        # and caches; the slow one is the fallback for a station that has no
+        # centroids to answer with, and that `if` is the branch.
+        "agent-worker/call/tools/discovery.py::build_discovery_tools.browse_library": (30, "Batch 4 — library browse"),
         "agent-worker/call/tools/albums.py::build_album_tools.queue_album": (32, "Batch 4 — album queue"),
         "agent-worker/call/tools/albums.py::build_album_tools.queue_mix": (25, "Batch 4 — mix queue"),
         # Batch 5 — the brain
