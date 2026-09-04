@@ -3490,8 +3490,14 @@ class TestThePanelKeepsItsOwnRules(unittest.TestCase):
         # 2026-09-02). The half-steps were folded into their neighbours,
         # which moved no body text by more than 0.5px. 44/46 are the mono
         # avatar's glyph, not type.
+        # 25 is the DISPLAY step, added by the three-faces redesign
+        # (2026-09-03): the phone's hero name and the player's song title are
+        # one size on a full-bleed phone, and 22 — the step above the body
+        # scale — is what they were before the hero stopped being a centred
+        # portrait with room for nothing else. It reaches two rules, both of
+        # them a face's headline, and neither on the 620x544 card.
         scale = {"9.5px", "10px", "11px", "12px", "13px", "14px", "15px",
-                 "17px", "19px", "22px", "44px", "46px"}
+                 "17px", "19px", "22px", "25px", "44px", "46px"}
         css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
         used = {m.group(1) for m in re.finditer(r"font-size:\s*([0-9.]+px)", css)}
         for m in re.finditer(r"font:\s*[^;]*?([0-9.]+px)", css):

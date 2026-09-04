@@ -1042,7 +1042,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 686: the castButton card option (2026-09-01) — one payload row in
         # the same cardLike block, plus its two comment lines. The payload
         # grows a row when the card grows a switch; the seam is unchanged.
-        "agent-worker/api/live.py": (686, "the shared payload build split "
+        # 688: the open line the phone face's stage reads (2026-09-03) — an
+        # import and one payload row. The BUILDER went to api/openlines.py
+        # (public_open_line), beside the record it reads and the handlers
+        # that already read it, rather than becoming a fourth private helper
+        # in here; this file only learned that the payload has the row.
+        "agent-worker/api/live.py": (688, "the shared payload build split "
                                           "from the per-caller resolve"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
         # snapshot head start, the MCP warm-up, the join riding prepare). The

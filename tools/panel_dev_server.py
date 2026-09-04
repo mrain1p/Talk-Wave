@@ -248,6 +248,15 @@ OPEN_LINES_STATE = {"live": False, "premise": "", "spoken": "",
                     "signOff": "", "cutByShow": False}
 
 
+def _in_minutes(n: int) -> str:
+    """An ISO instant n minutes out, for fixtures that carry a deadline."""
+    import datetime as _dt
+
+    return (_dt.datetime.now(_dt.timezone.utc)
+            + _dt.timedelta(minutes=n)).replace(
+                microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def _open_lines_status() -> dict:
     return {"enabled": bool(settings_store.load().get("open_lines_enabled")),
             **OPEN_LINES_STATE,
@@ -856,6 +865,15 @@ class Handler(BaseHTTPRequestHandler):
                                   "ever, and the rain agrees.",
                           "kind": "track-intro"},
                 "weather": "cloudy 70°F",
+                # An open line that is up, so the phone face's stage has its
+                # subject to show and the no-segment path can be driven by
+                # emptying this.
+                "openLines": {
+                    "live": True,
+                    "subject": "Tell me about the record that raised you.",
+                    "dj": "Francesca",
+                    "expiresAt": _in_minutes(38),
+                },
                 # A show palette, so the theme cycle's third stop exists here.
                 "stationTheme": {"mode": "dark", "tokens": {
                     "--bg": "#1a2320", "--card": "#22302a", "--ink": "#e8efe9",

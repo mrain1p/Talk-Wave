@@ -20,6 +20,7 @@ import voice_effects
 from api.auth import _write_allowed, caller_tier
 from api.env import LIVEKIT_PUBLIC_URL
 from api.live_cache import _LIVE_TTL, _live_cache
+from api.openlines import public_open_line
 # Re-exported: the look half moved to api/look.py at 0.10.131 and
 # `from api.live import look_payload` is what every caller already
 # says. A split should not break a caller that was right.
@@ -628,6 +629,7 @@ async def handle_live(request: web.Request) -> web.Response:
                     # which record it is counting.
                     "trackStartedAt": _num(track.get("timestamp")),
                     "trackSeconds": _num(track.get("duration")),
+                    "openLines": public_open_line(persona, show),
                 }
             )
         if reachable:

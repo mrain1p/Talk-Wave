@@ -2354,12 +2354,6 @@
     box-shadow: inset 0 0 40px rgba(194, 64, 43, .06);
   }
   /* The stage message the board paints while the switch is up. */
-  .routeline {
-    font: 700 10px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    letter-spacing: .22em; text-transform: uppercase; text-align: center;
-  }
-  .routeline.live { color: var(--coral); }
-  .routeline.priv { color: var(--cool); }
 
   /* The Call button wears the route: solid coral when the call is going
      out live (the existing primary look), the cool outline when it is a
@@ -4120,6 +4114,886 @@
     body:not(.compact) .meters .meter { flex: 1 1 0; min-width: 0; }
     body:not(.compact) .meters .meter.you { order: 0; }
     body:not(.compact) .meters .meter.dj { order: 1; }
+  }
+
+
+  /* === THE THREE FACES: the 2026-09-03 redesign =========================
+     The handoff (design_handoff_talkwave_faces) took the three faces the
+     pager swipes between — phone, player, guide — and gave them ONE
+     skeleton, so a swipe reads as one object turning rather than as three
+     unrelated cards:
+
+       header band   --head-h     the label, the count, the corner controls
+       hero          --ident-h + --station-h    the same on all three, so
+                                  nothing jumps mid-swipe
+       middle        flex         THE ONLY SCROLLING REGION on a face
+       dock          auto         --granite over a hairline, rows at
+                                  --control-h
+       ribbon        --ribbon-h   the faces row
+
+     WHY TOKENS RATHER THAN NUMBERS. The handoff is drawn at 412x892 — the
+     full-bleed phone card — and the operator asked for it on every surface.
+     A 236px hero is right there and absurd on the 348x320 embed, so the
+     skeleton is written once against these properties and each surface
+     answers with its own values. The handoff's own numbers live in the
+     phone block at the end of this section; the values here are the 620x544
+     card's, and body.compact overrides what an embed cannot afford.
+
+     Nothing here introduces a colour. Where the handoff names a literal it
+     is what a token already resolves to in dark, and the token is what gets
+     written — including the two selected-cell grounds, which the handoff
+     wants SOLID so the ambient wash cannot tint them: they are mixed from
+     the accent over --pine rather than pinned to a hex.
+     ------------------------------------------------------------------- */
+  :root {
+    --head-h: 38px;          /* the header band, every face */
+    --ident-h: 104px;        /* identity row / the player's art block */
+    --station-h: 62px;       /* the station row / the player's progress */
+    --portrait: 84px;        /* the DJ's circle in the identity row */
+    --thumb: 40px;           /* the record's square in the station row */
+    --sleeve: 118px;         /* the player's own sleeve */
+    --well-h: 104px;         /* the player's booth well */
+    --seg-h: 34px;           /* segmented cells: route switch, player tabs */
+    --pill-h: 26px;          /* read more / remind me */
+    --dock-gap: 12px;        /* between the dock's rows */
+    --dock-pad: 10px;        /* the dock's own top and bottom */
+    /* What the card pays on each side, so a band can bleed to the card's
+       edge with a negative margin instead of every band guessing. The phone
+       writes its own, which are the safe-area max() expressions. */
+    --card-pad-l: 16px;
+    --card-pad-r: 16px;
+    /* The two selected-cell grounds. SOLID — a translucent tint let the
+       ambient wash through and the cell changed colour with the artwork
+       behind it. color-mix over --pine keeps the theming contract: a
+       station repaint moves these with its own accent. */
+    --pick-live: color-mix(in srgb, var(--coral) 13%, var(--pine));
+    --pick-priv: color-mix(in srgb, var(--cool) 13%, var(--pine));
+  }
+
+  /* -- the ambient wash --------------------------------------------------
+     A page wash under the whole face, and a bloom behind every portrait and
+     sleeve. CONTENT SITS ON THE WASH, CONTROLS DO NOT: buttons, the route
+     switch and the tab cells carry an opaque ground; prose and pictures do
+     not. It starts below the header, so the one band that must stay flat —
+     the seam a host page meets — is painted flat.
+
+     The bands opt IN with `position: relative`. A positioned wash at
+     z-index 0 paints in the same step as positioned siblings, so without
+     that it would cover the text of the un-positioned ones. */
+  .card::before {
+    content: ""; position: absolute; z-index: 0; pointer-events: none;
+    left: -6%; top: var(--head-h); width: 112%; height: 42%;
+    background: radial-gradient(58% 58% at 50% 42%,
+                                var(--coral) 0%, transparent 72%);
+    filter: blur(70px) saturate(1.2); opacity: .2;
+  }
+  /* An embed is a small card in somebody else's column, and a 70px blur
+     across 320px of it is fog rather than atmosphere. */
+  body.compact .card::before { display: none; }
+  .card > .eyebrow, .card > .who-row, .card > .stationrow, .card > .rig {
+    position: relative; z-index: 1;
+  }
+  /* The header is the one band the wash may not reach. */
+  .card > .eyebrow { background: var(--pine); }
+
+  /* -- 1a. the identity row ----------------------------------------------
+     LEFT-ALIGNED, which is the whole change. The phone block centred the
+     portrait over the name, and that cost the row its full height for three
+     short lines — the identity block reached a third of the screen above a
+     conversation that is the point. Beside the text it is the same picture
+     in half the height. */
+  .who-row { position: relative; }
+  body:not(.compact) .card:not([data-mode="chat"]) .who-row {
+    height: var(--ident-h); flex: none;
+    border-bottom: 1px solid var(--edge);
+  }
+  .who-row .avatar, .who-row .avatar-mono {
+    width: var(--portrait); height: var(--portrait);
+  }
+  .who-row .avatar-mono { font-size: calc(var(--portrait) * .32); }
+  /* The picture's own bloom, drawn by the row rather than by a wrapper
+     round the image: the avatar is swapped for initials when a portrait
+     fails, and a glow bound to the img would go with it. */
+  .who-row .whoglow {
+    position: absolute; left: -10px; top: 50%; z-index: 0;
+    width: calc(var(--portrait) + 20px); height: calc(var(--portrait) + 20px);
+    transform: translateY(-50%); pointer-events: none; border-radius: 50%;
+    background: radial-gradient(50% 50% at 50% 50%,
+                                var(--coral) 0%, transparent 72%);
+    filter: blur(28px) saturate(1.2); opacity: .32;
+  }
+  .who-row .avatar, .who-row .avatar-mono, .who-row .meta {
+    position: relative; z-index: 1;
+  }
+  body.compact .who-row .whoglow { display: none; }
+  /* IN THE BOOTH — the eyebrow over the name, so the row says whose picture
+     that is before the name has been read. */
+  .who-row .whocap {
+    display: block; font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    margin: 0 0 6px; white-space: nowrap; overflow: hidden;
+  }
+  body.compact .who-row .whocap { display: none; }
+
+  /* -- 1a. the station row -----------------------------------------------
+     What is on the station, as its own band under the identity it belongs
+     to: the record's art, a label, the title, the heart, a level. The track
+     line used to hang off the bottom of the identity block, where a thumb
+     had nowhere to go and the heart shared a row with a title that was
+     already ellipsising. call.js moves .trackrow in here at startup — every
+     id inside it is the one it always was. */
+  .stationrow {
+    display: flex; align-items: center; gap: 10px; flex: none;
+    height: var(--station-h); padding: 9px 0;
+    border-bottom: 1px solid var(--edge);
+  }
+  .stationrow[hidden] { display: none; }
+  .stationrow .stationart {
+    position: relative; flex: none;
+    width: var(--thumb); height: var(--thumb);
+  }
+  .stationrow .stationart img {
+    position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%;
+    object-fit: cover; border: 1px solid var(--edge);
+    background: var(--granite-hi); display: block;
+  }
+  .stationrow .stationart img[hidden] { display: none; }
+  /* The thumb's bloom — a blurred copy of the SAME artwork behind it, the
+     way the player's sleeve does it. It is the only way to get the record's
+     own colour behind the record: CSS cannot sample an image, and a fixed
+     tint behind changing artwork is the thing the wash rule exists to
+     avoid. Behind the square, outside its box, and inert. */
+  .stationrow .stationart .stationglow {
+    position: absolute; inset: -10px; z-index: 0; width: auto; height: auto;
+    object-fit: cover; pointer-events: none; border: 0; background: none;
+    filter: blur(28px) saturate(1.2); opacity: .32;
+  }
+  .stationrow .stationart .stationglow[hidden] { display: none; }
+  /* No art, no empty square: the fallback is the card's own grain, which is
+     what the handoff's striped placeholder stands in for. */
+  .stationrow .stationart .stationfill {
+    position: absolute; inset: 0; z-index: 1; border: 1px solid var(--edge);
+    background: repeating-linear-gradient(135deg,
+      var(--granite-hi) 0 6px, var(--granite) 6px 12px);
+  }
+  .stationrow .stationmeta { flex: 1; min-width: 0; display: block; }
+  .stationrow .stationcap {
+    display: block; font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    margin: 0 0 4px; white-space: nowrap; overflow: hidden;
+  }
+  /* The title steps out of micro-type: it is a name, not a label, and at
+     10px uppercase it was the hardest line on the card to read. */
+  .stationrow .trackrow { flex: 1; min-width: 0; }
+  .stationrow .track {
+    font-family: var(--font-body); font-size: 13px; font-weight: 400;
+    letter-spacing: 0; text-transform: none; color: var(--alpenglow);
+    margin: 0; line-height: 1.3;
+  }
+  .stationrow .track .npby { color: var(--sage); }
+  .card .stationrow .nplike {
+    width: var(--control-h); height: var(--control-h);
+    border: 1px solid var(--edge); color: var(--sage);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px; flex: none;
+  }
+  .card .stationrow .nplike.liked { color: var(--coral); }
+  /* The station's own level: seven bars in the data accent. Decoration that
+     reports something — the heights ride the record's progress, so a
+     stopped station is a flat row rather than a lie in motion. */
+  .stationrow .stationvu {
+    flex: none; display: inline-flex; align-items: flex-end; gap: 2px;
+    height: 14px;
+  }
+  .stationrow .stationvu i {
+    display: block; width: 2px; background: var(--amber); height: var(--h, 40%);
+  }
+  /* THE EMBED KEEPS ITS ONE-LINE TRACK. 348x320 has no 62px band to spend,
+     and this is the same line it always was — one step down the DOM, with
+     the furniture that needs room switched off. */
+  body.compact .stationrow {
+    height: auto; padding: 3px 0 0; border: 0; gap: 6px;
+  }
+  body.compact .stationrow .stationart,
+  body.compact .stationrow .stationcap,
+  body.compact .stationrow .stationvu { display: none; }
+  body.compact .stationrow .track {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em;
+    text-transform: var(--skin-label-case); font-weight: 700; color: var(--sage);
+  }
+  body.compact .card .stationrow .nplike { width: 18px; height: 16px; border: 0; }
+
+  /* -- 1a. the route switch ----------------------------------------------
+     Two cells, full width, shared borders, square — the same control the
+     player's tabs are, which is the point: one segmented control on the
+     card, worn twice. It was a centred pill straddling the stage's top
+     edge, which needed 22px of headroom inside the stage and put a
+     transcript line behind it. Its own row instead. */
+  .card.routed .routeswitch {
+    height: var(--seg-h); width: auto; margin: 0 0 10px; padding: 0;
+    background: transparent; border: 0;
+  }
+  .card.routed .routeswitch .rcell {
+    flex: 1 1 0; min-width: 0; height: var(--seg-h); padding: 0 8px;
+    background: var(--pine); border: 1px solid var(--edge);
+    box-shadow: none; color: var(--sage-dim);
+  }
+  .card.routed .routeswitch .rcell + .rcell { border-left: 0; }
+  .card.routed .routeswitch .rcell.on {
+    background: var(--pick-priv); box-shadow: inset 0 0 0 1px var(--cool);
+    color: var(--cool);
+  }
+  .card.routed .routeswitch .rcell.live.on {
+    background: var(--pick-live); box-shadow: inset 0 0 0 1px var(--coral);
+    color: var(--coral);
+  }
+  /* No straddle any more, so the stage stops reserving headroom for one. */
+  .card.routed[data-mode="idle"] .linebox,
+  .card.gated.routed[data-mode="idle"] .linebox { padding-top: 12px; }
+  .card.routed .linebox { margin-top: 0; }
+
+  /* -- 1a. the stage -----------------------------------------------------
+     The idle board answers instead of sitting empty. Top: what this route
+     costs you, in one label and one sentence. Middle: what the booth is
+     actually asking, when a segment is up. Foot: what else the line is for.
+     The middle centres in whatever is left, so a stage with no segment is
+     the consequence copy in the middle of the box rather than a headline
+     stranded at the top of 400px of black. */
+  .idleboard .stage {
+    display: flex; flex-direction: column; height: 100%; text-align: left;
+  }
+  .idleboard .stagehead {
+    flex: none; font: 700 9.5px/1.5 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--cool);
+  }
+  .card.route-on .idleboard .stagehead { color: var(--coral); }
+  .idleboard .stagesay {
+    flex: none; font: 12px/1.45 var(--font-body); color: var(--sage);
+    margin: 6px 0 0;
+  }
+  .idleboard .stagerule {
+    flex: none; height: 1px; background: var(--hairline); margin: 14px 0 12px;
+  }
+  /* The middle. Centred in the remaining height, whatever is in it. */
+  .idleboard .stagemid {
+    flex: 1; min-height: 0; display: flex; align-items: center;
+    justify-content: center;
+  }
+  .idleboard .stagemid > * { width: 100%; }
+  /* OPEN LINES — what the DJ has put up, in the caller's own words back at
+     them. The pip blinks because the thing it reports is running out. */
+  .idleboard .openhead { display: flex; align-items: center; gap: 8px; }
+  .idleboard .openpip {
+    width: 7px; height: 7px; flex: none; background: var(--amber);
+    animation: blink 1.6s ease-in-out infinite;
+  }
+  .idleboard .openlab {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--amber);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .idleboard .opentil {
+    margin-left: auto; flex: none; white-space: nowrap;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+  }
+  .idleboard .opensubj {
+    display: block; font: 700 19px/1.3 var(--font-body);
+    color: var(--alpenglow); margin: 10px 0 0;
+  }
+  /* The foot: the doors that are always there, under a rule, quiet. */
+  .idleboard .stagefoot {
+    flex: none; display: flex; align-items: center; gap: 10px;
+    padding-top: 12px; border-top: 1px solid var(--hairline);
+  }
+  .idleboard .stagefootlab {
+    flex: none; white-space: nowrap; font: 700 9.5px/1 var(--font-mono);
+    letter-spacing: .12em; text-transform: var(--skin-label-case);
+    color: var(--sage-dim);
+  }
+  .idleboard .stagefootsay {
+    flex: 1; min-width: 0; font-size: 12px; color: var(--sage);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* The stage is the whole box when it is answering: the board used to be
+     one centred line among the box's other tenants. */
+  .card.routed[data-mode="idle"] .linebox:has(.idleboard .stage) {
+    display: flex; flex-direction: column;
+  }
+  .card.routed[data-mode="idle"] .linebox > .idleboard:has(.stage) {
+    flex: 1; min-height: 0; display: block; margin: 0; padding: 0;
+  }
+  /* An embed has no room for a segment's subject over a 12px sentence in a
+     box that is already the smallest thing on the card. */
+  body.compact .idleboard .openhead,
+  body.compact .idleboard .opensubj,
+  body.compact .idleboard .stagefoot { display: none; }
+
+  /* -- 1a. the dock ------------------------------------------------------
+     The level band and the action row, full-bleed on --granite over a
+     hairline. TWO ELEMENTS PAINTING ONE BAND rather than a wrapper round
+     them: .rig's visibility reservation is per-child and load-bearing (it
+     has caught three bands already), so wrapping the trailing rows would
+     mean re-teaching the rule that keeps the card one height. Contiguous
+     and full-bleed, they read as the one band the handoff draws. */
+  .rig > .meters, .rig > .talkrow, .rig > .chatrow, .rig > .actionrow,
+  .rig > .vmstudio {
+    background: var(--granite);
+    margin-left: calc(-1 * var(--card-pad-l));
+    margin-right: calc(-1 * var(--card-pad-r));
+    padding-left: var(--card-pad-l);
+    padding-right: var(--card-pad-r);
+  }
+  /* The band opens at the meters — the first dock row on every mode that
+     has one — and the row above it is the stage. */
+  .rig > .meters {
+    border-top: 1px solid var(--hairline);
+    margin-top: var(--dock-gap); padding-top: var(--dock-pad);
+    padding-bottom: 0;
+  }
+  /* …except in the modes that hide the meters, where the next row down
+     opens the band instead. */
+  .card[data-mode="chat"] .rig > .chatrow,
+  .card[data-mode="vmstudio"] .rig > .vmstudio {
+    border-top: 1px solid var(--hairline);
+    margin-top: var(--dock-gap); padding-top: var(--dock-pad);
+  }
+  .rig > .talkrow, .rig > .chatrow { padding-top: var(--dock-gap); }
+  .rig > .actionrow {
+    padding-top: var(--dock-gap); padding-bottom: var(--dock-pad);
+  }
+  /* The card's own bottom padding is the dock's now — the band has to reach
+     the card's floor or it reads as a panel floating above one. */
+  body:not(.compact) .card:not(.faces) { padding-bottom: 0; }
+  /* THE LEVEL BAND. The instrument was a bare box on the card's ground; on
+     the dock it needs its own, and --pine against --granite is the same
+     inset/raised pair the stage uses one band up. */
+  .meters .duplex {
+    height: var(--control-h); padding: 0 10px;
+    background: var(--pine); border-color: var(--hairline);
+  }
+  .meters .duplex .bars { height: 20px; }
+
+  /* -- 1a. the action row ------------------------------------------------
+     One filled door and two icon-only ones beside it, in a 4:1:1 split —
+     the handoff's proportions, and the reason the primary can carry a word
+     and a glyph while the other two carry a glyph each. */
+  .actionrow #callBtn:not([hidden]) { flex: 4 1 0; }
+  .actionrow #chatBtn:not([hidden]), .actionrow #vmBtn:not([hidden]) {
+    flex: 1 1 0;
+  }
+
+  /* -- the faces ribbon --------------------------------------------------
+     Icon over label, the cells divided, the current one filled. `border: 0`
+     on .face is load-bearing (the row is one band, not three buttons), so
+     the dividers are inset shadows rather than borders. */
+  .card .facebar .face {
+    flex-direction: column; gap: 5px;
+    font-size: 9.5px; letter-spacing: .16em;
+  }
+  .card .facebar .face + .face { box-shadow: inset 1px 0 0 var(--edge); }
+  .card .facebar .face.on {
+    background: color-mix(in srgb, var(--coral) 9%, transparent);
+  }
+  .card .facebar .face .facesvg { display: block; flex: none; }
+  /* One line each, and the label is what gives up room — the icon is what
+     the row is scanned by. */
+  .card .facebar .face .facelab {
+    display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; max-width: 100%;
+  }
+  /* An embed never shows the row, and a short band has no height for two
+     lines — the word alone, as before. */
+  .card.facesflat .facebar .face { flex-direction: row; }
+  .card.facesflat .facebar .face .facesvg { display: none; }
+
+  /* -- 1b. the player ----------------------------------------------------
+     Bands and hairlines instead of a stack of nested boxes. The sheet's own
+     order is art+title, progress, the booth's line, the tabs, the list —
+     and only the list scrolls. The booth panel is written after the queue
+     in the markup because it was the bottom card; `order` puts it where the
+     handoff wants it without moving a node the script paints into. */
+  .plscroll {
+    display: flex; flex-direction: column; align-items: stretch;
+    text-align: left; overflow: hidden; flex: 1; min-height: 0;
+    padding: 0; gap: 0;
+  }
+  /* The art block: the sleeve beside the title rather than over it. Centred,
+     the title had the card's full width and used four lines of it. */
+  .plartblock {
+    display: flex; align-items: flex-end; gap: 14px; flex: none;
+    height: var(--ident-h); padding: 14px 16px 12px;
+  }
+  .card .plartwrap {
+    position: relative; flex: none;
+    width: var(--sleeve); height: var(--sleeve); margin: 0;
+  }
+  .plmeta { flex: 1; min-width: 0; display: block; }
+  .card .pltrack {
+    font: 800 var(--hero-title, 19px)/1.1 var(--font-body);
+    letter-spacing: .03em; text-transform: var(--skin-label-case);
+    color: var(--alpenglow); margin: 0; text-align: left;
+    display: -webkit-box; -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2; overflow: hidden;
+  }
+  .card .plalbum {
+    font: 13px/1.4 var(--font-body); color: var(--sage); margin: 6px 0 0;
+    text-align: left; text-transform: none; letter-spacing: 0;
+  }
+  .card .pltags {
+    display: flex; flex-wrap: wrap; gap: 4px; margin: 9px 0 0;
+    justify-content: flex-start;
+  }
+  .card .pltags .pill {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .06em;
+    text-transform: var(--skin-label-case); color: var(--amber);
+    border: 1px solid var(--edge); background: transparent;
+    padding: 4px 5px; height: auto; border-radius: 0;
+  }
+  /* The progress row closes the hero, and the hero is the same height on
+     all three faces. */
+  .card .plprog {
+    height: var(--station-h); flex: none; display: flex; align-items: center;
+    gap: 10px; padding: 0 16px; margin: 0;
+  }
+  /* THE BOOTH WELL — deliberately the phone face's conversation box: both
+     surfaces carry speech, and a caller who has seen one should recognise
+     the other. */
+  .plscroll > .plpanel:not(.plqueue) {
+    order: 1; flex: none; min-height: var(--well-h);
+    margin: 14px 16px 0; padding: 14px;
+    background: var(--pine); border: 1px solid var(--hairline);
+    border-radius: 0; display: flex; flex-direction: column;
+  }
+  .plscroll > .plpanel:not(.plqueue) .plpanelhead {
+    flex: none; display: flex; align-items: center; gap: 8px;
+    font: 700 11px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--coral);
+    margin: 0; padding: 0; border: 0; background: none;
+  }
+  /* WHO IS IN THE BOOTH, opposite the label. It gives up room before the
+     label does — `flex: none` here was what stopped the ellipsis working at
+     all, because an item that cannot shrink never overflows its own box. */
+  .plscroll > .plpanel:not(.plqueue) .plpanelmeta {
+    margin-left: auto; flex: 0 1 auto; min-width: 0; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+  }
+  /* The DJ's line, centred in what is left — clamped to three, so a long
+       one cannot push the tabs off the sheet. */
+  .plscroll > .plpanel:not(.plqueue) .plpanelbody {
+    flex: 1; min-height: 0; display: flex; align-items: center;
+    justify-content: center; padding: 0; max-height: none; overflow: hidden;
+  }
+  .plscroll > .plpanel:not(.plqueue) .plpanelbody .plquote {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+    overflow: hidden; max-width: 34ch; text-align: center;
+    font: 13px/1.5 var(--font-body); color: var(--alpenglow);
+  }
+  /* The queue group: tabs, then the list. The tabs are the route switch's
+     control again — three equal cells, shared borders, square. */
+  .plqgroup {
+    order: 2; flex: 1; min-height: 0; display: flex; flex-direction: column;
+    margin: 0; border: 0; background: none;
+  }
+  .card .pltabs {
+    flex: none; display: flex; align-items: stretch; gap: 0;
+    padding: 12px 16px; margin: 0; border: 0;
+    border-top: 1px solid var(--edge);
+  }
+  .card .pltabs .pltab {
+    flex: 1 1 0; min-width: 0; height: var(--seg-h); padding: 0 6px; margin: 0;
+    background: var(--pine); border: 1px solid var(--edge); border-radius: 0;
+    box-shadow: none; color: var(--sage-dim);
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: var(--skin-label-case);
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 6px; white-space: nowrap; overflow: hidden;
+  }
+  .card .pltabs .pltab + .pltab { border-left: 0; }
+  .card .pltabs .pltab.on {
+    background: var(--pick-live); box-shadow: inset 0 0 0 1px var(--coral);
+    color: var(--coral);
+  }
+  .card .pltabs .pltab .ppip { visibility: hidden; }
+  .card .pltabs .pltab.on .ppip { visibility: visible; background: currentColor; }
+  /* THE ONE SCROLLING REGION on this face. */
+  .plqgroup .plpanel.plqueue {
+    flex: 1; min-height: 0; margin: 0; padding: 0 16px;
+    background: none; border: 0; border-radius: 0;
+    display: flex; flex-direction: column;
+  }
+  .plqgroup .plpanel.plqueue .plpanelbody {
+    flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none;
+    max-height: none; padding: 0;
+  }
+  .plqgroup .plpanel.plqueue .plpanelbody::-webkit-scrollbar { display: none; }
+  /* Top rules only, so the last row does not trail one. */
+  .plqgroup .plrow {
+    display: flex; align-items: baseline; gap: 10px; padding: 11px 0;
+    border-top: 1px solid var(--hairline); border-bottom: 0; min-width: 0;
+  }
+  /* The player's dock: the strip, the request row, the transport. */
+  .pldock {
+    background: var(--granite); border-top: 1px solid var(--hairline);
+    padding: 14px 16px 12px; gap: var(--dock-gap);
+    display: flex; flex-direction: column;
+  }
+  .card .pldock .plheart {
+    width: var(--control-h); height: var(--control-h); flex: none;
+    border: 1px solid var(--edge); color: var(--sage);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .card .pldock .plheart.liked, .card .pldock .plheart.on { color: var(--coral); }
+  .card .pldock .plreq input { height: var(--control-h); }
+  .card .pldock .plreq #plReqSend { height: var(--control-h); flex: none; }
+  .card .pldock #plPlayBtn { height: var(--control-h); width: 100%; }
+
+  /* The sleeve is a WIDTH question now, not a height one: beside the title
+     it takes the face's own token, where over the panels it had to be
+     measured against whatever room the stack had left (--plart-cap, which
+     call.js still writes and nothing now reads at this size). */
+  .card .plartblock .plartwrap {
+    width: var(--sleeve); height: var(--sleeve); aspect-ratio: auto;
+  }
+  /* ONLY THE LIST SCROLLS. The sheet as a whole was the scroller on a phone,
+     which is the rule this redesign trades away — the hero and the booth
+     hold their place and the queue is the region that moves.
+
+     …ABOVE 640px OF SCREEN. Below that the bands genuinely do not fit
+     (measured at 320x568 when the panels were being shrunk into each
+     other), and a list scrolling inside a sheet that cannot show its own
+     dock is worse than a sheet that scrolls. The short-phone rule above
+     stands there, untouched. */
+  @media (max-width: 700px) and (min-height: 640px) {
+    body:not(.compact) .plscroll { overflow: hidden; }
+    body:not(.compact) .plscroll > .plqgroup { flex: 1 1 auto; min-height: 0; }
+    body:not(.compact) .plscroll > .plpanel:not(.plqueue) { flex: none; }
+  }
+
+  /* -- 1c. the guide -----------------------------------------------------
+     A clamped hero over a listings column. The hero is the same height as
+     the other two faces' heroes and grows only when the reader asks; the
+     list below it is the scrolling region. */
+  .gdscroll { display: flex; flex-direction: column; }
+  /* THE HOUR STRIP STANDS DOWN. It was the day read sideways above the
+     hero; the listing below is the same day read downwards, with the time,
+     the DJ and a way in on every row. Two places to watch, one of them
+     needing a horizontal drag inside a horizontal pager. Kept in the markup
+     and still built — this is the layout's answer, not a deletion. */
+  .gdscroll > .gdtoday { display: none; }
+  .gdscroll > .gdhero { order: 1; flex: none; min-height: var(--gd-hero-h, 200px); }
+  .gdscroll > .gdtodayhead { order: 2; }
+  .gdscroll > .gdlisthead { order: 3; }
+  .gdscroll > .gdlist { order: 4; }
+  .gdscroll > .gdshelf { order: 5; }
+  .gdscroll > .gdspans { order: 6; }
+  .gdscroll > .gdgrid { order: 7; }
+  .gdscroll > .gdempty { order: 8; }
+  /* The list head: what this column is, when it is, and how to read the
+     week. It was above the hero, where it captioned the strip. */
+  .gdscroll > .gdtodayhead {
+    display: flex; align-items: center; gap: 10px;
+    padding: 13px 0 7px; margin: 0;
+  }
+  .gdtodaycap {
+    flex: none; font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+  }
+  /* …and the week's own count, which used to head the list on a line of its
+     own, joins it rather than repeating the heading one row down. */
+  .gdscroll > .gdlisthead { display: none; }
+  /* The listing. One row per show, time column first, the tone spine, then
+     the name — and the show on air is boxed at the top of it. */
+  .card .gdrow {
+    display: block; border: 1px solid transparent;
+    border-top: 1px solid var(--hairline); border-radius: 0;
+    background: none; padding: 11px 0; margin: 0;
+  }
+  .card .gdrow.live {
+    border: 1px solid var(--coral); background: var(--granite);
+    padding: 11px 12px; margin-bottom: 8px;
+  }
+  .card .gdrowhead {
+    display: flex; align-items: stretch; gap: 12px; min-width: 0;
+  }
+  .card .gdwhen { flex: none; width: 62px; display: block; padding-top: 1px; }
+  .card .gdwhen .gdwhent {
+    display: block; font: 700 11px/1.2 var(--font-mono); letter-spacing: .04em;
+    color: var(--sage); font-variant-numeric: tabular-nums;
+  }
+  .card .gdrow.live .gdwhen .gdwhent { color: var(--coral); }
+  .card .gdwhen .gdwhend {
+    display: block; font: 9.5px/1.2 var(--font-mono); letter-spacing: .06em;
+    color: var(--sage-dim); margin-top: 3px;
+  }
+  .card .gdspine { flex: none; width: 2px; display: block; }
+  .card .gdrowmain { flex: 1; min-width: 0; display: block; }
+  .card .gdrowtop {
+    display: flex; align-items: baseline; gap: 8px; min-width: 0;
+  }
+  .card .gdrowname {
+    font: 700 13px/1.2 var(--font-mono); letter-spacing: .04em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card .gdrow.live .gdrowname { color: var(--coral); }
+  .card .gdrowend {
+    margin-left: auto; flex: none; display: inline-flex; align-items: center;
+    gap: 7px;
+  }
+  .card .gdflag {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em;
+    text-transform: var(--skin-label-case); color: var(--amber);
+    white-space: nowrap;
+  }
+  .card .gdrow.live .gdflag { color: var(--coral); }
+  .card .gdchev {
+    font-size: 10px; color: var(--sage-dim); display: inline-block;
+    transition: transform .18s ease, color .18s ease;
+  }
+  .card .gdrow.open .gdchev { transform: rotate(90deg); color: var(--coral); }
+  .card .gdrowsub {
+    display: block; font-size: 12px; color: var(--sage); margin-top: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card .gdrowsub .gdrowhost { color: var(--sage-dim); }
+  .card .gdrow .gdbody { padding: 10px 0 2px; }
+  .card .gdrow:not(.open) .gdbody { display: none; }
+
+  /* -- 1c. the hero ------------------------------------------------------
+     Transparent, so the wash carries through it, and clamped: three lines of
+     the show's own description, with the angle and the DJ's soul behind a
+     press. It used to fold to nothing, which answered "how do I get past
+     this" and not "what is on". */
+  .card .gdherobox {
+    display: flex; flex-direction: column; flex: 1; min-height: 0;
+    background: transparent; border: 0; border-radius: 0;
+    padding: 12px 0 13px; margin: 0;
+  }
+  .card .gdherotop { display: flex; align-items: center; gap: 8px; flex: none; }
+  .card .gdherolab {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--coral);
+  }
+  .card .gdheronext {
+    margin-left: auto; flex: none; white-space: nowrap;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .06em; color: var(--amber);
+  }
+  /* The host's circle beside the show's name — the same picture the row's
+     own body carries, at the size the hero can afford. */
+  .card .gdheroid {
+    display: flex; align-items: center; gap: 12px; margin-top: 12px; flex: none;
+  }
+  .card .gdherofig {
+    position: relative; flex: none; width: 62px; height: 62px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .card .gdherofig .gdzoom, .card .gdherofig img, .card .gdherofig .gdinit {
+    position: relative; z-index: 1; width: 62px; height: 62px;
+  }
+  .card .gdheronames { flex: 1; min-width: 0; display: block; }
+  .card .gdheroname {
+    font: 700 19px/1.15 var(--font-mono); letter-spacing: .03em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+    margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card .gdherotag {
+    font: 12px/1.35 var(--font-body); color: var(--amber); margin: 4px 0 0;
+    letter-spacing: 0; text-transform: none;
+  }
+  /* The body's own order — the show first, then the angle, then the DJ — is
+     the ORDER GUIDEBODY EMITS, not a flex `order`. It was a flex column for
+     one paragraph's sake, and a `-webkit-box` line clamp inside a column
+     flex container collapses to zero height: the folded hero rendered its
+     three-line description as nothing at all (measured, 0px). The clamp is
+     the point of the fold, so the container gave way instead. */
+  .card .gdherobody { display: block; margin: 0; padding: 0; border: 0; }
+  .card .gdherobody .gdangle { color: var(--amber); }
+  .card .gdherobody .gdline {
+    font: 13px/1.5 var(--font-body); color: var(--alpenglow); margin: 10px 0 0;
+  }
+  .card .gdherobody .gdline b { font-weight: 700; }
+  .card .gdherobody .gdpname { color: var(--coral); }
+  /* FOLDED IS CLAMPED, NOT GONE. The fold used to hide the body outright
+     (`.gdherobox.min .gdherobody { display: none }`, still above), which
+     answered "how do I get past this" rather than "what is on". What it
+     hides now is everything except the show's own description, and that
+     stays and takes three lines. The body has to be put BACK first: a rule
+     on its children cannot outrank its parent being display:none, which is
+     what made the folded hero render its paragraph as 0px. */
+  .card .gdherobox.min .gdherobody { display: block; }
+  .card .gdherobox.min .gdherobody > *:not(.gddesc) { display: none; }
+  /* …and the name does not shrink with it any more: the hero is the same
+     block either way, with three lines of prose instead of all of it. */
+  .card .gdherobox.min .gdheroname { font-size: 19px; }
+  .card .gdherobox.min .gdherobody .gddesc {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+    overflow: hidden;
+  }
+  /* The foot sits on the hero's floor whatever is above it. */
+  .card .gdherofoot {
+    display: flex; align-items: center; gap: 10px;
+    margin-top: auto; padding-top: 12px; flex: none;
+  }
+  .card .gdherofold {
+    position: static; height: var(--pill-h); padding: 0 10px; margin: 0;
+    background: transparent; border: 1px solid var(--edge); border-radius: 0;
+    color: var(--sage); font: 700 9.5px/1 var(--font-mono);
+    letter-spacing: .14em; text-transform: var(--skin-label-case);
+    transform: none; width: auto; min-height: 0; flex: none;
+  }
+  .card .gdheroweek {
+    flex: 1; min-width: 0; font: 10px/1.3 var(--font-mono); letter-spacing: .08em;
+    color: var(--sage-dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* The rows' own bodies: the show, its moods, then who runs it. */
+  .card .gdrow .gdbody .gdline { font: 13px/1.5 var(--font-body); margin: 0 0 10px; }
+  .card .gdrow .gdbody .gdmoods { margin: 0 0 12px; }
+  .card .gdrow .gdbody .gdcap {
+    padding-top: 11px; border-top: 1px solid var(--hairline);
+  }
+
+  /* The guide is an overlay with its own opaque ground, so the card's wash
+     stops at its edge — it gets one of its own, on the same terms: below the
+     header, behind everything, and never under a control. */
+  .guide::before {
+    content: ""; position: absolute; z-index: 0; pointer-events: none;
+    left: -6%; top: var(--head-h); width: 112%; height: 42%;
+    background: radial-gradient(58% 58% at 50% 42%,
+                                var(--coral) 0%, transparent 72%);
+    filter: blur(70px) saturate(1.2); opacity: .2;
+  }
+  .guide > .plhead, .guide > .gdscroll, .guide > .gdtop {
+    position: relative; z-index: 1;
+  }
+  .guide > .plhead { background: var(--pine); }
+  /* The hero's paragraphs need air between them and the booth's own caption
+     needs some above it — they were a stack of <p>s with one margin between
+     every pair, which read as one long column of text. */
+  .card .gdherobody .gdcap { margin-top: 14px; }
+  .card .gdherobody .gdperson { margin-top: 8px; }
+  /* …and the hero says the week ONCE, on its foot. The body's own schedule
+     block is the row treatment, where there is no foot to carry it. */
+  .card .gdherobody .gdsched { display: none; }
+
+  /* -- the corrections the two lists and the two heroes needed ------------ */
+  /* The hero's own split. The art block and the progress row together are
+     the SAME height as the phone's identity + station rows, which is what
+     keeps the pager from jumping — but the handoff wants the room inside it
+     spent 198/38, not 160/76, because the sleeve is the tall thing here and
+     a progress row is a progress row. Stated as a subtraction so the total
+     can never drift from the other faces'. */
+  .plartblock { height: calc(var(--ident-h) + var(--station-h) - 38px); }
+  .card .plprog { height: 38px; }
+  /* The queue's rows: the position in its own gutter, then the title over
+     the artist. They were title and artist side by side, which read as one
+     long line per record and gave a two-line row nothing to align to. */
+  .plqgroup .plrow { align-items: baseline; }
+  .plqgroup .plrow .plnum {
+    flex: none; width: 16px; font: 700 10px/1.3 var(--font-mono);
+    color: var(--sage-dim); font-variant-numeric: tabular-nums;
+  }
+  .plqgroup .plrow .pltext { flex: 1 1 0; min-width: 0; display: block; }
+  .plqgroup .plrow .pltit {
+    display: block; font-size: 13px; font-weight: 600; color: var(--alpenglow);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .plqgroup .plrow .plsub {
+    display: block; margin: 2px 0 0; font-size: 11px; color: var(--sage);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* The tone is a SPINE on a listing row, not a dot: it runs the height of
+     the row it belongs to, which is what lets a column of them be read down
+     rather than word by word. Same token, same order, same colour as the
+     dot the grid still uses. */
+  .card .gdspine {
+    width: 2px; height: auto; border-radius: 0; align-self: stretch;
+  }
+
+  /* -- the surfaces ------------------------------------------------------
+     The handoff's own numbers, at the viewport it was drawn for: the
+     full-bleed phone card and, because its card is the window rather than a
+     620x544 box, the installed app. Everything above is written against
+     these properties, so this block is values and nothing else. */
+  @media (max-width: 500px) {
+    body:not(.panelpage):not(.compact) {
+      --ident-h: 160px; --station-h: 76px;
+      --portrait: 108px; --thumb: 46px;
+      --sleeve: 168px; --well-h: 132px;
+      --seg-h: 38px; --control-h: 44px; --chip-h: 28px;
+      --dock-gap: 14px; --dock-pad: 14px;
+      --hero-title: 25px; --gd-hero-h: 236px;
+      --card-pad-l: max(20px, env(safe-area-inset-left));
+      --card-pad-r: max(20px, env(safe-area-inset-right));
+    }
+    /* The full-bleed card IS the page, so it takes the page's ground and
+       the dock is the raised surface the handoff draws. On the 620x544 card
+       the relationship is the same one step up: the card keeps --granite,
+       the stage stays --pine, and the dock's hairline is what divides them. */
+    body:not(.panelpage):not(.compact) .card {
+      background-color: var(--pine);
+    }
+    /* The identity block was centred here; it is a row again. */
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row {
+      flex-direction: row; align-items: center; text-align: left;
+      gap: 12px; padding: 12px 0;
+    }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .meta {
+      flex: 1; text-align: left;
+    }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .dj {
+      font-size: 25px; line-height: 1.1; font-weight: 700; margin: 0;
+    }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .show {
+      text-align: left; font-size: 11px; letter-spacing: .14em; margin: 3px 0 0;
+    }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .tagline {
+      margin: 3px 0 0;
+    }
+    /* The meters keep one row here: the level band is the dock's own
+       instrument now, and the volume rides the call it belongs to. */
+    body:not(.compact) .meters { flex-wrap: nowrap; }
+    body:not(.compact) .meters .vol { flex: 0 1 auto; order: 0; max-width: 33%; }
+    body:not(.compact) .meters .meter { flex: 1 1 0; min-width: 0; }
+    body:not(.compact) .bars { height: 20px; }
+    /* The ribbon is the screen's own foot at the handoff's height. */
+    body:not(.compact) .card.faces .facebar { height: calc(54px + env(safe-area-inset-bottom)); }
+    body:not(.compact) .card.faces .player,
+    body:not(.compact) .card.faces .guide { bottom: calc(54px + env(safe-area-inset-bottom)); }
+    body .card.faces,
+    body:not(.compact) .card.faces,
+    body:not(.panelpage):not(.compact) .card.faces {
+      padding-bottom: calc(54px + env(safe-area-inset-bottom));
+    }
+  }
+  /* Installed, the card is the window rather than a fixed box, so it has the
+     phone's room even on a tablet — and the phone block above only reaches
+     it under 500px. */
+  @media (display-mode: standalone) and (min-width: 501px),
+         (display-mode: minimal-ui) and (min-width: 501px) {
+    body:not(.compact) {
+      --ident-h: 148px; --station-h: 72px;
+      --portrait: 100px; --thumb: 44px;
+      --sleeve: 156px; --well-h: 124px;
+      --seg-h: 38px; --control-h: 44px;
+      --dock-gap: 14px; --dock-pad: 14px;
+      --hero-title: 25px; --gd-hero-h: 220px;
+    }
+  }
+  /* The embed answers with the smallest set that still reads as the same
+     design: the bands and the rules are there, the room they are drawn at
+     is not. 348x320 has 320px for everything. */
+  body.compact {
+    --ident-h: 74px; --station-h: auto; --portrait: 44px;
+    --seg-h: 28px; --pill-h: 22px;
+    --dock-gap: 8px; --dock-pad: 8px;
+    --card-pad-l: 14px; --card-pad-r: 14px;
+  }
+  body.compact .card:not([data-mode="chat"]) .who-row {
+    height: var(--ident-h); border-bottom: 1px solid var(--edge);
   }
 
   /* The panel's hover-highlight, worn by the CARD (preview frames only):
