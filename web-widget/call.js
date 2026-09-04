@@ -1072,6 +1072,31 @@
     });
   }
 
+  // Point an <img> at a source and let LOADING decide whether it shows.
+  //
+  // The card polls every twenty seconds and repaints from the same payload,
+  // so anything that says `img.hidden = false` on the way past will keep
+  // un-hiding a picture that has already failed — which is what put the
+  // browser's own broken-image glyph in the station row and on the player's
+  // sleeve on a station whose art the browser cannot fetch (operator's
+  // phone, 2026-09-04). The load state is the only honest answer, and it
+  // survives a repaint: complete + naturalWidth is what a failed image looks
+  // like afterwards, and onerror is what it looks like at the time.
+  function showWhenLoaded(img, src, onFail) {
+    if (!img) return;
+    if (!src) { img.hidden = true; return; }
+    if (img.getAttribute('src') !== src) {
+      img.hidden = true;
+      img.onload = () => { img.hidden = false; };
+      img.onerror = () => { img.hidden = true; if (onFail) onFail(); };
+      img.src = src;
+      return;
+    }
+    // Same source as last time: say nothing new, just do not contradict what
+    // the browser already found out.
+    if (img.complete) img.hidden = !img.naturalWidth;
+  }
+
   // The artist, a step quieter than the title. textContent first, then the
   // split — so a title carrying the separator inside it can never inject
   // markup, and a line with no separator is simply left alone.
@@ -1167,6 +1192,10 @@
   function paintStationVu(pct) {
     const vu = $('npVu');
     if (!vu) return;
+    // A station that does not report where the record is leaves this with
+    // nothing to report either, and fourteen identical stubs read as a
+    // broken element rather than a quiet one.
+    vu.hidden = !(pct > 0);
     const bars = vu.children;
     for (let i = 0; i < bars.length; i++) {
       // A standing wave, walked along by the elapsed fraction — the same
@@ -2074,8 +2103,12 @@
       // another: solid coral when the call broadcasts, the cool outline for
       // the private line (the CSS keys off .route-on/.route-off). Without
       // the switch, the operator's own label stands as ever.
-      setBtn(callBtn, 'call',
-             onAirHere && !(onAirPick && callsLive) ? 'chat' : 'phone',
+      // A HANDSET EITHER WAY. The private route used to swap in the speech
+      // bubble, which put a chat glyph on a button that says CALL THE BOOTH
+      // — and the text line has its own door on the same row wearing that
+      // very icon. Colour is what tells the two routes apart, and it always
+      // was; the glyph was saying something the label contradicts.
+      setBtn(callBtn, 'call', 'phone',
              onAirPick && callsLive ? word('call_live', 'Call in live')
                : onAirHere ? word('call_offair', 'Call the booth')
                : callLabel());
@@ -2333,26 +2366,12 @@
       // The record's art, at thumb size, with the sleeve's own bloom. The
       // same /cover proxy the player sheet reads, so a station the browser
       // cannot reach directly still paints.
-      const thumb = $('npArt'), thumbGlow = $('npArtGlow');
-      if (thumb) {
-        const cover = (d.nowPlaying && d.nowPlaying.art) || '';
-        if (cover && trackTxt) {
-          if (thumb.getAttribute('src') !== cover) thumb.src = cover;
-          if (thumbGlow && thumbGlow.getAttribute('src') !== cover) {
-            thumbGlow.src = cover;
-          }
-          thumb.hidden = false;
-          if (thumbGlow) thumbGlow.hidden = false;
-          // The halo goes with the picture it is a copy of.
-          thumb.onerror = () => {
-            thumb.hidden = true;
-            if (thumbGlow) thumbGlow.hidden = true;
-          };
-        } else {
-          thumb.hidden = true;
-          if (thumbGlow) thumbGlow.hidden = true;
-        }
-      }
+      const cover = (trackTxt && d.nowPlaying && d.nowPlaying.art) || '';
+      // The halo is a blurred copy of the same picture, so it lives and dies
+      // with it. Behind the square either way: the striped fill is what a
+      // record with no art the browser can reach is supposed to look like.
+      showWhenLoaded($('npArt'), cover);
+      showWhenLoaded($('npArtGlow'), cover);
       // The rail's clock and progress hairline. /live sends WHEN the record
       // started and how long it runs; the elapsed figure is counted here
       // rather than sent, because /live is cached across every caller for a
@@ -5731,30 +5750,43 @@
       }
     };
     if (img && mono) {
-      // The record's own art, else the DJ's photo, else initials — each
-      // step taken only when the one before actually failed to load. The
-      // glow is a blurred copy of the SAME image, so it recolors per record.
-      const art = np.art || d.avatar || '';
-      if (art) {
-        // Only on change — re-setting src on every poll re-fetches it.
-        if (img.getAttribute('src') !== art) { img.src = art; }
-        setBlurs(art);
-        img.hidden = false; mono.hidden = true;
-        img.onerror = () => {
-          if (np.art && img.getAttribute('src') === np.art && d.avatar) {
-            img.src = d.avatar;
-            setBlurs(d.avatar);
-            return;
-          }
-          img.hidden = true;
-          setBlurs('');
-          mono.textContent = monogram(np.artist || d.name);
-          mono.hidden = false;
-        };
-      } else {
+      // The record's own art, else the DJ's photo, else initials — each step
+      // taken only when the one before actually failed to load. The glow is a
+      // blurred copy of the SAME image, so it recolors per record.
+      //
+      // THE POLL MUST NOT UN-DO THE FALLBACK. This said `img.hidden = false`
+      // on every repaint, twenty seconds apart, so a station whose art the
+      // browser cannot fetch got the initials for an instant and the
+      // browser's own broken-image glyph for ever after (operator's phone,
+      // 2026-09-04). `dataset.want` is what the chain is being run FOR, so a
+      // repaint of the same record leaves the result of that chain alone.
+      const want = np.art || d.avatar || '';
+      const showMono = () => {
         img.hidden = true;
         setBlurs('');
-        mono.textContent = monogram(d.name); mono.hidden = false;
+        mono.textContent = monogram(np.artist || d.name);
+        mono.hidden = false;
+      };
+      if (!want) {
+        showMono();
+      } else if (img.dataset.want !== want) {
+        img.dataset.want = want;
+        img.hidden = true; mono.hidden = true; setBlurs('');
+        img.onload = () => {
+          img.hidden = false; mono.hidden = true;
+          setBlurs(img.getAttribute('src'));
+        };
+        img.onerror = () => {
+          // One step down the chain, then the initials.
+          if (np.art && img.getAttribute('src') === np.art && d.avatar) {
+            img.src = d.avatar;
+            return;
+          }
+          showMono();
+        };
+        img.src = want;
+      } else if (img.complete && !img.naturalWidth) {
+        showMono();
       }
     }
     $('plTrack').textContent = np.title || d.track
@@ -5769,7 +5801,9 @@
     const row = $('plTags');
     if (row) {
       row.innerHTML = '';
-      tags.slice(0, 8).forEach((t) => {
+      // SIX. Eight ran the strip to a third row, which is the row the art
+      // block does not have — the title grew out of the top of it instead.
+      tags.slice(0, 6).forEach((t) => {
         const el = document.createElement('span');
         el.className = 'pill';
         el.textContent = t;
@@ -5848,7 +5882,12 @@
       }
       // Nothing stands in when the booth has said nothing: the panel is
       // the DJ, the show, and their words — the tagline was a fourth line
-      // nobody asked for (operator, 2026-09-01).
+      // nobody asked for (operator, 2026-09-01). And with no words there is
+      // no panel: the well is 132px tall by design, which is right when it
+      // carries a line and is an empty box with a caption when it does not
+      // (operator's phone, 2026-09-04). The queue below takes the room.
+      const well = boothBody.closest('.plpanel');
+      if (well) well.hidden = !boothBody.children.length;
     }
     refreshHeart(np.title || '');
     paintPlayerButtons();

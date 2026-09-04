@@ -4308,6 +4308,10 @@
   .stationrow .stationvu i {
     display: block; width: 2px; background: var(--amber); height: var(--h, 40%);
   }
+  /* The fifth time this file has had to say it: an author `display` beats the
+     UA's [hidden], so a level with nothing to report stayed on screen as a
+     row of identical stubs. */
+  .stationrow .stationvu[hidden] { display: none; }
   /* THE EMBED KEEPS ITS ONE-LINE TRACK. 348x320 has no 62px band to spend,
      and this is the same line it always was — one step down the DOM, with
      the furniture that needs room switched off. */
@@ -4994,6 +4998,114 @@
   }
   body.compact .card:not([data-mode="chat"]) .who-row {
     height: var(--ident-h); border-bottom: 1px solid var(--edge);
+  }
+
+  /* -- what the operator's own station found -----------------------------
+     Everything above was drawn against a fixture with a running record, a
+     four-song queue, a booth line and an open segment. A real station on a
+     quiet night has none of those, and the empty states are where this
+     redesign came apart (operator's phone, 2026-09-04). These are the
+     corrections, and every one of them is an EMPTY or an OVERFLOW.
+     ------------------------------------------------------------------- */
+  /* AN AUTHOR display RULE BEATS THE UA'S [hidden] — the file has learned
+     this four times and I added a fifth. paintNowPlaying hides the progress
+     row on a record the station is not clocking; `.card .plprog` out-ranked
+     `.plprog[hidden]`, and the row stayed as a bare grey rule across the
+     sheet with no figures at either end. */
+  .card .plprog[hidden] { display: none; }
+  /* Same shape, one row up: an analysis strip with nothing in it held its
+     own margin. `:empty` had the same specificity as the rule that painted
+     it and lost on order. */
+  .card .pltags:empty { display: none; }
+  /* EVERY BAND THIS SECTION PAINTS THAT THE SCRIPT CAN ALSO HIDE. The rule
+     is the same one the file has now learned five times — an author
+     `display` out-ranks the UA's `[hidden] { display: none }` — and each of
+     these was a band standing empty on a station that had nothing to put in
+     it: a booth well reduced to a caption over 130px of air, and a list head
+     over a listing that was not there. */
+  .plscroll > .plpanel[hidden] { display: none; }
+  /* …and the queue's own three bodies, of which two are always hidden.
+     The empty-state rule above gave every EMPTY body a display, which
+     is all three of them on a station with nothing queued and no
+     history — so the list showed its one sentence in a third of the
+     region and left the other two thirds blank. Sixth instance of the
+     same trap, and the first one caused by fixing the fifth. */
+  .plqgroup .plpanelbody[hidden] { display: none; }
+  /* AN EMPTY LIST IS AN EMPTY STATE, not a list with one line at the top of
+     it. The queue is the sheet's flexing region, so on a quiet station its
+     one sentence sat under the tabs with five hundred pixels of nothing
+     beneath — which reads as a list that failed to load rather than as a
+     station with nothing queued. Centred, it reads as the answer it is. */
+  .plscroll .plqgroup .plpanel.plqueue .plpanelbody:not([hidden]):not(:has(.plrow)) {
+    display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 0 16px;
+  }
+  /* THE QUEUE IS THE REGION THAT FLEXES on this face, and two rules from the
+     stacked-panel layout said otherwise with more specificity than the ones
+     above: the panel could only shrink (`flex: 0 1 auto`) and its body was a
+     fixed 86px window — four rows, which was right when the sheet itself
+     scrolled and everything below it was more panels. Now the sheet does not
+     scroll and there is nothing below but the dock, so the list takes what
+     the hero and the well leave and scrolls inside it. Written at the same
+     specificity as what it replaces rather than with !important. */
+  .plscroll .plqgroup .plpanel.plqueue { flex: 1 1 auto; }
+  .plscroll .plqgroup .plpanel.plqueue .plpanelbody {
+    height: auto; flex: 1; min-height: 0;
+  }
+  .gdscroll > .gdtodayhead[hidden] { display: none; }
+  /* THE WELL RAN OFF THE RIGHT EDGE. `.plpanel` carries `width: 100%` from
+     the centred stack it used to live in; in a stretch column that is the
+     container's width AND its own margins, so it overflowed by exactly the
+     16px it was inset by. Auto lets the stretch do the sizing. */
+  .plscroll > .plpanel { width: auto; }
+  /* THE TITLE ESCAPED UPWARD. The art block is a fixed height so the three
+     heroes agree, and the meta column is bottom-aligned inside it — so a
+     column taller than the block does not clip, it grows out of the TOP,
+     under the header. Measured at 189px in a 172px box with a two-line
+     title, a three-line album line and three rows of chips. The chips and
+     the album line give way first (they are the two that can), and the
+     column clips itself as a backstop. */
+  .plmeta { overflow: hidden; max-height: 100%; }
+  .card .plalbum {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .card .pltags { max-height: 48px; overflow: hidden; }
+  /* THE MARQUEE ATE ITS OWN FIRST LETTER. The riding mask fades BOTH edges,
+     and the ride rests at zero for the first sixth of its cycle — so a
+     still title showed "iss and Make Up" and read as a clipped element
+     rather than as a long one. The trailing edge is the only one that has
+     to fade: the leading edge is the box's own left border. */
+  .track.marq {
+    -webkit-mask-image: linear-gradient(90deg, #000 0 88%, transparent);
+    mask-image: linear-gradient(90deg, #000 0 88%, transparent);
+  }
+  /* -- the phone's identity row, on a real phone -------------------------
+     Two rules older than the redesign out-ranked it, and both showed up as
+     "the wrong size in the wrong place". */
+  @media (max-width: 700px) {
+    /* The show line was allowed to wrap to two lines when the header was a
+       centred block that owned its own height. In a 160px row beside a
+       portrait it takes the tagline's line and the row's bottom rule with
+       it. One line, ellipsised, the way the base rule always said. */
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .show {
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      display: block; -webkit-line-clamp: none;
+    }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .dj {
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      display: block; -webkit-line-clamp: none;
+    }
+    /* …and the portrait was pinned at 124px by the centred layout's own
+       rule, which out-specifies the token every other surface sizes from —
+       so --portrait moved the glow and nothing else, and the picture sat
+       16px larger than the row was built for. */
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .avatar {
+      width: var(--portrait); height: var(--portrait);
+    }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .avatar-mono {
+      font-size: calc(var(--portrait) * .32);
+    }
   }
 
   /* The panel's hover-highlight, worn by the CARD (preview frames only):
