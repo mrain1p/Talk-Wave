@@ -1136,14 +1136,6 @@
       cap.textContent = 'In the booth';
       meta.insertBefore(cap, meta.firstChild);
     }
-    // The portrait's bloom. On the ROW, not round the image: the avatar is
-    // swapped for initials when a portrait fails, and a glow bound to the
-    // img would go with it.
-    const glow = document.createElement('span');
-    glow.className = 'whoglow';
-    glow.setAttribute('aria-hidden', 'true');
-    who.insertBefore(glow, who.firstChild);
-
     const band = document.createElement('div');
     band.className = 'stationrow';
     band.hidden = true;
@@ -1152,18 +1144,12 @@
     const fill = document.createElement('span');
     fill.className = 'stationfill';
     fill.setAttribute('aria-hidden', 'true');
-    const halo = document.createElement('img');
-    halo.id = 'npArtGlow';
-    halo.className = 'stationglow';
-    halo.alt = '';
-    halo.hidden = true;
-    halo.setAttribute('aria-hidden', 'true');
     const img = document.createElement('img');
     img.id = 'npArt';
     img.alt = '';
     img.hidden = true;
     img.setAttribute('aria-hidden', 'true');
-    art.append(halo, fill, img);
+    art.append(fill, img);
     const col = document.createElement('span');
     col.className = 'stationmeta';
     const lab = document.createElement('span');
@@ -2366,12 +2352,10 @@
       // The record's art, at thumb size, with the sleeve's own bloom. The
       // same /cover proxy the player sheet reads, so a station the browser
       // cannot reach directly still paints.
-      const cover = (trackTxt && d.nowPlaying && d.nowPlaying.art) || '';
-      // The halo is a blurred copy of the same picture, so it lives and dies
-      // with it. Behind the square either way: the striped fill is what a
-      // record with no art the browser can reach is supposed to look like.
-      showWhenLoaded($('npArt'), cover);
-      showWhenLoaded($('npArtGlow'), cover);
+      // Behind the square either way: the striped fill is what a record with
+      // no art the browser can reach is supposed to look like.
+      showWhenLoaded($('npArt'),
+                     (trackTxt && d.nowPlaying && d.nowPlaying.art) || '');
       // The rail's clock and progress hairline. /live sends WHEN the record
       // started and how long it runs; the elapsed figure is counted here
       // rather than sent, because /live is cached across every caller for a
@@ -7180,10 +7164,16 @@
     }
     cast.forEach((p, i) => {
       const who = document.createElement('div'); who.className = 'gdperson';
-      const fig = document.createElement('span');
-      fig.className = 'gdfig';
-      fig.appendChild(guideFace(p));
-      who.appendChild(bindFaceZoom(fig, p));
+      // NOT THE HOST'S FACE TWICE. The hero already carries it at 62px in
+      // its own identity row, and the booth block underneath was showing the
+      // same picture again fifteen lines down (operator, 2026-09-04). Guests
+      // keep theirs — the hero has room for one face, and it is the host's.
+      if (!(cls === 'gdherobody' && i === 0)) {
+        const fig = document.createElement('span');
+        fig.className = 'gdfig';
+        fig.appendChild(guideFace(p));
+        who.appendChild(bindFaceZoom(fig, p));
+      }
       const m = document.createElement('div'); m.className = 'gdpmeta';
       const role = document.createElement('div'); role.className = 'gdrole';
       role.textContent = i === 0 ? 'Host' : 'Guest';

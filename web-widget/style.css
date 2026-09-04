@@ -1461,8 +1461,17 @@
   .card .facebar .face[hidden] { display: none; }
   /* On a phone the player is the whole screen, so the row is the screen's
      own foot: fixed, above the sheet, with the safe area paid once here
-     rather than by the dock beneath it. */
-  @media (max-width: 700px) {
+     rather than by the dock beneath it.
+
+     500, NOT 700 (2026-09-04). This is the full-bleed card's model — the
+     sheet is the screen, so the row is the screen's foot — and the card is
+     only full-bleed at 500 and under. Between 501 and 700 it is a 544px box
+     near the top of the window, and the row was still pinned to the bottom
+     of the viewport: four hundred pixels of nothing between the Call button
+     and the tabs, and the card reserving 46px for a row that was not in it.
+     Reported on the operator's own screen. The breakpoint now matches the
+     one that decides whether the card fills the screen at all. */
+  @media (max-width: 500px) {
     body:not(.compact) .card.faces .facebar {
       position: fixed; left: 0; right: 0; bottom: 0;
       height: calc(38px + env(safe-area-inset-bottom));
@@ -1494,7 +1503,7 @@
      space allotment") — fixed to the viewport, square corners, out from
      under the body's gutters. position:fixed escapes the card's clip, which
      is exactly the point. */
-  @media (max-width: 700px) {
+  @media (max-width: 500px) {
     body:not(.compact) .player { position: fixed; inset: 0;
                                  border-radius: 0; z-index: 90; }
     /* THE SHEET PAYS THE NOTCH. The card's eyebrow already takes
@@ -1507,12 +1516,15 @@
       height: calc(38px + max(0px, env(safe-area-inset-top)));
       padding-top: max(0px, env(safe-area-inset-top));
     }
-    /* SHORT PHONES. Below roughly 600px of height the panels were being
-       flex-shrunk past their content and painted INTO each other — the
-       queue collapsed to 20px and overlapped the booth by 14 (measured
-       at 360x560 and 320x568). The panels hold their size now and the
-       sheet's middle scrolls, which is the surface's own rule: only the
-       middle may. */
+  }
+  /* SHORT PHONES. Below roughly 600px of height the panels were being
+     flex-shrunk past their content and painted INTO each other — the queue
+     collapsed to 20px and overlapped the booth by 14 (measured at 360x560
+     and 320x568). The panels hold their size now and the sheet's middle
+     scrolls, which is the surface's own rule: only the middle may.
+     Its own block: this is a HEIGHT problem and it followed the sheet's
+     breakpoint down to 500 by accident when that one moved. */
+  @media (max-width: 700px) {
     body:not(.compact) .plscroll { overflow-y: auto; scrollbar-width: thin; }
     body:not(.compact) .plscroll > .plpanel,
     body:not(.compact) .plscroll > .plqgroup { flex: none; }
@@ -4170,32 +4182,17 @@
     --pick-priv: color-mix(in srgb, var(--cool) 13%, var(--pine));
   }
 
-  /* -- the ambient wash --------------------------------------------------
-     A page wash under the whole face, and a bloom behind every portrait and
-     sleeve. CONTENT SITS ON THE WASH, CONTROLS DO NOT: buttons, the route
-     switch and the tab cells carry an opaque ground; prose and pictures do
-     not. It starts below the header, so the one band that must stay flat —
-     the seam a host page meets — is painted flat.
+  /* -- no ambient wash -------------------------------------------------
+     The handoff put a blurred page wash under every face and a bloom behind
+     every portrait. It went in and the operator's answer was that the glass
+     look does not belong on this card — the themes are the themes, and a
+     skin is where form is decided. Removed rather than tuned: light, dark
+     and every skin are what they were before it, and the bands, rules and
+     grounds are what carry the redesign.
 
-     The bands opt IN with `position: relative`. A positioned wash at
-     z-index 0 paints in the same step as positioned siblings, so without
-     that it would cover the text of the un-positioned ones. */
-  .card::before {
-    content: ""; position: absolute; z-index: 0; pointer-events: none;
-    left: -6%; top: var(--head-h); width: 112%; height: 42%;
-    background: radial-gradient(58% 58% at 50% 42%,
-                                var(--coral) 0%, transparent 72%);
-    filter: blur(70px) saturate(1.2); opacity: .2;
-  }
-  /* An embed is a small card in somebody else's column, and a 70px blur
-     across 320px of it is fog rather than atmosphere. */
-  body.compact .card::before { display: none; }
-  .card > .eyebrow, .card > .who-row, .card > .stationrow, .card > .rig {
-    position: relative; z-index: 1;
-  }
-  /* The header is the one band the wash may not reach. */
-  .card > .eyebrow { background: var(--pine); }
-
+     The player's own artwork wash (.plambient / .plglow) is NOT this — it
+     predates the redesign, it is the record's own colours rather than a
+     tint, and it stays. */
   /* -- 1a. the identity row ----------------------------------------------
      LEFT-ALIGNED, which is the whole change. The phone block centred the
      portrait over the name, and that cost the row its full height for three
@@ -4211,21 +4208,6 @@
     width: var(--portrait); height: var(--portrait);
   }
   .who-row .avatar-mono { font-size: calc(var(--portrait) * .32); }
-  /* The picture's own bloom, drawn by the row rather than by a wrapper
-     round the image: the avatar is swapped for initials when a portrait
-     fails, and a glow bound to the img would go with it. */
-  .who-row .whoglow {
-    position: absolute; left: -10px; top: 50%; z-index: 0;
-    width: calc(var(--portrait) + 20px); height: calc(var(--portrait) + 20px);
-    transform: translateY(-50%); pointer-events: none; border-radius: 50%;
-    background: radial-gradient(50% 50% at 50% 50%,
-                                var(--coral) 0%, transparent 72%);
-    filter: blur(28px) saturate(1.2); opacity: .32;
-  }
-  .who-row .avatar, .who-row .avatar-mono, .who-row .meta {
-    position: relative; z-index: 1;
-  }
-  body.compact .who-row .whoglow { display: none; }
   /* IN THE BOOTH — the eyebrow over the name, so the row says whose picture
      that is before the name has been read. */
   .who-row .whocap {
@@ -4258,17 +4240,6 @@
     background: var(--granite-hi); display: block;
   }
   .stationrow .stationart img[hidden] { display: none; }
-  /* The thumb's bloom — a blurred copy of the SAME artwork behind it, the
-     way the player's sleeve does it. It is the only way to get the record's
-     own colour behind the record: CSS cannot sample an image, and a fixed
-     tint behind changing artwork is the thing the wash rule exists to
-     avoid. Behind the square, outside its box, and inert. */
-  .stationrow .stationart .stationglow {
-    position: absolute; inset: -10px; z-index: 0; width: auto; height: auto;
-    object-fit: cover; pointer-events: none; border: 0; background: none;
-    filter: blur(28px) saturate(1.2); opacity: .32;
-  }
-  .stationrow .stationart .stationglow[hidden] { display: none; }
   /* No art, no empty square: the fallback is the card's own grain, which is
      what the handoff's striped placeholder stands in for. */
   .stationrow .stationart .stationfill {
@@ -4378,11 +4349,16 @@
   .idleboard .stagerule {
     flex: none; height: 1px; background: var(--hairline); margin: 14px 0 12px;
   }
-  /* The middle. Centred in the remaining height, whatever is in it. */
+  /* The middle. An OPEN LINE sits under the rule that introduces it, where
+     it reads as the next thing said; centred, it floated in the middle of
+     two voids with the foot row stranded below (operator, 2026-09-04). The
+     one-line example is the other case — small, and centring is right for
+     it, because there is nothing above it to belong to. */
   .idleboard .stagemid {
     flex: 1; min-height: 0; display: flex; align-items: center;
     justify-content: center;
   }
+  .idleboard .stagemid:has(.openhead) { align-items: flex-start; }
   .idleboard .stagemid > * { width: 100%; }
   /* OPEN LINES — what the DJ has put up, in the caller's own words back at
      them. The pip blinks because the thing it reports is running out. */
@@ -4402,8 +4378,8 @@
     text-transform: var(--skin-label-case); color: var(--sage-dim);
   }
   .idleboard .opensubj {
-    display: block; font: 700 19px/1.3 var(--font-body);
-    color: var(--alpenglow); margin: 10px 0 0;
+    display: block; font: 700 17px/1.35 var(--font-body);
+    color: var(--alpenglow); margin: 8px 0 0;
   }
   /* The foot: the doors that are always there, under a rule, quiet. */
   .idleboard .stagefoot {
@@ -4619,6 +4595,12 @@
   .card .pltabs .pltab.on {
     background: var(--pick-live); box-shadow: inset 0 0 0 1px var(--coral);
     color: var(--coral);
+    /* The bookmark-tab shape left the SELECTED cell a pixel lower than its
+       neighbour and a pixel taller, which is what "Up next is misaligned,
+       and so is Just played when you click it" is (operator, 2026-09-04).
+       Three equal cells in a row cannot carry a tab's merge into the panel
+       below it, because there is no panel edge to merge into any more. */
+    margin-bottom: 0; padding-bottom: 0; border-radius: 0;
   }
   .card .pltabs .pltab .ppip { visibility: hidden; }
   .card .pltabs .pltab.on .ppip { visibility: visible; background: currentColor; }
@@ -4860,20 +4842,6 @@
     padding-top: 11px; border-top: 1px solid var(--hairline);
   }
 
-  /* The guide is an overlay with its own opaque ground, so the card's wash
-     stops at its edge — it gets one of its own, on the same terms: below the
-     header, behind everything, and never under a control. */
-  .guide::before {
-    content: ""; position: absolute; z-index: 0; pointer-events: none;
-    left: -6%; top: var(--head-h); width: 112%; height: 42%;
-    background: radial-gradient(58% 58% at 50% 42%,
-                                var(--coral) 0%, transparent 72%);
-    filter: blur(70px) saturate(1.2); opacity: .2;
-  }
-  .guide > .plhead, .guide > .gdscroll, .guide > .gdtop {
-    position: relative; z-index: 1;
-  }
-  .guide > .plhead { background: var(--pine); }
   /* The hero's paragraphs need air between them and the booth's own caption
      needs some above it — they were a stack of <p>s with one margin between
      every pair, which read as one long column of text. */
