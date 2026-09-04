@@ -5669,6 +5669,36 @@
     return row;
   }
 
+  // THE SONG'S NAME, SIZED TO THE ROOM IT HAS. It was a flat 25px with a
+  // two-line clamp, so a long name wrapped and a short one did not, and the
+  // size said nothing about either. The largest step that keeps it to ONE
+  // line wins; when none does, the stylesheet's own size stands and the
+  // clamp holds it to two — which is the right answer for a name that is
+  // genuinely long, not a reason to shrink it to a caption.
+  //
+  // Steps, not a continuous fit: this card has a type scale and a title is
+  // not exempt from it. Measured through the element itself the way
+  // fitLabel does, in a rAF because a hidden sheet has no width to measure.
+  const TITLE_STEPS = [25, 22, 19];
+  function fitTitle(el, txt) {
+    if (!el || el.dataset.fit === txt) return;
+    el.dataset.fit = txt;
+    el.textContent = txt;
+    el.style.fontSize = '';
+    requestAnimationFrame(() => {
+      if (el.dataset.fit !== txt || !el.clientWidth) return;
+      const was = el.style.whiteSpace;
+      el.style.whiteSpace = 'nowrap';
+      let pick = 0;
+      for (const px of TITLE_STEPS) {
+        el.style.fontSize = px + 'px';
+        if (el.scrollWidth <= el.clientWidth) { pick = px; break; }
+      }
+      el.style.whiteSpace = was;
+      el.style.fontSize = pick ? pick + 'px' : '';
+    });
+  }
+
   // The player's hero: the sleeve BESIDE the title rather than over it
   // (design handoff, 2026-09-03). Centred, the title had the sheet's whole
   // width and used four lines of it, and the sleeve pushed the booth's own
@@ -5755,8 +5785,8 @@
         showMono();
       }
     }
-    $('plTrack').textContent = np.title || d.track
-      || (d.onAir ? 'Live broadcast' : 'Nobody in the booth');
+    fitTitle($('plTrack'), np.title || d.track
+      || (d.onAir ? 'Live broadcast' : 'Nobody in the booth'));
     // The analysis strip the station's own player renders — genre · BPM ·
     // key · mood — as chips. Capped where a full mood list would wrap the
     // strip into a paragraph.
