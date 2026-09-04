@@ -6759,6 +6759,7 @@
       const el = $(id);
       if (el) el.classList.toggle('gdaway', week);
     });
+    paintListHead();
     const grid = $('guideGrid'), spans = $('guideSpans');
     if (grid) grid.hidden = !week;
     if (spans) spans.hidden = !week;
@@ -6767,6 +6768,18 @@
     const sc = $('guideScroll');
     if (sc) sc.scrollTop = 0;
     paintGuideTop();
+  }
+  // The head over the listing names the view under it. "Up today · Friday,
+  // Sep 4" sat over a seven-day grid, which is two of the three words wrong
+  // (operator, 2026-09-04) — and the date belongs to the day, so it goes
+  // with it. Called from both the view switch and the paint, because the
+  // poll repaints the date from underneath.
+  function paintListHead() {
+    const week = guideView === 'week';
+    const cap = document.querySelector('.gdtodaycap');
+    if (cap) cap.textContent = week ? 'This week' : 'Up today';
+    const meta = $('guideTodayMeta');
+    if (meta) meta.hidden = week;
   }
   (function bindGuideViews() {
     const d = $('guideViewDay'), w = $('guideViewWeek');
@@ -6990,6 +7003,7 @@
       cap.textContent = 'Up today';
       head.insertBefore(cap, head.firstChild);
     }
+    paintListHead();
     // A SECTION HEADER over the listing (operator, 2026-09-04): the hero and
     // the column under it are two different things and ran together. Built
     // once, ahead of the head it introduces.

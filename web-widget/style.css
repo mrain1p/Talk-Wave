@@ -4411,7 +4411,7 @@
   .card.routed[data-mode="idle"] .linebox:has(.idleboard .stage) {
     display: flex; flex-direction: column;
   }
-  .card.routed[data-mode="idle"] .linebox > .idleboard:has(.stage) {
+  .card.routed[data-mode="idle"] .linebox > .idleboard:not([hidden]):has(.stage) {
     flex: 1; min-height: 0; display: block; margin: 0; padding: 0;
   }
   /* An embed has no room for a segment's subject over a 12px sentence in a
@@ -4481,6 +4481,26 @@
     background: var(--pine); border-color: var(--hairline);
   }
   .meters .duplex .bars { height: 20px; }
+  /* THE FADER GETS THE SAME BOX. Mid-call the volume was a bare label, a
+     40px rail and a percentage floating on the dock's ground beside a
+     bordered instrument — two controls on one band drawn to two different
+     rules (operator, 2026-09-04). Same height, same ground, same hairline,
+     contents centred: the band reads as two boxes doing two jobs.
+     Only while the rig is on — idle the volume still collapses to nothing,
+     which is what keeps the instrument's left edge on the card's own. */
+  .rig.on .meters .vol {
+    flex: 0 1 42%; min-width: 0; max-width: none;
+    height: var(--control-h); padding: 0 10px;
+    background: var(--pine); border: 1px solid var(--hairline);
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .rig.on .meters .vol label {
+    flex: none; font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim); margin: 0;
+  }
+  /* The knob's position is the reading; the figure beside it was a third
+     thing in a box that had room for two. */
+  .rig.on .meters .vol .pct { display: none; }
 
   /* -- 1a. the action row ------------------------------------------------
      One filled door and two icon-only ones beside it, in a 4:1:1 split —
@@ -5118,6 +5138,13 @@
      region and left the other two thirds blank. Sixth instance of the
      same trap, and the first one caused by fixing the fifth. */
   .plqgroup .plpanelbody[hidden] { display: none; }
+  /* …and the STAGE, which paintBoard hides the moment a call ends. The
+     post-call strip is an overlay inside the same box, so with the stage
+     still displayed the two were drawn straight through each other — "CALL
+     ENDED · 2:14" across the foot row's own words. Seventh instance, and
+     found by OPENING the state rather than measuring it: every probe said
+     `idleBoard.hidden === true` and it was on screen (2026-09-04). */
+  .idleboard[hidden] { display: none; }
   /* AN EMPTY LIST IS AN EMPTY STATE, not a list with one line at the top of
      it. The queue is the sheet's flexing region, so on a quiet station its
      one sentence sat under the tabs with five hundred pixels of nothing
