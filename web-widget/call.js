@@ -1015,10 +1015,17 @@
         const s = await fetch('/player/like', { headers: keyHeaders() });
         if (s.ok) song = (await s.json()).songId || null;
       } catch (e) { /* fall through to the current-track like */ }
+      // The TITLE travels with it: the day-log writes the heart as a
+      // receipt in the player's Requests tab, and without this the card's
+      // presses landed there as a blank line while the sheet's carried the
+      // record's name. Station data, never caller words.
       const r = await fetch('/player/like', {
         method: 'POST',
         headers: keyHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(song ? { songId: song } : {}),
+        body: JSON.stringify(Object.assign(
+          song ? { songId: song } : {},
+          { title: (heldNowPlaying(shown || live || {}).title
+                    || cardHeartFor.split('—')[0].trim() || '') })),
       });
       if (!r.ok) throw new Error('refused');
     } catch (e) {
@@ -5785,17 +5792,35 @@
     const row = $('plTags');
     if (row) {
       row.innerHTML = '';
-      // SIX. Eight ran the strip to a third row, which is the row the art
-      // block does not have — the title grew out of the top of it instead.
-      tags.slice(0, 6).forEach((t) => {
+      // FOUR. Eight ran the strip to three rows and the block has two, so
+      // the third was clipped in half — which reads as truncation rather
+      // than as a limit (operator, 2026-09-04). Six still made three rows
+      // at a real phone's width; four is what two rows hold.
+      tags.slice(0, 4).forEach((t) => {
         const el = document.createElement('span');
         el.className = 'pill';
         el.textContent = t;
         row.appendChild(el);
       });
     }
-    $('plAlbum').textContent =
-      [np.artist, np.album, np.year].filter(Boolean).join(' · ');
+    // Two lines: who made it, then which record it is off. One joined
+    // string had to be clamped, and what it clipped was the album's own
+    // name — the half a listener is most likely not to know already.
+    const albumEl = $('plAlbum');
+    if (albumEl) {
+      albumEl.textContent = '';
+      if (np.artist) {
+        const a = document.createElement('span');
+        a.className = 'plartistname'; a.textContent = np.artist;
+        albumEl.appendChild(a);
+      }
+      const rel = [np.album, np.year].filter(Boolean).join(' · ');
+      if (rel) {
+        const r = document.createElement('span');
+        r.className = 'plrelease'; r.textContent = rel;
+        albumEl.appendChild(r);
+      }
+    }
 
     // UP NEXT: the station's own queue, ALL of it — the operator wants to
     // see what is coming, not the head of the line; the panel body scrolls
@@ -5866,12 +5891,14 @@
       }
       // Nothing stands in when the booth has said nothing: the panel is
       // the DJ, the show, and their words — the tagline was a fourth line
-      // nobody asked for (operator, 2026-09-01). And with no words there is
-      // no panel: the well is 132px tall by design, which is right when it
-      // carries a line and is an empty box with a caption when it does not
-      // (operator's phone, 2026-09-04). The queue below takes the room.
-      const well = boothBody.closest('.plpanel');
-      if (well) well.hidden = !boothBody.children.length;
+      // nobody asked for (operator, 2026-09-01).
+      //
+      // AND THE PANEL STAYS EITHER WAY. Hiding it while the booth was quiet
+      // meant the first line the DJ spoke pushed Up next, Just played and
+      // Requests down the sheet under whoever was reading them (operator,
+      // 2026-09-04). The reflow was the fault, not the empty box, so the
+      // height is reserved from the first paint — the same promise the card
+      // itself makes.
     }
     refreshHeart(np.title || '');
     paintPlayerButtons();

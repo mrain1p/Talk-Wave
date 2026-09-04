@@ -4164,7 +4164,7 @@
     --portrait: 84px;        /* the DJ's circle in the identity row */
     --thumb: 40px;           /* the record's square in the station row */
     --sleeve: 118px;         /* the player's own sleeve */
-    --well-h: 104px;         /* the player's booth well */
+    --well-h: 88px;          /* the player's booth well */
     --seg-h: 34px;           /* segmented cells: route switch, player tabs */
     --pill-h: 26px;          /* read more / remind me */
     --dock-gap: 12px;        /* between the dock's rows */
@@ -4466,11 +4466,16 @@
   /* -- the faces ribbon --------------------------------------------------
      Icon over label, the cells divided, the current one filled. `border: 0`
      on .face is load-bearing (the row is one band, not three buttons), so
-     the dividers are inset shadows rather than borders. */
+     the dividers are inset shadows rather than borders.
+     COMPACT: 5px of gap and a 17px mark made the tallest band on the card
+     out of three words nobody has to read twice (operator, 2026-09-04). The
+     icon is what the row is scanned by, so the label gives up the tracking
+     and the gap gives up half of itself. */
   .card .facebar .face {
-    flex-direction: column; gap: 5px;
-    font-size: 9.5px; letter-spacing: .16em;
+    flex-direction: column; gap: 3px;
+    font-size: 9.5px; letter-spacing: .12em;
   }
+  .card .facebar .face .facesvg { width: 15px; height: 15px; }
   .card .facebar .face + .face { box-shadow: inset 1px 0 0 var(--edge); }
   .card .facebar .face.on {
     background: color-mix(in srgb, var(--coral) 9%, transparent);
@@ -4516,9 +4521,24 @@
     display: -webkit-box; -webkit-box-orient: vertical;
     -webkit-line-clamp: 2; overflow: hidden;
   }
+  /* THE ARTIST AND THE RECORD ARE TWO LINES, not one long one clamped in
+     the middle of the album's name — "William DeVaughn · Be Thankful for
+     What Yo…" was the whole of the second line and there was nothing
+     forcing it (operator, 2026-09-04). Two short lines say more and take
+     the same room. */
   .card .plalbum {
-    font: 13px/1.4 var(--font-body); color: var(--sage); margin: 6px 0 0;
+    font: 13px/1.35 var(--font-body); color: var(--sage); margin: 6px 0 0;
     text-align: left; text-transform: none; letter-spacing: 0;
+    display: block; overflow: hidden;
+  }
+  .card .plalbum .plrelease {
+    display: block; font-size: 11px; line-height: 1.35; color: var(--sage-dim);
+    margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card .plalbum .plartistname {
+    display: block; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis;
   }
   .card .pltags {
     display: flex; flex-wrap: wrap; gap: 4px; margin: 9px 0 0;
@@ -4539,10 +4559,18 @@
   /* THE BOOTH WELL — deliberately the phone face's conversation box: both
      surfaces carry speech, and a caller who has seen one should recognise
      the other. */
+  /* THE WELL HOLDS ITS PLACE. It hid itself when the booth had said
+     nothing, and then the first line the DJ spoke pushed Up next, Just
+     played and Requests down the sheet under whoever was reading them
+     (operator, 2026-09-04). Its height is reserved from the first paint
+     instead — the reflow was the fault, not the box.
+     A RAISED card rather than an inset well, which is the operator's own
+     read: --granite over the sheet's --pine is the card's word for
+     "floating", and it needs no shadow to say it. */
   .plscroll > .plpanel:not(.plqueue) {
     order: 1; flex: none; min-height: var(--well-h);
-    margin: 14px 16px 0; padding: 14px;
-    background: var(--pine); border: 1px solid var(--hairline);
+    margin: 14px 16px 0; padding: 12px 14px;
+    background: var(--granite); border: 1px solid var(--edge);
     border-radius: 0; display: flex; flex-direction: column;
   }
   .plscroll > .plpanel:not(.plqueue) .plpanelhead {
@@ -4569,7 +4597,7 @@
   .plscroll > .plpanel:not(.plqueue) .plpanelbody .plquote {
     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
     overflow: hidden; max-width: 34ch; text-align: center;
-    font: 13px/1.5 var(--font-body); color: var(--alpenglow);
+    font: 12px/1.45 var(--font-body); color: var(--alpenglow);
   }
   /* The queue group: tabs, then the list. The tabs are the route switch's
      control again — three equal cells, shared borders, square. */
@@ -4626,11 +4654,21 @@
     padding: 14px 16px 12px; gap: var(--dock-gap);
     display: flex; flex-direction: column;
   }
+  /* THE FADER IS A CONTROL, NOT A GARNISH. Four squares at the full
+     --control-h, a 10px gap apiece and the level beside them left the
+     volume about sixty pixels of a 358px row — "i cant use the volume
+     toggle its too small" (operator, 2026-09-04). The squares are icon
+     targets and 36px is still a comfortable one; the row loses 8px of
+     height with them, which is the other half of that note. */
+  .card .pldock .plctl { gap: 6px; }
   .card .pldock .plheart {
-    width: var(--control-h); height: var(--control-h); flex: none;
+    width: 36px; height: 36px; flex: none;
     border: 1px solid var(--edge); color: var(--sage);
     display: inline-flex; align-items: center; justify-content: center;
   }
+  .card .pldock #plVol { flex: 1 1 auto; min-width: 96px; }
+  /* The level reports, it does not need the room to do it in. */
+  .card .pldock .plvu { flex: none; width: 42px; overflow: hidden; }
   .card .pldock .plheart.liked, .card .pldock .plheart.on { color: var(--coral); }
   .card .pldock .plreq input { height: var(--control-h); }
   .card .pldock .plreq #plReqSend { height: var(--control-h); flex: none; }
@@ -4873,8 +4911,15 @@
     display: block; font-size: 13px; font-weight: 600; color: var(--alpenglow);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  /* max-width: none, and it is the whole of "many words are truncated for
+     no reason" (operator, 2026-09-04). The one-line layout capped the
+     artist at 46% of the row so a long title could not squeeze it out —
+     right when the two sat side by side, and nonsense once the artist has
+     a line of its own: every second line was cut at 46% of a 358px row
+     with two thirds of it empty. */
   .plqgroup .plrow .plsub {
-    display: block; margin: 2px 0 0; font-size: 11px; color: var(--sage);
+    display: block; margin: 2px 0 0; max-width: none;
+    font-size: 11px; color: var(--sage);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   /* The tone is a SPINE on a listing row, not a dot: it runs the height of
@@ -4894,7 +4939,7 @@
     body:not(.panelpage):not(.compact) {
       --ident-h: 160px; --station-h: 76px;
       --portrait: 108px; --thumb: 46px;
-      --sleeve: 168px; --well-h: 132px;
+      --sleeve: 168px; --well-h: 104px;
       --seg-h: 38px; --control-h: 44px; --chip-h: 28px;
       --dock-gap: 14px; --dock-pad: 14px;
       --hero-title: 25px; --gd-hero-h: 236px;
@@ -4932,13 +4977,16 @@
     body:not(.compact) .meters .meter { flex: 1 1 0; min-width: 0; }
     body:not(.compact) .bars { height: 20px; }
     /* The ribbon is the screen's own foot at the handoff's height. */
-    body:not(.compact) .card.faces .facebar { height: calc(54px + env(safe-area-inset-bottom)); }
+    /* 46, was the handoff's 54 (operator, 2026-09-04): with the mark and
+       the word tightened it needs less, and every pixel it gives back is
+       one the stage and the queue were short of. */
+    body:not(.compact) .card.faces .facebar { height: calc(46px + env(safe-area-inset-bottom)); }
     body:not(.compact) .card.faces .player,
-    body:not(.compact) .card.faces .guide { bottom: calc(54px + env(safe-area-inset-bottom)); }
+    body:not(.compact) .card.faces .guide { bottom: calc(46px + env(safe-area-inset-bottom)); }
     body .card.faces,
     body:not(.compact) .card.faces,
     body:not(.panelpage):not(.compact) .card.faces {
-      padding-bottom: calc(54px + env(safe-area-inset-bottom));
+      padding-bottom: calc(46px + env(safe-area-inset-bottom));
     }
   }
   /* Installed, the card is the window rather than a fixed box, so it has the
@@ -4949,7 +4997,7 @@
     body:not(.compact) {
       --ident-h: 148px; --station-h: 72px;
       --portrait: 100px; --thumb: 44px;
-      --sleeve: 156px; --well-h: 124px;
+      --sleeve: 156px; --well-h: 100px;
       --seg-h: 38px; --control-h: 44px;
       --dock-gap: 14px; --dock-pad: 14px;
       --hero-title: 25px; --gd-hero-h: 220px;
@@ -5038,7 +5086,7 @@
     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
     overflow: hidden;
   }
-  .card .pltags { max-height: 48px; overflow: hidden; }
+  .card .pltags { overflow: hidden; }
   /* THE MARQUEE ATE ITS OWN FIRST LETTER. The riding mask fades BOTH edges,
      and the ride rests at zero for the first sixth of its cycle — so a
      still title showed "iss and Make Up" and read as a clipped element
