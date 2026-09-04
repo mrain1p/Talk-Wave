@@ -819,6 +819,8 @@
     wrap.className = 'stage';
     // 1. WHAT THIS ROUTE COSTS. The label names the consequence, the
     // sentence spends it.
+    const top = document.createElement('div');
+    top.className = 'stagetop';
     const head = document.createElement('div');
     head.className = 'stagehead';
     head.textContent = onAirPick
@@ -838,9 +840,10 @@
           : word('route_vm_live', 'Your recording airs on the station'))
       : word('route_priv', "It's just you and {dj}")
           .replace('{dj}', (dj && dj !== '…') ? dj : 'the DJ');
+    top.append(head, say);
     const rule = document.createElement('div');
     rule.className = 'stagerule';
-    wrap.append(head, say, rule);
+    wrap.append(top, rule);
     // 2. THE MIDDLE, centred in whatever is left. An open line if the booth
     // has one up; otherwise the example, which is what the box has always
     // offered a caller with nothing to say.
@@ -856,8 +859,11 @@
       pip.setAttribute('aria-hidden', 'true');
       const lab = document.createElement('span');
       lab.className = 'openlab';
-      lab.textContent = 'Open lines · '
-        + (open.dj ? open.dj + ' is asking' : "she's asking");
+      // TWO WORDS. It carried the DJ's name as well, and on a name of any
+      // length that ellipsised into "DANNY BOY IS…" beside the clock — the
+      // card says who is in the booth three hundred pixels up, beside their
+      // photograph.
+      lab.textContent = 'Open lines';
       top.append(pip, lab);
       if (open.until) {
         const til = document.createElement('span');
@@ -1168,38 +1174,9 @@
     // The heart leaves the title's own row for the band, where it is the
     // square the handoff draws rather than a glyph hanging off a title.
     if (heart) band.appendChild(heart);
-    const vu = document.createElement('span');
-    vu.id = 'npVu';
-    vu.className = 'stationvu';
-    vu.setAttribute('aria-hidden', 'true');
-    for (let i = 0; i < 7; i++) vu.appendChild(document.createElement('i'));
-    band.appendChild(vu);
     who.insertAdjacentElement('afterend', band);
   }
   buildStationRow();
-
-  // The station's level. It reports the record's own progress rather than
-  // its audio: the card does not decode the stream, and seven bars moving
-  // to nothing would be the one piece of furniture on the card that lies.
-  // Off a running record the row sits flat.
-  function paintStationVu(pct) {
-    const vu = $('npVu');
-    if (!vu) return;
-    // A station that does not report where the record is leaves this with
-    // nothing to report either, and fourteen identical stubs read as a
-    // broken element rather than a quiet one.
-    vu.hidden = !(pct > 0);
-    const bars = vu.children;
-    for (let i = 0; i < bars.length; i++) {
-      // A standing wave, walked along by the elapsed fraction — the same
-      // shape every time the same record is at the same place, so it reads
-      // as an instrument rather than as noise.
-      const phase = (pct / 8) + (i * 0.9);
-      const h = pct <= 0 ? 22
-        : 30 + Math.round(Math.abs(Math.sin(phase)) * 68);
-      bars[i].style.setProperty('--h', h + '%');
-    }
-  }
 
   function paintNowPlaying() {
     const clock = $('npElapsed'), rail = $('npRail'), deck = $('playerView');
@@ -1209,7 +1186,6 @@
     const nbar = rail.querySelector('.npbar');
     if (!npStart) {
       clock.textContent = '';
-      paintStationVu(0);
       rail.style.setProperty('--np-progress', '0%');
       if (nbar) nbar.hidden = true;
       const total = $('npTotal');
@@ -1230,7 +1206,6 @@
     const pct = npLength
       ? Math.min(100, (shown / npLength) * 100).toFixed(1) + '%' : '0%';
     rail.style.setProperty('--np-progress', pct);
-    paintStationVu(npLength ? (shown / npLength) * 100 : 0);
     // The whole cluster — clock, bar, length — lives and dies together,
     // while the record actually runs. The clock used to stay behind after
     // the bar hid, clamped at the track's full length: a frozen "3:52"
@@ -6985,6 +6960,16 @@
       cap.textContent = 'Up today';
       head.insertBefore(cap, head.firstChild);
     }
+    // A SECTION HEADER over the listing (operator, 2026-09-04): the hero and
+    // the column under it are two different things and ran together. Built
+    // once, ahead of the head it introduces.
+    const sc = $('guideScroll');
+    if (sc && head && !sc.querySelector('.gdsection')) {
+      const sec = document.createElement('div');
+      sec.className = 'gdsection';
+      sec.textContent = 'Programming';
+      sc.insertBefore(sec, head);
+    }
     const angle = d.onAir && d.onAir.angle ? d.onAir : null;
     // WHAT IS ON is the station's answer, not the clock's. The grid says
     // what is SCHEDULED, and the two part company the moment the booth
@@ -7300,12 +7285,12 @@
   function heroFoot(fold, runs, id) {
     const foot = document.createElement('div');
     foot.className = 'gdherofoot';
-    foot.appendChild(fold);
     const week = document.createElement('span');
     week.className = 'gdheroweek';
     week.textContent = scheduleGroups(runs, id)
       .map((g) => g.label + ' ' + g.times).join(' · ');
     if (week.textContent) foot.appendChild(week);
+    foot.appendChild(fold);
     return foot;
   }
   function guideHero(show, cast, runs, now, angle, until, flag) {
@@ -7345,9 +7330,12 @@
     if (tail.textContent) top.appendChild(tail);
     const fold = document.createElement('button');
     fold.type = 'button'; fold.className = 'gdherofold';
+    // AN ARROW, not a word (operator, 2026-09-04). A worded pill on the
+    // hero's floor read as a control with an opinion; a chevron under the
+    // text is the shape every expandable block on this card already uses.
     const say = () => {
       const open = !box.classList.contains('min');
-      fold.textContent = open ? 'Less' : 'Read more';
+      fold.textContent = open ? '▴' : '▾';
       fold.setAttribute('aria-expanded', open ? 'true' : 'false');
       fold.setAttribute('aria-label', open
         ? 'Show less of what is on air' : 'Read more about what is on air');
@@ -7386,6 +7374,10 @@
     const wd = document.createElement('span'); wd.className = 'gdwhend';
     wd.textContent = onNow ? '' : (slot ? slot.day : '');
     when.append(wt, wd);
+    // A show with no airing ahead of it has nothing to put in the column,
+    // and 62px of reserved emptiness down the left of the shelf is the
+    // "awkward space" the operator saw. No slot, no column.
+    if (!slot && !live) when.hidden = true;
     const spine = document.createElement('span');
     spine.className = 'gdspine gdtone'; spine.setAttribute('aria-hidden', 'true');
     spine.dataset.tone = String(showTone(show.id));

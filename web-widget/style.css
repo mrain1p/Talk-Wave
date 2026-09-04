@@ -4269,20 +4269,9 @@
     font-size: 13px; flex: none;
   }
   .card .stationrow .nplike.liked { color: var(--coral); }
-  /* The station's own level: seven bars in the data accent. Decoration that
-     reports something — the heights ride the record's progress, so a
-     stopped station is a flat row rather than a lie in motion. */
-  .stationrow .stationvu {
-    flex: none; display: inline-flex; align-items: flex-end; gap: 2px;
-    height: 14px;
-  }
-  .stationrow .stationvu i {
-    display: block; width: 2px; background: var(--amber); height: var(--h, 40%);
-  }
   /* The fifth time this file has had to say it: an author `display` beats the
      UA's [hidden], so a level with nothing to report stayed on screen as a
      row of identical stubs. */
-  .stationrow .stationvu[hidden] { display: none; }
   /* THE EMBED KEEPS ITS ONE-LINE TRACK. 348x320 has no 62px band to spend,
      and this is the same line it always was — one step down the DOM, with
      the furniture that needs room switched off. */
@@ -4290,8 +4279,7 @@
     height: auto; padding: 3px 0 0; border: 0; gap: 6px;
   }
   body.compact .stationrow .stationart,
-  body.compact .stationrow .stationcap,
-  body.compact .stationrow .stationvu { display: none; }
+  body.compact .stationrow .stationcap { display: none; }
   body.compact .stationrow .track {
     font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em;
     text-transform: var(--skin-label-case); font-weight: 700; color: var(--sage);
@@ -4324,7 +4312,7 @@
   }
   /* No straddle any more, so the stage stops reserving headroom for one. */
   .card.routed[data-mode="idle"] .linebox,
-  .card.gated.routed[data-mode="idle"] .linebox { padding-top: 12px; }
+  .card.gated.routed[data-mode="idle"] .linebox { padding: 14px; }
   .card.routed .linebox { margin-top: 0; }
 
   /* -- 1a. the stage -----------------------------------------------------
@@ -4334,20 +4322,32 @@
      The middle centres in whatever is left, so a stage with no segment is
      the consequence copy in the middle of the box rather than a headline
      stranded at the top of 400px of black. */
+  /* THE STAGE reads top to bottom in three steps, and each one is a
+     different WEIGHT rather than a different box: what this route costs
+     (a label and a sentence), what the booth is asking (the only display
+     type in here), and what else the line is for (the quietest thing on
+     the card). It was five items at four sizes with a rule through the
+     middle and no spacing rhythm — "thrown in there" (operator,
+     2026-09-04). One padding, one gap unit, one rule. */
   .idleboard .stage {
     display: flex; flex-direction: column; height: 100%; text-align: left;
+    gap: 14px;
   }
   .idleboard .stagehead {
-    flex: none; font: 700 9.5px/1.5 var(--font-mono); letter-spacing: .16em;
+    flex: none; font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--cool);
+    margin: 0 0 6px;
   }
   .card.route-on .idleboard .stagehead { color: var(--coral); }
   .idleboard .stagesay {
     flex: none; font: 12px/1.45 var(--font-body); color: var(--sage);
-    margin: 6px 0 0;
+    margin: 0;
   }
+  /* The label and its sentence are ONE step, so they own their gap and the
+     stage's own gap separates them from what follows. */
+  .idleboard .stagetop { flex: none; }
   .idleboard .stagerule {
-    flex: none; height: 1px; background: var(--hairline); margin: 14px 0 12px;
+    flex: none; height: 1px; background: var(--hairline); margin: 0;
   }
   /* The middle. An OPEN LINE sits under the rule that introduces it, where
      it reads as the next thing said; centred, it floated in the middle of
@@ -4361,8 +4361,13 @@
   .idleboard .stagemid:has(.openhead) { align-items: flex-start; }
   .idleboard .stagemid > * { width: 100%; }
   /* OPEN LINES — what the DJ has put up, in the caller's own words back at
-     them. The pip blinks because the thing it reports is running out. */
-  .idleboard .openhead { display: flex; align-items: center; gap: 8px; }
+     them. The pip blinks because the thing it reports is running out.
+     The label is TWO WORDS: it carried the DJ's name too, and on a name of
+     any length that ellipsised into "DANNY BOY IS…" beside a clock — the
+     card already says who is in the booth, 300px up, beside their face. */
+  .idleboard .openhead {
+    display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px;
+  }
   .idleboard .openpip {
     width: 7px; height: 7px; flex: none; background: var(--amber);
     animation: blink 1.6s ease-in-out infinite;
@@ -4378,22 +4383,24 @@
     text-transform: var(--skin-label-case); color: var(--sage-dim);
   }
   .idleboard .opensubj {
-    display: block; font: 700 17px/1.35 var(--font-body);
-    color: var(--alpenglow); margin: 8px 0 0;
+    display: block; font: 700 15px/1.45 var(--font-body);
+    color: var(--alpenglow); margin: 0;
   }
-  /* The foot: the doors that are always there, under a rule, quiet. */
+  /* The foot: the doors that are always there, under a rule, quiet — and
+     STACKED, because side by side the list was ellipsised ("what play…")
+     while the row it was on had nothing else to give. Two short lines cost
+     the same height a truncated one did. */
   .idleboard .stagefoot {
-    flex: none; display: flex; align-items: center; gap: 10px;
+    flex: none; display: block;
     padding-top: 12px; border-top: 1px solid var(--hairline);
   }
   .idleboard .stagefootlab {
-    flex: none; white-space: nowrap; font: 700 9.5px/1 var(--font-mono);
+    display: block; font: 700 9.5px/1 var(--font-mono);
     letter-spacing: .12em; text-transform: var(--skin-label-case);
-    color: var(--sage-dim);
+    color: var(--sage-dim); margin: 0 0 5px;
   }
   .idleboard .stagefootsay {
-    flex: 1; min-width: 0; font-size: 12px; color: var(--sage);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: block; font-size: 12px; line-height: 1.4; color: var(--sage);
   }
   /* The stage is the whole box when it is answering: the board used to be
      one centred line among the box's other tenants. */
@@ -4445,6 +4452,13 @@
   /* The card's own bottom padding is the dock's now — the band has to reach
      the card's floor or it reads as a panel floating above one. */
   body:not(.compact) .card:not(.faces) { padding-bottom: 0; }
+  /* ITS LEFT EDGE IS THE DOCK'S. Idle, the volume collapses to zero width
+     but the band's `gap: 12px` still sits between it and the meters, so the
+     instrument started 12px in from the stage above it and the Call button
+     below — visibly out of line down the whole card (operator, 2026-09-04).
+     A gap belongs between two things; with one of them gone there is no
+     between. It comes back with the volume when a call starts. */
+  .rig:not(.on) .meters { gap: 0; }
   /* THE LEVEL BAND. The instrument was a bare box on the card's ground; on
      the dock it needs its own, and --pine against --granite is the same
      inset/raised pair the stage uses one band up. */
@@ -4700,7 +4714,14 @@
      A clamped hero over a listings column. The hero is the same height as
      the other two faces' heroes and grows only when the reader asks; the
      list below it is the scrolling region. */
+  /* A COLUMN THAT DOES NOT SHRINK ITS CHILDREN. The scroller was made a
+     flex column so the hero could be ordered above the head that used to
+     caption the strip — and flex items shrink by default, so opening the
+     hero compressed the listing instead of overflowing the box: the guide
+     simply stopped scrolling (operator, 2026-09-04). Content in a scroller
+     keeps its size; the scroller is what gives. */
   .gdscroll { display: flex; flex-direction: column; }
+  .gdscroll > * { flex: 0 0 auto; }
   /* THE HOUR STRIP STANDS DOWN. It was the day read sideways above the
      hero; the listing below is the same day read downwards, with the time,
      the DJ and a way in on every row. Two places to watch, one of them
@@ -4721,6 +4742,21 @@
     display: flex; align-items: center; gap: 10px;
     padding: 13px 0 7px; margin: 0;
   }
+  /* The seam between what is on and what is coming. Quiet — a rule with a
+     word on it, not a band. */
+  .gdscroll > .gdsection {
+    order: 2; padding: 14px 0 0; margin: 0;
+    border-top: 1px solid var(--edge);
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+  }
+  .gdscroll > .gdtodayhead { order: 3; }
+  .gdscroll > .gdlisthead { order: 4; }
+  .gdscroll > .gdlist { order: 5; }
+  .gdscroll > .gdshelf { order: 6; }
+  .gdscroll > .gdspans { order: 7; }
+  .gdscroll > .gdgrid { order: 8; }
+  .gdscroll > .gdempty { order: 9; }
   .gdtodaycap {
     flex: none; font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--alpenglow);
@@ -4784,6 +4820,24 @@
   }
   .card .gdrowsub .gdrowhost { color: var(--sage-dim); }
   .card .gdrow .gdbody { padding: 10px 0 2px; }
+  /* NOT ON THE SCHEDULE was a dim word on a dark band — legible is the bar,
+     not loud (operator, 2026-09-04). It is a heading now: the card's own
+     raised surface, an edge, and ink a reader can find without looking for
+     it. */
+  .card .gdshelf .gdshelfcap {
+    margin: 18px 0 0; padding: 10px 12px;
+    background: var(--granite); border: 1px solid var(--edge);
+    color: var(--alpenglow); font: 700 10px/1 var(--font-mono);
+    letter-spacing: .16em; text-transform: var(--skin-label-case);
+    display: flex; align-items: center; gap: 8px; width: 100%;
+  }
+  .card .gdshelf .gdshelfn {
+    margin-left: auto; color: var(--sage-dim); font-weight: 400;
+  }
+  .card .gdshelf .gdshelfchev { color: var(--sage-dim); }
+  /* …and a shelved show has no airing, so the time column it would sit in
+     is 62px of nothing down the whole section. */
+  .card .gdshelf .gdrow .gdwhen[hidden] { display: none; }
   .card .gdrow:not(.open) .gdbody { display: none; }
 
   /* -- 1c. the hero ------------------------------------------------------
@@ -4853,23 +4907,26 @@
      block either way, with three lines of prose instead of all of it. */
   .card .gdherobox.min .gdheroname { font-size: 19px; }
   .card .gdherobox.min .gdherobody .gddesc {
-    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5;
     overflow: hidden;
   }
   /* The foot sits on the hero's floor whatever is above it. */
   .card .gdherofoot {
-    display: flex; align-items: center; gap: 10px;
-    margin-top: auto; padding-top: 12px; flex: none;
+    display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+    margin-top: auto; padding-top: 10px; flex: none;
   }
+  /* The arrow spans the hero's floor: a wide, quiet target under the text
+     rather than a worded pill beside the times. */
   .card .gdherofold {
-    position: static; height: var(--pill-h); padding: 0 10px; margin: 0;
-    background: transparent; border: 1px solid var(--edge); border-radius: 0;
-    color: var(--sage); font: 700 9.5px/1 var(--font-mono);
-    letter-spacing: .14em; text-transform: var(--skin-label-case);
-    transform: none; width: auto; min-height: 0; flex: none;
+    position: static; height: 22px; width: 100%; padding: 0; margin: 0;
+    background: transparent; border: 0; border-top: 1px solid var(--hairline);
+    border-radius: 0; color: var(--sage-dim); font-size: 11px; line-height: 1;
+    transform: none; min-height: 0; flex: none;
+    display: flex; align-items: center; justify-content: center;
   }
+  .card .gdherofold:hover { color: var(--coral); }
   .card .gdheroweek {
-    flex: 1; min-width: 0; font: 10px/1.3 var(--font-mono); letter-spacing: .08em;
+    display: block; font: 10px/1.3 var(--font-mono); letter-spacing: .08em;
     color: var(--sage-dim);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
@@ -5104,9 +5161,13 @@
        centred block that owned its own height. In a 160px row beside a
        portrait it takes the tagline's line and the row's bottom rule with
        it. One line, ellipsised, the way the base rule always said. */
+    /* TWO LINES, not an ellipsis. "DONOVAN'S PUB · IRISH…" cut the genre
+       off with room underneath it (operator, 2026-09-04) — the row is
+       160px and the block beside the portrait is four short lines. What it
+       must not do is grow past two, which is what the clamp is for. */
     body:not(.compact) .card:not([data-mode="chat"]) .who-row .show {
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      display: block; -webkit-line-clamp: none;
+      white-space: normal; overflow: hidden; text-overflow: clip;
+      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
     }
     body:not(.compact) .card:not([data-mode="chat"]) .who-row .dj {
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
