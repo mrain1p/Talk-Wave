@@ -1033,18 +1033,6 @@
     display: block; cursor: pointer;
   }
   .card .gdrow.open { border-color: var(--edge); background: var(--granite); }
-  .gdhead { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .gdmeta { flex: 1; min-width: 0; }
-  .gdshow {
-    font: 700 13px/1.2 var(--font-mono); letter-spacing: .04em;
-    text-transform: var(--skin-label-case); color: var(--alpenglow);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .gdsub {
-    font: 11px/1.35 var(--font-mono); letter-spacing: .05em;
-    color: var(--sage-dim); margin-top: 3px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
   .gdavs { display: flex; flex: none; align-items: center; }
   .gdav {
     width: 26px; height: 26px; border-radius: 50%; object-fit: cover;
@@ -1090,23 +1078,6 @@
   }
   .gdtodayhead[hidden] { display: none; }
   .gdtodaylab { white-space: nowrap; }
-  /* The row's quiet line: the faces, the host, and when it is next on. */
-  .gdwho {
-    display: flex; align-items: center; gap: 8px; margin-top: 8px;
-    min-width: 0;
-  }
-  .gdhost {
-    font: 700 10px/1 var(--font-mono); letter-spacing: .12em;
-    text-transform: var(--skin-label-case); color: var(--sage);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .gdnext {
-    margin-left: auto; flex: none;
-    font: 10px/1 var(--font-mono); letter-spacing: .06em; color: var(--sage-dim);
-  }
-  .gdnext.live { color: var(--coral); font-weight: 700; }
-  .gdwho .gdav { width: 30px; height: 30px; margin-left: -8px; }
-  .gdwho .gdav.mono { font-size: 11px; }
   .gdline.gdangle { color: var(--amber); }
   .gdline.gdangle b { color: var(--amber); }
   /* On the schedule: day groups left, hours right, today marked. */
@@ -1196,7 +1167,6 @@
   /* The show on air keeps its outline in the list too, so the week can be
      read without hunting for where "now" sits. */
   .card .gdrow.live { border-color: var(--coral); }
-  .card .gdrow.live .gdshow { color: var(--coral); }
   /* Who is in the booth, per person: the face, the role, the name and
      their line, then their soul underneath. */
   .gdperson {
@@ -1273,7 +1243,6 @@
     flex: none; width: 9px; height: 9px; border-radius: 2px;
     display: inline-block; background: var(--sage-dim);
   }
-  .gdtitle { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .gdtone[data-tone="0"] { background: color-mix(in srgb, var(--coral) 100%, var(--granite)); }
   .gdtone[data-tone="1"] { background: color-mix(in srgb, var(--amber) 100%, var(--granite)); }
   .gdtone[data-tone="2"] { background: color-mix(in srgb, var(--cool) 100%, var(--granite)); }
@@ -1638,15 +1607,12 @@
   /* The art, glowing: a blurred copy of the SAME artwork behind it, so the
      halo recolors per record. The DJ's photo steps in when a record has no
      art; initials after that.
-     --plart-cap is measured by call.js fitPlayerArt(): the card's height is
-     config-driven (how many bands are on) and CSS cannot read it, so the
-     art's ceiling is whatever space is left once everything fixed has its
-     share. Width-driven with the aspect ratio deriving height — the
-     height-driven direction does not reliably transfer in Chromium. */
+     Width-driven with the aspect ratio deriving height — the height-driven
+     direction does not reliably transfer in Chromium. */
   .plartwrap { position: relative;
                /* 200, down from 240 (operator's phone, 2026-08-31): the
                   sleeve was crowding the three panels out of the stack. */
-               width: min(200px, 54cqw, var(--plart-cap, 999px));
+               width: min(200px, 54cqw);
                aspect-ratio: 1; flex: none; }
   .plglow {
     position: absolute; left: -10px; top: -6px;
@@ -4279,9 +4245,6 @@
     font-size: 13px; flex: none;
   }
   .card .stationrow .nplike.liked { color: var(--coral); }
-  /* The fifth time this file has had to say it: an author `display` beats the
-     UA's [hidden], so a level with nothing to report stayed on screen as a
-     row of identical stubs. */
   /* THE EMBED KEEPS ITS ONE-LINE TRACK. 348x320 has no 62px band to spend,
      and this is the same line it always was — one step down the DOM, with
      the furniture that needs room switched off. */
@@ -4779,13 +4742,8 @@
      and still built — this is the layout's answer, not a deletion. */
   .gdscroll > .gdtoday { display: none; }
   .gdscroll > .gdhero { order: 1; flex: none; min-height: var(--gd-hero-h, 200px); }
-  .gdscroll > .gdtodayhead { order: 2; }
-  .gdscroll > .gdlisthead { order: 3; }
-  .gdscroll > .gdlist { order: 4; }
-  .gdscroll > .gdshelf { order: 5; }
-  .gdscroll > .gdspans { order: 6; }
-  .gdscroll > .gdgrid { order: 7; }
-  .gdscroll > .gdempty { order: 8; }
+  /* Everything after the hero is ordered below, under .gdsection — which
+     took order 2 and moved the rest of the column down a place. */
   /* The list head: what this column is, when it is, and how to read the
      week. It was above the hero, where it captioned the strip. */
   .gdscroll > .gdtodayhead {
@@ -4811,8 +4769,19 @@
     flex: none; font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--alpenglow);
   }
-  /* …and the week's own count, which used to head the list on a line of its
-     own, joins it rather than repeating the heading one row down. */
+  /* …and the week's own count is HIDDEN, which is not what this used to
+     say. It said the count "joins" the Up-today head rather than repeating
+     the heading one row down — and it joins nothing: the head carries the
+     caption, the date and the Day/Week pair, and never the count (spec
+     review, 2026-09-05). paintGuide still writes "N shows this week" into
+     the row every poll and tests/test_widget.py still pins it, with the
+     operator's own reason from 2026-09-03: the count must name the WEEK,
+     not the roster, or a station running twelve shows reads as seventeen.
+     Left as it is deliberately. The write and its test are cheap; where
+     the count belongs on the redesigned face — the Up-today head, the
+     Programming caption, or nowhere now that the shelf carries its own
+     count — is a decision about what the guide SAYS, and this comment is
+     the note asking for it rather than an answer given quietly. */
   .gdscroll > .gdlisthead { display: none; }
   /* The listing. One row per show, time column first, the tone spine, then
      the name — and the show on air is boxed at the top of it. */

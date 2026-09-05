@@ -947,8 +947,13 @@
   }
 
   // The doors this line answers besides whatever is up right now, in the
-  // card's own voice. Derived from the same permissions the ask menu is
-  // filtered by, so it can never name something the DJ would refuse.
+  // card's own voice. Read from the same permissions the ask menu is
+  // filtered by — WHEN the station publishes them: `canAsk` is null unless
+  // show_caller_help is on (api/live.py), and this then falls back to the
+  // shipped defaults the way the rest of the card does. So on a station that
+  // keeps its permissions private the first door is named from the default
+  // rather than from the setting; this used to claim it "can never name
+  // something the DJ would refuse" (spec review, 2026-09-05).
   function alsoOnTheLine(d) {
     const can = (d && d.canAsk) || {};
     const bits = [];
@@ -2262,7 +2267,7 @@
       // the same server answer — fetched once the line is known, not only
       // at sheet-open, so the phone face has it too.
       if (first) fetchAbilities();
-      if (playerOpen) { paintPlayer(); fitPlayerArt(); }
+      if (playerOpen) paintPlayer();
       if (playerEl) feedMediaSession();
       castFollowTrack();
 
@@ -5396,7 +5401,7 @@
       onDead: () => {
         playerDead = true;
         paintPlayerButtons();
-        if (playerOpen) { paintPlayer(); fitPlayerArt(); }
+        if (playerOpen) paintPlayer();
       },
       // The browser wants its one tap first — the sheet opens quiet with
       // PLAY lit, which is the honest reading, not a dead stream.
@@ -5570,7 +5575,6 @@
     document.querySelector('.card').classList.add('playeropen');
     playerOpen = true;
     paintPlayer();
-    fitPlayerArt();
     // What this caller's key unlocks (skip, unlike, operator mode) — the
     // server's answer, refreshed at every open so a newly-entered code
     // counts without a reload.
@@ -5596,27 +5600,13 @@
     paintListenChip();
   }
 
-  // The sheet FITS instead of scrolling (operator's ask, 2026-08-19): the
-  // art gives its height back first, the info panels compress onto their own
-  // scrollbars second, and only a viewport shorter than everything's minimums
-  // ever sees the sheet's own scrollbar. Measured rather than styled because
-  // the card's height is config-driven — how many bands the operator has on —
-  // and CSS cannot read it: the art's ceiling is whatever space is left once
-  // everything fixed has its share.
-  function fitPlayerArt() {
-    const sheet = $('playerView');
-    if (!sheet || sheet.hidden) return;
-    const scroll = sheet.querySelector('.plscroll');
-    const art = sheet.querySelector('.plartwrap');
-    if (!scroll || !art) return;
-    sheet.style.removeProperty('--plart-cap');   // measure from natural size
-    const over = scroll.scrollHeight - scroll.clientHeight;
-    if (over <= 0) return;
-    const now = art.getBoundingClientRect().height;
-    const cap = Math.max(104, Math.floor(now - over));
-    if (cap < now) sheet.style.setProperty('--plart-cap', cap + 'px');
-  }
-  window.addEventListener('resize', () => { if (playerOpen) fitPlayerArt(); });
+  // (The sheet FITS instead of scrolling — the operator's ask of
+  // 2026-08-19 — and it is the SURFACE BLOCKS that keep it now. fitPlayerArt
+  // used to measure a ceiling into --plart-cap; the three-faces redesign
+  // gave the sleeve a token and every surface its own value for it, and
+  // `.card .plartblock .plartwrap` out-specifies the rule that read the cap,
+  // so nothing had read it since. Removed 2026-09-05, the ask held by
+  // measurement instead: scrollHeight == clientHeight on all four surfaces.)
 
   // The last REAL record the station named, and when. The station's
   // /now-playing flaps — a slow read, a track transition — and every flap
@@ -6643,7 +6633,7 @@
   function nextSlot(runs, id, now) {
     const mine = runs.filter((r) => r.id === id);
     const on = onAt(mine, now.abs);
-    if (on) return { time: fmtHour(on.start), day: 'Today', now: true, next: false };
+    if (on) return { time: fmtHour(on.start), day: 'Today', now: true };
     const ahead = mine.filter((r) => r.start > now.abs)
       .sort((a, b) => a.start - b.start)[0];
     if (!ahead) return null;
@@ -6653,7 +6643,6 @@
       day: days === 0 ? 'Today' : days === 1 ? 'Tomorrow'
         : GUIDE_DAY_NAMES[((Math.floor(ahead.start / 24) % 7) + 7) % 7],
       start: ahead.start,
-      next: false,
     };
   }
   // The half of a show's full name that is not its title — "THE PIAZZA ·
@@ -7201,12 +7190,6 @@
     });
     return el;
   }
-  function guideFaces(cast, cls) {
-    const avs = document.createElement('span');
-    avs.className = 'gdavs' + (cls ? ' ' + cls : '');
-    cast.slice(0, 4).forEach((p) => avs.appendChild(guideFace(p)));
-    return avs;
-  }
   // What a show SAYS: the angle when it is on air, the show itself, then
   // the DJ and each guest with their own line and soul. Shared by the
   // hero and the rows, so the two can never say different things.
@@ -7445,8 +7428,7 @@
     name.textContent = show.title || show.name;
     const end = document.createElement('span'); end.className = 'gdrowend';
     const flag = document.createElement('span'); flag.className = 'gdflag';
-    flag.textContent = live ? 'On air now'
-      : (slot && slot.next ? 'Next' : '');
+    flag.textContent = live ? 'On air now' : '';   // paintGuide adds NEXT
     const chev = document.createElement('span'); chev.className = 'gdchev';
     chev.textContent = '\u25B8'; chev.setAttribute('aria-hidden', 'true');
     end.append(flag, chev);
@@ -7587,7 +7569,6 @@
             clearTimeout(playerHideTimer);
             moving.hidden = false;
             paintPlayer();
-            fitPlayerArt();
           } else {
             clearTimeout(guideHideTimer);
             moving.hidden = false;
