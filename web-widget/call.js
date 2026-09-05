@@ -1217,7 +1217,12 @@
     // beside nothing (operator's phone, 2026-08-25). A record whose length
     // the station never sent keeps the counting clock alone — there is no
     // end to be honest about.
-    const ticking = npLength ? secs < npLength + 8 : true;
+    // …but not for ever. 832:09 in amber over an empty rail is what "for
+    // ever" looks like on a stream whose start the station stopped updating
+    // (operator's phone, 2026-09-05). Past half an hour with no end in sight
+    // there is nothing left to count honestly, and the row stands down.
+    const NO_LENGTH_CAP = 30 * 60;
+    const ticking = npLength ? secs < npLength + 8 : secs < NO_LENGTH_CAP;
     clock.textContent = ticking ? mmss(shown) : '';
     const total = $('npTotal');
     if (total) {
@@ -2573,9 +2578,15 @@
       syncGateClass();
       signinMode = false;
       const tier = (live && live.callerTier) || 'guest';
-      setStatus(tier === 'admin'
+      const said = tier === 'admin'
         ? 'Signed in as admin — more options unlocked'
-        : 'Signed in — more options unlocked', 'connected');
+        : 'Signed in — more options unlocked';
+      setStatus(said, 'connected');
+      // A confirmation, not a condition: it stood in the line box for the
+      // rest of the session, still there hours after the sign-in (operator's
+      // phone, 2026-09-05). Six seconds, then the box goes back to the stage
+      // — unless something else has spoken since.
+      setTimeout(() => { if (statusText.textContent === said) setStatus(''); }, 6000);
       // The ask menu and corner controls were already rebuilt by the
       // refreshLive above (paintLive rebuilds on a canAsk change).
     } else {
@@ -6508,14 +6519,22 @@
     const changed = guideLastShow !== null && name !== guideLastShow;
     guideLastShow = name;
     if (!guideOpen) return;
-    if (changed) loadGuide(true);          // a new show: read it again
-    else if (guideData) paintGuide();      // same show: just the clock
+    if (changed || guideFailed) loadGuide(true);   // a new show, or a
+    else if (guideData) paintGuide();              // failed read: ask again
   }
 
+  // A read that FAILED is not a station with no schedule. The two painted
+  // the same way — the fallback was an empty week, and an empty week says
+  // "The station hasn't published its week yet" — so a guide opened in the
+  // seconds after a redeploy, while the worker was still coming up, showed
+  // that sentence over a seventeen-show grid and went on showing it for as
+  // long as it stayed open (operator's phone, 2026-09-05). The flag says
+  // which it was; guideFollowsTheAir asks again while it is set.
+  let guideFailed = false;
   async function loadGuide(force) {
     // The server caches the week for five minutes; so does this, so a
     // reader flicking between cards costs the station nothing.
-    if (!force && guideData && Date.now() - guideAt < 300000) {
+    if (!force && guideData && !guideFailed && Date.now() - guideAt < 300000) {
       paintGuide();
       return;
     }
@@ -6524,7 +6543,9 @@
       if (!r.ok) throw new Error('guide ' + r.status);
       guideData = await r.json();
       guideAt = Date.now();
+      guideFailed = false;
     } catch (e) {
+      guideFailed = true;
       if (!guideData) guideData = { shows: [], personas: [], grid: {}, timezone: '' };
     }
     paintGuide();
@@ -6960,6 +6981,10 @@
   }
 
   function paintGuide() {
+    // The count beside the words, as on the other two faces — the guide's
+    // header was the one without it (operator's phone, 2026-09-05). Painted
+    // here because this runs on open and on every poll the guide is up.
+    paintListeners('gdListeners', 'gdListenersN', shown || live || {});
     const d = guideData || {};
     const shows = d.shows || [], grid = d.grid || {}, personas = {}, byId = {};
     (d.personas || []).forEach((x) => { personas[x.id] = x; });
@@ -7067,7 +7092,14 @@
     const onAirThisWeek = shows.filter((s) => airs.has(s.id));
     const shelved = shows.filter((s) => !airs.has(s.id));
     list.textContent = '';
-    if (empty) empty.hidden = shows.length > 0;
+    if (empty) {
+      empty.hidden = shows.length > 0;
+      // The sentence has to be true: a read that failed says so, and says
+      // the card is trying — which the next poll does.
+      empty.textContent = guideFailed && !shows.length
+        ? "Couldn't reach the station's schedule \u2014 trying again."
+        : "The station hasn't published its week yet.";
+    }
     const ordered = upToday(onAirThisWeek, runs, now, liveId);
     ordered.rows.forEach((show) => {
       const row = guideRow(

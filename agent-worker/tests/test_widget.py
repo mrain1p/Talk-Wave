@@ -3812,8 +3812,15 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         # left and came back. Every poll repaints from what it has; a poll
         # that says the SHOW changed throws the read away.
         block = self.js.split("function guideFollowsTheAir")[1][:600]
-        self.assertIn("if (changed) loadGuide(true);", block)
+        # …and so does a poll after a read that FAILED. A guide opened in
+        # the seconds after a redeploy got a 503, painted the empty week's
+        # "hasn't published its week yet" over a seventeen-show grid, and
+        # kept it for as long as it stayed open, because only a show change
+        # asked again (operator's phone, 2026-09-05). The flag is the
+        # second trigger on the same line.
+        self.assertIn("if (changed || guideFailed) loadGuide(true);", block)
         self.assertIn("else if (guideData) paintGuide();", block)
+        self.assertIn("guideFailed = true;", self.js.split("async function loadGuide")[1][:900])
         self.assertIn("guideFollowsTheAir();", self.js.split("function paintListenChip")[1][:1200])
         # And a repaint must not close the row somebody is reading.
         self.assertIn("const guideOpenRows = new Set();", self.js)

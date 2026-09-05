@@ -4303,8 +4303,10 @@
     margin: 0 0 6px;
   }
   .card.route-on .idleboard .stagehead { color: var(--coral); }
+  /* 13px, the transcript's own size: the box has one body voice whether
+     the card is waiting or someone is talking. */
   .idleboard .stagesay {
-    flex: none; font: 12px/1.45 var(--font-body); color: var(--sage);
+    flex: none; font: 13px/1.45 var(--font-body); color: var(--sage);
     margin: 0;
   }
   /* The label and its sentence are ONE step, so they own their gap and the
@@ -4368,15 +4370,35 @@
     color: var(--sage-dim); margin: 0 0 5px;
   }
   .idleboard .stagefootsay {
-    display: block; font-size: 12px; line-height: 1.4; color: var(--sage);
+    display: block; font-size: 13px; line-height: 1.4; color: var(--sage);
   }
   /* The stage is the whole box when it is answering: the board used to be
      one centred line among the box's other tenants. */
   .card.routed[data-mode="idle"] .linebox:has(.idleboard .stage) {
     display: flex; flex-direction: column;
   }
+  /* position: static is the whole fix. The board's base rule places it
+     absolutely over the box — right when it was one centred line the box
+     must never scroll for — and absolute means the box's own 14px padding
+     is nothing to it: the stage's first label touched the top-left corner
+     and its foot the bottom-left, on every surface, while every neighbour
+     (the station row, the switch, the instrument) kept its inset. "Padding
+     in some areas is not existing" (operator's phone, 2026-09-05). In flow
+     it is a flex child like any other, and the padding is the box's. */
   .card.routed[data-mode="idle"] .linebox > .idleboard:not([hidden]):has(.stage) {
-    flex: 1; min-height: 0; display: block; margin: 0; padding: 0;
+    position: static; flex: 1; min-height: 0; display: block;
+    margin: 0; padding: 0;
+  }
+  /* THE STATUS IS A LINE IN THE BOX, NOT A NOTE PINNED OVER IT. It was
+     placed absolutely at half the box plus a little — under the centred
+     headline it used to follow, which is exactly the stage's middle now:
+     "Signed in as admin — more options unlocked" landed between the premise
+     and ALSO ON THE LINE, in its own size, with a pip (operator's phone,
+     2026-09-05). In flow, first, on the box's own body size. */
+  .card.routed[data-mode="idle"] .linebox #status {
+    position: static; inset: auto; order: -1; flex: none;
+    justify-content: flex-start; text-align: left;
+    margin: 0 0 12px; font-size: 13px; line-height: 1.45;
   }
   /* An embed has no room for a segment's subject over a 12px sentence in a
      box that is already the smallest thing on the card. */
@@ -4660,6 +4682,13 @@
     display: flex; align-items: baseline; gap: 10px; padding: 9px 0;
     border-top: 1px solid var(--hairline); border-bottom: 0; min-width: 0;
   }
+  /* NO MARGIN BETWEEN ROWS. The one-line stack's `.plpanelbody .plrow +
+     .plrow { margin-top: 5px }` still reached these, on top of the 9px
+     padding and the hairline they carry themselves: 57px of pitch on a
+     52px row, so the third of "three rows" was cut through its title
+     (operator's phone, 2026-09-05). Written at the specificity that wins,
+     because the same declaration one rule up did not. */
+  .plqgroup .plpanelbody .plrow + .plrow { margin-top: 0; }
   /* The player's dock: the strip, the request row, the transport. */
   .pldock {
     background: var(--granite); border-top: 1px solid var(--hairline);
@@ -4678,9 +4707,26 @@
     border: 1px solid var(--edge); color: var(--sage);
     display: inline-flex; align-items: center; justify-content: center;
   }
-  .card .pldock #plVol { flex: 1 1 auto; min-width: 96px; }
-  /* The level reports, it does not need the room to do it in. */
-  .card .pldock .plvu { flex: none; width: 42px; overflow: hidden; }
+  /* THE FADER AND THE LEVEL GET THE BUTTONS' BOX. The strip was four
+     bordered squares, then a bare rail with a knob on it, then bare bars —
+     two rules on one band, which is what the operator called "stupid
+     looking" on the phone face (2026-09-04) and is here again one card
+     over (their phone, 2026-09-05). Same recipe as the rig's: the buttons'
+     own height, --pine ground, a hairline, contents centred. The range
+     input takes the box itself; its track draws centred inside it. */
+  .card .pldock #plVol {
+    flex: 1 1 auto; min-width: 96px; height: 36px; margin: 0;
+    padding: 0 10px; box-sizing: border-box;
+    background: var(--pine); border: 1px solid var(--hairline);
+  }
+  /* The level reports, it does not need the room to do it in — but it
+     stands in the same box as everything else on the strip. Bars keep
+     their baseline; the padding is what centres them. */
+  .card .pldock .plvu {
+    flex: none; width: 58px; height: 36px; box-sizing: border-box;
+    padding: 0 8px 12px; overflow: hidden;
+    background: var(--pine); border: 1px solid var(--hairline);
+  }
   .card .pldock .plheart.liked, .card .pldock .plheart.on { color: var(--coral); }
   .card .pldock .plreq input { height: var(--control-h); }
   .card .pldock .plreq #plReqSend { height: var(--control-h); flex: none; }
@@ -5036,6 +5082,17 @@
     body:not(.compact) .meters .vol { flex: 0 1 auto; order: 0; max-width: 33%; }
     body:not(.compact) .meters .meter { flex: 1 1 0; min-width: 0; }
     body:not(.compact) .bars { height: 20px; }
+    /* WHO IS IN THE BOOTH takes its own line here. On a 348px well the
+       label and the name shared one row and both lost: the label wrapped
+       to "IN THE / BOOTH" and the name ellipsised to "DONOVAN'S P…" — over
+       an empty body (operator's phone, 2026-09-05). The well is 104px tall
+       and mostly waiting; a second line is the room it has. */
+    body:not(.compact) .plscroll > .plpanel:not(.plqueue) .plpanelhead {
+      flex-wrap: wrap; row-gap: 6px;
+    }
+    body:not(.compact) .plscroll > .plpanel:not(.plqueue) .plpanelmeta {
+      flex: 1 0 100%; margin-left: 0;
+    }
     /* The ribbon is the screen's own foot at the handoff's height. */
     /* 46, was the handoff's 54 (operator, 2026-09-04): with the mark and
        the word tightened it needs less, and every pixel it gives back is
