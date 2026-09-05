@@ -750,28 +750,7 @@
     if ($('routeSwitch') && !$('routeSwitch').hidden) {
       box.hidden = false;
       box.innerHTML = '';
-      const oa = (d && d.onAirCalls) || {};
-      const line = document.createElement('div');
-      line.className = 'routeline ' + (onAirPick ? 'live' : 'priv');
-      // With only the voicemail door live, the ON AIR promise narrows to
-      // what is actually true: the recording airs, the call would not. And
-      // tape mode is its own promise — the conversation airs at hangup, not
-      // as you speak — so the stage says which consent is being given.
-      line.textContent = onAirPick
-        ? (oa.calls
-            ? (oa.mode === 'after'
-                ? word('route_tape', 'Broadcast — airs after you hang up')
-                : word('route_live', 'Broadcast — live on air'))
-            : word('route_vm_live', 'Your recording airs on the station'))
-        : word('route_priv', "It's just you and {dj}")
-            .replace('{dj}', (dj && dj !== '…') ? dj : 'the DJ');
-      box.appendChild(line);
-      // The example rides the PRIVATE stage only: under an on-air line the
-      // box is stating a consent, and small talk under a consent muddies it.
-      if (!onAirPick && !paused) {
-        const t = tryLine();
-        if (t) box.appendChild(t);
-      }
+      box.appendChild(buildStage(d, dj, paused, tryLine));
       return;
     }
     // Each door twice: is it OFFERED at all, and is it usable right now. The
@@ -822,6 +801,167 @@
       if (t) box.appendChild(t);
     }
     box.hidden = false;
+  }
+
+  // THE STAGE (design handoff, 2026-09-03). While the route switch is up,
+  // the box under it answers three questions in the order a caller asks
+  // them: what does this route COST me, what is the booth actually asking,
+  // and what else is this line for. It used to be one centred sentence in a
+  // box four hundred pixels tall — the operator's "wasted space", and the
+  // reason the phone face read as unfinished beside the other two.
+  //
+  // Nothing here invents copy: the consequence line is the same wording
+  // override it always was, and the middle is only ever drawn from an open
+  // line the station has actually announced.
+  function buildStage(d, dj, paused, tryLine) {
+    const oa = (d && d.onAirCalls) || {};
+    const wrap = document.createElement('div');
+    wrap.className = 'stage';
+    // 1. WHAT THIS ROUTE COSTS. The label names the consequence, the
+    // sentence spends it.
+    const top = document.createElement('div');
+    top.className = 'stagetop';
+    const head = document.createElement('div');
+    head.className = 'stagehead';
+    head.textContent = onAirPick
+      ? word('stage_live_head', 'Goes out on the broadcast')
+      : word('stage_priv_head', 'Private line to the booth');
+    // With only the voicemail door live, the ON AIR promise narrows to what
+    // is actually true: the recording airs, the call would not. And tape
+    // mode is its own promise — the conversation airs at hangup, not as you
+    // speak — so the stage says which consent is being given.
+    const say = document.createElement('div');
+    say.className = 'stagesay ' + (onAirPick ? 'live' : 'priv');
+    say.textContent = onAirPick
+      ? (oa.calls
+          ? (oa.mode === 'after'
+              ? word('route_tape', 'Broadcast — airs after you hang up')
+              : word('route_live', 'Broadcast — live on air'))
+          : word('route_vm_live', 'Your recording airs on the station'))
+      : word('route_priv', "It's just you and {dj}")
+          .replace('{dj}', (dj && dj !== '…') ? dj : 'the DJ');
+    top.append(head, say);
+    const rule = document.createElement('div');
+    rule.className = 'stagerule';
+    wrap.append(top, rule);
+    // 2. THE MIDDLE, centred in whatever is left. An open line if the booth
+    // has one up; otherwise the example, which is what the box has always
+    // offered a caller with nothing to say.
+    const mid = document.createElement('div');
+    mid.className = 'stagemid';
+    const open = openLine(d);
+    if (open) {
+      const card = document.createElement('div');
+      const top = document.createElement('div');
+      top.className = 'openhead';
+      const pip = document.createElement('span');
+      pip.className = 'openpip';
+      pip.setAttribute('aria-hidden', 'true');
+      const lab = document.createElement('span');
+      lab.className = 'openlab';
+      // TWO WORDS. It carried the DJ's name as well, and on a name of any
+      // length that ellipsised into "DANNY BOY IS…" beside the clock — the
+      // card says who is in the booth three hundred pixels up, beside their
+      // photograph.
+      lab.textContent = 'Open lines';
+      top.append(pip, lab);
+      if (open.until) {
+        const til = document.createElement('span');
+        til.className = 'opentil';
+        til.textContent = 'until ' + open.until;
+        top.appendChild(til);
+      }
+      const subj = document.createElement('div');
+      subj.className = 'opensubj';
+      subj.textContent = '\u201C' + open.subject + '\u201D';
+      card.append(top, subj);
+      mid.appendChild(card);
+    } else if (!onAirPick && !paused) {
+      // The example rides the PRIVATE stage only: under an on-air line the
+      // box is stating a consent, and small talk under a consent muddies it.
+      const t = tryLine();
+      if (t) mid.appendChild(t);
+    }
+    wrap.appendChild(mid);
+    // 3. WHAT ELSE THE LINE IS FOR, under a rule, quiet — so an open line
+    // never reads as the only thing a caller may ring about.
+    const foot = document.createElement('div');
+    foot.className = 'stagefoot';
+    const flab = document.createElement('span');
+    flab.className = 'stagefootlab';
+    flab.textContent = 'Also on the line';
+    const fsay = document.createElement('span');
+    fsay.className = 'stagefootsay';
+    fsay.textContent = alsoOnTheLine(d);
+    foot.append(flab, fsay);
+    wrap.appendChild(foot);
+    return wrap;
+  }
+
+  // The open line the station has up, with the moment it closes resolved to
+  // a clock time. THE EARLIER of the line's own expiry and the end of the
+  // show it was opened in: a segment cannot outlive its show (the record's
+  // own is_live check says so), and a card promising past the hour would be
+  // the one thing on the stage that is not true. The show's end comes from
+  // the guide the card has already loaded — when there is none, or the
+  // station is running something off the schedule (a takeover), the line's
+  // own expiry stands alone.
+  function openLine(d) {
+    const ol = d && d.openLines;
+    if (!ol || !ol.live || !ol.subject) return null;
+    const ends = ol.expiresAt ? Date.parse(ol.expiresAt) : NaN;
+    let at = isNaN(ends) ? null : ends;
+    const showEnds = scheduledShowEnd();
+    if (showEnds && (at === null || showEnds < at)) at = showEnds;
+    return {
+      subject: ol.subject,
+      dj: ol.dj || '',
+      until: at ? new Date(at).toLocaleTimeString([],
+        { hour: 'numeric', minute: '2-digit' }) : '',
+    };
+  }
+
+  // When the show on air is scheduled to end, in local milliseconds — or 0
+  // when the card cannot say. Read from the guide payload, which the card
+  // already holds whenever the guide face is on; a station running off its
+  // own schedule (an override, a takeover) has no scheduled end to report,
+  // and saying one would be worse than saying none.
+  function scheduledShowEnd() {
+    const g = guideData;
+    if (!g || !g.grid) return 0;
+    if (g.override && g.override.showId) return 0;
+    const now = stationNow(g.timezone);
+    const runs = echoed(weekRuns(weekSlots(g.grid)));
+    const on = onAt(runs, now.abs);
+    if (!on) return 0;
+    const stationId = (g.onAir && g.onAir.id) || '';
+    if (stationId && on.id !== stationId) return 0;      // off schedule
+    // The grid is hour-granular — `now.abs` is the hour of the week, not the
+    // minute — so the gap is counted from the TOP of the current hour, which
+    // is where the run's own boundary sits. Counting from `Date.now()` would
+    // put a show's end at 40 minutes past whatever hour it really ends on.
+    const d = new Date();
+    const top = Date.now() - d.getMinutes() * 60000 - d.getSeconds() * 1000
+      - d.getMilliseconds();
+    return top + (on.end - now.abs) * 3600000;
+  }
+
+  // The doors this line answers besides whatever is up right now, in the
+  // card's own voice. Read from the same permissions the ask menu is
+  // filtered by — WHEN the station publishes them: `canAsk` is null unless
+  // show_caller_help is on (api/live.py), and this then falls back to the
+  // shipped defaults the way the rest of the card does. So on a station that
+  // keeps its permissions private the first door is named from the default
+  // rather than from the setting; this used to claim it "can never name
+  // something the DJ would refuse" (spec review, 2026-09-05).
+  function alsoOnTheLine(d) {
+    const can = (d && d.canAsk) || {};
+    const bits = [];
+    if (can.allow_requests !== false) bits.push('requests');
+    if (can.allow_announcements) bits.push('shout-outs');
+    if (can.allow_library_search) bits.push('what played earlier');
+    if (!bits.length) bits.push('a word with the booth');
+    return bits.join(' · ');
   }
 
   // The card's heart — the same add-only public like the player sheet sends,
@@ -886,10 +1026,17 @@
         const s = await fetch('/player/like', { headers: keyHeaders() });
         if (s.ok) song = (await s.json()).songId || null;
       } catch (e) { /* fall through to the current-track like */ }
+      // The TITLE travels with it: the day-log writes the heart as a
+      // receipt in the player's Requests tab, and without this the card's
+      // presses landed there as a blank line while the sheet's carried the
+      // record's name. Station data, never caller words.
       const r = await fetch('/player/like', {
         method: 'POST',
         headers: keyHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(song ? { songId: song } : {}),
+        body: JSON.stringify(Object.assign(
+          song ? { songId: song } : {},
+          { title: (heldNowPlaying(shown || live || {}).title
+                    || cardHeartFor.split('—')[0].trim() || '') })),
       });
       if (!r.ok) throw new Error('refused');
     } catch (e) {
@@ -903,11 +1050,17 @@
   // needs a laid-out frame, so it rides rAF; a hidden tab simply keeps the
   // fade until it is looked at. Guarded on the text so the 20s poll does
   // not restart the ride mid-word.
-  function paintMarquee(el, txt) {
+  // `by` is the separator the record's own string uses between the title
+  // and the artist. When the line FITS, the tail after it is tinted (the
+  // handoff wants the artist a step quieter than the title); when it has to
+  // ride, it stays one plain string — a marquee measures a nowrap span, and
+  // two of them would ride at two speeds.
+  function paintMarquee(el, txt, by) {
     if (!el || el.dataset.mq === txt) return;
     el.dataset.mq = txt;
     el.classList.remove('marq');
     el.textContent = txt;
+    if (txt && by) tintTail(el, txt, by);
     if (!txt) return;
     requestAnimationFrame(() => {
       if (el.dataset.mq !== txt) return;          // a newer paint won
@@ -928,6 +1081,7 @@
       if (over <= 6) {
         el.classList.remove('marq');
         el.textContent = txt;
+        if (by) tintTail(el, txt, by);
         return;
       }
       el.style.setProperty('--marq-d', -(over + 14) + 'px');
@@ -935,6 +1089,99 @@
       el.style.setProperty('--marq-t', Math.max(7, Math.round(over / 12)) + 's');
     });
   }
+
+  // Point an <img> at a source and let LOADING decide whether it shows.
+  //
+  // The card polls every twenty seconds and repaints from the same payload,
+  // so anything that says `img.hidden = false` on the way past will keep
+  // un-hiding a picture that has already failed — which is what put the
+  // browser's own broken-image glyph in the station row and on the player's
+  // sleeve on a station whose art the browser cannot fetch (operator's
+  // phone, 2026-09-04). The load state is the only honest answer, and it
+  // survives a repaint: complete + naturalWidth is what a failed image looks
+  // like afterwards, and onerror is what it looks like at the time.
+  function showWhenLoaded(img, src, onFail) {
+    if (!img) return;
+    if (!src) { img.hidden = true; return; }
+    if (img.getAttribute('src') !== src) {
+      img.hidden = true;
+      img.onload = () => { img.hidden = false; };
+      img.onerror = () => { img.hidden = true; if (onFail) onFail(); };
+      img.src = src;
+      return;
+    }
+    // Same source as last time: say nothing new, just do not contradict what
+    // the browser already found out.
+    if (img.complete) img.hidden = !img.naturalWidth;
+  }
+
+  // The artist, a step quieter than the title. textContent first, then the
+  // split — so a title carrying the separator inside it can never inject
+  // markup, and a line with no separator is simply left alone.
+  function tintTail(el, txt, by) {
+    const at = txt.indexOf(by);
+    if (at < 0) return;
+    el.textContent = txt.slice(0, at);
+    const rest = document.createElement('span');
+    rest.className = 'npby';
+    rest.textContent = txt.slice(at);
+    el.appendChild(rest);
+  }
+
+  // THE STATION ROW (design handoff, 2026-09-03). What is on, as its own
+  // band under the identity it belongs to: the record's art, a label, the
+  // title, the heart, a level. It was the last line of the identity block,
+  // where a thumbnail had nowhere to go and the heart shared a row with a
+  // title that was already ellipsising.
+  //
+  // Assembled HERE rather than in index.html because the markup is shared
+  // with the embed, where a 62px band is most of a 320px card — the band
+  // collapses back to the one line it always was under body.compact, and
+  // that is a stylesheet's job once the nodes exist. Nothing here takes an
+  // id that index.html does not already declare except the two the script
+  // reads back by name, which it creates itself (the widget contract test
+  // reads `.id =` for exactly this).
+  function buildStationRow() {
+    const who = document.querySelector('.who-row');
+    const trackrow = document.querySelector('.trackrow');
+    if (!who || !trackrow || document.querySelector('.stationrow')) return;
+    // IN THE BOOTH, over the name: the row says whose picture that is
+    // before the name has been read.
+    const meta = who.querySelector('.meta');
+    if (meta) {
+      const cap = document.createElement('span');
+      cap.className = 'whocap';
+      cap.textContent = 'In the booth';
+      meta.insertBefore(cap, meta.firstChild);
+    }
+    const band = document.createElement('div');
+    band.className = 'stationrow';
+    band.hidden = true;
+    const art = document.createElement('span');
+    art.className = 'stationart';
+    const fill = document.createElement('span');
+    fill.className = 'stationfill';
+    fill.setAttribute('aria-hidden', 'true');
+    const img = document.createElement('img');
+    img.id = 'npArt';
+    img.alt = '';
+    img.hidden = true;
+    img.setAttribute('aria-hidden', 'true');
+    art.append(fill, img);
+    const col = document.createElement('span');
+    col.className = 'stationmeta';
+    const lab = document.createElement('span');
+    lab.className = 'stationcap';
+    lab.textContent = 'On the station';
+    const heart = $('npHeart');
+    col.append(lab, trackrow);
+    band.append(art, col);
+    // The heart leaves the title's own row for the band, where it is the
+    // square the handoff draws rather than a glyph hanging off a title.
+    if (heart) band.appendChild(heart);
+    who.insertAdjacentElement('afterend', band);
+  }
+  buildStationRow();
 
   function paintNowPlaying() {
     const clock = $('npElapsed'), rail = $('npRail'), deck = $('playerView');
@@ -1829,8 +2076,12 @@
       // another: solid coral when the call broadcasts, the cool outline for
       // the private line (the CSS keys off .route-on/.route-off). Without
       // the switch, the operator's own label stands as ever.
-      setBtn(callBtn, 'call',
-             onAirHere && !(onAirPick && callsLive) ? 'chat' : 'phone',
+      // A HANDSET EITHER WAY. The private route used to swap in the speech
+      // bubble, which put a chat glyph on a button that says CALL THE BOOTH
+      // — and the text line has its own door on the same row wearing that
+      // very icon. Colour is what tells the two routes apart, and it always
+      // was; the glyph was saying something the label contradicts.
+      setBtn(callBtn, 'call', 'phone',
              onAirPick && callsLive ? word('call_live', 'Call in live')
                : onAirHere ? word('call_offair', 'Call the booth')
                : callLabel());
@@ -2016,7 +2267,7 @@
       // the same server answer — fetched once the line is known, not only
       // at sheet-open, so the phone face has it too.
       if (first) fetchAbilities();
-      if (playerOpen) { paintPlayer(); fitPlayerArt(); }
+      if (playerOpen) paintPlayer();
       if (playerEl) feedMediaSession();
       castFollowTrack();
 
@@ -2076,8 +2327,22 @@
       const rec = d.track ? d : (ghost
         ? { track: ghost.track, trackStartedAt: ghost.start, trackSeconds: ghost.secs }
         : null);
-      paintMarquee($('npTrack'),
-        (parts.track === false || !rec) ? '' : '♪ ' + rec.track);
+      // No glyph in front of it any more: the band's own label says what
+      // this line is, and the note was the only emoji-shaped thing left on
+      // the card. The embed keeps it — there the line still has to say what
+      // it is on its own.
+      const trackTxt = (parts.track === false || !rec) ? ''
+        : (compact ? '♪ ' + rec.track : rec.track);
+      paintMarquee($('npTrack'), trackTxt, compact ? '' : ' — ');
+      const band = document.querySelector('.stationrow');
+      if (band) band.hidden = !trackTxt;
+      // The record's art, at thumb size, with the sleeve's own bloom. The
+      // same /cover proxy the player sheet reads, so a station the browser
+      // cannot reach directly still paints.
+      // Behind the square either way: the striped fill is what a record with
+      // no art the browser can reach is supposed to look like.
+      showWhenLoaded($('npArt'),
+                     (trackTxt && d.nowPlaying && d.nowPlaying.art) || '');
       // The rail's clock and progress hairline. /live sends WHEN the record
       // started and how long it runs; the elapsed figure is counted here
       // rather than sent, because /live is cached across every caller for a
@@ -5136,7 +5401,7 @@
       onDead: () => {
         playerDead = true;
         paintPlayerButtons();
-        if (playerOpen) { paintPlayer(); fitPlayerArt(); }
+        if (playerOpen) paintPlayer();
       },
       // The browser wants its one tap first — the sheet opens quiet with
       // PLAY lit, which is the honest reading, not a dead stream.
@@ -5310,7 +5575,6 @@
     document.querySelector('.card').classList.add('playeropen');
     playerOpen = true;
     paintPlayer();
-    fitPlayerArt();
     // What this caller's key unlocks (skip, unlike, operator mode) — the
     // server's answer, refreshed at every open so a newly-entered code
     // counts without a reload.
@@ -5336,27 +5600,13 @@
     paintListenChip();
   }
 
-  // The sheet FITS instead of scrolling (operator's ask, 2026-08-19): the
-  // art gives its height back first, the info panels compress onto their own
-  // scrollbars second, and only a viewport shorter than everything's minimums
-  // ever sees the sheet's own scrollbar. Measured rather than styled because
-  // the card's height is config-driven — how many bands the operator has on —
-  // and CSS cannot read it: the art's ceiling is whatever space is left once
-  // everything fixed has its share.
-  function fitPlayerArt() {
-    const sheet = $('playerView');
-    if (!sheet || sheet.hidden) return;
-    const scroll = sheet.querySelector('.plscroll');
-    const art = sheet.querySelector('.plartwrap');
-    if (!scroll || !art) return;
-    sheet.style.removeProperty('--plart-cap');   // measure from natural size
-    const over = scroll.scrollHeight - scroll.clientHeight;
-    if (over <= 0) return;
-    const now = art.getBoundingClientRect().height;
-    const cap = Math.max(104, Math.floor(now - over));
-    if (cap < now) sheet.style.setProperty('--plart-cap', cap + 'px');
-  }
-  window.addEventListener('resize', () => { if (playerOpen) fitPlayerArt(); });
+  // (The sheet FITS instead of scrolling — the operator's ask of
+  // 2026-08-19 — and it is the SURFACE BLOCKS that keep it now. fitPlayerArt
+  // used to measure a ceiling into --plart-cap; the three-faces redesign
+  // gave the sleeve a token and every surface its own value for it, and
+  // `.card .plartblock .plartwrap` out-specifies the rule that read the cap,
+  // so nothing had read it since. Removed 2026-09-05, the ask held by
+  // measurement instead: scrollHeight == clientHeight on all four surfaces.)
 
   // The last REAL record the station named, and when. The station's
   // /now-playing flaps — a slow read, a track transition — and every flap
@@ -5380,19 +5630,102 @@
   // share it and the tail ellipsizes, so the panel's height budget buys
   // more entries rather than taller ones. Module-level because the Booth
   // tab's log rows wear the same anatomy.
-  function queueRow(title, sub) {
+  // `lead` is the row's own gutter — the queue position, or a dash for
+  // something already played. One column of them turns a list of records
+  // into a list with an order (design handoff, 2026-09-03).
+  function queueRow(title, sub, lead) {
     const row = document.createElement('div');
     row.className = 'plrow';
+    if (lead) {
+      const n = document.createElement('span');
+      n.className = 'plnum'; n.textContent = lead;
+      row.appendChild(n);
+    }
+    // The two lines share a column so the artist sits UNDER the title —
+    // nesting rather than wrapping, because a wrapped flex line puts the
+    // second line back at the row's own left edge and the gutter stops
+    // being a gutter.
+    const box = document.createElement('span');
+    box.className = 'pltext';
     const t = document.createElement('span');
     t.className = 'pltit'; t.textContent = title;
-    row.appendChild(t);
+    box.appendChild(t);
     if (sub) {
       const s = document.createElement('span');
       s.className = 'plsub'; s.textContent = sub;
-      row.appendChild(s);
+      box.appendChild(s);
     }
+    row.appendChild(box);
     return row;
   }
+
+  // THE SONG'S NAME, SIZED TO THE ROOM IT HAS. It was a flat 25px with a
+  // two-line clamp, so a long name wrapped and a short one did not, and the
+  // size said nothing about either. The largest step that keeps it to ONE
+  // line wins; when none does, the stylesheet's own size stands and the
+  // clamp holds it to two — which is the right answer for a name that is
+  // genuinely long, not a reason to shrink it to a caption.
+  //
+  // Steps, not a continuous fit: this card has a type scale and a title is
+  // not exempt from it. Measured through the element itself the way
+  // fitLabel does, in a rAF because a hidden sheet has no width to measure.
+  // THE STEPS COME FROM THE SURFACE. --hero-title is 25px where there is
+  // room for it and 19px on the 620x544 card, and this used to walk down
+  // from 25 whatever it was standing on — so the card carried a 25px title
+  // on a face whose own scale says 19, and the reason recorded beside the
+  // 25px step in the type-scale test ("neither on the 620x544 card") was
+  // not true of what shipped (spec review, 2026-09-05). The ladder is the
+  // card's display steps and the surface picks where it starts: 25/22/19
+  // on the phone, 19/17/15 here. An inline size the stylesheet cannot
+  // out-rank has to answer to the same scale the stylesheet does.
+  const TITLE_SCALE = [25, 22, 19, 17, 15];
+  function titleSteps(el) {
+    const top = parseFloat(
+      getComputedStyle(el).getPropertyValue('--hero-title')) || 19;
+    return TITLE_SCALE.filter((px) => px <= top).slice(0, 3);
+  }
+  function fitTitle(el, txt) {
+    if (!el || el.dataset.fit === txt) return;
+    el.dataset.fit = txt;
+    el.textContent = txt;
+    el.style.fontSize = '';
+    requestAnimationFrame(() => {
+      if (el.dataset.fit !== txt || !el.clientWidth) return;
+      const was = el.style.whiteSpace;
+      el.style.whiteSpace = 'nowrap';
+      let pick = 0;
+      for (const px of titleSteps(el)) {
+        el.style.fontSize = px + 'px';
+        if (el.scrollWidth <= el.clientWidth) { pick = px; break; }
+      }
+      el.style.whiteSpace = was;
+      el.style.fontSize = pick ? pick + 'px' : '';
+    });
+  }
+
+  // The player's hero: the sleeve BESIDE the title rather than over it
+  // (design handoff, 2026-09-03). Centred, the title had the sheet's whole
+  // width and used four lines of it, and the sleeve pushed the booth's own
+  // words off the bottom — the "stack of nested boxes" the redesign was
+  // asked to break up. Grouped here for the same reason the station row is:
+  // index.html's stack is what an embed and a narrow card still want, and
+  // the grouping is a layout, not a payload.
+  function buildPlayerHero() {
+    const scroll = document.querySelector('.plscroll');
+    const art = document.querySelector('.plartwrap');
+    if (!scroll || !art || scroll.querySelector('.plartblock')) return;
+    const block = document.createElement('div');
+    block.className = 'plartblock';
+    scroll.insertBefore(block, art);
+    const meta = document.createElement('div');
+    meta.className = 'plmeta';
+    block.append(art, meta);
+    ['plTrack', 'plAlbum', 'plTags'].forEach((id) => {
+      const el = $(id);
+      if (el) meta.appendChild(el);
+    });
+  }
+  buildPlayerHero();
 
   function paintPlayer() {
     const d = shown || live || {};
@@ -5417,34 +5750,47 @@
       }
     };
     if (img && mono) {
-      // The record's own art, else the DJ's photo, else initials — each
-      // step taken only when the one before actually failed to load. The
-      // glow is a blurred copy of the SAME image, so it recolors per record.
-      const art = np.art || d.avatar || '';
-      if (art) {
-        // Only on change — re-setting src on every poll re-fetches it.
-        if (img.getAttribute('src') !== art) { img.src = art; }
-        setBlurs(art);
-        img.hidden = false; mono.hidden = true;
-        img.onerror = () => {
-          if (np.art && img.getAttribute('src') === np.art && d.avatar) {
-            img.src = d.avatar;
-            setBlurs(d.avatar);
-            return;
-          }
-          img.hidden = true;
-          setBlurs('');
-          mono.textContent = monogram(np.artist || d.name);
-          mono.hidden = false;
-        };
-      } else {
+      // The record's own art, else the DJ's photo, else initials — each step
+      // taken only when the one before actually failed to load. The glow is a
+      // blurred copy of the SAME image, so it recolors per record.
+      //
+      // THE POLL MUST NOT UN-DO THE FALLBACK. This said `img.hidden = false`
+      // on every repaint, twenty seconds apart, so a station whose art the
+      // browser cannot fetch got the initials for an instant and the
+      // browser's own broken-image glyph for ever after (operator's phone,
+      // 2026-09-04). `dataset.want` is what the chain is being run FOR, so a
+      // repaint of the same record leaves the result of that chain alone.
+      const want = np.art || d.avatar || '';
+      const showMono = () => {
         img.hidden = true;
         setBlurs('');
-        mono.textContent = monogram(d.name); mono.hidden = false;
+        mono.textContent = monogram(np.artist || d.name);
+        mono.hidden = false;
+      };
+      if (!want) {
+        showMono();
+      } else if (img.dataset.want !== want) {
+        img.dataset.want = want;
+        img.hidden = true; mono.hidden = true; setBlurs('');
+        img.onload = () => {
+          img.hidden = false; mono.hidden = true;
+          setBlurs(img.getAttribute('src'));
+        };
+        img.onerror = () => {
+          // One step down the chain, then the initials.
+          if (np.art && img.getAttribute('src') === np.art && d.avatar) {
+            img.src = d.avatar;
+            return;
+          }
+          showMono();
+        };
+        img.src = want;
+      } else if (img.complete && !img.naturalWidth) {
+        showMono();
       }
     }
-    $('plTrack').textContent = np.title || d.track
-      || (d.onAir ? 'Live broadcast' : 'Nobody in the booth');
+    fitTitle($('plTrack'), np.title || d.track
+      || (d.onAir ? 'Live broadcast' : 'Nobody in the booth'));
     // The analysis strip the station's own player renders — genre · BPM ·
     // key · mood — as chips. Capped where a full mood list would wrap the
     // strip into a paragraph.
@@ -5455,15 +5801,35 @@
     const row = $('plTags');
     if (row) {
       row.innerHTML = '';
-      tags.slice(0, 8).forEach((t) => {
+      // FOUR. Eight ran the strip to three rows and the block has two, so
+      // the third was clipped in half — which reads as truncation rather
+      // than as a limit (operator, 2026-09-04). Six still made three rows
+      // at a real phone's width; four is what two rows hold.
+      tags.slice(0, 4).forEach((t) => {
         const el = document.createElement('span');
         el.className = 'pill';
         el.textContent = t;
         row.appendChild(el);
       });
     }
-    $('plAlbum').textContent =
-      [np.artist, np.album, np.year].filter(Boolean).join(' · ');
+    // Two lines: who made it, then which record it is off. One joined
+    // string had to be clamped, and what it clipped was the album's own
+    // name — the half a listener is most likely not to know already.
+    const albumEl = $('plAlbum');
+    if (albumEl) {
+      albumEl.textContent = '';
+      if (np.artist) {
+        const a = document.createElement('span');
+        a.className = 'plartistname'; a.textContent = np.artist;
+        albumEl.appendChild(a);
+      }
+      const rel = [np.album, np.year].filter(Boolean).join(' · ');
+      if (rel) {
+        const r = document.createElement('span');
+        r.className = 'plrelease'; r.textContent = rel;
+        albumEl.appendChild(r);
+      }
+    }
 
     // UP NEXT: the station's own queue, ALL of it — the operator wants to
     // see what is coming, not the head of the line; the panel body scrolls
@@ -5475,11 +5841,12 @@
     if (nextBody) {
       nextBody.innerHTML = '';
       if (list.length) {
-        list.forEach((nx) => {
+        list.forEach((nx, i) => {
           nextBody.appendChild(queueRow(
             nx.title,
             [nx.artist, nx.requestedBy ? 'for ' + nx.requestedBy : '']
-              .filter(Boolean).join(' · ')));
+              .filter(Boolean).join(' · '),
+            String(i + 1)));
         });
       } else {
         nextBody.textContent = 'Nothing queued — send a request below.';
@@ -5493,7 +5860,9 @@
     if (pastBody) {
       pastBody.innerHTML = '';
       past.forEach((px) => {
-        pastBody.appendChild(queueRow(px.title, px.artist || ''));
+        // No number on a played record: its place in a queue is over, and
+        // counting backwards from the top would read as one.
+        pastBody.appendChild(queueRow(px.title, px.artist || '', '\u2014'));
       });
     }
     plQueueCounts = { next: list.length, past: past.length };
@@ -5510,16 +5879,17 @@
       // The NAME rides the header line; the SHOW gets the line under it,
       // always; the booth's own words follow. A real fault outranks the
       // name — a dead stream is worth that room.
+      // NAME AND SHOW ON ONE LINE, in the well's own header opposite the
+      // label — the handoff's FRANCESCA · THE PIAZZA. They were two rows,
+      // and the second of them sat beside the DJ's words rather than above
+      // them the moment the well started centring what it carries.
       $('plBoothMeta').textContent = playerDead
         ? 'stream unavailable'
-        : (d.onAir ? (d.name || '') : 'off air');
+        : (d.onAir
+            ? [d.name, String(d.show || '').split('·')[0].trim()]
+              .filter(Boolean).join(' · ')
+            : 'off air');
       boothBody.innerHTML = '';
-      // The show, always, on its own line under the DJ's name.
-      if (d.show) {
-        const sh = document.createElement('div');
-        sh.className = 'plsub plbshow'; sh.textContent = d.show;
-        boothBody.appendChild(sh);
-      }
       const line = d.booth && d.booth.text;
       if (line) {
         // The words alone — the DJ's name and show were a third statement
@@ -5531,6 +5901,13 @@
       // Nothing stands in when the booth has said nothing: the panel is
       // the DJ, the show, and their words — the tagline was a fourth line
       // nobody asked for (operator, 2026-09-01).
+      //
+      // AND THE PANEL STAYS EITHER WAY. Hiding it while the booth was quiet
+      // meant the first line the DJ spoke pushed Up next, Just played and
+      // Requests down the sheet under whoever was reading them (operator,
+      // 2026-09-04). The reflow was the fault, not the empty box, so the
+      // height is reserved from the first paint — the same promise the card
+      // itself makes.
     }
     refreshHeart(np.title || '');
     paintPlayerButtons();
@@ -5833,6 +6210,12 @@
     paintListenChip();
   }
 
+  // …and it stands down beside the faces row (design handoff, 2026-09-03).
+  // The chip was the only way to the player before that row existed; with
+  // the ribbon up the PLAYER cell is the way, for a mouse and a screen
+  // reader alike. It also leaves the now-playing rail empty between calls,
+  // which is what lets the rail collapse and the phone face keep the same
+  // hero height as the other two.
   function paintListenChip() {
     const chip = $('listenChip');
     if (!chip) return;
@@ -5849,7 +6232,7 @@
       return;
     }
     const idle = cardMode() === 'idle';
-    chip.hidden = !idle || playerOpen;
+    chip.hidden = !idle || playerOpen || faceList().length > 1;
     chip.classList.toggle('playing', !!playerEl);
     chip.textContent = playerEl ? 'Playing' : 'Listen';
     // The faces row tracks the same state the chip does: which card is
@@ -5997,6 +6380,7 @@
     faceDefs().forEach((f) => {
       const b = $(f.btn);
       if (!b) return;
+      dressFace(b, f.id);
       b.hidden = !list.some((x) => x.id === f.id);
       b.classList.toggle('on', f.id === now);
       b.setAttribute('aria-current', f.id === now ? 'true' : 'false');
@@ -6016,6 +6400,49 @@
       }
     }
   }
+  // Icon over word, in the card's own ink. The row is scanned by shape
+  // before it is read — three words at 9.5px in one band read as a caption,
+  // not as three doors — and the glyphs are the same line drawings the
+  // corner controls use, so the card owns one icon language.
+  // Drawn once per button: index.html ships the words (which is what the
+  // contract test and a screen reader read), and the mark is added beside
+  // them here rather than being three more SVGs in the markup of a page
+  // most callers see one face of.
+  const FACE_ICONS = {
+    phone: ['M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 '
+            + '19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 '
+            + '2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 '
+            + '9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 '
+            + '2.81.7A2 2 0 0 1 22 16.92z', 2],
+    player: ['M3 12v3M7.5 8v11M12 5v16M16.5 9v9M21 12v3', 2],
+    guide: ['M3 4.5h18v16H3zM3 9.5h18M8 4.5V2.5M16 4.5V2.5M7 13.5h5', 1.9],
+  };
+  function dressFace(btn, id) {
+    if (btn.dataset.dressed === id) return;
+    const spec = FACE_ICONS[id];
+    if (!spec) return;
+    btn.dataset.dressed = id;
+    const word = (btn.textContent || '').trim();
+    btn.textContent = '';
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'facesvg');
+    svg.setAttribute('width', '17'); svg.setAttribute('height', '17');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', String(spec[1]));
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', spec[0]);
+    svg.appendChild(path);
+    const lab = document.createElement('span');
+    lab.className = 'facelab';
+    lab.textContent = word;
+    btn.append(svg, lab);
+  }
+
   let faceDragging = false;
   faceDefs().forEach((f) => {
     const b = $(f.btn);
@@ -6179,6 +6606,54 @@
   function onAt(runs, abs) { return runs.find((r) => r.start <= abs && abs < r.end) || null; }
   // The next time this show starts, from the station's now: "On air now",
   // "Today 6 PM", "Tomorrow 6 AM", "Fri 7 AM".
+  // The show's next slot, as PARTS: the guide's rows want the time over the
+  // day, and `nextAiring` answers with one string because the hero wants a
+  // sentence. `next` marks the soonest airing that has not started, which is
+  // the row the listing flags NEXT. `now` says the SCHEDULE has this show on
+  // right now — a live row without it is the station running outside its
+  // slot, which has no scheduled time to print, and printing the next one
+  // put "2 PM / Tomorrow" beside ON AIR NOW. Such a row says Now instead;
+  // the hero's own flag says why.
+  // UP TODAY: the same rows in the order a listing is read — what is on now
+  // first, then whatever is on soonest, then the shows with no airing ahead
+  // of them at all. The SET is unchanged (one row per show that airs this
+  // week); it is the order that turns a roster into a listing. `next` names
+  // the one row that earns the NEXT flag: the soonest airing not yet started.
+  function upToday(shows, runs, now, liveId) {
+    const slotOf = (s) => {
+      if (s.id === liveId) return -1;
+      const n = nextSlot(runs, s.id, now);
+      return n && typeof n.start === 'number' ? n.start : Infinity;
+    };
+    const rows = shows.slice().sort((a, b) => slotOf(a) - slotOf(b));
+    const next = (rows.find(
+      (s) => s.id !== liveId && slotOf(s) !== Infinity) || {}).id;
+    return { rows, next };
+  }
+  function nextSlot(runs, id, now) {
+    const mine = runs.filter((r) => r.id === id);
+    const on = onAt(mine, now.abs);
+    if (on) return { time: fmtHour(on.start), day: 'Today', now: true };
+    const ahead = mine.filter((r) => r.start > now.abs)
+      .sort((a, b) => a.start - b.start)[0];
+    if (!ahead) return null;
+    const days = Math.floor(ahead.start / 24) - now.dayIndex;
+    return {
+      time: fmtHour(ahead.start),
+      day: days === 0 ? 'Today' : days === 1 ? 'Tomorrow'
+        : GUIDE_DAY_NAMES[((Math.floor(ahead.start / 24) % 7) + 7) % 7],
+      start: ahead.start,
+    };
+  }
+  // The half of a show's full name that is not its title — "THE PIAZZA ·
+  // Golden-Era Pop" gives "Golden-Era Pop". The station writes them as one
+  // string and the guide wants them as two; `title` is already the head of
+  // it, so this is the tail rather than a second parse of the same rule.
+  function showGenre(show) {
+    const full = String(show.name || ''), head = String(show.title || '');
+    if (!full || !head || full === head) return '';
+    return full.slice(head.length).replace(/^[\s·—-]+/, '').trim();
+  }
   function nextAiring(runs, id, now) {
     const mine = runs.filter((r) => r.id === id);
     if (onAt(mine, now.abs)) return 'On air now';
@@ -6283,10 +6758,11 @@
       b.classList.toggle('on', on);
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
-    ['guideToday', 'guideHero', 'guideListHead', 'guideList'].forEach((id) => {
+    ['guideToday', 'guideHero', 'guideList'].forEach((id) => {
       const el = $(id);
       if (el) el.classList.toggle('gdaway', week);
     });
+    paintListHead();
     const grid = $('guideGrid'), spans = $('guideSpans');
     if (grid) grid.hidden = !week;
     if (spans) spans.hidden = !week;
@@ -6295,6 +6771,18 @@
     const sc = $('guideScroll');
     if (sc) sc.scrollTop = 0;
     paintGuideTop();
+  }
+  // The head over the listing names the view under it. "Up today · Friday,
+  // Sep 4" sat over a seven-day grid, which is two of the three words wrong
+  // (operator, 2026-09-04) — and the date belongs to the day, so it goes
+  // with it. Called from both the view switch and the paint, because the
+  // poll repaints the date from underneath.
+  function paintListHead() {
+    const week = guideView === 'week';
+    const cap = document.querySelector('.gdtodaycap');
+    if (cap) cap.textContent = week ? 'This week' : 'Up today';
+    const meta = $('guideTodayMeta');
+    if (meta) meta.hidden = week;
   }
   (function bindGuideViews() {
     const d = $('guideViewDay'), w = $('guideViewWeek');
@@ -6482,8 +6970,7 @@
     const today = $('guideToday'), list = $('guideList');
     const empty = $('guideEmpty');
     const head = $('guideTodayHead'), headMeta = $('guideTodayMeta');
-    const hero = $('guideHero'), listHead = $('guideListHead');
-    const listMeta = $('guideListMeta');
+    const hero = $('guideHero');
     if (!today || !list) return;
     // Today, hour by hour: every run that touches today's twenty-four
     // hours, the one on air lit, a run from last night shown from where
@@ -6509,6 +6996,26 @@
       today.appendChild(b);
     });
     if (headMeta) headMeta.textContent = now.label;
+    // UP TODAY — the head belongs to the LISTING now, not to the hour strip
+    // it used to caption, so it says what the column under it is. Built once
+    // and left; the head is not cleared between paints.
+    if (head && !head.querySelector('.gdtodaycap')) {
+      const cap = document.createElement('span');
+      cap.className = 'gdtodaycap';
+      cap.textContent = 'Up today';
+      head.insertBefore(cap, head.firstChild);
+    }
+    paintListHead();
+    // A SECTION HEADER over the listing (operator, 2026-09-04): the hero and
+    // the column under it are two different things and ran together. Built
+    // once, ahead of the head it introduces.
+    const sc = $('guideScroll');
+    if (sc && head && !sc.querySelector('.gdsection')) {
+      const sec = document.createElement('div');
+      sec.className = 'gdsection';
+      sec.textContent = 'Programming';
+      sc.insertBefore(sec, head);
+    }
     const angle = d.onAir && d.onAir.angle ? d.onAir : null;
     // WHAT IS ON is the station's answer, not the clock's. The grid says
     // what is SCHEDULED, and the two part company the moment the booth
@@ -6561,14 +7068,17 @@
     const shelved = shows.filter((s) => !airs.has(s.id));
     list.textContent = '';
     if (empty) empty.hidden = shows.length > 0;
-    if (listHead) listHead.hidden = !onAirThisWeek.length;
-    if (listMeta) {
-      listMeta.textContent = onAirThisWeek.length
-        + (onAirThisWeek.length === 1 ? ' show' : ' shows') + ' this week';
-    }
-    onAirThisWeek.forEach((show) => list.appendChild(guideRow(
-      show, personas, runs, now,
-      angle && angle.id === show.id ? angle.angle : '', show.id === liveId)));
+    const ordered = upToday(onAirThisWeek, runs, now, liveId);
+    ordered.rows.forEach((show) => {
+      const row = guideRow(
+        show, personas, runs, now,
+        angle && angle.id === show.id ? angle.angle : '', show.id === liveId);
+      if (show.id === ordered.next) {
+        const f = row.querySelector('.gdflag');
+        if (f && !f.textContent) f.textContent = 'Next';
+      }
+      list.appendChild(row);
+    });
     const shelf = $('guideShelf');
     if (shelf) {
       shelf.textContent = '';
@@ -6674,12 +7184,6 @@
     });
     return el;
   }
-  function guideFaces(cast, cls) {
-    const avs = document.createElement('span');
-    avs.className = 'gdavs' + (cls ? ' ' + cls : '');
-    cast.slice(0, 4).forEach((p) => avs.appendChild(guideFace(p)));
-    return avs;
-  }
   // What a show SAYS: the angle when it is on air, the show itself, then
   // the DJ and each guest with their own line and soul. Shared by the
   // hero and the rows, so the two can never say different things.
@@ -6693,18 +7197,30 @@
       if (text) l.append((lead ? ' — ' : '') + text);
       body.appendChild(l);
     };
+    // THE SHOW FIRST, then tonight's angle. It was the other way round, and
+    // an angle reads as an aside to a description a reader has not met yet.
+    // The description is NAMED because the hero shows this paragraph folded
+    // (clamped to three lines) and the rest behind the press — the DJ's soul
+    // below is a bare `.gdline` too, so class is the only way to tell them
+    // apart.
+    if (show.description) line(show.description, '', 'gddesc');
     if (angle) line(angle, "Tonight's angle", 'gdangle');
-    if (show.description) line(show.description);
     if (cast.length) {
       const cap = document.createElement('div'); cap.className = 'gdcap';
       cap.textContent = 'In the booth'; body.appendChild(cap);
     }
     cast.forEach((p, i) => {
       const who = document.createElement('div'); who.className = 'gdperson';
-      const fig = document.createElement('span');
-      fig.className = 'gdfig';
-      fig.appendChild(guideFace(p));
-      who.appendChild(bindFaceZoom(fig, p));
+      // NOT THE HOST'S FACE TWICE. The hero already carries it at 62px in
+      // its own identity row, and the booth block underneath was showing the
+      // same picture again fifteen lines down (operator, 2026-09-04). Guests
+      // keep theirs — the hero has room for one face, and it is the host's.
+      if (!(cls === 'gdherobody' && i === 0)) {
+        const fig = document.createElement('span');
+        fig.className = 'gdfig';
+        fig.appendChild(guideFace(p));
+        who.appendChild(bindFaceZoom(fig, p));
+      }
       const m = document.createElement('div'); m.className = 'gdpmeta';
       const role = document.createElement('div'); role.className = 'gdrole';
       role.textContent = i === 0 ? 'Host' : 'Guest';
@@ -6758,6 +7274,60 @@
   // repaints on every poll now, and a repaint that closed the row someone
   // was reading would be worse than the staleness it fixes.
   const guideOpenRows = new Set();
+  // How much of the show is left, as the tail of the "until" line — the
+  // figure a reader deciding whether to stay actually wants. Only ever from
+  // the SCHEDULE's own end: off schedule there is nothing to count down to,
+  // and scheduledShowEnd answers 0 there.
+  function minsLeft() {
+    const endsAt = scheduledShowEnd();
+    if (!endsAt) return '';
+    const mins = Math.round((endsAt - Date.now()) / 60000);
+    return (mins > 0 && mins < 600) ? ' · ' + mins + ' min left' : '';
+  }
+  // THE HOST'S OWN FACE beside the show's name (design handoff, 2026-09-03):
+  // the guide is a page about people, and the only picture on it was 34px
+  // down inside a row nobody had opened yet. The line under the name is the
+  // genre the show's full name carries after its title, and who runs it —
+  // the tagline stands in where the name has no second half to give.
+  function heroId(show, cast) {
+    const id = document.createElement('div');
+    id.className = 'gdheroid';
+    if (cast[0]) {
+      const fig = document.createElement('span');
+      fig.className = 'gdherofig gdfig';
+      fig.appendChild(guideFace(cast[0]));
+      id.appendChild(bindFaceZoom(fig, cast[0]));
+    }
+    const names = document.createElement('div');
+    names.className = 'gdheronames';
+    const name = document.createElement('div');
+    name.className = 'gdheroname'; name.textContent = show.title || show.name;
+    names.appendChild(name);
+    const line2 = [showGenre(show) || show.tagline,
+                   cast[0] ? 'with ' + cast[0].name : '']
+      .filter(Boolean).join(' · ');
+    if (line2) {
+      const t = document.createElement('div');
+      t.className = 'gdherotag'; t.textContent = line2;
+      names.appendChild(t);
+    }
+    id.appendChild(names);
+    return id;
+  }
+  // The hero's floor: the way into the rest of it, and where the show sits
+  // on the week. Pinned to the bottom of the box by the stylesheet, so the
+  // press is in the same place whether the hero is clamped or open.
+  function heroFoot(fold, runs, id) {
+    const foot = document.createElement('div');
+    foot.className = 'gdherofoot';
+    const week = document.createElement('span');
+    week.className = 'gdheroweek';
+    week.textContent = scheduleGroups(runs, id)
+      .map((g) => g.label + ' ' + g.times).join(' · ');
+    if (week.textContent) foot.appendChild(week);
+    foot.appendChild(fold);
+    return foot;
+  }
   function guideHero(show, cast, runs, now, angle, until, flag) {
     const box = document.createElement('div');
     box.className = 'gdherobox' + (guideHeroOpen ? '' : ' min');
@@ -6777,47 +7347,51 @@
     // one: "Takeover · Today 2 PM" looks like the takeover starts at two.
     tail.textContent = until ? 'until ' + until
       : (!flag && next && next !== 'On air now' ? next : '');
-    if (tail.textContent) top.appendChild(tail);
+    if (until) tail.textContent += minsLeft();
+    // THE FLAG FIRST, then the tail — it used to be `insertBefore(f, tail)`,
+    // and `tail` is only appended when it has words. Off schedule it has
+    // none (the SLOT is not the story then) and the flag is exactly what is
+    // set, so the two conditions that had to meet for this to throw were the
+    // same one: NotFoundError out of guideHero, and the whole guide painted
+    // blank behind one console line. Reached on the stub the moment the
+    // clock passed the fixture's scheduled hour (2026-09-03); on a real
+    // station, any takeover with no scheduled end.
     if (flag) {
       const f = document.createElement('span');
       f.className = 'gdheroflag'; f.textContent = flag;
       f.title = 'The station is running this outside its scheduled slot';
-      top.insertBefore(f, tail);
+      top.appendChild(f);
     }
+    if (tail.textContent) top.appendChild(tail);
     const fold = document.createElement('button');
     fold.type = 'button'; fold.className = 'gdherofold';
-    fold.textContent = '▸';
+    // AN ARROW, not a word (operator, 2026-09-04). A worded pill on the
+    // hero's floor read as a control with an opinion; a chevron under the
+    // text is the shape every expandable block on this card already uses.
     const say = () => {
       const open = !box.classList.contains('min');
+      fold.textContent = open ? '▴' : '▾';
       fold.setAttribute('aria-expanded', open ? 'true' : 'false');
       fold.setAttribute('aria-label', open
-        ? 'Hide what is on air' : 'Show what is on air');
+        ? 'Show less of what is on air' : 'Read more about what is on air');
     };
     fold.onclick = () => {
       guideHeroOpen = box.classList.toggle('min') === false;
       say();
     };
     say();
-    top.appendChild(fold);
-    const name = document.createElement('div');
-    name.className = 'gdheroname'; name.textContent = show.title || show.name;
-    box.append(top, name);
-    if (show.tagline) {
-      const t = document.createElement('div');
-      t.className = 'gdherotag'; t.textContent = show.tagline;
-      box.appendChild(t);
-    }
-    if ((show.moods || []).length) {
-      const moods = document.createElement('div'); moods.className = 'gdmoods';
-      show.moods.slice(0, 5).forEach((m) => {
-        const t = document.createElement('span'); t.textContent = m;
-        moods.appendChild(t);
-      });
-      box.appendChild(moods);
-    }
+    box.append(top, heroId(show, cast));
     box.appendChild(guideBody(show, cast, angle, runs, now, 'gdherobody'));
+    box.appendChild(heroFoot(fold, runs, show.id));
     return box;
   }
+  // A LISTING ROW, not a card (design handoff, 2026-09-03): WHEN in its own
+  // column, then the show's tone as a spine, then the name with its flag and
+  // the way in. The row used to lead with the name and bury the time in a
+  // "next ·" line under the host, which left a column of shows with no order
+  // to read it by — and the moods now belong to the OPEN row, because five
+  // chips under every collapsed one was the wall of text this was redrawn to
+  // stop being.
   function guideRow(show, personas, runs, now, angle, live) {
     const row = document.createElement('div');
     const wasOpen = guideOpenRows.has(show.id);
@@ -6825,49 +7399,82 @@
     row.dataset.show = show.id;
     row.setAttribute('role', 'button'); row.tabIndex = 0;
     row.setAttribute('aria-expanded', wasOpen ? 'true' : 'false');
-    const head = document.createElement('div'); head.className = 'gdhead';
-    const metaEl = document.createElement('div'); metaEl.className = 'gdmeta';
-    const title = document.createElement('div'); title.className = 'gdtitle';
-    title.appendChild(toneDot(show.id));
-    const name = document.createElement('span'); name.className = 'gdshow';
-    name.textContent = show.title || show.name;
-    title.appendChild(name);
     const cast = castOf(show, personas);
-    const sub = document.createElement('div'); sub.className = 'gdsub';
-    sub.textContent = show.tagline || (cast[0] ? cast[0].name : '');
+    const slot = nextSlot(runs, show.id, now);
+    const head = document.createElement('div'); head.className = 'gdrowhead';
+    const when = document.createElement('span'); when.className = 'gdwhen';
+    const onNow = live && !(slot && slot.now);   // see nextSlot
+    const wt = document.createElement('span'); wt.className = 'gdwhent';
+    wt.textContent = onNow ? 'Now' : (slot ? slot.time : '');
+    const wd = document.createElement('span'); wd.className = 'gdwhend';
+    wd.textContent = onNow ? '' : (slot ? slot.day : '');
+    when.append(wt, wd);
+    // A show with no airing ahead of it has nothing to put in the column,
+    // and 62px of reserved emptiness down the left of the shelf is the
+    // "awkward space" the operator saw. No slot, no column.
+    if (!slot && !live) when.hidden = true;
+    const spine = document.createElement('span');
+    spine.className = 'gdspine gdtone'; spine.setAttribute('aria-hidden', 'true');
+    spine.dataset.tone = String(showTone(show.id));
+    const metaEl = document.createElement('div'); metaEl.className = 'gdrowmain';
+    const title = document.createElement('div'); title.className = 'gdrowtop';
+    const name = document.createElement('span'); name.className = 'gdrowname';
+    name.textContent = show.title || show.name;
+    const end = document.createElement('span'); end.className = 'gdrowend';
+    const flag = document.createElement('span'); flag.className = 'gdflag';
+    flag.textContent = live ? 'On air now' : '';   // paintGuide adds NEXT
+    const chev = document.createElement('span'); chev.className = 'gdchev';
+    chev.textContent = '\u25B8'; chev.setAttribute('aria-hidden', 'true');
+    end.append(flag, chev);
+    title.append(name, end);
+    const sub = document.createElement('div'); sub.className = 'gdrowsub';
+    sub.textContent = showGenre(show) || show.tagline || '';
+    if (cast[0]) {
+      const h = document.createElement('span'); h.className = 'gdrowhost';
+      h.textContent = (sub.textContent ? ' · ' : '') + cast[0].name;
+      sub.appendChild(h);
+    }
     metaEl.append(title, sub);
+    head.append(when, spine, metaEl);
+    const body = guideBody(show, cast, angle, runs, now);
     if ((show.moods || []).length) {
       const moods = document.createElement('div'); moods.className = 'gdmoods';
       show.moods.slice(0, 5).forEach((m) => {
         const t = document.createElement('span'); t.textContent = m;
         moods.appendChild(t);
       });
-      metaEl.appendChild(moods);
+      // A DIRECT CHILD as the reference node, never a querySelector: the
+      // schedule block carries a `.gdcap` of its own, so on a show whose
+      // first one is that nested heading, insertBefore threw NotFoundError
+      // and took the whole guide paint down with it — a blank card and one
+      // console line (measured in the stub, 2026-09-03).
+      const cap = [...body.children].find((n) => n.classList.contains('gdcap'));
+      body.insertBefore(moods, cap || null);
     }
-    // Who runs it and when it is next on, on one quiet line.
-    const who = document.createElement('div'); who.className = 'gdwho';
-    if (cast.length) who.appendChild(guideFaces(cast));
-    if (cast[0]) {
-      const h = document.createElement('span'); h.className = 'gdhost';
-      h.textContent = cast[0].name; who.appendChild(h);
-    }
-    const next = nextAiring(runs, show.id, now);
-    if (next) {
-      const n = document.createElement('span'); n.className = 'gdnext';
-      n.textContent = (next === 'On air now' ? '' : 'next · ') + next;
-      if (next === 'On air now') n.classList.add('live');
-      who.appendChild(n);
-    }
-    metaEl.appendChild(who);
-    const chev = document.createElement('span'); chev.className = 'gdchev';
-    chev.textContent = '\u25B8'; chev.setAttribute('aria-hidden', 'true');
-    head.append(metaEl, chev);
-    row.append(head, guideBody(show, cast, angle, runs, now));
+    row.append(head, body);
+    // ONE AT A TIME (design handoff, 2026-09-03). Every row carries a
+    // paragraph, a mood strip and a DJ, and three of them open at once is
+    // the wall of text the listing was redrawn to stop being — the reader
+    // scrolls past what they already read to reach what they asked for.
+    // The set stays the state (a repaint must not close the row somebody is
+    // reading); opening simply empties it first.
     const toggle = () => {
-      const open = row.classList.toggle('open');
+      const open = !row.classList.contains('open');
+      if (open) {
+        guideOpenRows.clear();
+        const list = row.parentElement;
+        if (list) {
+          list.querySelectorAll('.gdrow.open').forEach((other) => {
+            other.classList.remove('open');
+            other.setAttribute('aria-expanded', 'false');
+          });
+        }
+        guideOpenRows.add(show.id);
+      } else {
+        guideOpenRows.delete(show.id);
+      }
+      row.classList.toggle('open', open);
       row.setAttribute('aria-expanded', open ? 'true' : 'false');
-      if (open) guideOpenRows.add(show.id);
-      else guideOpenRows.delete(show.id);
     };
     row.onclick = toggle;
     row.addEventListener('keydown', (e) => {
@@ -6956,7 +7563,6 @@
             clearTimeout(playerHideTimer);
             moving.hidden = false;
             paintPlayer();
-            fitPlayerArt();
           } else {
             clearTimeout(guideHideTimer);
             moving.hidden = false;

@@ -9,6 +9,32 @@ A passing unit suite is not verification. Run the thing, drive the flow, report 
 **observed**. This skill exists because several hours once went into fighting the environment
 rather than the code — everything below is a trap already paid for.
 
+## Build the loop before the theory
+
+Adapted from `diagnosing-bugs` in [mattpocock/skills](https://github.com/mattpocock/skills)
+(MIT), whose one lever is worth more than the rest of that skill put together.
+
+On this widget the loop is almost never a test — it is a **DOM probe** in the page:
+`javascript_tool` reading rects, `getComputedStyle`, `scrollHeight` against `clientHeight`.
+Build one that goes **red** on the actual symptom before you form a theory about the cause.
+A theory costs a round trip when it is wrong, and on CSS it is wrong most of the time:
+this session guessed the cause of one misalignment three times and the probe found it in
+one call.
+
+A **tight** loop names one thing you can re-run in seconds and that answers about the
+symptom, not about the code: the element's left edge against its neighbour's, the
+scroller's two heights, the computed `display` of the band that should be gone. If you
+catch yourself reading CSS to decide why before you have measured what, stop and measure.
+
+**And a probe is not a look.** Geometry and computed styles answer "is it where I think"
+and never "does it look right" — the second question needs pixels. Screenshot the state
+you changed; a value that measures correctly can still be ugly, and the operator is
+looking at pixels.
+
+For WHICH states to drive, and the traps that make a card change look right in one of them
+and broken in four, read `.claude/skills/talkwave-card-design/SKILL.md` first — by path,
+because it is user-invoked and no skill can fire it.
+
 ## The fast path: real token server
 
 `.claude/launch.json` has a `talkwave` entry that runs `agent-worker/token_server.py` on :8100.

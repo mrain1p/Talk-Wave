@@ -554,11 +554,16 @@
     mask-image: linear-gradient(90deg, #000 88%, transparent);
   }
   /* A title longer than its row CYCLES so the whole thing can be read
-     (operator's phone, 2026-08-24: "I Am — Kamasi…"). The fade moves to
-     both edges while it slides; still and short titles keep the old fade.
-     Reduced motion keeps the fade and skips the ride. */
+     (operator's phone, 2026-08-24: "I Am — Kamasi…"). The trailing edge
+     fades whether it rides or not; reduced motion keeps that fade and skips
+     the ride. */
+  /* The riding title's own box. It used to set a two-sided mask here as
+     well; that fades the LEADING edge, which ate the first character of a
+     title sitting still (the ride rests at zero for the first sixth of its
+     cycle), so the trailing-edge-only mask further down this file replaced
+     it — a top-level `.track.marq` too, and later, so it wins everywhere.
+     The declaration is gone rather than left to lose an argument silently. */
   .track.marq {
-    mask-image: linear-gradient(90deg, transparent 0, #000 5%, #000 95%, transparent);
     /* The ride needs a real one-line box. The phone's title is a one-line
        -webkit-box CLAMP (white-space normal), which cuts the text instead of
        letting it overflow — a marquee on that box has nothing to slide. Class
@@ -1028,18 +1033,6 @@
     display: block; cursor: pointer;
   }
   .card .gdrow.open { border-color: var(--edge); background: var(--granite); }
-  .gdhead { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .gdmeta { flex: 1; min-width: 0; }
-  .gdshow {
-    font: 700 13px/1.2 var(--font-mono); letter-spacing: .04em;
-    text-transform: var(--skin-label-case); color: var(--alpenglow);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .gdsub {
-    font: 11px/1.35 var(--font-mono); letter-spacing: .05em;
-    color: var(--sage-dim); margin-top: 3px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
   .gdavs { display: flex; flex: none; align-items: center; }
   .gdav {
     width: 26px; height: 26px; border-radius: 50%; object-fit: cover;
@@ -1085,23 +1078,6 @@
   }
   .gdtodayhead[hidden] { display: none; }
   .gdtodaylab { white-space: nowrap; }
-  /* The row's quiet line: the faces, the host, and when it is next on. */
-  .gdwho {
-    display: flex; align-items: center; gap: 8px; margin-top: 8px;
-    min-width: 0;
-  }
-  .gdhost {
-    font: 700 10px/1 var(--font-mono); letter-spacing: .12em;
-    text-transform: var(--skin-label-case); color: var(--sage);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .gdnext {
-    margin-left: auto; flex: none;
-    font: 10px/1 var(--font-mono); letter-spacing: .06em; color: var(--sage-dim);
-  }
-  .gdnext.live { color: var(--coral); font-weight: 700; }
-  .gdwho .gdav { width: 30px; height: 30px; margin-left: -8px; }
-  .gdwho .gdav.mono { font-size: 11px; }
   .gdline.gdangle { color: var(--amber); }
   .gdline.gdangle b { color: var(--amber); }
   /* On the schedule: day groups left, hours right, today marked. */
@@ -1173,25 +1149,9 @@
   }
   .gdherobox.min .gdherofold { transform: rotate(0deg); }
   .card .gdherofold:hover { color: var(--alpenglow); }
-  /* "Program guide", and how much of the week is on the air. */
-  .gdlisthead {
-    display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px;
-    margin-top: 18px; padding-bottom: 6px;
-    border-bottom: 1px solid var(--hairline);
-  }
-  .gdlisthead[hidden] { display: none; }
-  .gdlistlab {
-    font: 700 11px/1 var(--font-mono); letter-spacing: .16em;
-    text-transform: var(--skin-label-case); color: var(--alpenglow);
-  }
-  .gdlistmeta {
-    margin-left: auto; font: 10px/1.3 var(--font-mono); letter-spacing: .06em;
-    color: var(--sage-dim);
-  }
   /* The show on air keeps its outline in the list too, so the week can be
      read without hunting for where "now" sits. */
   .card .gdrow.live { border-color: var(--coral); }
-  .card .gdrow.live .gdshow { color: var(--coral); }
   /* Who is in the booth, per person: the face, the role, the name and
      their line, then their soul underneath. */
   .gdperson {
@@ -1268,7 +1228,6 @@
     flex: none; width: 9px; height: 9px; border-radius: 2px;
     display: inline-block; background: var(--sage-dim);
   }
-  .gdtitle { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .gdtone[data-tone="0"] { background: color-mix(in srgb, var(--coral) 100%, var(--granite)); }
   .gdtone[data-tone="1"] { background: color-mix(in srgb, var(--amber) 100%, var(--granite)); }
   .gdtone[data-tone="2"] { background: color-mix(in srgb, var(--cool) 100%, var(--granite)); }
@@ -1461,8 +1420,17 @@
   .card .facebar .face[hidden] { display: none; }
   /* On a phone the player is the whole screen, so the row is the screen's
      own foot: fixed, above the sheet, with the safe area paid once here
-     rather than by the dock beneath it. */
-  @media (max-width: 700px) {
+     rather than by the dock beneath it.
+
+     500, NOT 700 (2026-09-04). This is the full-bleed card's model — the
+     sheet is the screen, so the row is the screen's foot — and the card is
+     only full-bleed at 500 and under. Between 501 and 700 it is a 544px box
+     near the top of the window, and the row was still pinned to the bottom
+     of the viewport: four hundred pixels of nothing between the Call button
+     and the tabs, and the card reserving 46px for a row that was not in it.
+     Reported on the operator's own screen. The breakpoint now matches the
+     one that decides whether the card fills the screen at all. */
+  @media (max-width: 500px) {
     body:not(.compact) .card.faces .facebar {
       position: fixed; left: 0; right: 0; bottom: 0;
       height: calc(38px + env(safe-area-inset-bottom));
@@ -1494,7 +1462,7 @@
      space allotment") — fixed to the viewport, square corners, out from
      under the body's gutters. position:fixed escapes the card's clip, which
      is exactly the point. */
-  @media (max-width: 700px) {
+  @media (max-width: 500px) {
     body:not(.compact) .player { position: fixed; inset: 0;
                                  border-radius: 0; z-index: 90; }
     /* THE SHEET PAYS THE NOTCH. The card's eyebrow already takes
@@ -1507,12 +1475,15 @@
       height: calc(38px + max(0px, env(safe-area-inset-top)));
       padding-top: max(0px, env(safe-area-inset-top));
     }
-    /* SHORT PHONES. Below roughly 600px of height the panels were being
-       flex-shrunk past their content and painted INTO each other — the
-       queue collapsed to 20px and overlapped the booth by 14 (measured
-       at 360x560 and 320x568). The panels hold their size now and the
-       sheet's middle scrolls, which is the surface's own rule: only the
-       middle may. */
+  }
+  /* SHORT PHONES. Below roughly 600px of height the panels were being
+     flex-shrunk past their content and painted INTO each other — the queue
+     collapsed to 20px and overlapped the booth by 14 (measured at 360x560
+     and 320x568). The panels hold their size now and the sheet's middle
+     scrolls, which is the surface's own rule: only the middle may.
+     Its own block: this is a HEIGHT problem and it followed the sheet's
+     breakpoint down to 500 by accident when that one moved. */
+  @media (max-width: 700px) {
     body:not(.compact) .plscroll { overflow-y: auto; scrollbar-width: thin; }
     body:not(.compact) .plscroll > .plpanel,
     body:not(.compact) .plscroll > .plqgroup { flex: none; }
@@ -1621,15 +1592,12 @@
   /* The art, glowing: a blurred copy of the SAME artwork behind it, so the
      halo recolors per record. The DJ's photo steps in when a record has no
      art; initials after that.
-     --plart-cap is measured by call.js fitPlayerArt(): the card's height is
-     config-driven (how many bands are on) and CSS cannot read it, so the
-     art's ceiling is whatever space is left once everything fixed has its
-     share. Width-driven with the aspect ratio deriving height — the
-     height-driven direction does not reliably transfer in Chromium. */
+     Width-driven with the aspect ratio deriving height — the height-driven
+     direction does not reliably transfer in Chromium. */
   .plartwrap { position: relative;
                /* 200, down from 240 (operator's phone, 2026-08-31): the
                   sleeve was crowding the three panels out of the stack. */
-               width: min(200px, 54cqw, var(--plart-cap, 999px));
+               width: min(200px, 54cqw);
                aspect-ratio: 1; flex: none; }
   .plglow {
     position: absolute; left: -10px; top: -6px;
@@ -2354,12 +2322,6 @@
     box-shadow: inset 0 0 40px rgba(194, 64, 43, .06);
   }
   /* The stage message the board paints while the switch is up. */
-  .routeline {
-    font: 700 10px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    letter-spacing: .22em; text-transform: uppercase; text-align: center;
-  }
-  .routeline.live { color: var(--coral); }
-  .routeline.priv { color: var(--cool); }
 
   /* The Call button wears the route: solid coral when the call is going
      out live (the existing primary look), the cool outline when it is a
@@ -4120,6 +4082,1186 @@
     body:not(.compact) .meters .meter { flex: 1 1 0; min-width: 0; }
     body:not(.compact) .meters .meter.you { order: 0; }
     body:not(.compact) .meters .meter.dj { order: 1; }
+  }
+
+
+  /* === THE THREE FACES: the 2026-09-03 redesign =========================
+     The handoff (design_handoff_talkwave_faces) took the three faces the
+     pager swipes between — phone, player, guide — and gave them ONE
+     skeleton, so a swipe reads as one object turning rather than as three
+     unrelated cards:
+
+       header band   --head-h     the label, the count, the corner controls
+       hero          --ident-h + --station-h    the same on all three, so
+                                  nothing jumps mid-swipe
+       middle        flex         THE ONLY SCROLLING REGION on a face
+       dock          auto         --granite over a hairline, rows at
+                                  --control-h
+       ribbon        --ribbon-h   the faces row
+
+     WHY TOKENS RATHER THAN NUMBERS. The handoff is drawn at 412x892 — the
+     full-bleed phone card — and the operator asked for it on every surface.
+     A 236px hero is right there and absurd on the 348x320 embed, so the
+     skeleton is written once against these properties and each surface
+     answers with its own values. The handoff's own numbers live in the
+     phone block at the end of this section; the values here are the 620x544
+     card's, and body.compact overrides what an embed cannot afford.
+
+     Nothing here introduces a colour. Where the handoff names a literal it
+     is what a token already resolves to in dark, and the token is what gets
+     written — including the two selected-cell grounds, which the handoff
+     wants SOLID so the ambient wash cannot tint them: they are mixed from
+     the accent over --pine rather than pinned to a hex.
+     ------------------------------------------------------------------- */
+  :root {
+    --head-h: 38px;          /* the header band, every face */
+    --ident-h: 104px;        /* identity row / the player's art block */
+    --station-h: 62px;       /* the station row / the player's progress */
+    --portrait: 84px;        /* the DJ's circle in the identity row */
+    --thumb: 40px;           /* the record's square in the station row */
+    --sleeve: 118px;         /* the player's own sleeve */
+    --well-h: 88px;          /* the player's booth well */
+    /* One queue row, MEASURED: 9px of padding either side of a 13px
+       title over an 11px artist, plus its top rule — 51.67 at the
+       phone's own type. Three of them is what the window holds. */
+    --plrow-h: 52px;
+    --seg-h: 34px;           /* segmented cells: route switch, player tabs */
+    --pill-h: 26px;          /* read more / remind me */
+    --dock-gap: 12px;        /* between the dock's rows */
+    --dock-pad: 10px;        /* the dock's own top and bottom */
+    /* What the card pays on each side, so a band can bleed to the card's
+       edge with a negative margin instead of every band guessing. The phone
+       writes its own, which are the safe-area max() expressions. */
+    --card-pad-l: 16px;
+    --card-pad-r: 16px;
+    /* The two selected-cell grounds. SOLID, and they stay that way now the
+       wash that first forced it is gone: the player's own artwork bloom
+       still sits behind this control, and a translucent tint changed colour
+       with the record. color-mix over --pine keeps the theming contract —
+       a station repaint moves these with its own accent. */
+    --pick-live: color-mix(in srgb, var(--coral) 13%, var(--pine));
+    --pick-priv: color-mix(in srgb, var(--cool) 13%, var(--pine));
+  }
+
+  /* -- no ambient wash -------------------------------------------------
+     The handoff put a blurred page wash under every face and a bloom behind
+     every portrait. It went in and the operator's answer was that the glass
+     look does not belong on this card — the themes are the themes, and a
+     skin is where form is decided. Removed rather than tuned: light, dark
+     and every skin are what they were before it, and the bands, rules and
+     grounds are what carry the redesign.
+
+     The player's own artwork wash (.plambient / .plglow) is NOT this — it
+     predates the redesign, it is the record's own colours rather than a
+     tint, and it stays. */
+  /* -- 1a. the identity row ----------------------------------------------
+     LEFT-ALIGNED, which is the whole change. The phone block centred the
+     portrait over the name, and that cost the row its full height for three
+     short lines — the identity block reached a third of the screen above a
+     conversation that is the point. Beside the text it is the same picture
+     in half the height. */
+  .who-row { position: relative; }
+  body:not(.compact) .card:not([data-mode="chat"]) .who-row {
+    height: var(--ident-h); flex: none;
+    border-bottom: 1px solid var(--edge);
+  }
+  .who-row .avatar, .who-row .avatar-mono {
+    width: var(--portrait); height: var(--portrait);
+  }
+  .who-row .avatar-mono { font-size: calc(var(--portrait) * .32); }
+  /* IN THE BOOTH — the eyebrow over the name, so the row says whose picture
+     that is before the name has been read. */
+  .who-row .whocap {
+    display: block; font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    margin: 0 0 6px; white-space: nowrap; overflow: hidden;
+  }
+  body.compact .who-row .whocap { display: none; }
+
+  /* -- 1a. the station row -----------------------------------------------
+     What is on the station, as its own band under the identity it belongs
+     to: the record's art, a label, the title, the heart, a level. The track
+     line used to hang off the bottom of the identity block, where a thumb
+     had nowhere to go and the heart shared a row with a title that was
+     already ellipsising. call.js moves .trackrow in here at startup — every
+     id inside it is the one it always was. */
+  .stationrow {
+    display: flex; align-items: center; gap: 10px; flex: none;
+    height: var(--station-h); padding: 9px 0;
+    border-bottom: 1px solid var(--edge);
+  }
+  .stationrow[hidden] { display: none; }
+  .stationrow .stationart {
+    position: relative; flex: none;
+    width: var(--thumb); height: var(--thumb);
+  }
+  .stationrow .stationart img {
+    position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%;
+    object-fit: cover; border: 1px solid var(--edge);
+    background: var(--granite-hi); display: block;
+  }
+  .stationrow .stationart img[hidden] { display: none; }
+  /* No art, no empty square: the fallback is the card's own grain, which is
+     what the handoff's striped placeholder stands in for. */
+  .stationrow .stationart .stationfill {
+    position: absolute; inset: 0; z-index: 1; border: 1px solid var(--edge);
+    background: repeating-linear-gradient(135deg,
+      var(--granite-hi) 0 6px, var(--granite) 6px 12px);
+  }
+  .stationrow .stationmeta { flex: 1; min-width: 0; display: block; }
+  .stationrow .stationcap {
+    display: block; font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    margin: 0 0 4px; white-space: nowrap; overflow: hidden;
+  }
+  /* The title steps out of micro-type: it is a name, not a label, and at
+     10px uppercase it was the hardest line on the card to read. */
+  .stationrow .trackrow { flex: 1; min-width: 0; }
+  .stationrow .track {
+    font-family: var(--font-body); font-size: 13px; font-weight: 400;
+    letter-spacing: 0; text-transform: none; color: var(--alpenglow);
+    margin: 0; line-height: 1.3;
+  }
+  .stationrow .track .npby { color: var(--sage); }
+  .card .stationrow .nplike {
+    width: var(--control-h); height: var(--control-h);
+    border: 1px solid var(--edge); color: var(--sage);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px; flex: none;
+  }
+  .card .stationrow .nplike.liked { color: var(--coral); }
+  /* THE EMBED KEEPS ITS ONE-LINE TRACK. 348x320 has no 62px band to spend,
+     and this is the same line it always was — one step down the DOM, with
+     the furniture that needs room switched off. */
+  body.compact .stationrow {
+    height: auto; padding: 3px 0 0; border: 0; gap: 6px;
+  }
+  body.compact .stationrow .stationart,
+  body.compact .stationrow .stationcap { display: none; }
+  body.compact .stationrow .track {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .14em;
+    text-transform: var(--skin-label-case); font-weight: 700; color: var(--sage);
+  }
+  body.compact .card .stationrow .nplike { width: 18px; height: 16px; border: 0; }
+
+  /* -- 1a. the route switch ----------------------------------------------
+     Two cells, full width, shared borders, square — the same control the
+     player's tabs are, which is the point: one segmented control on the
+     card, worn twice. It was a centred pill straddling the stage's top
+     edge, which needed 22px of headroom inside the stage and put a
+     transcript line behind it. Its own row instead. */
+  .card.routed .routeswitch {
+    height: var(--seg-h); width: auto; margin: 0 0 10px; padding: 0;
+    background: transparent; border: 0;
+  }
+  .card.routed .routeswitch .rcell {
+    flex: 1 1 0; min-width: 0; height: var(--seg-h); padding: 0 8px;
+    background: var(--pine); border: 1px solid var(--edge);
+    box-shadow: none; color: var(--sage-dim);
+  }
+  .card.routed .routeswitch .rcell + .rcell { border-left: 0; }
+  .card.routed .routeswitch .rcell.on {
+    background: var(--pick-priv); box-shadow: inset 0 0 0 1px var(--cool);
+    color: var(--cool);
+  }
+  .card.routed .routeswitch .rcell.live.on {
+    background: var(--pick-live); box-shadow: inset 0 0 0 1px var(--coral);
+    color: var(--coral);
+  }
+  /* No straddle any more, so the stage stops reserving headroom for one. */
+  .card.routed[data-mode="idle"] .linebox,
+  .card.gated.routed[data-mode="idle"] .linebox { padding: 14px; }
+  .card.routed .linebox { margin-top: 0; }
+
+  /* -- 1a. the stage -----------------------------------------------------
+     The idle board answers instead of sitting empty. Top: what this route
+     costs you, in one label and one sentence. Middle: what the booth is
+     actually asking, when a segment is up. Foot: what else the line is for.
+     The middle centres in whatever is left, so a stage with no segment is
+     the consequence copy in the middle of the box rather than a headline
+     stranded at the top of 400px of black. */
+  /* THE STAGE reads top to bottom in three steps, and each one is a
+     different WEIGHT rather than a different box: what this route costs
+     (a label and a sentence), what the booth is asking (the only display
+     type in here), and what else the line is for (the quietest thing on
+     the card). It was five items at four sizes with a rule through the
+     middle and no spacing rhythm — "thrown in there" (operator,
+     2026-09-04). One padding, one gap unit, one rule. */
+  /* min-height, NOT height. A stage pinned at 100% of a box too short for
+     it does not overflow — it paints THROUGH itself: the premise ran 25px
+     across "ALSO ON THE LINE" on the 620x544 card, and because the pinned
+     box never grew, the line box's scrollHeight reported nothing to scroll
+     to either (spec review, 2026-09-05). A box that grows is a box the
+     scroller can reach. */
+  .idleboard .stage {
+    display: flex; flex-direction: column; min-height: 100%; text-align: left;
+    gap: 14px;
+  }
+  .idleboard .stagehead {
+    flex: none; font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--cool);
+    margin: 0 0 6px;
+  }
+  .card.route-on .idleboard .stagehead { color: var(--coral); }
+  .idleboard .stagesay {
+    flex: none; font: 12px/1.45 var(--font-body); color: var(--sage);
+    margin: 0;
+  }
+  /* The label and its sentence are ONE step, so they own their gap and the
+     stage's own gap separates them from what follows. */
+  .idleboard .stagetop { flex: none; }
+  .idleboard .stagerule {
+    flex: none; height: 1px; background: var(--hairline); margin: 0;
+  }
+  /* The middle. An OPEN LINE sits under the rule that introduces it, where
+     it reads as the next thing said; centred, it floated in the middle of
+     two voids with the foot row stranded below (operator, 2026-09-04). The
+     one-line example is the other case — small, and centring is right for
+     it, because there is nothing above it to belong to. */
+  /* `flex: 1` is `1 1 0%`, and the `min-height: 0` beside it is what let
+     the middle shrink to nothing while its own contents carried on
+     painting. A flex item's default floor is its min-content, which is the
+     right one here: the middle may give up slack, never its words. */
+  .idleboard .stagemid {
+    flex: 1 1 auto; display: flex; align-items: center;
+    justify-content: center;
+  }
+  .idleboard .stagemid:has(.openhead) { align-items: flex-start; }
+  .idleboard .stagemid > * { width: 100%; }
+  /* OPEN LINES — what the DJ has put up, in the caller's own words back at
+     them. The pip blinks because the thing it reports is running out.
+     The label is TWO WORDS: it carried the DJ's name too, and on a name of
+     any length that ellipsised into "DANNY BOY IS…" beside a clock — the
+     card already says who is in the booth, 300px up, beside their face. */
+  .idleboard .openhead {
+    display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px;
+  }
+  .idleboard .openpip {
+    width: 7px; height: 7px; flex: none; background: var(--amber);
+    animation: blink 1.6s ease-in-out infinite;
+  }
+  .idleboard .openlab {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--amber);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .idleboard .opentil {
+    margin-left: auto; flex: none; white-space: nowrap;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+  }
+  .idleboard .opensubj {
+    display: block; font: 700 15px/1.45 var(--font-body);
+    color: var(--alpenglow); margin: 0;
+  }
+  /* The foot: the doors that are always there, under a rule, quiet — and
+     STACKED, because side by side the list was ellipsised ("what play…")
+     while the row it was on had nothing else to give. Two short lines cost
+     the same height a truncated one did. */
+  .idleboard .stagefoot {
+    flex: none; display: block;
+    padding-top: 12px; border-top: 1px solid var(--hairline);
+  }
+  .idleboard .stagefootlab {
+    display: block; font: 700 9.5px/1 var(--font-mono);
+    letter-spacing: .12em; text-transform: var(--skin-label-case);
+    color: var(--sage-dim); margin: 0 0 5px;
+  }
+  .idleboard .stagefootsay {
+    display: block; font-size: 12px; line-height: 1.4; color: var(--sage);
+  }
+  /* The stage is the whole box when it is answering: the board used to be
+     one centred line among the box's other tenants. */
+  .card.routed[data-mode="idle"] .linebox:has(.idleboard .stage) {
+    display: flex; flex-direction: column;
+  }
+  .card.routed[data-mode="idle"] .linebox > .idleboard:not([hidden]):has(.stage) {
+    flex: 1; min-height: 0; display: block; margin: 0; padding: 0;
+  }
+  /* An embed has no room for a segment's subject over a 12px sentence in a
+     box that is already the smallest thing on the card. */
+  body.compact .idleboard .openhead,
+  body.compact .idleboard .opensubj,
+  body.compact .idleboard .stagefoot { display: none; }
+
+  /* -- 1a. the dock ------------------------------------------------------
+     The level band and the action row, full-bleed on --granite over a
+     hairline. TWO ELEMENTS PAINTING ONE BAND rather than a wrapper round
+     them: .rig's visibility reservation is per-child and load-bearing (it
+     has caught three bands already), so wrapping the trailing rows would
+     mean re-teaching the rule that keeps the card one height. Contiguous
+     and full-bleed, they read as the one band the handoff draws. */
+  .rig > .meters, .rig > .talkrow, .rig > .chatrow, .rig > .actionrow,
+  .rig > .vmstudio {
+    background: var(--granite);
+    margin-left: calc(-1 * var(--card-pad-l));
+    margin-right: calc(-1 * var(--card-pad-r));
+    padding-left: var(--card-pad-l);
+    padding-right: var(--card-pad-r);
+  }
+  /* The band opens at the meters — the first dock row on every mode that
+     has one — and the row above it is the stage. */
+  .rig > .meters {
+    border-top: 1px solid var(--hairline);
+    margin-top: var(--dock-gap); padding-top: var(--dock-pad);
+    padding-bottom: 0;
+  }
+  /* …except in the modes that hide the meters, where the next row down
+     opens the band instead. */
+  .card[data-mode="chat"] .rig > .chatrow,
+  .card[data-mode="vmstudio"] .rig > .vmstudio {
+    border-top: 1px solid var(--hairline);
+    margin-top: var(--dock-gap); padding-top: var(--dock-pad);
+  }
+  .rig > .talkrow, .rig > .chatrow { padding-top: var(--dock-gap); }
+  /* WHICHEVER ROW CLOSES THE BAND pays its bottom padding. The action row is
+     last in the DOM and normally does it, but chat and the studio hide it —
+     so in those modes the band ended flush against the card's floor and the
+     Close/Send pair sat under the faces row (measured at 390x844, and never
+     looked at until the operator asked whether I had). :last-child cannot
+     answer this: it reads the DOM, and what changes here is `display`. */
+  .card[data-mode="chat"] .rig > .chatrow,
+  .card[data-mode="vmstudio"] .rig > .vmstudio {
+    padding-bottom: var(--dock-pad);
+  }
+  .rig > .actionrow {
+    padding-top: var(--dock-gap); padding-bottom: var(--dock-pad);
+  }
+  /* The card's own bottom padding is the dock's now — the band has to reach
+     the card's floor or it reads as a panel floating above one. */
+  body:not(.compact) .card:not(.faces) { padding-bottom: 0; }
+  /* ITS LEFT EDGE IS THE DOCK'S. Idle, the volume collapses to zero width
+     but the band's `gap: 12px` still sits between it and the meters, so the
+     instrument started 12px in from the stage above it and the Call button
+     below — visibly out of line down the whole card (operator, 2026-09-04).
+     A gap belongs between two things; with one of them gone there is no
+     between. It comes back with the volume when a call starts. */
+  .rig:not(.on) .meters { gap: 0; }
+  /* THE LEVEL BAND. The instrument was a bare box on the card's ground; on
+     the dock it needs its own, and --pine against --granite is the same
+     inset/raised pair the stage uses one band up. */
+  .meters .duplex {
+    height: var(--control-h); padding: 0 10px;
+    background: var(--pine); border-color: var(--hairline);
+  }
+  .meters .duplex .bars { height: 20px; }
+  /* THE FADER GETS THE SAME BOX. Mid-call the volume was a bare label, a
+     40px rail and a percentage floating on the dock's ground beside a
+     bordered instrument — two controls on one band drawn to two different
+     rules (operator, 2026-09-04). Same height, same ground, same hairline,
+     contents centred: the band reads as two boxes doing two jobs.
+     Only while the rig is on — idle the volume still collapses to nothing,
+     which is what keeps the instrument's left edge on the card's own. */
+  .rig.on .meters .vol {
+    flex: 0 1 42%; min-width: 0; max-width: none;
+    height: var(--control-h); padding: 0 10px;
+    background: var(--pine); border: 1px solid var(--hairline);
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .rig.on .meters .vol label {
+    flex: none; font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim); margin: 0;
+  }
+  /* The knob's position is the reading; the figure beside it was a third
+     thing in a box that had room for two. */
+  .rig.on .meters .vol .pct { display: none; }
+
+  /* -- 1a. the action row ------------------------------------------------
+     One filled door and two icon-only ones beside it, in a 4:1:1 split —
+     the handoff's proportions, and the reason the primary can carry a word
+     and a glyph while the other two carry a glyph each. */
+  .actionrow #callBtn:not([hidden]) { flex: 4 1 0; }
+  .actionrow #chatBtn:not([hidden]), .actionrow #vmBtn:not([hidden]) {
+    flex: 1 1 0;
+  }
+
+  /* -- the faces ribbon --------------------------------------------------
+     Icon over label, the cells divided, the current one filled. `border: 0`
+     on .face is load-bearing (the row is one band, not three buttons), so
+     the dividers are inset shadows rather than borders.
+     COMPACT: 5px of gap and a 17px mark made the tallest band on the card
+     out of three words nobody has to read twice (operator, 2026-09-04). The
+     icon is what the row is scanned by, so the label gives up the tracking
+     and the gap gives up half of itself. */
+  .card .facebar .face {
+    flex-direction: column; gap: 3px;
+    font-size: 9.5px; letter-spacing: .12em;
+  }
+  .card .facebar .face .facesvg { width: 15px; height: 15px; }
+  .card .facebar .face + .face { box-shadow: inset 1px 0 0 var(--edge); }
+  .card .facebar .face.on {
+    background: color-mix(in srgb, var(--coral) 9%, transparent);
+  }
+  .card .facebar .face .facesvg { display: block; flex: none; }
+  /* One line each, and the label is what gives up room — the icon is what
+     the row is scanned by. */
+  .card .facebar .face .facelab {
+    display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; max-width: 100%;
+  }
+  /* An embed never shows the row, and a short band has no height for two
+     lines — the word alone, as before. */
+  .card.facesflat .facebar .face { flex-direction: row; }
+  .card.facesflat .facebar .face .facesvg { display: none; }
+
+  /* -- 1b. the player ----------------------------------------------------
+     Bands and hairlines instead of a stack of nested boxes. The sheet's own
+     order is art+title, progress, the booth's line, the tabs, the list —
+     and only the list scrolls. The booth panel is written after the queue
+     in the markup because it was the bottom card; `order` puts it where the
+     handoff wants it without moving a node the script paints into. */
+  .plscroll {
+    display: flex; flex-direction: column; align-items: stretch;
+    text-align: left; overflow: hidden; flex: 1; min-height: 0;
+    padding: 0; gap: 0;
+  }
+  /* The art block: the sleeve beside the title rather than over it. Centred,
+     the title had the card's full width and used four lines of it. */
+  .plartblock {
+    display: flex; align-items: flex-end; gap: 14px; flex: none;
+    height: var(--ident-h); padding: 14px 16px 12px;
+  }
+  .card .plartwrap {
+    position: relative; flex: none;
+    width: var(--sleeve); height: var(--sleeve); margin: 0;
+  }
+  .plmeta { flex: 1; min-width: 0; display: block; }
+  .card .pltrack {
+    font: 800 var(--hero-title, 19px)/1.1 var(--font-body);
+    letter-spacing: .03em; text-transform: var(--skin-label-case);
+    color: var(--alpenglow); margin: 0; text-align: left;
+    display: -webkit-box; -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2; overflow: hidden;
+  }
+  /* THE ARTIST AND THE RECORD ARE TWO LINES, not one long one clamped in
+     the middle of the album's name — "William DeVaughn · Be Thankful for
+     What Yo…" was the whole of the second line and there was nothing
+     forcing it (operator, 2026-09-04). Two short lines say more and take
+     the same room. */
+  .card .plalbum {
+    font: 13px/1.35 var(--font-body); color: var(--sage); margin: 6px 0 0;
+    text-align: left; text-transform: none; letter-spacing: 0;
+    display: block; overflow: hidden;
+  }
+  .card .plalbum .plrelease {
+    display: block; font-size: 11px; line-height: 1.35; color: var(--sage-dim);
+    margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card .plalbum .plartistname {
+    display: block; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card .pltags {
+    display: flex; flex-wrap: wrap; gap: 4px; margin: 9px 0 0;
+    justify-content: flex-start;
+  }
+  .card .pltags .pill {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .06em;
+    text-transform: var(--skin-label-case); color: var(--amber);
+    border: 1px solid var(--edge); background: transparent;
+    padding: 4px 5px; height: auto; border-radius: 0;
+  }
+  /* The progress row closes the hero, and the hero is the same height on
+     all three faces. */
+  .card .plprog {
+    height: var(--station-h); flex: none; display: flex; align-items: center;
+    gap: 10px; padding: 0 16px; margin: 0;
+  }
+  /* THE BOOTH WELL — deliberately the phone face's conversation box: both
+     surfaces carry speech, and a caller who has seen one should recognise
+     the other. */
+  /* THE WELL HOLDS ITS PLACE. It hid itself when the booth had said
+     nothing, and then the first line the DJ spoke pushed Up next, Just
+     played and Requests down the sheet under whoever was reading them
+     (operator, 2026-09-04). Its height is reserved from the first paint
+     instead — the reflow was the fault, not the box.
+     A RAISED card rather than an inset well, which is the operator's own
+     read: --granite over the sheet's --pine is the card's word for
+     "floating", and it needs no shadow to say it. */
+  .plscroll > .plpanel:not(.plqueue) {
+    order: 1; flex: none; min-height: var(--well-h);
+    margin: 18px 16px 0; padding: 12px 14px;
+    background: var(--granite); border: 1px solid var(--edge);
+    border-radius: 0; display: flex; flex-direction: column;
+  }
+  .plscroll > .plpanel:not(.plqueue) .plpanelhead {
+    flex: none; display: flex; align-items: center; gap: 8px;
+    font: 700 11px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--coral);
+    margin: 0; padding: 0; border: 0; background: none;
+  }
+  /* WHO IS IN THE BOOTH, opposite the label. It gives up room before the
+     label does — `flex: none` here was what stopped the ellipsis working at
+     all, because an item that cannot shrink never overflows its own box. */
+  .plscroll > .plpanel:not(.plqueue) .plpanelmeta {
+    margin-left: auto; flex: 0 1 auto; min-width: 0; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+  }
+  /* The DJ's line, centred in what is left — clamped to three, so a long
+       one cannot push the tabs off the sheet. */
+  .plscroll > .plpanel:not(.plqueue) .plpanelbody {
+    flex: 1; min-height: 0; display: flex; align-items: center;
+    justify-content: center; padding: 0; max-height: none; overflow: hidden;
+  }
+  .plscroll > .plpanel:not(.plqueue) .plpanelbody .plquote {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4;
+    overflow: hidden; max-width: 34ch; text-align: center;
+    font: 12px/1.45 var(--font-body); color: var(--alpenglow);
+  }
+  /* The queue group: tabs, then the list. The tabs are the route switch's
+     control again — three equal cells, shared borders, square. */
+  .plqgroup {
+    order: 2; flex: 1; min-height: 0; display: flex; flex-direction: column;
+    margin: 0; border: 0; background: none;
+  }
+  .card .pltabs {
+    flex: none; display: flex; align-items: stretch; gap: 0;
+    padding: 16px 16px 12px; margin: 0; border: 0;
+    border-top: 1px solid var(--edge);
+  }
+  .card .pltabs .pltab {
+    flex: 1 1 0; min-width: 0; height: var(--seg-h); padding: 0 6px; margin: 0;
+    background: var(--pine); border: 1px solid var(--edge); border-radius: 0;
+    box-shadow: none; color: var(--sage-dim);
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
+    text-transform: var(--skin-label-case);
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 6px; white-space: nowrap; overflow: hidden;
+  }
+  .card .pltabs .pltab + .pltab { border-left: 0; }
+  .card .pltabs .pltab.on {
+    background: var(--pick-live); box-shadow: inset 0 0 0 1px var(--coral);
+    color: var(--coral);
+    /* The bookmark-tab shape left the SELECTED cell a pixel lower than its
+       neighbour and a pixel taller, which is what "Up next is misaligned,
+       and so is Just played when you click it" is (operator, 2026-09-04).
+       Three equal cells in a row cannot carry a tab's merge into the panel
+       below it, because there is no panel edge to merge into any more. */
+    margin-bottom: 0; padding-bottom: 0; border-radius: 0;
+  }
+  .card .pltabs .pltab .ppip { visibility: hidden; }
+  .card .pltabs .pltab.on .ppip { visibility: visible; background: currentColor; }
+  /* THE ONE SCROLLING REGION on this face. */
+  .plqgroup .plpanel.plqueue {
+    flex: 1; min-height: 0; margin: 0; padding: 0 16px;
+    background: none; border: 0; border-radius: 0;
+    display: flex; flex-direction: column;
+  }
+  .plqgroup .plpanel.plqueue .plpanelbody {
+    flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none;
+    max-height: none; padding: 0;
+  }
+  .plqgroup .plpanel.plqueue .plpanelbody::-webkit-scrollbar { display: none; }
+  /* Top rules only, so the last row does not trail one. */
+  .plqgroup .plrow {
+    display: flex; align-items: baseline; gap: 10px; padding: 9px 0;
+    border-top: 1px solid var(--hairline); border-bottom: 0; min-width: 0;
+  }
+  /* The player's dock: the strip, the request row, the transport. */
+  .pldock {
+    background: var(--granite); border-top: 1px solid var(--hairline);
+    padding: 14px 16px 12px; gap: var(--dock-gap);
+    display: flex; flex-direction: column;
+  }
+  /* THE FADER IS A CONTROL, NOT A GARNISH. Four squares at the full
+     --control-h, a 10px gap apiece and the level beside them left the
+     volume about sixty pixels of a 358px row — "i cant use the volume
+     toggle its too small" (operator, 2026-09-04). The squares are icon
+     targets and 36px is still a comfortable one; the row loses 8px of
+     height with them, which is the other half of that note. */
+  .card .pldock .plctl { gap: 6px; }
+  .card .pldock .plheart {
+    width: 36px; height: 36px; flex: none;
+    border: 1px solid var(--edge); color: var(--sage);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .card .pldock #plVol { flex: 1 1 auto; min-width: 96px; }
+  /* The level reports, it does not need the room to do it in. */
+  .card .pldock .plvu { flex: none; width: 42px; overflow: hidden; }
+  .card .pldock .plheart.liked, .card .pldock .plheart.on { color: var(--coral); }
+  .card .pldock .plreq input { height: var(--control-h); }
+  .card .pldock .plreq #plReqSend { height: var(--control-h); flex: none; }
+  .card .pldock #plPlayBtn { height: var(--control-h); width: 100%; }
+
+  /* The sleeve is a WIDTH question now, not a height one: beside the title
+     it takes the face's own token, where over the panels it had to be
+     measured against whatever room the stack had left (--plart-cap, which
+     call.js still writes and nothing now reads at this size). */
+  .card .plartblock .plartwrap {
+    width: var(--sleeve); height: var(--sleeve); aspect-ratio: auto;
+  }
+  /* ONLY THE LIST SCROLLS. The sheet as a whole was the scroller on a phone,
+     which is the rule this redesign trades away — the hero and the booth
+     hold their place and the queue is the region that moves.
+
+     …ABOVE 640px OF SCREEN. Below that the bands genuinely do not fit
+     (measured at 320x568 when the panels were being shrunk into each
+     other), and a list scrolling inside a sheet that cannot show its own
+     dock is worse than a sheet that scrolls. The short-phone rule above
+     stands there, untouched. */
+  @media (max-width: 700px) and (min-height: 640px) {
+    body:not(.compact) .plscroll { overflow: hidden; }
+    body:not(.compact) .plscroll > .plqgroup { flex: 1 1 auto; min-height: 0; }
+    body:not(.compact) .plscroll > .plpanel:not(.plqueue) { flex: none; }
+  }
+
+  /* -- 1c. the guide -----------------------------------------------------
+     A clamped hero over a listings column. The hero is the same height as
+     the other two faces' heroes and grows only when the reader asks; the
+     list below it is the scrolling region. */
+  /* A COLUMN THAT DOES NOT SHRINK ITS CHILDREN. The scroller was made a
+     flex column so the hero could be ordered above the head that used to
+     caption the strip — and flex items shrink by default, so opening the
+     hero compressed the listing instead of overflowing the box: the guide
+     simply stopped scrolling (operator, 2026-09-04). Content in a scroller
+     keeps its size; the scroller is what gives. */
+  .gdscroll { display: flex; flex-direction: column; }
+  .gdscroll > * { flex: 0 0 auto; }
+  /* THE HOUR STRIP STANDS DOWN. It was the day read sideways above the
+     hero; the listing below is the same day read downwards, with the time,
+     the DJ and a way in on every row. Two places to watch, one of them
+     needing a horizontal drag inside a horizontal pager. Kept in the markup
+     and still built — this is the layout's answer, not a deletion. */
+  .gdscroll > .gdtoday { display: none; }
+  .gdscroll > .gdhero { order: 1; flex: none; min-height: var(--gd-hero-h, 200px); }
+  /* Everything after the hero is ordered below, under .gdsection — which
+     took order 2 and moved the rest of the column down a place. */
+  /* The list head: what this column is, when it is, and how to read the
+     week. It was above the hero, where it captioned the strip. */
+  .gdscroll > .gdtodayhead {
+    display: flex; align-items: center; gap: 10px;
+    padding: 13px 0 7px; margin: 0;
+  }
+  /* The seam between what is on and what is coming. Quiet — a rule with a
+     word on it, not a band. */
+  .gdscroll > .gdsection {
+    order: 2; padding: 14px 0 0; margin: 0;
+    border-top: 1px solid var(--edge);
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--sage-dim);
+  }
+  .gdscroll > .gdtodayhead { order: 3; }
+  .gdscroll > .gdlist { order: 4; }
+  .gdscroll > .gdshelf { order: 5; }
+  .gdscroll > .gdspans { order: 6; }
+  .gdscroll > .gdgrid { order: 7; }
+  .gdscroll > .gdempty { order: 8; }
+  .gdtodaycap {
+    flex: none; font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+  }
+  /* The listing. One row per show, time column first, the tone spine, then
+     the name — and the show on air is boxed at the top of it. */
+  .card .gdrow {
+    display: block; border: 1px solid transparent;
+    border-top: 1px solid var(--hairline);
+    /* var(--skin-radius-ctl), not 0: square is the card's own answer and the
+       token's default, but nine of the nineteen skins set a real corner here
+       and a flat 0 took it away from them — `skins.css` is FORM (corners,
+       borders, textures), and the containment is the whole feature. The
+       guard test only polices the other direction, so nothing caught it. */
+    border-radius: var(--skin-radius-ctl, 0);
+    background: none; padding: 11px 0; margin: 0;
+  }
+  .card .gdrow.live {
+    border: 1px solid var(--coral); background: var(--granite);
+    padding: 11px 12px; margin-bottom: 8px;
+  }
+  .card .gdrowhead {
+    display: flex; align-items: stretch; gap: 12px; min-width: 0;
+  }
+  .card .gdwhen { flex: none; width: 62px; display: block; padding-top: 1px; }
+  .card .gdwhen .gdwhent {
+    display: block; font: 700 11px/1.2 var(--font-mono); letter-spacing: .04em;
+    color: var(--sage); font-variant-numeric: tabular-nums;
+  }
+  .card .gdrow.live .gdwhen .gdwhent { color: var(--coral); }
+  .card .gdwhen .gdwhend {
+    display: block; font: 9.5px/1.2 var(--font-mono); letter-spacing: .06em;
+    color: var(--sage-dim); margin-top: 3px;
+  }
+  .card .gdspine { flex: none; width: 2px; display: block; }
+  .card .gdrowmain { flex: 1; min-width: 0; display: block; }
+  .card .gdrowtop {
+    display: flex; align-items: baseline; gap: 8px; min-width: 0;
+  }
+  .card .gdrowname {
+    font: 700 13px/1.2 var(--font-mono); letter-spacing: .04em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card .gdrow.live .gdrowname { color: var(--coral); }
+  .card .gdrowend {
+    margin-left: auto; flex: none; display: inline-flex; align-items: center;
+    gap: 7px;
+  }
+  .card .gdflag {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em;
+    text-transform: var(--skin-label-case); color: var(--amber);
+    white-space: nowrap;
+  }
+  .card .gdrow.live .gdflag { color: var(--coral); }
+  .card .gdchev {
+    font-size: 10px; color: var(--sage-dim); display: inline-block;
+    transition: transform .18s ease, color .18s ease;
+  }
+  .card .gdrow.open .gdchev { transform: rotate(90deg); color: var(--coral); }
+  .card .gdrowsub {
+    display: block; font-size: 12px; color: var(--sage); margin-top: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card .gdrowsub .gdrowhost { color: var(--sage-dim); }
+  .card .gdrow .gdbody { padding: 10px 0 2px; }
+  /* NOT ON THE SCHEDULE was a dim word on a dark band — legible is the bar,
+     not loud (operator, 2026-09-04). It is a heading now: the card's own
+     raised surface, an edge, and ink a reader can find without looking for
+     it. */
+  .card .gdshelf .gdshelfcap {
+    margin: 18px 0 0; padding: 10px 12px;
+    background: var(--granite); border: 1px solid var(--edge);
+    color: var(--alpenglow); font: 700 10px/1 var(--font-mono);
+    letter-spacing: .16em; text-transform: var(--skin-label-case);
+    display: flex; align-items: center; gap: 8px; width: 100%;
+  }
+  .card .gdshelf .gdshelfn {
+    margin-left: auto; color: var(--sage-dim); font-weight: 400;
+  }
+  .card .gdshelf .gdshelfchev { color: var(--sage-dim); }
+  /* …and a shelved show has no airing, so the time column it would sit in
+     is 62px of nothing down the whole section. */
+  .card .gdshelf .gdrow .gdwhen[hidden] { display: none; }
+  .card .gdrow:not(.open) .gdbody { display: none; }
+
+  /* -- 1c. the hero ------------------------------------------------------
+     Clamped: five lines of the show's own description, with the angle and
+     the DJ's soul behind a press. It used to fold to nothing, which answered
+     "how do I get past this" and not "what is on". (It was transparent so an
+     ambient wash could carry through; the wash went at 5a72ebf and the
+     transparency is now just the hero sitting on the face's own ground.) */
+  .card .gdherobox {
+    display: flex; flex-direction: column; flex: 1; min-height: 0;
+    background: transparent; border: 0;
+    border-radius: var(--skin-radius-ctl, 0);
+    padding: 12px 0 13px; margin: 0;
+  }
+  .card .gdherotop { display: flex; align-items: center; gap: 8px; flex: none; }
+  .card .gdherolab {
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    text-transform: var(--skin-label-case); color: var(--coral);
+  }
+  .card .gdheronext {
+    margin-left: auto; flex: none; white-space: nowrap;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .06em; color: var(--amber);
+  }
+  /* The host's circle beside the show's name — the same picture the row's
+     own body carries, at the size the hero can afford. */
+  .card .gdheroid {
+    display: flex; align-items: center; gap: 12px; margin-top: 12px; flex: none;
+  }
+  .card .gdherofig {
+    position: relative; flex: none; width: 62px; height: 62px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  /* The <img> only. `.gdzoom` lands on the figure ITSELF (bindFaceZoom), not
+     inside it, and `.gdinit` never existed — both compounds were dead. The
+     initials that replace a picture the station will not serve are sized by
+     `.gdfig .gdav` instead, which is where every other face on this card
+     gets its fallback size (measured: 62x62 at 19px). */
+  .card .gdherofig img {
+    position: relative; z-index: 1; width: 62px; height: 62px;
+  }
+  .card .gdheronames { flex: 1; min-width: 0; display: block; }
+  .card .gdheroname {
+    font: 700 19px/1.15 var(--font-mono); letter-spacing: .03em;
+    text-transform: var(--skin-label-case); color: var(--alpenglow);
+    margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card .gdherotag {
+    font: 12px/1.35 var(--font-body); color: var(--amber); margin: 4px 0 0;
+    letter-spacing: 0; text-transform: none;
+  }
+  /* The body's own order — the show first, then the angle, then the DJ — is
+     the ORDER GUIDEBODY EMITS, not a flex `order`. It was a flex column for
+     one paragraph's sake, and a `-webkit-box` line clamp inside a column
+     flex container collapses to zero height: the folded hero rendered its
+     three-line description as nothing at all (measured, 0px). The clamp is
+     the point of the fold, so the container gave way instead. */
+  .card .gdherobody { display: block; margin: 0; padding: 0; border: 0; }
+  .card .gdherobody .gdangle { color: var(--amber); }
+  .card .gdherobody .gdline {
+    font: 13px/1.5 var(--font-body); color: var(--alpenglow); margin: 10px 0 0;
+  }
+  .card .gdherobody .gdline b { font-weight: 700; }
+  .card .gdherobody .gdpname { color: var(--coral); }
+  /* FOLDED IS CLAMPED, NOT GONE. The fold used to hide the body outright
+     (`.gdherobox.min .gdherobody { display: none }`, still above), which
+     answered "how do I get past this" rather than "what is on". What it
+     hides now is everything except the show's own description, and that
+     stays and takes five lines — the room was there and the operator asked
+     for it (2026-09-04). The body has to be put BACK first: a rule
+     on its children cannot outrank its parent being display:none, which is
+     what made the folded hero render its paragraph as 0px. */
+  .card .gdherobox.min .gdherobody { display: block; }
+  .card .gdherobox.min .gdherobody > *:not(.gddesc) { display: none; }
+  /* …and the name does not shrink with it any more: the hero is the same
+     block either way, with five lines of prose instead of all of it. */
+  .card .gdherobox.min .gdheroname { font-size: 19px; }
+  .card .gdherobox.min .gdherobody .gddesc {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5;
+    overflow: hidden;
+  }
+  /* The foot sits on the hero's floor whatever is above it. */
+  .card .gdherofoot {
+    display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+    margin-top: auto; padding-top: 10px; flex: none;
+  }
+  /* The arrow spans the hero's floor: a wide, quiet target under the text
+     rather than a worded pill beside the times. */
+  .card .gdherofold {
+    position: static; height: 22px; width: 100%; padding: 0; margin: 0;
+    background: transparent; border: 0; border-top: 1px solid var(--hairline);
+    border-radius: 0; color: var(--sage-dim); font-size: 11px; line-height: 1;
+    transform: none; min-height: 0; flex: none;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .card .gdherofold:hover { color: var(--coral); }
+  .card .gdheroweek {
+    display: block; font: 10px/1.3 var(--font-mono); letter-spacing: .08em;
+    color: var(--sage-dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* The rows' own bodies: the show, its moods, then who runs it. */
+  .card .gdrow .gdbody .gdline { font: 13px/1.5 var(--font-body); margin: 0 0 10px; }
+  .card .gdrow .gdbody .gdmoods { margin: 0 0 12px; }
+  .card .gdrow .gdbody .gdcap {
+    padding-top: 11px; border-top: 1px solid var(--hairline);
+  }
+
+  /* The hero's paragraphs need air between them and the booth's own caption
+     needs some above it — they were a stack of <p>s with one margin between
+     every pair, which read as one long column of text. */
+  .card .gdherobody .gdcap { margin-top: 14px; }
+  .card .gdherobody .gdperson { margin-top: 8px; }
+  /* …and the hero says the week ONCE, on its foot. The body's own schedule
+     block is the row treatment, where there is no foot to carry it. */
+  .card .gdherobody .gdsched { display: none; }
+
+  /* -- the corrections the two lists and the two heroes needed ------------ */
+  /* The hero's own split. The art block and the progress row together are
+     the SAME height as the phone's identity + station rows, which is what
+     keeps the pager from jumping — but the handoff wants the room inside it
+     spent 198/38, not 160/76, because the sleeve is the tall thing here and
+     a progress row is a progress row. Stated as a subtraction so the total
+     can never drift from the other faces'. */
+  .plartblock { height: calc(var(--ident-h) + var(--station-h) - 38px); }
+  .card .plprog { height: 38px; }
+  /* The queue's rows: the position in its own gutter, then the title over
+     the artist. They were title and artist side by side, which read as one
+     long line per record and gave a two-line row nothing to align to. */
+  .plqgroup .plrow { align-items: baseline; }
+  .plqgroup .plrow .plnum {
+    flex: none; width: 16px; font: 700 10px/1.3 var(--font-mono);
+    color: var(--sage-dim); font-variant-numeric: tabular-nums;
+  }
+  .plqgroup .plrow .pltext { flex: 1 1 0; min-width: 0; display: block; }
+  .plqgroup .plrow .pltit {
+    display: block; font-size: 13px; font-weight: 600; color: var(--alpenglow);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* max-width: none, and it is the whole of "many words are truncated for
+     no reason" (operator, 2026-09-04). The one-line layout capped the
+     artist at 46% of the row so a long title could not squeeze it out —
+     right when the two sat side by side, and nonsense once the artist has
+     a line of its own: every second line was cut at 46% of a 358px row
+     with two thirds of it empty. */
+  .plqgroup .plrow .plsub {
+    display: block; margin: 1px 0 0; max-width: none;
+    font-size: 11px; color: var(--sage);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* The tone is a SPINE on a listing row, not a dot: it runs the height of
+     the row it belongs to, which is what lets a column of them be read down
+     rather than word by word. Same token, same order, same colour as the
+     dot the grid still uses. */
+  .card .gdspine {
+    width: 2px; height: auto; border-radius: 0; align-self: stretch;
+  }
+
+  /* -- the surfaces ------------------------------------------------------
+     The handoff's own numbers, at the viewport it was drawn for: the
+     full-bleed phone card and, because its card is the window rather than a
+     620x544 box, the installed app. Everything above is written against
+     these properties, so this block is values and nothing else. */
+  @media (max-width: 500px) {
+    body:not(.panelpage):not(.compact) {
+      --ident-h: 160px; --station-h: 76px;
+      --portrait: 108px; --thumb: 46px;
+      --sleeve: 168px; --well-h: 104px;
+      --seg-h: 38px; --control-h: 44px; --chip-h: 28px;
+      --dock-gap: 14px; --dock-pad: 14px;
+      --hero-title: 25px; --gd-hero-h: 236px;
+      --card-pad-l: max(20px, env(safe-area-inset-left));
+      --card-pad-r: max(20px, env(safe-area-inset-right));
+    }
+    /* The full-bleed card IS the page, so it takes the page's ground and
+       the dock is the raised surface the handoff draws. On the 620x544 card
+       the relationship is the same one step up: the card keeps --granite,
+       the stage stays --pine, and the dock's hairline is what divides them. */
+    body:not(.panelpage):not(.compact) .card {
+      background-color: var(--pine);
+    }
+    /* The identity block was centred here; it is a row again. */
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row {
+      flex-direction: row; align-items: center; text-align: left;
+      gap: 12px; padding: 12px 0;
+    }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .meta {
+      flex: 1; text-align: left;
+    }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .dj {
+      font-size: 25px; line-height: 1.1; font-weight: 700; margin: 0;
+    }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .show {
+      text-align: left; font-size: 11px; letter-spacing: .14em; margin: 3px 0 0;
+    }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .tagline {
+      margin: 3px 0 0;
+    }
+    /* The meters keep one row here: the level band is the dock's own
+       instrument now, and the volume rides the call it belongs to. */
+    body:not(.compact) .meters { flex-wrap: nowrap; }
+    body:not(.compact) .meters .vol { flex: 0 1 auto; order: 0; max-width: 33%; }
+    body:not(.compact) .meters .meter { flex: 1 1 0; min-width: 0; }
+    body:not(.compact) .bars { height: 20px; }
+    /* The ribbon is the screen's own foot at the handoff's height. */
+    /* 46, was the handoff's 54 (operator, 2026-09-04): with the mark and
+       the word tightened it needs less, and every pixel it gives back is
+       one the stage and the queue were short of. */
+    body:not(.compact) .card.faces .facebar { height: calc(46px + env(safe-area-inset-bottom)); }
+    body:not(.compact) .card.faces .player,
+    body:not(.compact) .card.faces .guide { bottom: calc(46px + env(safe-area-inset-bottom)); }
+    body .card.faces,
+    body:not(.compact) .card.faces,
+    body:not(.panelpage):not(.compact) .card.faces {
+      padding-bottom: calc(46px + env(safe-area-inset-bottom));
+    }
+  }
+  /* THE 620x544 CARD, which was the one surface with no values of its own.
+     It took the :root defaults — the phone's hero at the phone's density —
+     into a box three hundred pixels shorter, and on the player that came to
+     491px of sheet inside a 303px scroller with `overflow: hidden` over it:
+     the tab row sliced through the middle, Up next / Just played / Requests
+     drawn under the dock, and no way to scroll to any of it (spec review,
+     2026-09-05). The phone got a block, the installed app got a block, the
+     embed got a block; this box got whatever was left over.
+
+     Installed is excluded because there the card is the WINDOW — it has the
+     phone's room on a wide screen and wants the phone's numbers, which is
+     exactly what the block below says. */
+  @media (min-width: 701px) and (not (display-mode: standalone))
+         and (not (display-mode: minimal-ui)) {
+    body:not(.compact) .card {
+      --ident-h: 88px; --station-h: 50px;
+      --portrait: 72px; --thumb: 36px;
+      --sleeve: 76px; --well-h: 48px;
+      --plrow-h: 34px; --seg-h: 28px;
+      --hero-title: 19px;
+    }
+    /* The bands at this box's budget, and it is measured rather than
+       estimated: 323px of scroller holds art 100 + progress 38 + well 74 +
+       tabs 43 + two queue rows 68, to the pixel. */
+    body:not(.compact) .card .plartblock { padding: 8px 16px; gap: 12px; }
+    body:not(.compact) .card .pldock { padding: 8px 16px 6px; gap: 8px; }
+    body:not(.compact) .card .pltabs { padding: 7px 16px; }
+    body:not(.compact) .card .plscroll > .plpanel:not(.plqueue) {
+      flex: none; margin-top: 6px; padding: 7px 12px;
+    }
+    /* Two lines of the booth rather than four: the room the other two were
+       taking is the room the queue did not have. */
+    body:not(.compact) .card .plscroll .plpanelbody .plquote {
+      -webkit-line-clamp: 2;
+    }
+    /* THE QUEUE IS THE FLEXING BAND HERE, the same way it is on the phone —
+       it takes what the fixed bands leave and scrolls inside it. Its floor
+       is two rows, which is what the pre-redesign grid had already settled
+       on for this box (`height: 64px`, "two entries and change") and is the
+       smallest window that still reads as a list rather than a row. */
+    body:not(.compact) .card .plscroll .plqgroup { flex: 1 1 auto; min-height: 0; }
+    body:not(.compact) .card .plscroll .plqgroup .plpanel.plqueue {
+      flex: 1 1 auto; min-height: 0;
+    }
+    body:not(.compact) .card .plscroll .plqgroup .plpanel.plqueue .plpanelbody {
+      height: auto; flex: 1 1 auto; min-height: calc(var(--plrow-h) * 2);
+    }
+    /* THE VALVE, and the reason is the pre-redesign rule's own: OS font
+       scaling makes the content taller than any budget tuned on one
+       machine, and when this box is genuinely too short the middle scrolls.
+       Overlap is never the fallback again. At standard metrics it does not
+       engage — measured scrollHeight == clientHeight == 323. */
+    body:not(.compact) .card .plscroll { overflow-y: auto; scrollbar-width: thin; }
+    /* The stage has the same budget problem one face over: eleven px of gap
+       instead of fourteen is what fits its three steps in the line box this
+       card can spare it. */
+    body:not(.compact) .card .idleboard .stage { gap: 11px; }
+    body:not(.compact) .card .idleboard .stagefoot { padding-top: 10px; }
+  }
+  /* Installed, the card is the window rather than a fixed box, so it has the
+     phone's room even on a tablet — and the phone block above only reaches
+     it under 500px. */
+  @media (display-mode: standalone) and (min-width: 501px),
+         (display-mode: minimal-ui) and (min-width: 501px) {
+    body:not(.compact) {
+      --ident-h: 148px; --station-h: 72px;
+      --portrait: 100px; --thumb: 44px;
+      --sleeve: 156px; --well-h: 100px;
+      --seg-h: 38px; --control-h: 44px;
+      --dock-gap: 14px; --dock-pad: 14px;
+      --hero-title: 25px; --gd-hero-h: 220px;
+    }
+  }
+  /* The embed answers with the smallest set that still reads as the same
+     design: the bands and the rules are there, the room they are drawn at
+     is not. 348x320 has 320px for everything. */
+  body.compact {
+    --ident-h: 74px; --station-h: auto; --portrait: 44px;
+    --seg-h: 28px; --pill-h: 22px;
+    --dock-gap: 8px; --dock-pad: 8px;
+    --card-pad-l: 14px; --card-pad-r: 14px;
+  }
+  body.compact .card:not([data-mode="chat"]) .who-row {
+    height: var(--ident-h); border-bottom: 1px solid var(--edge);
+  }
+
+  /* -- what the operator's own station found -----------------------------
+     Everything above was drawn against a fixture with a running record, a
+     four-song queue, a booth line and an open segment. A real station on a
+     quiet night has none of those, and the empty states are where this
+     redesign came apart (operator's phone, 2026-09-04). These are the
+     corrections, and every one of them is an EMPTY or an OVERFLOW.
+     ------------------------------------------------------------------- */
+  /* AN AUTHOR display RULE BEATS THE UA'S [hidden] — the file has learned
+     this four times and I added a fifth. paintNowPlaying hides the progress
+     row on a record the station is not clocking; `.card .plprog` out-ranked
+     `.plprog[hidden]`, and the row stayed as a bare grey rule across the
+     sheet with no figures at either end. */
+  .card .plprog[hidden] { display: none; }
+  /* Same shape, one row up: an analysis strip with nothing in it held its
+     own margin. `:empty` had the same specificity as the rule that painted
+     it and lost on order. */
+  .card .pltags:empty { display: none; }
+  /* EVERY BAND THIS SECTION PAINTS THAT THE SCRIPT CAN ALSO HIDE. The rule
+     is the same one the file has now learned five times — an author
+     `display` out-ranks the UA's `[hidden] { display: none }` — and each of
+     these was a band standing empty on a station that had nothing to put in
+     it: a booth well reduced to a caption over 130px of air, and a list head
+     over a listing that was not there. */
+  .plscroll > .plpanel[hidden] { display: none; }
+  /* …and the queue's own three bodies, of which two are always hidden.
+     The empty-state rule above gave every EMPTY body a display, which
+     is all three of them on a station with nothing queued and no
+     history — so the list showed its one sentence in a third of the
+     region and left the other two thirds blank. Sixth instance of the
+     same trap, and the first one caused by fixing the fifth. */
+  .plqgroup .plpanelbody[hidden] { display: none; }
+  /* …and the STAGE, which paintBoard hides the moment a call ends. The
+     post-call strip is an overlay inside the same box, so with the stage
+     still displayed the two were drawn straight through each other — "CALL
+     ENDED · 2:14" across the foot row's own words. Seventh instance, and
+     found by OPENING the state rather than measuring it: every probe said
+     `idleBoard.hidden === true` and it was on screen (2026-09-04). */
+  .idleboard[hidden] { display: none; }
+  /* AN EMPTY LIST IS AN EMPTY STATE, not a list with one line at the top of
+     it. The queue is the sheet's flexing region, so on a quiet station its
+     one sentence sat under the tabs with five hundred pixels of nothing
+     beneath — which reads as a list that failed to load rather than as a
+     station with nothing queued. Centred, it reads as the answer it is. */
+  .plscroll .plqgroup .plpanel.plqueue .plpanelbody:not([hidden]):not(:has(.plrow)) {
+    display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 0 16px;
+  }
+  /* THE QUEUE IS THE REGION THAT FLEXES on this face, and two rules from the
+     stacked-panel layout said otherwise with more specificity than the ones
+     above: the panel could only shrink (`flex: 0 1 auto`) and its body was a
+     fixed 86px window — four rows, which was right when the sheet itself
+     scrolled and everything below it was more panels. Now the sheet does not
+     scroll and there is nothing below but the dock, so the list takes what
+     the hero and the well leave and scrolls inside it. Written at the same
+     specificity as what it replaces rather than with !important. */
+  /* THREE ROWS, and the rest goes back. The queue was the sheet's flexing
+     region, which on a station with one record queued meant three hundred
+     pixels of list for one line of it (operator, 2026-09-04). It is never
+     more than three; three is what it is sized for, and anything past that
+     scrolls inside it the way it always did. */
+  .plscroll .plqgroup { flex: 0 0 auto; }
+  .plscroll .plqgroup .plpanel.plqueue { flex: 0 0 auto; }
+  .plscroll .plqgroup .plpanel.plqueue .plpanelbody {
+    height: calc(var(--plrow-h) * 3); flex: none; min-height: 0;
+  }
+  /* …to the booth, which is where a long line from the DJ can actually use
+     it — the operator's own "give the rest to the header areas". Capped, so
+     a quiet booth cannot turn it back into the empty box it started as. */
+  .plscroll > .plpanel:not(.plqueue) { flex: 1 1 auto; max-height: 210px; }
+  .gdscroll > .gdtodayhead[hidden] { display: none; }
+  /* THE WELL RAN OFF THE RIGHT EDGE. `.plpanel` carries `width: 100%` from
+     the centred stack it used to live in; in a stretch column that is the
+     container's width AND its own margins, so it overflowed by exactly the
+     16px it was inset by. Auto lets the stretch do the sizing. */
+  .plscroll > .plpanel { width: auto; }
+  /* THE TITLE ESCAPED UPWARD. The art block is a fixed height so the three
+     heroes agree, and the meta column is bottom-aligned inside it — so a
+     column taller than the block does not clip, it grows out of the TOP,
+     under the header. Measured at 189px in a 172px box with a two-line
+     title, a three-line album line and three rows of chips. The chips and
+     the album line give way first (they are the two that can), and the
+     column clips itself as a backstop. */
+  .plmeta { overflow: hidden; max-height: 100%; }
+  .card .plalbum {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .card .pltags { overflow: hidden; }
+  /* THE MARQUEE ATE ITS OWN FIRST LETTER. The riding mask fades BOTH edges,
+     and the ride rests at zero for the first sixth of its cycle — so a
+     still title showed "iss and Make Up" and read as a clipped element
+     rather than as a long one. The trailing edge is the only one that has
+     to fade: the leading edge is the box's own left border. */
+  .track.marq {
+    -webkit-mask-image: linear-gradient(90deg, #000 0 88%, transparent);
+    mask-image: linear-gradient(90deg, #000 0 88%, transparent);
+  }
+  /* -- the phone's identity row, on a real phone -------------------------
+     Two rules older than the redesign out-ranked it, and both showed up as
+     "the wrong size in the wrong place". */
+  @media (max-width: 700px) {
+    /* The show line was allowed to wrap to two lines when the header was a
+       centred block that owned its own height. In a 160px row beside a
+       portrait it takes the tagline's line and the row's bottom rule with
+       it. One line, ellipsised, the way the base rule always said. */
+    /* TWO LINES, not an ellipsis. "DONOVAN'S PUB · IRISH…" cut the genre
+       off with room underneath it (operator, 2026-09-04) — the row is
+       160px and the block beside the portrait is four short lines. What it
+       must not do is grow past two, which is what the clamp is for. */
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .show {
+      white-space: normal; overflow: hidden; text-overflow: clip;
+      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .dj {
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      display: block; -webkit-line-clamp: none;
+    }
+    /* …and the portrait was pinned at 124px by the centred layout's own
+       rule, which out-specifies the token every other surface sizes from —
+       so --portrait moved the glow and nothing else, and the picture sat
+       16px larger than the row was built for. */
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .avatar {
+      width: var(--portrait); height: var(--portrait);
+    }
+    body:not(.compact) .card:not([data-mode="chat"]) .who-row .avatar-mono {
+      font-size: calc(var(--portrait) * .32);
+    }
   }
 
   /* The panel's hover-highlight, worn by the CARD (preview frames only):

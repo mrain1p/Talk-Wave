@@ -3490,8 +3490,21 @@ class TestThePanelKeepsItsOwnRules(unittest.TestCase):
         # 2026-09-02). The half-steps were folded into their neighbours,
         # which moved no body text by more than 0.5px. 44/46 are the mono
         # avatar's glyph, not type.
+        # 25 is the DISPLAY step, added by the three-faces redesign
+        # (2026-09-03): the phone's hero name and the player's song title are
+        # one size on a full-bleed phone, and 22 — the step above the body
+        # scale — is what they were before the hero stopped being a centred
+        # portrait with room for nothing else. It reaches two rules, both of
+        # them a face's headline, and neither on the 620x544 card.
+        # That last clause was true of the STYLESHEET and nothing else until
+        # 2026-09-05: fitTitle set the size inline and walked down from a
+        # hardcoded 25 on every surface, so the card wore 25 anyway and this
+        # scan — which reads CSS and cannot see an inline size — had no way
+        # to notice (spec review). The ladder there is now 25/22/19/17/15,
+        # every rung a step on this scale, and the surface's own
+        # --hero-title says which rung it starts on: 19 on this card.
         scale = {"9.5px", "10px", "11px", "12px", "13px", "14px", "15px",
-                 "17px", "19px", "22px", "44px", "46px"}
+                 "17px", "19px", "22px", "25px", "44px", "46px"}
         css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
         used = {m.group(1) for m in re.finditer(r"font-size:\s*([0-9.]+px)", css)}
         for m in re.finditer(r"font:\s*[^;]*?([0-9.]+px)", css):
@@ -3750,8 +3763,15 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         self.assertIn("shows.filter((s) => !airs.has(s.id))", block)
         self.assertIn("guideShelved !== false", block)
         self.assertIn("Not on the schedule", block)
-        # And the count above the list names the week, not the roster.
-        self.assertIn("' shows') + ' this week'", block)
+        # There WAS a count above the list — "N shows this week", named
+        # from the week rather than the roster so twelve shows could not
+        # read as seventeen. The three-faces redesign hid its row in CSS
+        # without removing the write, so it was computed on every poll and
+        # seen by nobody, and this assertion went on passing over a blank
+        # spot because it greps the source. Retired at the operator's word
+        # (2026-09-05): the split itself is what answered the 2026-09-03
+        # complaint, and the shelf below carries its own count. The Up
+        # today head stays; it never held this number.
         # The whole section folds, and starts folded: these shows are not
         # this week's business, so they cost one line until asked for.
         self.assertIn("let guideShelfOpen = false;", self.js)
@@ -3913,8 +3933,7 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         # the program guide listing every show with the current one
         # outlined. The hero and the rows share one body builder, so the
         # two can never say different things about a show.
-        for el in ('id="guideHero"', 'id="guideListHead"', 'id="guideTop"',
-                   'id="guideScroll"'):
+        for el in ('id="guideHero"', 'id="guideTop"', 'id="guideScroll"'):
             self.assertIn(el, self.html)
         self.assertIn("function guideHero", self.js)
         self.assertIn("function guideBody", self.js)

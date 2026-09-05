@@ -68,6 +68,42 @@ def status_payload() -> dict:
     return payload
 
 
+def public_open_line(persona: dict, show: dict) -> dict:
+    """The open line that is up right now, for the card's stage.
+
+    PUBLIC, and deliberately only this much. What travels is the subject the
+    DJ has already announced on air and the moment the line closes — two
+    facts every listener has heard. What does not travel is the shelf: the
+    operator's own writing, including premises that have never aired and may
+    never. `state.current` returns {} unless a record is live FOR THIS DJ AND
+    THIS SHOW, so a premise cannot outlive the show it was opened in and be
+    read out by the next persona's card.
+
+    Rides the cached payload rather than _for_this_caller: which line is open
+    is a fact about the station, the same for everyone, and it changes on the
+    scale of a segment rather than of a request.
+    """
+    from brain.briefing import demojibake
+    from openlines import state as ol_state
+
+    show_name = demojibake(str(show.get("name") or ""))
+    record = ol_state.current(str(persona.get("id") or ""), show_name)
+    if not record:
+        return {"live": False}
+    return {
+        "live": True,
+        # The premise is the QUESTION — "tell me about the record that raised
+        # you". `spoken` is the whole announcement it arrived inside, which is
+        # a paragraph and is not what a stage headline wants.
+        "subject": demojibake(str(record.get("premise") or ""))[:220],
+        "dj": str(record.get("persona_name") or ""),
+        # When the line itself closes. The card shows the earlier of this and
+        # the end of the show on the schedule, so it can never promise past
+        # either one.
+        "expiresAt": record.get("expires_at"),
+    }
+
+
 async def handle_open_lines_status(request: web.Request) -> web.Response:
     if not _write_allowed(request):
         return _refuse(request)
