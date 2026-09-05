@@ -5679,7 +5679,21 @@
   // Steps, not a continuous fit: this card has a type scale and a title is
   // not exempt from it. Measured through the element itself the way
   // fitLabel does, in a rAF because a hidden sheet has no width to measure.
-  const TITLE_STEPS = [25, 22, 19];
+  // THE STEPS COME FROM THE SURFACE. --hero-title is 25px where there is
+  // room for it and 19px on the 620x544 card, and this used to walk down
+  // from 25 whatever it was standing on — so the card carried a 25px title
+  // on a face whose own scale says 19, and the reason recorded beside the
+  // 25px step in the type-scale test ("neither on the 620x544 card") was
+  // not true of what shipped (spec review, 2026-09-05). The ladder is the
+  // card's display steps and the surface picks where it starts: 25/22/19
+  // on the phone, 19/17/15 here. An inline size the stylesheet cannot
+  // out-rank has to answer to the same scale the stylesheet does.
+  const TITLE_SCALE = [25, 22, 19, 17, 15];
+  function titleSteps(el) {
+    const top = parseFloat(
+      getComputedStyle(el).getPropertyValue('--hero-title')) || 19;
+    return TITLE_SCALE.filter((px) => px <= top).slice(0, 3);
+  }
   function fitTitle(el, txt) {
     if (!el || el.dataset.fit === txt) return;
     el.dataset.fit = txt;
@@ -5690,7 +5704,7 @@
       const was = el.style.whiteSpace;
       el.style.whiteSpace = 'nowrap';
       let pick = 0;
-      for (const px of TITLE_STEPS) {
+      for (const px of titleSteps(el)) {
         el.style.fontSize = px + 'px';
         if (el.scrollWidth <= el.clientWidth) { pick = px; break; }
       }

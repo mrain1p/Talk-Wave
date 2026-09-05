@@ -3496,6 +3496,13 @@ class TestThePanelKeepsItsOwnRules(unittest.TestCase):
         # scale — is what they were before the hero stopped being a centred
         # portrait with room for nothing else. It reaches two rules, both of
         # them a face's headline, and neither on the 620x544 card.
+        # That last clause was true of the STYLESHEET and nothing else until
+        # 2026-09-05: fitTitle set the size inline and walked down from a
+        # hardcoded 25 on every surface, so the card wore 25 anyway and this
+        # scan — which reads CSS and cannot see an inline size — had no way
+        # to notice (spec review). The ladder there is now 25/22/19/17/15,
+        # every rung a step on this scale, and the surface's own
+        # --hero-title says which rung it starts on: 19 on this card.
         scale = {"9.5px", "10px", "11px", "12px", "13px", "14px", "15px",
                  "17px", "19px", "22px", "25px", "44px", "46px"}
         css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")

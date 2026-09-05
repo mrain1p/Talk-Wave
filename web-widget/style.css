@@ -4339,8 +4339,14 @@
      the card). It was five items at four sizes with a rule through the
      middle and no spacing rhythm — "thrown in there" (operator,
      2026-09-04). One padding, one gap unit, one rule. */
+  /* min-height, NOT height. A stage pinned at 100% of a box too short for
+     it does not overflow — it paints THROUGH itself: the premise ran 25px
+     across "ALSO ON THE LINE" on the 620x544 card, and because the pinned
+     box never grew, the line box's scrollHeight reported nothing to scroll
+     to either (spec review, 2026-09-05). A box that grows is a box the
+     scroller can reach. */
   .idleboard .stage {
-    display: flex; flex-direction: column; height: 100%; text-align: left;
+    display: flex; flex-direction: column; min-height: 100%; text-align: left;
     gap: 14px;
   }
   .idleboard .stagehead {
@@ -4364,8 +4370,12 @@
      two voids with the foot row stranded below (operator, 2026-09-04). The
      one-line example is the other case — small, and centring is right for
      it, because there is nothing above it to belong to. */
+  /* `flex: 1` is `1 1 0%`, and the `min-height: 0` beside it is what let
+     the middle shrink to nothing while its own contents carried on
+     painting. A flex item's default floor is its min-content, which is the
+     right one here: the middle may give up slack, never its words. */
   .idleboard .stagemid {
-    flex: 1; min-height: 0; display: flex; align-items: center;
+    flex: 1 1 auto; display: flex; align-items: center;
     justify-content: center;
   }
   .idleboard .stagemid:has(.openhead) { align-items: flex-start; }
@@ -5099,6 +5109,65 @@
     body:not(.panelpage):not(.compact) .card.faces {
       padding-bottom: calc(46px + env(safe-area-inset-bottom));
     }
+  }
+  /* THE 620x544 CARD, which was the one surface with no values of its own.
+     It took the :root defaults — the phone's hero at the phone's density —
+     into a box three hundred pixels shorter, and on the player that came to
+     491px of sheet inside a 303px scroller with `overflow: hidden` over it:
+     the tab row sliced through the middle, Up next / Just played / Requests
+     drawn under the dock, and no way to scroll to any of it (spec review,
+     2026-09-05). The phone got a block, the installed app got a block, the
+     embed got a block; this box got whatever was left over.
+
+     Installed is excluded because there the card is the WINDOW — it has the
+     phone's room on a wide screen and wants the phone's numbers, which is
+     exactly what the block below says. */
+  @media (min-width: 701px) and (not (display-mode: standalone))
+         and (not (display-mode: minimal-ui)) {
+    body:not(.compact) .card {
+      --ident-h: 88px; --station-h: 50px;
+      --portrait: 72px; --thumb: 36px;
+      --sleeve: 76px; --well-h: 48px;
+      --plrow-h: 34px; --seg-h: 28px;
+      --hero-title: 19px;
+    }
+    /* The bands at this box's budget, and it is measured rather than
+       estimated: 323px of scroller holds art 100 + progress 38 + well 74 +
+       tabs 43 + two queue rows 68, to the pixel. */
+    body:not(.compact) .card .plartblock { padding: 8px 16px; gap: 12px; }
+    body:not(.compact) .card .pldock { padding: 8px 16px 6px; gap: 8px; }
+    body:not(.compact) .card .pltabs { padding: 7px 16px; }
+    body:not(.compact) .card .plscroll > .plpanel:not(.plqueue) {
+      flex: none; margin-top: 6px; padding: 7px 12px;
+    }
+    /* Two lines of the booth rather than four: the room the other two were
+       taking is the room the queue did not have. */
+    body:not(.compact) .card .plscroll .plpanelbody .plquote {
+      -webkit-line-clamp: 2;
+    }
+    /* THE QUEUE IS THE FLEXING BAND HERE, the same way it is on the phone —
+       it takes what the fixed bands leave and scrolls inside it. Its floor
+       is two rows, which is what the pre-redesign grid had already settled
+       on for this box (`height: 64px`, "two entries and change") and is the
+       smallest window that still reads as a list rather than a row. */
+    body:not(.compact) .card .plscroll .plqgroup { flex: 1 1 auto; min-height: 0; }
+    body:not(.compact) .card .plscroll .plqgroup .plpanel.plqueue {
+      flex: 1 1 auto; min-height: 0;
+    }
+    body:not(.compact) .card .plscroll .plqgroup .plpanel.plqueue .plpanelbody {
+      height: auto; flex: 1 1 auto; min-height: calc(var(--plrow-h) * 2);
+    }
+    /* THE VALVE, and the reason is the pre-redesign rule's own: OS font
+       scaling makes the content taller than any budget tuned on one
+       machine, and when this box is genuinely too short the middle scrolls.
+       Overlap is never the fallback again. At standard metrics it does not
+       engage — measured scrollHeight == clientHeight == 323. */
+    body:not(.compact) .card .plscroll { overflow-y: auto; scrollbar-width: thin; }
+    /* The stage has the same budget problem one face over: eleven px of gap
+       instead of fourteen is what fits its three steps in the line box this
+       card can spare it. */
+    body:not(.compact) .card .idleboard .stage { gap: 11px; }
+    body:not(.compact) .card .idleboard .stagefoot { padding-top: 10px; }
   }
   /* Installed, the card is the window rather than a fixed box, so it has the
      phone's room even on a tablet — and the phone block above only reaches
