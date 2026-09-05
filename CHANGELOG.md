@@ -4,6 +4,19 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.40
+
+The three cards get the pass they needed after meeting a real phone.
+
+- **Everything sits where it should now.** The identity row, the stage and the queue were sized against a mockup rather than a screen: the spacing, the type and the order things read in have been rebuilt on the phone itself, and the row of cards at the foot is shorter for it.
+- **The glass and the glow are gone.** Dark, light and a station's own palette look the way they did before the redesign, and skins get the guide's corners back.
+- **The volume fader is a control again.** It has its own box beside the level meter, and the buttons to its left gave up the room.
+- **A record you like from the player turns up in Requests**, named, the way one you asked for does.
+- **The booth's card holds its place before the DJ has said anything.** It used to arrive out of nowhere and shove Up next, Just played and Requests down the sheet under whoever was reading them.
+- **Nothing is cut that did not have to be.** A song title steps down a size to fit rather than truncating, a long show name wraps, and the artist and the record get a line each.
+- **The programme guide reads properly.** The page still scrolls with the show on air open, the fold is an arrow under the card rather than a Read More, a Programming heading separates the hero from the listing, "Not on the schedule" is legible and no longer reserves an empty column where a time would go, and the host's picture appears once.
+- **The card on a computer works again.** The player's queue was drawn below the fold behind a half-cut tab row with no way to reach it, and the open-lines premise painted straight across the line beneath it — the 620x544 card has proportions of its own now, the way the phone and the installed app already did.
+
 ## 0.99.39
 
 The card became three cards, and the DJ got better at saying what the library actually holds (0.99.32 to 0.99.38 fold in here).
