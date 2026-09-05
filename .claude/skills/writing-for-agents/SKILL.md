@@ -1,6 +1,7 @@
 ---
 name: writing-for-agents
-description: Writing documents an agent reads — a skill, a CLAUDE.md, a doc reached by a pointer. Use when creating or editing anything under .claude/skills/, either CLAUDE.md, or a doc in docs/ that an agent is meant to follow.
+description: How to write a skill, a CLAUDE.md, or any doc an agent is meant to follow.
+disable-model-invocation: true
 ---
 
 Vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, Matt Pocock),

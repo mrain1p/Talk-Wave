@@ -140,6 +140,14 @@ So: **if you rename a DOM id or add a `fetch()`, run the Python suite.** That is
   The host owns the direction because only it can see the page. While overlaid the widget stops
   reporting height and the host ignores it, or the frame adopts the overlay's size for good.
 
+## Before you restyle the card
+
+`.claude/skills/talkwave-card-design/SKILL.md` is the card's design system: the skeleton
+the three faces share, the tokens each surface answers with, the states a change reaches,
+and six CSS traps that each cost a round trip in the redesign that wrote them down. It is
+user-invoked, so nothing will hand it to you — read it by path before touching `style.css`
+or a painter in `call.js`. The first trap alone accounts for seven faults in one change.
+
 ## Verifying a change
 
 There is a `/talkwave-verify` skill that boots the token server and drives the widget in the

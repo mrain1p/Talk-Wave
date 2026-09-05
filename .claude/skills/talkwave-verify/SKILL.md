@@ -32,7 +32,8 @@ you changed; a value that measures correctly can still be ugly, and the operator
 looking at pixels.
 
 For WHICH states to drive, and the traps that make a card change look right in one of them
-and broken in four, read `talkwave-card-design` first.
+and broken in four, read `.claude/skills/talkwave-card-design/SKILL.md` first — by path,
+because it is user-invoked and no skill can fire it.
 
 ## The fast path: real token server
 

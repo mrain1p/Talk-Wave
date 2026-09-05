@@ -1,6 +1,7 @@
 ---
 name: talkwave-card-design
-description: The call card's design system — the skeleton the three faces share, the tokens each surface answers with, and the CSS traps that make a change look right in one state and broken in four others. Read BEFORE adding or moving anything in web-widget/style.css or the painters in call.js. Use when a face looks wrong, when a band is the wrong size or in the wrong place, or before restyling the phone, the player or the guide.
+description: The call card's design system, and the CSS traps that have already cost a redesign.
+disable-model-invocation: true
 ---
 
 # The card's design system
