@@ -3763,8 +3763,15 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         self.assertIn("shows.filter((s) => !airs.has(s.id))", block)
         self.assertIn("guideShelved !== false", block)
         self.assertIn("Not on the schedule", block)
-        # And the count above the list names the week, not the roster.
-        self.assertIn("' shows') + ' this week'", block)
+        # There WAS a count above the list — "N shows this week", named
+        # from the week rather than the roster so twelve shows could not
+        # read as seventeen. The three-faces redesign hid its row in CSS
+        # without removing the write, so it was computed on every poll and
+        # seen by nobody, and this assertion went on passing over a blank
+        # spot because it greps the source. Retired at the operator's word
+        # (2026-09-05): the split itself is what answered the 2026-09-03
+        # complaint, and the shelf below carries its own count. The Up
+        # today head stays; it never held this number.
         # The whole section folds, and starts folded: these shows are not
         # this week's business, so they cost one line until asked for.
         self.assertIn("let guideShelfOpen = false;", self.js)
@@ -3926,8 +3933,7 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         # the program guide listing every show with the current one
         # outlined. The hero and the rows share one body builder, so the
         # two can never say different things about a show.
-        for el in ('id="guideHero"', 'id="guideListHead"', 'id="guideTop"',
-                   'id="guideScroll"'):
+        for el in ('id="guideHero"', 'id="guideTop"', 'id="guideScroll"'):
             self.assertIn(el, self.html)
         self.assertIn("function guideHero", self.js)
         self.assertIn("function guideBody", self.js)

@@ -6758,7 +6758,7 @@
       b.classList.toggle('on', on);
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
-    ['guideToday', 'guideHero', 'guideListHead', 'guideList'].forEach((id) => {
+    ['guideToday', 'guideHero', 'guideList'].forEach((id) => {
       const el = $(id);
       if (el) el.classList.toggle('gdaway', week);
     });
@@ -6970,8 +6970,7 @@
     const today = $('guideToday'), list = $('guideList');
     const empty = $('guideEmpty');
     const head = $('guideTodayHead'), headMeta = $('guideTodayMeta');
-    const hero = $('guideHero'), listHead = $('guideListHead');
-    const listMeta = $('guideListMeta');
+    const hero = $('guideHero');
     if (!today || !list) return;
     // Today, hour by hour: every run that touches today's twenty-four
     // hours, the one on air lit, a run from last night shown from where
@@ -7069,11 +7068,6 @@
     const shelved = shows.filter((s) => !airs.has(s.id));
     list.textContent = '';
     if (empty) empty.hidden = shows.length > 0;
-    if (listHead) listHead.hidden = !onAirThisWeek.length;
-    if (listMeta) {
-      listMeta.textContent = onAirThisWeek.length
-        + (onAirThisWeek.length === 1 ? ' show' : ' shows') + ' this week';
-    }
     const ordered = upToday(onAirThisWeek, runs, now, liveId);
     ordered.rows.forEach((show) => {
       const row = guideRow(

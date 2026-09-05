@@ -1149,21 +1149,6 @@
   }
   .gdherobox.min .gdherofold { transform: rotate(0deg); }
   .card .gdherofold:hover { color: var(--alpenglow); }
-  /* "Program guide", and how much of the week is on the air. */
-  .gdlisthead {
-    display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px;
-    margin-top: 18px; padding-bottom: 6px;
-    border-bottom: 1px solid var(--hairline);
-  }
-  .gdlisthead[hidden] { display: none; }
-  .gdlistlab {
-    font: 700 11px/1 var(--font-mono); letter-spacing: .16em;
-    text-transform: var(--skin-label-case); color: var(--alpenglow);
-  }
-  .gdlistmeta {
-    margin-left: auto; font: 10px/1.3 var(--font-mono); letter-spacing: .06em;
-    color: var(--sage-dim);
-  }
   /* The show on air keeps its outline in the list too, so the week can be
      read without hunting for where "now" sits. */
   .card .gdrow.live { border-color: var(--coral); }
@@ -4759,30 +4744,15 @@
     text-transform: var(--skin-label-case); color: var(--sage-dim);
   }
   .gdscroll > .gdtodayhead { order: 3; }
-  .gdscroll > .gdlisthead { order: 4; }
-  .gdscroll > .gdlist { order: 5; }
-  .gdscroll > .gdshelf { order: 6; }
-  .gdscroll > .gdspans { order: 7; }
-  .gdscroll > .gdgrid { order: 8; }
-  .gdscroll > .gdempty { order: 9; }
+  .gdscroll > .gdlist { order: 4; }
+  .gdscroll > .gdshelf { order: 5; }
+  .gdscroll > .gdspans { order: 6; }
+  .gdscroll > .gdgrid { order: 7; }
+  .gdscroll > .gdempty { order: 8; }
   .gdtodaycap {
     flex: none; font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--alpenglow);
   }
-  /* …and the week's own count is HIDDEN, which is not what this used to
-     say. It said the count "joins" the Up-today head rather than repeating
-     the heading one row down — and it joins nothing: the head carries the
-     caption, the date and the Day/Week pair, and never the count (spec
-     review, 2026-09-05). paintGuide still writes "N shows this week" into
-     the row every poll and tests/test_widget.py still pins it, with the
-     operator's own reason from 2026-09-03: the count must name the WEEK,
-     not the roster, or a station running twelve shows reads as seventeen.
-     Left as it is deliberately. The write and its test are cheap; where
-     the count belongs on the redesigned face — the Up-today head, the
-     Programming caption, or nowhere now that the shelf carries its own
-     count — is a decision about what the guide SAYS, and this comment is
-     the note asking for it rather than an answer given quietly. */
-  .gdscroll > .gdlisthead { display: none; }
   /* The listing. One row per show, time column first, the tone spine, then
      the name — and the show on air is boxed at the top of it. */
   .card .gdrow {
