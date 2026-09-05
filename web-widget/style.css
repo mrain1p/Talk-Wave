@@ -554,11 +554,16 @@
     mask-image: linear-gradient(90deg, #000 88%, transparent);
   }
   /* A title longer than its row CYCLES so the whole thing can be read
-     (operator's phone, 2026-08-24: "I Am — Kamasi…"). The fade moves to
-     both edges while it slides; still and short titles keep the old fade.
-     Reduced motion keeps the fade and skips the ride. */
+     (operator's phone, 2026-08-24: "I Am — Kamasi…"). The trailing edge
+     fades whether it rides or not; reduced motion keeps that fade and skips
+     the ride. */
+  /* The riding title's own box. It used to set a two-sided mask here as
+     well; that fades the LEADING edge, which ate the first character of a
+     title sitting still (the ride rests at zero for the first sixth of its
+     cycle), so the trailing-edge-only mask further down this file replaced
+     it — a top-level `.track.marq` too, and later, so it wins everywhere.
+     The declaration is gone rather than left to lose an argument silently. */
   .track.marq {
-    mask-image: linear-gradient(90deg, transparent 0, #000 5%, #000 95%, transparent);
     /* The ride needs a real one-line box. The phone's title is a one-line
        -webkit-box CLAMP (white-space normal), which cuts the text instead of
        letting it overflow — a marquee on that box has nothing to slide. Class
@@ -4178,10 +4183,11 @@
        writes its own, which are the safe-area max() expressions. */
     --card-pad-l: 16px;
     --card-pad-r: 16px;
-    /* The two selected-cell grounds. SOLID — a translucent tint let the
-       ambient wash through and the cell changed colour with the artwork
-       behind it. color-mix over --pine keeps the theming contract: a
-       station repaint moves these with its own accent. */
+    /* The two selected-cell grounds. SOLID, and they stay that way now the
+       wash that first forced it is gone: the player's own artwork bloom
+       still sits behind this control, and a translucent tint changed colour
+       with the record. color-mix over --pine keeps the theming contract —
+       a station repaint moves these with its own accent. */
     --pick-live: color-mix(in srgb, var(--coral) 13%, var(--pine));
     --pick-priv: color-mix(in srgb, var(--cool) 13%, var(--pine));
   }
@@ -4802,7 +4808,13 @@
      the name — and the show on air is boxed at the top of it. */
   .card .gdrow {
     display: block; border: 1px solid transparent;
-    border-top: 1px solid var(--hairline); border-radius: 0;
+    border-top: 1px solid var(--hairline);
+    /* var(--skin-radius-ctl), not 0: square is the card's own answer and the
+       token's default, but nine of the nineteen skins set a real corner here
+       and a flat 0 took it away from them — `skins.css` is FORM (corners,
+       borders, textures), and the containment is the whole feature. The
+       guard test only polices the other direction, so nothing caught it. */
+    border-radius: var(--skin-radius-ctl, 0);
     background: none; padding: 11px 0; margin: 0;
   }
   .card .gdrow.live {
@@ -4875,13 +4887,15 @@
   .card .gdrow:not(.open) .gdbody { display: none; }
 
   /* -- 1c. the hero ------------------------------------------------------
-     Transparent, so the wash carries through it, and clamped: three lines of
-     the show's own description, with the angle and the DJ's soul behind a
-     press. It used to fold to nothing, which answered "how do I get past
-     this" and not "what is on". */
+     Clamped: five lines of the show's own description, with the angle and
+     the DJ's soul behind a press. It used to fold to nothing, which answered
+     "how do I get past this" and not "what is on". (It was transparent so an
+     ambient wash could carry through; the wash went at 5a72ebf and the
+     transparency is now just the hero sitting on the face's own ground.) */
   .card .gdherobox {
     display: flex; flex-direction: column; flex: 1; min-height: 0;
-    background: transparent; border: 0; border-radius: 0;
+    background: transparent; border: 0;
+    border-radius: var(--skin-radius-ctl, 0);
     padding: 12px 0 13px; margin: 0;
   }
   .card .gdherotop { display: flex; align-items: center; gap: 8px; flex: none; }
@@ -4902,7 +4916,12 @@
     position: relative; flex: none; width: 62px; height: 62px;
     display: inline-flex; align-items: center; justify-content: center;
   }
-  .card .gdherofig .gdzoom, .card .gdherofig img, .card .gdherofig .gdinit {
+  /* The <img> only. `.gdzoom` lands on the figure ITSELF (bindFaceZoom), not
+     inside it, and `.gdinit` never existed — both compounds were dead. The
+     initials that replace a picture the station will not serve are sized by
+     `.gdfig .gdav` instead, which is where every other face on this card
+     gets its fallback size (measured: 62x62 at 19px). */
+  .card .gdherofig img {
     position: relative; z-index: 1; width: 62px; height: 62px;
   }
   .card .gdheronames { flex: 1; min-width: 0; display: block; }
@@ -4932,13 +4951,14 @@
      (`.gdherobox.min .gdherobody { display: none }`, still above), which
      answered "how do I get past this" rather than "what is on". What it
      hides now is everything except the show's own description, and that
-     stays and takes three lines. The body has to be put BACK first: a rule
+     stays and takes five lines — the room was there and the operator asked
+     for it (2026-09-04). The body has to be put BACK first: a rule
      on its children cannot outrank its parent being display:none, which is
      what made the folded hero render its paragraph as 0px. */
   .card .gdherobox.min .gdherobody { display: block; }
   .card .gdherobox.min .gdherobody > *:not(.gddesc) { display: none; }
   /* …and the name does not shrink with it any more: the hero is the same
-     block either way, with three lines of prose instead of all of it. */
+     block either way, with five lines of prose instead of all of it. */
   .card .gdherobox.min .gdheroname { font-size: 19px; }
   .card .gdherobox.min .gdherobody .gddesc {
     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5;
