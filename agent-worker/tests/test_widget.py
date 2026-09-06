@@ -3826,12 +3826,20 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         self.assertIn("const guideOpenRows = new Set();", self.js)
         self.assertIn("guideOpenRows.has(show.id)", self.js)
 
-    def test_a_short_screen_opens_with_the_on_air_card_folded(self):
-        # Landscape leaves about 270px for the week and the on-air card
-        # alone is 639, so it arrived filling the letterbox. Decided once,
-        # from the room; the reader's own press outranks it after that.
+    def test_the_on_air_card_opens_folded_everywhere(self):
+        # It USED to open itself when the scroller had 420px of room —
+        # landscape left about 270 and the card alone was 639, so it arrived
+        # filling the letterbox. Two things retired that rule (operator's
+        # phone, 2026-09-05): a real show's open hero is 908px, taller than
+        # a phone's whole scroller, so opened by default it buried the
+        # listing the guide exists for; and the measurement depended on
+        # WHEN it ran — a paint while the face was still hidden read 0px
+        # and folded for the session, so one phone showed both defaults.
+        # Folded with the chevron is the design; open is the reader's
+        # press, and that press still outranks it for the session.
         self.assertIn("let guideHeroOpen = null;", self.js)
-        self.assertIn("guideHeroOpen = !sc || sc.clientHeight >= 420;", self.js)
+        self.assertIn("if (guideHeroOpen === null) guideHeroOpen = false;", self.js)
+        self.assertNotIn("sc.clientHeight >= 420", self.js)
 
     def test_the_week_can_be_read_as_a_grid(self):
         # Operator, 2026-09-03: a button that paints the schedule as a grid.

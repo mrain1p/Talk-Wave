@@ -7067,10 +7067,15 @@
     if (hero) {
       hero.textContent = '';
       hero.hidden = !liveShow;
-      if (guideHeroOpen === null) {
-        const sc = $('guideScroll');
-        guideHeroOpen = !sc || sc.clientHeight >= 420;
-      }
+      // FOLDED FIRST, on every surface. This used to open the hero when the
+      // scroller had 420px of room, which was written for a 300px hero; a
+      // real show's hero is 908px — taller than a phone's whole scroller —
+      // and opened by default it buries the listing the guide exists for.
+      // It also depended on WHEN it was measured: a paint while the face
+      // was still hidden read 0px and folded for the session, which is why
+      // the same phone showed both defaults (operator, 2026-09-05). The
+      // clamp with the chevron under it is the design; open is the ask.
+      if (guideHeroOpen === null) guideHeroOpen = false;
       if (liveShow) {
         hero.appendChild(guideHero(
           liveShow, castOf(liveShow, personas), runs, now,

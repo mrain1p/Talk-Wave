@@ -4965,9 +4965,21 @@
     margin-top: auto; padding-top: 10px; flex: none;
   }
   /* The arrow spans the hero's floor: a wide, quiet target under the text
-     rather than a worded pill beside the times. */
+     rather than a worded pill beside the times.
+     position: RELATIVE, and it is load-bearing. The hit-box rule up the
+     file grows every small target through an absolute ::after, and an
+     absolute box is placed by its nearest positioned ancestor — with the
+     button static that was the fixed .guide face, so the fold's ::after
+     was a transparent button the size of the whole guide. A finger landing
+     on it follows that button's layout chain, .guide → viewport, which
+     never passes through the scroller: the open hero could not be touch-
+     scrolled at all, on the operator's phone and in headless Chromium with
+     real touch events (2026-09-05). Folded it only worked by accident —
+     .gdherobox.min's rotate(0deg) is a transform, and a transform contains
+     absolute descendants. Now the button contains its own hit-box, open or
+     folded, the way every other target on the card does. */
   .card .gdherofold {
-    position: static; height: 22px; width: 100%; padding: 0; margin: 0;
+    position: relative; height: 22px; width: 100%; padding: 0; margin: 0;
     background: transparent; border: 0; border-top: 1px solid var(--hairline);
     border-radius: 0; color: var(--sage-dim); font-size: 11px; line-height: 1;
     transform: none; min-height: 0; flex: none;
