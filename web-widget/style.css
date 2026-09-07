@@ -4374,8 +4374,23 @@
   }
   /* The stage is the whole box when it is answering: the board used to be
      one centred line among the box's other tenants. */
-  .card.routed[data-mode="idle"] .linebox:has(.idleboard .stage) {
+  .card.routed[data-mode="idle"] .linebox:has(.idleboard:not([hidden]) .stage) {
     display: flex; flex-direction: column;
+  }
+  /* THE POST-CALL STRIP JOINS THE FLOW WHENEVER THE BOARD DOES. Round 5 put
+     the stage in the box's flow, with its foot on the box's bottom edge —
+     and the strip was still floating at `bottom: 7px`, so HOW WAS IT? was
+     drawn straight through "requests · shout-outs · what played earlier"
+     (operator's phone, 2026-09-06). This is the same answer the opened
+     drawer already gets thirteen hundred lines up: in flow it takes its own
+     band and nothing can be under it. Guarded on the strip actually
+     carrying something — an empty `.after` in flow would hold a margin at
+     the foot of every idle stage — and on the board being SHOWN, because
+     over a hidden board the float is still the design. */
+  .card.routed[data-mode="idle"]
+    .linebox:has(.idleboard:not([hidden]) .stage):has(.rate:not([hidden]), .callended:not([hidden]))
+    > .after {
+    position: static; flex: none; margin: 8px 0 0; pointer-events: auto;
   }
   /* position: static is the whole fix. The board's base rule places it
      absolutely over the box — right when it was one centred line the box
@@ -4624,14 +4639,19 @@
   }
   /* The DJ's line, centred in what is left — clamped to three, so a long
        one cannot push the tabs off the sheet. */
+  /* LEFT, like everything else in the sheet. The quote was centred inside
+     a 34ch measure in a left-aligned column — the only centred prose on the
+     card, which is what made the booth's card read "awkward" (operator,
+     2026-09-06). Ragged-right against the same edge as the label above it
+     and the list below, and it may use the box's whole width. */
   .plscroll > .plpanel:not(.plqueue) .plpanelbody {
     flex: 1; min-height: 0; display: flex; align-items: center;
-    justify-content: center; padding: 0; max-height: none; overflow: hidden;
+    justify-content: flex-start; padding: 0; max-height: none; overflow: hidden;
   }
   .plscroll > .plpanel:not(.plqueue) .plpanelbody .plquote {
     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4;
-    overflow: hidden; max-width: 34ch; text-align: center;
-    font: 12px/1.45 var(--font-body); color: var(--alpenglow);
+    overflow: hidden; max-width: none; text-align: left; width: 100%;
+    font: 13px/1.5 var(--font-body); color: var(--alpenglow);
   }
   /* The queue group: tabs, then the list. The tabs are the route switch's
      control again — three equal cells, shared borders, square. */
@@ -4722,9 +4742,15 @@
   /* The level reports, it does not need the room to do it in — but it
      stands in the same box as everything else on the strip. Bars keep
      their baseline; the padding is what centres them. */
+  /* CENTRED IN ITS BOX. align-items: flex-end from the base rule plus a
+     12px bottom padding sat the bars a third of the way up a 36px box,
+     beside a fader whose rail is centred in an identical one — two
+     instruments on one band lining up with nothing (operator, 2026-09-06).
+     The bars still GROW from their own bottom; it is the row of them that
+     is centred. */
   .card .pldock .plvu {
     flex: none; width: 58px; height: 36px; box-sizing: border-box;
-    padding: 0 8px 12px; overflow: hidden;
+    padding: 0 8px; overflow: hidden; align-items: center;
     background: var(--pine); border: 1px solid var(--hairline);
   }
   .card .pldock .plheart.liked, .card .pldock .plheart.on { color: var(--coral); }
@@ -4783,11 +4809,16 @@
   }
   /* The seam between what is on and what is coming. Quiet — a rule with a
      word on it, not a band. */
+  /* THE SAME TREATMENT AS THE OTHER SECTION HEADER. "ON AIR NOW" is coral
+     at 9.5/700 mono; PROGRAMMING was --sage-dim, a step quieter than the
+     schedule line under it, so the one word dividing the two halves of the
+     guide was the faintest thing on the face (operator, 2026-09-06). They
+     are peers and they read as peers now. */
   .gdscroll > .gdsection {
-    order: 2; padding: 14px 0 0; margin: 0;
+    order: 2; padding: 16px 0 0; margin: 0;
     border-top: 1px solid var(--edge);
     font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
-    text-transform: var(--skin-label-case); color: var(--sage-dim);
+    text-transform: var(--skin-label-case); color: var(--coral);
   }
   .gdscroll > .gdtodayhead { order: 3; }
   .gdscroll > .gdlist { order: 4; }
@@ -4979,13 +5010,13 @@
      absolute descendants. Now the button contains its own hit-box, open or
      folded, the way every other target on the card does. */
   .card .gdherofold {
-    position: relative; height: 22px; width: 100%; padding: 0; margin: 0;
+    position: relative; height: 28px; width: 100%; padding: 0; margin: 0;
     background: transparent; border: 0; border-top: 1px solid var(--hairline);
-    border-radius: 0; color: var(--sage-dim); font-size: 11px; line-height: 1;
+    border-radius: 0; color: var(--coral); font-size: 15px; line-height: 1;
     transform: none; min-height: 0; flex: none;
     display: flex; align-items: center; justify-content: center;
   }
-  .card .gdherofold:hover { color: var(--coral); }
+  .card .gdherofold:hover { color: var(--alpenglow); }
   .card .gdheroweek {
     display: block; font: 10px/1.3 var(--font-mono); letter-spacing: .08em;
     color: var(--sage-dim);
@@ -5057,7 +5088,7 @@
     body:not(.panelpage):not(.compact) {
       --ident-h: 160px; --station-h: 76px;
       --portrait: 108px; --thumb: 46px;
-      --sleeve: 168px; --well-h: 104px;
+      --sleeve: 148px; --well-h: 104px;
       --seg-h: 38px; --control-h: 44px; --chip-h: 28px;
       --dock-gap: 14px; --dock-pad: 14px;
       --hero-title: 25px; --gd-hero-h: 236px;
@@ -5088,22 +5119,69 @@
     body:not(.compact) .card:not([data-mode="chat"]) .who-row .tagline {
       margin: 3px 0 0;
     }
+    /* THE RECORD ABOVE ITS NAME. Beside a 168px sleeve the title had 176px
+       of a 390px card: "Made Of Stone (808 State Mix)" came out as "MADE OF
+       STONE…", "Our Lady of Sorrows" took two lines at 25px, and four genre
+       chips wrapped to two rows in a column narrower than the picture next
+       to it — "just squashed" (operator's phone, 2026-09-06). Stacked, the
+       name gets the card's whole width, the chips get one row, and the
+       sleeve gives up 20px it does not need.
+
+       height: auto beats the skeleton rule that pins this block to
+       --ident-h + --station-h - 38px so the three faces' heroes agree. They
+       cannot agree here: the player's hero is a picture AND a name where
+       the other two are a name beside a face. The swipe gives up an exact
+       match on this face for a title that can be read. */
+    body:not(.compact) .card .plartblock {
+      flex-direction: column; align-items: flex-start; height: auto;
+      gap: 12px; padding: 16px 20px 12px;
+    }
+    body:not(.compact) .card .plartblock .plartwrap {
+      width: var(--sleeve); height: var(--sleeve);
+    }
+    body:not(.compact) .card .plmeta { width: 100%; }
+    /* The name has the room now, so it starts at the top of its ladder and
+       only steps down for a genuinely long one. */
+    body:not(.compact) .card .plartblock .pltrack { margin-top: 0; }
     /* The meters keep one row here: the level band is the dock's own
        instrument now, and the volume rides the call it belongs to. */
     body:not(.compact) .meters { flex-wrap: nowrap; }
     body:not(.compact) .meters .vol { flex: 0 1 auto; order: 0; max-width: 33%; }
     body:not(.compact) .meters .meter { flex: 1 1 0; min-width: 0; }
     body:not(.compact) .bars { height: 20px; }
-    /* WHO IS IN THE BOOTH takes its own line here. On a 348px well the
-       label and the name shared one row and both lost: the label wrapped
-       to "IN THE / BOOTH" and the name ellipsised to "DONOVAN'S P…" — over
-       an empty body (operator's phone, 2026-09-05). The well is 104px tall
-       and mostly waiting; a second line is the room it has. */
+    /* ONE LINE AFTER ALL, and the label pays for it. Yesterday this wrapped
+       the DJ onto a row of their own because at 11px the label and the name
+       together overran a 334px box. The operator wants them on one line
+       (2026-09-06) — so the label drops to the 9.5px the rest of the card's
+       micro-labels use, which buys back about 30px, and the name keeps the
+       ellipsis for the genuinely long ones. Two lines of chrome over a
+       three-line quote was the wrong half to spend the room on. */
     body:not(.compact) .plscroll > .plpanel:not(.plqueue) .plpanelhead {
-      flex-wrap: wrap; row-gap: 6px;
+      flex-wrap: nowrap; font-size: 9.5px; gap: 7px;
     }
     body:not(.compact) .plscroll > .plpanel:not(.plqueue) .plpanelmeta {
-      flex: 1 0 100%; margin-left: 0;
+      flex: 0 1 auto; min-width: 0; margin-left: auto;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    /* AND IT FLOATS. --granite over --pine says "raised" but the box was
+       flush against the tab row under it, so the one card meant to sit
+       proud of the sheet read as another band (operator, 2026-09-06). */
+    body:not(.compact) .card .plscroll > .plpanel:not(.plqueue) {
+      margin: 16px 16px 14px; padding: 12px 14px;
+    }
+    /* THE LIST FILLS WHAT THE SHEET LEAVES, AND SCROLLS INSIDE IT. The
+       group flexes on this surface but the panel inside it did not, so a
+       296px group carried a 156px body with 140px of nothing under it, and
+       a fourth record could not be reached at all: "i can only see two
+       things and cant scroll them" (operator's phone, 2026-09-06). Two rows
+       is the floor; everything above that is whatever the hero and the
+       booth leave, and the body is the scroller. */
+    body:not(.compact) .card .plscroll .plqgroup .plpanel.plqueue {
+      flex: 1 1 auto; min-height: 0;
+    }
+    body:not(.compact) .card .plscroll .plqgroup .plpanel.plqueue .plpanelbody {
+      height: auto; flex: 1 1 auto; min-height: calc(var(--plrow-h) * 2);
+      overflow-y: auto;
     }
     /* The ribbon is the screen's own foot at the handoff's height. */
     /* 46, was the handoff's 54 (operator, 2026-09-04): with the mark and

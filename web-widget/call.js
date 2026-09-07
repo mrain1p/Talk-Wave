@@ -5873,7 +5873,10 @@
       past.forEach((px) => {
         // No number on a played record: its place in a queue is over, and
         // counting backwards from the top would read as one.
-        pastBody.appendChild(queueRow(px.title, px.artist || '', '\u2014'));
+        // No lead. Up next numbers its rows because the order is the
+        // point; a played record's em-dash was a 16px column and a 10px
+        // gutter spent on a glyph that says nothing (operator, 2026-09-06).
+        pastBody.appendChild(queueRow(px.title, px.artist || '', ''));
       });
     }
     plQueueCounts = { next: list.length, past: past.length };
