@@ -3812,19 +3812,34 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         # left and came back. Every poll repaints from what it has; a poll
         # that says the SHOW changed throws the read away.
         block = self.js.split("function guideFollowsTheAir")[1][:600]
-        self.assertIn("if (changed) loadGuide(true);", block)
+        # …and so does a poll after a read that FAILED. A guide opened in
+        # the seconds after a redeploy got a 503, painted the empty week's
+        # "hasn't published its week yet" over a seventeen-show grid, and
+        # kept it for as long as it stayed open, because only a show change
+        # asked again (operator's phone, 2026-09-05). The flag is the
+        # second trigger on the same line.
+        self.assertIn("if (changed || guideFailed) loadGuide(true);", block)
         self.assertIn("else if (guideData) paintGuide();", block)
+        self.assertIn("guideFailed = true;", self.js.split("async function loadGuide")[1][:900])
         self.assertIn("guideFollowsTheAir();", self.js.split("function paintListenChip")[1][:1200])
         # And a repaint must not close the row somebody is reading.
         self.assertIn("const guideOpenRows = new Set();", self.js)
         self.assertIn("guideOpenRows.has(show.id)", self.js)
 
-    def test_a_short_screen_opens_with_the_on_air_card_folded(self):
-        # Landscape leaves about 270px for the week and the on-air card
-        # alone is 639, so it arrived filling the letterbox. Decided once,
-        # from the room; the reader's own press outranks it after that.
+    def test_the_on_air_card_opens_folded_everywhere(self):
+        # It USED to open itself when the scroller had 420px of room —
+        # landscape left about 270 and the card alone was 639, so it arrived
+        # filling the letterbox. Two things retired that rule (operator's
+        # phone, 2026-09-05): a real show's open hero is 908px, taller than
+        # a phone's whole scroller, so opened by default it buried the
+        # listing the guide exists for; and the measurement depended on
+        # WHEN it ran — a paint while the face was still hidden read 0px
+        # and folded for the session, so one phone showed both defaults.
+        # Folded with the chevron is the design; open is the reader's
+        # press, and that press still outranks it for the session.
         self.assertIn("let guideHeroOpen = null;", self.js)
-        self.assertIn("guideHeroOpen = !sc || sc.clientHeight >= 420;", self.js)
+        self.assertIn("if (guideHeroOpen === null) guideHeroOpen = false;", self.js)
+        self.assertNotIn("sc.clientHeight >= 420", self.js)
 
     def test_the_week_can_be_read_as_a_grid(self):
         # Operator, 2026-09-03: a button that paints the schedule as a grid.

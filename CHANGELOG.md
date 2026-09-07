@@ -4,6 +4,17 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.41
+
+The three cards, gone over again with the phone in hand.
+
+- **The record sits above its name now.** Beside the sleeve the song title had less than half the card and came out clipped — "Made Of Stone (808 State Mix)" as "MADE OF STONE…" — with the genre chips folded into two rows. The picture goes on top and the name gets the full width underneath it.
+- **Up next, Just played and Requests fill the sheet and scroll.** The list was stuck at three rows with a stretch of nothing beneath it, and a fourth record could not be reached at all. The played list also drops the dash that sat in front of every line doing no work.
+- **The booth's card floats, says who is in there on one line, and reads left.** Its sentence was the only centred prose on the sheet, the label had wrapped the DJ's name onto a row of its own, and the box sat flush against the tabs below it.
+- **The level meter lines up with the fader beside it** instead of sitting a third of the way up its own box.
+- **The programme guide's "Programming" heading is as visible as "On air now"** — the two divide the guide between them and are now the same weight and colour. The arrow that opens the show on air is bigger and coral, so it reads as a control rather than a divider.
+- **The rating strip stops printing over the card.** After a call, "How was it?" was drawn straight across the line listing what else the booth takes; it takes its own row now.
+
 ## 0.99.40
 
 The three cards get the pass they needed after meeting a real phone.
