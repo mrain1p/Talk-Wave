@@ -708,6 +708,20 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
     # Long on purpose. Not measured — only required to still exist and still
     # say why.
     EXEMPT = {
+        "agent-worker/call/tools/music.py":
+            "the request and queue tools, and the length is the STATION'S "
+            "surface rather than this file's ambition: one wrapper per action "
+            "the DJ can take, each carrying the station's own refusal words "
+            "and the conduct note that stops the DJ narrating a queue entry "
+            "as an on-air spin. Crossed the ceiling at 0.99.43 when the "
+            "receipt reader (read_receipt) was pulled out of three "
+            "hand-rolled copies into one shared function — the upstream pass "
+            "of 2026-09-07 found all three reading a duplicate and an "
+            "agent-answered match back to the caller as 'added to the queue'. "
+            "The seam to split on is real (reads vs writes) but it is the "
+            "SAME `actions` budget, `refusals` gate and `_fmt_track` on both "
+            "sides, which is the coupling the 600-line rule exists to make "
+            "visible rather than to forbid.",
         "web-widget/skins.css":
             "nineteen skins, one self-contained token block each, and a test "
             "(TestASkinCannotReachPastItsTokens) that already forbids any "
@@ -1113,7 +1127,7 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # lifecycle attachments (the setup-note data channel).
         # 928: the landed guard's gated construction (closing_nudge) beside
         # the other guards — nine lines, in the wiring half.
-        "agent-worker/call/session.py": (928, "the ringing half (prepare, "
+        "agent-worker/call/session.py": (933, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -1883,7 +1897,7 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         "agent-worker/call/tools/albums.py::build_album_tools.queue_mix": (25, "Batch 4 — mix queue"),
         # Batch 5 — the brain
         "agent-worker/brain/briefing.py::_fmt_now_playing": (32, "Batch 5 — now-playing formatter"),
-        "agent-worker/brain/assemble.py::build_system_prompt": (28, "Batch 5 — prompt assembler entry; +1 2026-09-01: the persona id, so the booth window can tell our own lines from a co-host's"),
+        "agent-worker/brain/assemble.py::build_system_prompt": (29, "Batch 5 — prompt assembler entry; +1 2026-09-01: the persona id, so the booth window can tell our own lines from a co-host's; +1 2026-09-07: the live show resolved before the skills are narrowed, so a co-hosted segment (#1534) is only offered when somebody else is in the booth"),
         "agent-worker/brain/tool_rules.py::_tools": (28, "Batch 5 — the prompt god-function; +1 2026-08-31: the tool_speakfirst gate, so chat can drop the dead-air rule"),
         # Batch 6 — chat / onair / openlines / voicemail
         "agent-worker/voicemail/capture.py::answer": (45, "Batch 6 — voicemail answer pipeline"),

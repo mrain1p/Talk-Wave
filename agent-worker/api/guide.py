@@ -218,6 +218,11 @@ def _override(raw: dict) -> dict:
     o = raw.get("override") if isinstance(raw, dict) else None
     if not isinstance(o, dict):
         return {}
+    # An override object whose showId is explicitly null is the station's own
+    # mix pinned over the grid (#1543) — a real takeover with no show to name,
+    # and the guide's off-schedule flag has to fire for it.
+    if "showId" in o and o.get("showId") is None:
+        return {"showId": "", "default": True}
     for key in ("showId", "show", "id"):
         v = o.get(key)
         if isinstance(v, str) and v.strip():

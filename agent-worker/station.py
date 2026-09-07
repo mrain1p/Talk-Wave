@@ -752,6 +752,30 @@ class StationClient:
             return {"unavailable": describe(e)}
 
     @staticmethod
+    def _retry_after(resp) -> float:
+        """How long the station asked us to wait, in seconds, or 0.
+
+        Every 429 from POST /request carries `retryAfter` in the body AND a
+        Retry-After header (routes/request.ts:809-846); the per-caller
+        cooldown defaults to 60s, and the wrapper was holding a flat 20
+        regardless — so a caller heard "give it a moment", tried again, and
+        collected the same refusal twice (upstream pass, 2026-09-07).
+        """
+        try:
+            body = resp.json()
+        except Exception:                                      # noqa: BLE001
+            body = {}
+        for src in (body.get("retryAfter") if isinstance(body, dict) else None,
+                    resp.headers.get("Retry-After")):
+            try:
+                n = float(src)
+            except (TypeError, ValueError):
+                continue
+            if 0 < n <= 3600:
+                return n
+        return 0.0
+
+    @staticmethod
     def _refusal_words(response) -> str:
         """The station's own words for a refusal, rule and all.
 
@@ -867,7 +891,11 @@ class StationClient:
                     if said:
                         log.warning("request refused (%s): %s",
                                     e.response.status_code, said)
-                        return {"error": said}
+                        out = {"error": said}
+                        wait = self._retry_after(e.response)
+                        if wait:
+                            out["retryAfter"] = wait
+                        return out
                     break
                 log.info("station 5xx on request (%s) — retrying once",
                          e.response.status_code)
@@ -1064,6 +1092,16 @@ class StationClient:
                 log.warning("takeover %s slow to confirm (%s) — treating as set", show_id, e)
                 return {"ok": True, "unconfirmed": True}
             log.warning("takeover %s failed: %s", show_id, describe(e))
+            # The station's own sentence, not httpx's. #1543/#1610 gave this
+            # route a zod schema whose refusals are written for an operator
+            # ("pick a show or Default programming", "must be an integer
+            # between 15 and 720"), and they were being replaced by
+            # "Client error '400 Bad Request' for url..." - queue_track has
+            # relayed the body for months (upstream pass, 2026-09-07).
+            if isinstance(e, httpx.HTTPStatusError):
+                said = self._refusal_words(e.response)
+                if said:
+                    return {"ok": False, "error": said}
             return {"ok": False, "error": str(e)[:120]}
 
     async def clear_pinned_show(self) -> dict:

@@ -42,6 +42,10 @@ async def build_system_prompt(
     # A pre-fetched snapshot avoids repeating the station reads the caller is
     # already waiting on. Falls back to fetching if none was supplied.
     snap = snapshot or await station.snapshot(with_skills=bool(cfg.get("allow_skills")))
+    # Resolved before the skills are narrowed: a co-hosted segment is only
+    # runnable when somebody else is in the booth (#1534). No I/O - it works
+    # off payloads the snapshot already carries.
+    show = await station.active_show(snap["now_playing"], snap.get("schedule"))
     if snapshot is None and snap.get("skills"):
         # Only when we fetched it ourselves: the call path narrows the
         # catalogue to the on-air DJ before handing it over (session.prepare),
@@ -58,8 +62,8 @@ async def build_system_prompt(
             assigned = None
         finally:
             await sc.aclose()
-        snap["skills"] = runnable_skills(snap["skills"], assigned)
-    show = await station.active_show(snap["now_playing"], snap.get("schedule"))
+        snap["skills"] = runnable_skills(
+            snap["skills"], assigned, bool((show or {}).get("guests")))
 
     # The clock mirror (djSpeakClock, SUB/WAVE 1.8). The call path passes it
     # in — its StationConfig caches /settings, so the read is free there;

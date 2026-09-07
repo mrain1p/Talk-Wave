@@ -469,6 +469,16 @@ def build_on_air_tools(
             # would cancel a takeover the operator set, from a caller who only
             # asked about a genre.
             pinned = (await station.schedule()).get("override") or {}
+            if isinstance(pinned, dict) and "showId" in pinned \
+                    and pinned.get("showId") is None:
+                # Default programming pinned over the grid (#1543): something
+                # IS up, it is just not a genre lock and not a show.
+                return (
+                    "What's pinned is DEFAULT PROGRAMMING — the station's own "
+                    "mix over the schedule, not a genre lock. This won't lift "
+                    "it. If they want the grid back, that is "
+                    "subwave_cancel_takeover — check they mean that first."
+                )
             show_id = str(pinned.get("showId") or "")
             if not show_id:
                 return ("Nothing is pinned — there's no genre lock to lift. "

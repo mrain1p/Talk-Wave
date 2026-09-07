@@ -265,7 +265,8 @@ def _persona_skills_from(settings: dict, persona_id: str) -> list[str] | None:
 
 
 def runnable_skills(catalogue: list[dict],
-                    assigned: list[str] | None) -> list[dict]:
+                    assigned: list[str] | None,
+                    has_guests: bool = True) -> list[dict]:
     """The segments this DJ may actually run, out of the station's catalogue.
 
     The catalogue is every skill the station HAS. Three things in it are not
@@ -283,6 +284,12 @@ def runnable_skills(catalogue: list[dict],
         and not others, so a caller could make tonight's host run a segment
         that belongs to someone else's show.
 
+    A fourth, since upstream #1534: `cohosts: true` marks a segment written as
+    a two-voice exchange. `runCapability` stands one down on a solo hour with a
+    200 and a reason, so offering it costs a caller a confident "let me get the
+    two of them on that" followed by nothing. `has_guests` defaults True so a
+    caller that cannot tell keeps the old behaviour.
+
     `cronOnly` is checked too, and deliberately in advance: upstream #1379 added
     it to withhold a clock-pinned skill from the station's own random picks, but
     `skillCatalog()` does not publish the field, so nothing here can see it yet.
@@ -298,6 +305,8 @@ def runnable_skills(catalogue: list[dict],
         if skill.get("enabled") is False or skill.get("ready") is False:
             continue
         if skill.get("cronOnly") is True:
+            continue
+        if skill.get("cohosts") is True and not has_guests:
             continue
         name = str(skill.get("name") or skill.get("kind") or "")
         if allowed is not None and name and name not in allowed:

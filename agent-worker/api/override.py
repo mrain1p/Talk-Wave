@@ -51,9 +51,28 @@ async def override_payload() -> dict:
         except Exception:                                      # noqa: BLE001
             pass
     ov = schedule.get("override") if isinstance(schedule, dict) else None
-    if not isinstance(ov, dict) or not ov.get("showId"):
+    if not isinstance(ov, dict):
         return {"active": False}
+    # `showId: null` INSIDE an override object is Default programming — the
+    # operator pinning the station's own mix over the grid (upstream #1543,
+    # schemas/schedule.ts:229: "showId: null means Default programming; an
+    # outer scheduleOverride: null means there is no takeover at all"). Read
+    # as falsy it came back as "nothing is pinned", which is the one state it
+    # is not (upstream pass, 2026-09-07).
+    if "showId" not in ov:
+        return {"active": False}
+    if ov.get("showId") is None:
+        return {
+            "active": True,
+            "kind": "default-programming",
+            "showId": None,
+            "show": "Default programming",
+            "startedAt": ov.get("startedAt"),
+            "expiresAt": ov.get("expiresAt"),
+        }
     show_id = str(ov.get("showId") or "")
+    if not show_id:
+        return {"active": False}
     name = ""
     for s in (schedule.get("shows") or []):
         if isinstance(s, dict) and str(s.get("id") or "") == show_id:

@@ -422,7 +422,12 @@ class CallSession:
 
             assigned = await self.station_cfg.persona_skills(
                 str(self.persona.get("id") or ""))
-            snap["skills"] = runnable_skills(snap["skills"], assigned)
+            # Co-hosted segments need a second voice in the booth (#1534);
+            # active_show is free here, off payloads the snapshot has.
+            _show = await self.station.active_show(
+                snap.get("now_playing"), snap.get("schedule")) or {}
+            snap["skills"] = runnable_skills(
+                snap["skills"], assigned, bool(_show.get("guests")))
         self.skills = [str(s.get("name") or s.get("kind") or "")
                        for s in (snap.get("skills") or [])]
 
