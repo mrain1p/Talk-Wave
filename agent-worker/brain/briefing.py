@@ -236,7 +236,30 @@ def _fmt_guests(show: dict) -> str:
 
 
 # The show's musical shape, in the order it reads naturally aloud.
-_SHAPE_FIELDS = (("genres", ""), ("moods", ""), ("eras", ""), ("energies", " energy"))
+_SHAPE_FIELDS = (("genres", ""), ("moods", ""), ("energies", " energy"))
+
+
+def _fmt_era(era) -> str:
+    """One era window as a DJ would say it.
+
+    The station files these as `{fromYear, toYear}` with either end nullable
+    (schemas/show.ts EraWindow), and #1605 gave the operator a UI to set
+    single-year and open-ended ones — so the shapes are about to get commoner.
+    _fld() rendered the dict itself, which put "{'fromYear': 1990, 'toYear':
+    1999}" in a prompt the DJ reads out of.
+    """
+    if not isinstance(era, dict):
+        return _fld(era, 60)
+    lo, hi = era.get("fromYear"), era.get("toYear")
+    lo = int(lo) if isinstance(lo, (int, float)) and not isinstance(lo, bool) else None
+    hi = int(hi) if isinstance(hi, (int, float)) and not isinstance(hi, bool) else None
+    if lo and hi:
+        return str(lo) if lo == hi else f"{lo}-{hi}"
+    if lo:
+        return f"{lo} onwards"
+    if hi:
+        return f"up to {hi}"
+    return ""
 
 
 def _fmt_show_shape(show: dict) -> str:
@@ -252,9 +275,21 @@ def _fmt_show_shape(show: dict) -> str:
         values = [_fld(v, 60) for v in (show.get(key) or []) if str(v).strip()]
         if values:
             bits.append(", ".join(values[:4]) + suffix)
+    eras = [_fmt_era(e) for e in (show.get("eras") or [])]
+    eras = [e for e in eras if e]
+    if eras:
+        bits.append(", ".join(eras[:4]))
     if not bits:
         return ""
     strict = " The station holds to that strictly tonight." if show.get("filtersStrict") else ""
+    # A FIXED PLAYLIST IS NOT A FILTER (#1615, #1482, #1533). When the show
+    # runs off one, the picker plays it through before repeating and refuses
+    # anything outside it — but the REQUEST path does not apply that rule, so
+    # a caller's track goes in as an exception to the show rather than as part
+    # of it. The DJ should say so rather than describe it as a normal pick.
+    if show.get("playlistStrict") or show.get("playlistIds"):
+        strict += (" Tonight runs off a fixed playlist: a request still goes "
+                   "in, but as an exception to the show, not as part of it.")
     return "This show plays: " + "; ".join(bits) + "." + strict
 
 

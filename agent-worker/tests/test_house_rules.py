@@ -708,6 +708,17 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
     # Long on purpose. Not measured — only required to still exist and still
     # say why.
     EXEMPT = {
+        "agent-worker/brain/briefing.py":
+            "the prompt's own vocabulary: one _fmt_* function per fact the "
+            "station publishes, each turning a payload field into the "
+            "sentence a DJ would say about it. They are siblings, not a "
+            "chain — nothing here calls anything else here except "
+            "station_context, which is the list of them — so a split would "
+            "be alphabetical rather than structural, and the seam it created "
+            "would run through the one place a reader goes to ask 'what does "
+            "the DJ actually get told?'. Crossed the ceiling at 0.99.43 when "
+            "the upstream pass of 2026-09-07 added the length floor, the "
+            "talk window and the era-window renderer.",
         "agent-worker/station_config.py":
             "the station's config mirror, and every method on it is the same "
             "shape: read the one cached /settings payload, find one setting "

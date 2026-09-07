@@ -286,6 +286,10 @@ class TestExposedSurface(unittest.TestCase):
         "subwave_refresh_playlist": "never",
         "subwave_list_sfx": "never",
         "subwave_play_sfx": "never",
+        # Station furniture the caller cannot fire, named so the panel can
+        # say why rather than leaving the row off (#1468, release 1.11.0).
+        "subwave_list_jingles": "never",
+        "subwave_play_jingle": "never",
     }
 
     def _live_routes(self) -> dict:
@@ -495,7 +499,8 @@ class TestStationWideTools(_TempStores):
 
         self.assertEqual(
             set(blocked_names()),
-            {"subwave_refresh_playlist", "subwave_list_sfx", "subwave_play_sfx"})
+            {"subwave_refresh_playlist", "subwave_list_sfx", "subwave_play_sfx",
+             "subwave_list_jingles", "subwave_play_jingle"})
 
 
 class TestActionsAllHaveAReceipt(unittest.TestCase):

@@ -521,6 +521,25 @@ class StationConfig:
             return 0
         return n if 0 < n <= 3600 else 0
 
+    async def crossfade_seconds(self) -> float:
+        """How long the station's crossfade runs, or 0 if it cannot be read.
+
+        A record shorter than the fade is mixed through without ever being
+        heard — the station booth-logs that for a listener request (#1606) but
+        it does not refuse it, and nothing on this side could see it coming.
+        The DJ promising a track the transition then eats is the failure this
+        exists to prevent.
+        """
+        settings = await self.settings()
+        values = settings.get("values") if isinstance(settings, dict) else None
+        raw = (values or {}).get("crossfadeDuration") \
+            if isinstance(values, dict) else None
+        try:
+            n = float(raw)
+        except (TypeError, ValueError):
+            return 0.0
+        return n if 0 < n <= 60 else 0.0
+
     async def talk_between_tracks_only(self) -> bool:
         """Whether the station holds spoken segments to track boundaries.
 

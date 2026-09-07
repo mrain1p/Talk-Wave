@@ -377,6 +377,18 @@ class StationClient:
             # Carried on the persona so the prompt's station-name line has a
             # fallback when /dj timed out — see brain/assemble.py.
             "station": dj.get("station", ""),
+            # How this persona sets a record up. 'announce' is the station's
+            # word for a DJ who says exactly "This is <artist>." and nothing
+            # else (#1497, schemas/persona.ts:84-88) — a manner the operator
+            # chose, which the call line was overriding with its own.
+            "linkStyle": ("announce"
+                          if str(dj.get("linkStyle") or "") == "announce"
+                          else "natural"),
+            # Where the station broadcasts from, as the station publishes it
+            # (public.ts resolveOnAirLocation — the broad location, never the
+            # precise one). The DJ had no answer to "where are you?" but its
+            # own invention.
+            "location": str(dj.get("location") or "").strip()[:80],
             "language": language,
         }
 
@@ -781,6 +793,29 @@ class StationClient:
             return {"unavailable": describe(e)}
 
     @staticmethod
+    def _guest_credit_words(body: dict, hit: dict) -> str:
+        """The refusal reworded when the block landed on a GUEST credit.
+
+        #1608 made an artist block reach the tracks that artist only appears
+        on, so the station can refuse "Under Pressure" naming Queen when the
+        caller asked for Bowie. Relayed flat that reads as the station not
+        knowing its own record; named as what it is, it is simply true.
+
+        Empty unless there is evidence: the block is on an artist, it names
+        somebody, and the row's own lead credit is somebody else. No track on
+        the body means no comparison and no rewording.
+        """
+        if str(hit.get("type") or "").lower() != "artist":
+            return ""
+        blocked = str(hit.get("name") or "").strip()
+        track = body.get("track") if isinstance(body, dict) else None
+        lead = str((track or {}).get("artist") or "") if isinstance(track, dict) else ""
+        if not (blocked and lead) or blocked.casefold() in lead.casefold():
+            return ""
+        return (f"that one features {blocked}, who is on this station's "
+                "never-play list")
+
+    @staticmethod
     def _retry_after(resp) -> float:
         """How long the station asked us to wait, in seconds, or 0.
 
@@ -838,6 +873,9 @@ class StationClient:
             elif hit.get("label"):
                 bits.append(str(hit["label"]))
             kind = "rule" if str(hit.get("kind")) == "rule" else "never-play list"
+            guest = StationClient._guest_credit_words(d, hit)
+            if guest:
+                return guest
             rule = "; ".join(bits)
             named = (f"blocked by the station's {kind}"
                      + (f" ({rule})" if rule else ""))
@@ -1089,7 +1127,34 @@ class StationClient:
     TAKEOVER_MIN_MINUTES = 15
     TAKEOVER_MAX_MINUTES = 720
 
-    async def pin_show(self, show_id: str, minutes: int) -> dict:
+    async def next_schedule_change(self) -> dict:
+        """When the grid would next have moved on — GET /schedule/next-change.
+
+        #1610. Absent before that lands, and 404 is not a fault here: it means
+        this station cannot preview the window yet, so the DJ promises no end
+        time rather than an invented one.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {}
+        try:
+            r = await self._client.get(
+                "/schedule/next-change", auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            if r.status_code == 404:
+                return {}
+            r.raise_for_status()
+            d = r.json()
+            return d if isinstance(d, dict) else {}
+        except Exception as e:
+            log.info("next schedule change unavailable: %s", describe(e))
+            return {}
+
+    async def pin_show(self, show_id: str, minutes: int,
+                       until: str = "fixed") -> dict:
         """Pin a show over the weekly grid for a bounded window. Admin-only.
 
         The station calls this a takeover: it outranks the schedule until it
@@ -1110,7 +1175,14 @@ class StationClient:
         try:
             r = await self._client.post(
                 "/schedule/override",
-                json={"showId": show_id, "minutes": int(minutes)},
+                json=({"showId": show_id, "until": "schedule-change"}
+                      if until == "schedule-change"
+                      # `minutes` is REFUSED under schedule-change and REQUIRED
+                      # under fixed (schemas/schedule.ts:370-371); posting the
+                      # pair without `until` is byte-identical to what this
+                      # sent before the option existed, so an older station is
+                      # unaffected.
+                      else {"showId": show_id, "minutes": int(minutes)}),
                 auth=httpx.BasicAuth(user, password),
                 timeout=ACTION_TIMEOUT,
             )

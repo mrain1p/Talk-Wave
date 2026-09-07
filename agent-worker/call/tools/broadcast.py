@@ -288,14 +288,18 @@ def build_on_air_tools(
         # effect outlives the call: everything else here is over in a minute,
         # and this changes what the station IS for the next hour.
         @lk_llm.function_tool(name="subwave_takeover_show")
-        async def takeover_show(show: str, minutes: int = 60) -> str:
+        async def takeover_show(show: str, minutes: int = 60,
+                                until_schedule: bool = False) -> str:
             """Put a different show on air, ahead of the schedule, for a while.
             THIS is the tool for "change the DJ", "put Wade on", "switch to
             the jazz show" — a show change is never a song request. `show` is
             the show's name as the caller said it (a DJ's name finds their
             show). `minutes` defaults to an hour — pass more ONLY if they
-            asked for longer. This changes what EVERYONE hears, not just this
-            caller, and it outlasts the call, so use it when they have
+            asked for longer. Pass `until_schedule=True` INSTEAD when they ask
+            for it to run until the next show would have started anyway ("keep
+            him on till his slot ends") — the station works the window out and
+            `minutes` is ignored. This changes what EVERYONE hears, not just
+            this caller, and it outlasts the call, so use it when they have
             actually asked for it."""
             if actions.at_limit():
                 return actions.refusal()
@@ -329,6 +333,35 @@ def build_on_air_tools(
             asked = int(minutes or 0) or 60
             window = max(StationClient.TAKEOVER_MIN_MINUTES,
                          min(StationClient.TAKEOVER_MAX_MINUTES, asked))
+            # UNTIL THE GRID WOULD HAVE MOVED ON (#1610). The station resolves
+            # the window itself and REFUSES `minutes` in that mode, so nothing
+            # is clamped and nothing is guessed. A station without the option
+            # answers 400 and we say so plainly rather than silently pinning a
+            # fixed hour the caller did not ask for.
+            if until_schedule:
+                ends = await station.next_schedule_change()
+                result = await station.pin_show(picked.get("id"), 0,
+                                                until="schedule-change")
+                if not result.get("ok"):
+                    return actions.station_refused(
+                        result, "That takeover didn't go through. If the "
+                        "station wouldn't take 'until the schedule changes', "
+                        "ask them how long they want instead and use minutes")
+                name = str(picked.get("name") or "that show").strip()
+                actions.note("takeover", f"{name} until the schedule changes")
+                mins = ends.get("minutes") if isinstance(ends, dict) else None
+                how_long = (f" That is about {int(mins)} minutes from now."
+                            if isinstance(mins, (int, float)) and mins else
+                            " Don't put a time on it — the station has not "
+                            "said how long that is.")
+                whose_ = f" That is {who}'s show." if who else ""
+                return (
+                    f"Done — {name} is on until the schedule would have "
+                    f"changed anyway.{how_long}{whose_} It takes over at the "
+                    "end of the record playing now, not this second. Everyone "
+                    "listening is about to get a different show, so say so in "
+                    "your own words."
+                )
             result = await station.pin_show(picked.get("id"), window)
             if not result.get("ok"):
                 return actions.station_refused(result, "That takeover didn't go through")

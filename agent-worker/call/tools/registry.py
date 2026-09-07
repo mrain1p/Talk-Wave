@@ -338,6 +338,17 @@ TOOLS: tuple[Tool, ...] = (
     Tool("subwave_play_sfx", NEVER, NONE,
          "Fires a stinger on air immediately, over the programme.",
          "Nothing to add to a call, plenty to disrupt on air."),
+    # The station grew these two at #1468 (release 1.11.0). They are the sfx
+    # pair's shape exactly — full level, station-wide, queued with no cancel,
+    # and a second press airs it twice — so they are named here rather than
+    # left off the catalogue, which is what "the station surface described
+    # once" means: the panel can say WHY a caller cannot fire one.
+    Tool("subwave_list_jingles", NEVER, NONE,
+         "The station's jingle library.",
+         "Only useful for airing one."),
+    Tool("subwave_play_jingle", NEVER, NONE,
+         "Airs a jingle immediately, over the programme.",
+         "Station furniture on one caller's say-so, and it outlasts the call."),
 )
 
 BY_NAME = {t.name: t for t in TOOLS}
