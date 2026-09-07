@@ -185,6 +185,36 @@ def _listener_count(np: dict) -> int | None:
     return None
 
 
+def _fmt_station_floor(seconds: int) -> str:
+    """The shortest record the station will pick for itself.
+
+    #1582 gave the picker a minimum length; the MANUAL queue this call line
+    pushes through is not one of the paths it guards, so the station refuses a
+    41-second interlude for itself and accepts the same one from here. The
+    row's own length is printed beside it now (rows.py), so the DJ can hold to
+    the operator's floor rather than discover it.
+    """
+    if not seconds:
+        return ""
+    return (f"The station will not pick anything under {seconds}s for itself. "
+            "Track lengths are on the result rows — don't offer or queue one "
+            "below that unless the caller asks for it by name.")
+
+
+def _fmt_talk_window(between_tracks_only: bool) -> str:
+    """Whether the station is holding its own talk to the gaps.
+
+    #1562. Manual triggers — which is every line this sidecar sends — are
+    exempt by design, so with this on the call line is the one voice that can
+    still land over a vocal.
+    """
+    if not between_tracks_only:
+        return ""
+    return ("The station is holding its own spoken segments to the gaps "
+            "between tracks. Lines from this line are NOT held, so keep "
+            "hand-backs short and expect to be over the music.")
+
+
 def _fmt_guests(show: dict) -> str:
     """Who else is in the booth.
 
@@ -491,7 +521,9 @@ def _fmt_schedule(schedule: dict, active_id: str, takeover: bool = False) -> str
 
 
 async def station_context(station, cfg: dict, snap: dict, show: dict,
-                          speak_clock: bool = True, persona_id: str = "") -> str:
+                          speak_clock: bool = True, persona_id: str = "",
+                          track_floor: int = 0,
+                          talk_between_tracks: bool = False) -> str:
     """Everything true about the station right now, as prompt text.
 
     Every read is already in the SNAPSHOT — including the schedule — so this
@@ -507,6 +539,12 @@ async def station_context(station, cfg: dict, snap: dict, show: dict,
         # paid for on every turn.
         _fmt_guests(show),
         _fmt_show_shape(show),
+        # Two facts the station applies to itself and not to us — the
+        # length floor its picker holds to (#1582) and whether it is keeping
+        # its own talk to the gaps (#1562). Both off the cached /settings
+        # read; both a line, and only when set.
+        _fmt_station_floor(track_floor),
+        _fmt_talk_window(talk_between_tracks),
         _fmt_recent(snap["state"], int(cfg.get("context_recent_tracks", 3))),
         _fmt_upcoming(snap["state"], int(cfg.get("context_upcoming", 2))),
         # Nothing on a normal night — see _fmt_stream_health.

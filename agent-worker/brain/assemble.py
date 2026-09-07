@@ -19,10 +19,44 @@ from brain.briefing import (
 )
 
 
+async def _station_switches(speak_clock, track_floor, talk_between_tracks):
+    """The three station settings the prompt mirrors, filled in where the
+    caller did not pass them.
+
+    The call path passes all three — its StationConfig has /settings cached,
+    so they are free there. This covers the preview and chat paths, which
+    build their own snapshot, with the single authed read they already make.
+    Each falls back to the station's own default: the clock speaks, there is
+    no length floor, talk is not held to the gaps.
+    """
+    if speak_clock is not None and track_floor is not None             and talk_between_tracks is not None:
+        return speak_clock, track_floor, talk_between_tracks
+
+    from station_config import StationConfig
+
+    sc = StationConfig()
+    try:
+        if speak_clock is None:
+            speak_clock = await sc.speak_clock()
+        if track_floor is None:
+            track_floor = await sc.track_floor()
+        if talk_between_tracks is None:
+            talk_between_tracks = await sc.talk_between_tracks_only()
+    except Exception:                                          # noqa: BLE001
+        pass
+    finally:
+        await sc.aclose()
+    return (True if speak_clock is None else speak_clock,
+            0 if track_floor is None else track_floor,
+            False if talk_between_tracks is None else talk_between_tracks)
+
+
 async def build_system_prompt(
     station: StationClient, persona: dict, snapshot: dict | None = None,
     cfg: dict | None = None, mode: str = "call",
     speak_clock: bool | None = None,
+    track_floor: int | None = None,
+    talk_between_tracks: bool | None = None,
 ) -> str:
     """`cfg` must be the settings ALREADY RESOLVED for this caller's tier.
 
@@ -68,20 +102,14 @@ async def build_system_prompt(
     # The clock mirror (djSpeakClock, SUB/WAVE 1.8). The call path passes it
     # in — its StationConfig caches /settings, so the read is free there;
     # this fallback covers the preview and chat paths with one authed read.
-    if speak_clock is None:
-        from station_config import StationConfig
-
-        sc = StationConfig()
-        try:
-            speak_clock = await sc.speak_clock()
-        except Exception:                                     # noqa: BLE001
-            speak_clock = True
-        finally:
-            await sc.aclose()
+    speak_clock, track_floor, talk_between_tracks = await _station_switches(
+        speak_clock, track_floor, talk_between_tracks)
 
     facts = await station_context(station, cfg, snap, show,
                                   speak_clock=speak_clock,
-                                  persona_id=str(persona.get("id") or ""))
+                                  persona_id=str(persona.get("id") or ""),
+                                  track_floor=track_floor,
+                                  talk_between_tracks=talk_between_tracks)
 
     # NAME_BUDGET: identity strings ride the opening line of the prompt on
     # every turn, and while soul/topic are clipped to CARD_BUDGET their short

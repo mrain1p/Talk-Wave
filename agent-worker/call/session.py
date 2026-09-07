@@ -447,6 +447,9 @@ class CallSession:
             # The clock mirror (djSpeakClock, SUB/WAVE 1.8) rides the same
             # cached /settings read voice_for() just warmed — free here.
             speak_clock=await self.station_cfg.speak_clock(),
+            # Both off the same cached /settings read — free here.
+            track_floor=await self.station_cfg.track_floor(),
+            talk_between_tracks=await self.station_cfg.talk_between_tracks_only(),
         )
         self.record = CallRecord(self.room_name, self.persona, self.cfg,
                                  self.tier, started=self.started_at)

@@ -40,6 +40,13 @@ class _Station:
         self.asked.append(("sound", description))
         return self._sound
 
+    async def similar_tracks(self, track_id="", query="", limit=12):
+        # GET /similar-tracks (#1578) — the CLAP read the tool asks first.
+        # Empty by default so the existing cases still fall through to the
+        # observatory neighbours below, which is what they were written for.
+        self.asked.append(("similar", track_id or query))
+        return getattr(self, "_similar", {}) or {}
+
     async def tracks_like(self, track_id):
         self.asked.append(("like", track_id))
         return self._neighbours

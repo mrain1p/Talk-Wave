@@ -708,6 +708,17 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
     # Long on purpose. Not measured — only required to still exist and still
     # say why.
     EXEMPT = {
+        "agent-worker/station_config.py":
+            "the station's config mirror, and every method on it is the same "
+            "shape: read the one cached /settings payload, find one setting "
+            "wherever the station happens to nest it, fall back to the "
+            "station's own default when it is absent or unauthed. They share "
+            "that cache and its TTL, so splitting them means two modules "
+            "reading the same endpoint on their own clocks — which is the "
+            "drift the mirror exists to prevent. Crossed the ceiling at "
+            "0.99.43 when the upstream pass of 2026-09-07 added the length "
+            "floor (#1582), the talk-window switch (#1562) and the inherited "
+            "voice slot (#1566); each is ~25 lines of finding one key.",
         "agent-worker/call/tools/music.py":
             "the request and queue tools, and the length is the STATION'S "
             "surface rather than this file's ambition: one wrapper per action "
@@ -1127,7 +1138,7 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # lifecycle attachments (the setup-note data channel).
         # 928: the landed guard's gated construction (closing_nudge) beside
         # the other guards — nine lines, in the wiring half.
-        "agent-worker/call/session.py": (933, "the ringing half (prepare, "
+        "agent-worker/call/session.py": (936, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),

@@ -635,6 +635,35 @@ class StationClient:
             log.warning("neighbours for %s failed: %s", track_id, describe(e))
             return []
 
+    async def similar_tracks(self, track_id: str = "", query: str = "",
+                             limit: int = 12) -> dict:
+        """The station's CLAP audio neighbours — GET /similar-tracks (#1578).
+
+        Seeded by track id, or by free text when the caller only has a title.
+        Needs no admin credentials — it is gated by the STATION password, so
+        it works on a public station where the observatory read does not — and
+        it answers 200 with a `reason` rather than a 404 when it has nothing,
+        which is the difference between "not analysed yet" and "nothing like
+        it". Returns the whole body: {seed, results, reason}.
+        """
+        if not (track_id or query):
+            return {}
+        params: dict = {"limit": max(1, min(50, int(limit)))}
+        if track_id:
+            params["id"] = track_id
+        else:
+            params["q"] = query
+        try:
+            r = await self._client.get("/similar-tracks", params=params,
+                                       timeout=LIBRARY_TIMEOUT)
+            r.raise_for_status()
+            d = r.json()
+            return d if isinstance(d, dict) else {}
+        except Exception as e:
+            log.warning("similar-tracks (%s) failed: %s",
+                        track_id or query, describe(e))
+            return {}
+
     async def browse_library(self, moods: str = "", energy: str = "",
                              genre: str = "", year_from=None, year_to=None,
                              vocal: str = "", limit: int = 12) -> dict:
@@ -1218,10 +1247,60 @@ class StationClient:
             rows = _body(r).get("genres") or []
             names = [str(g.get("value") or "").strip() for g in rows
                      if isinstance(g, dict) and str(g.get("value") or "").strip()]
+            # FOLDED THE OPERATOR'S WAY (#1580). Navidrome serves the raw tag,
+            # so a spelling the operator retired still comes back here while
+            # /library/browse's exact match no longer holds it — the DJ would
+            # be steered to a shelf that cannot be served. Aliases are
+            # admin-gated and empty without credentials, which leaves the old
+            # list exactly as it was.
+            aliases = await self.scene_aliases()
+            if aliases:
+                folded: list[str] = []
+                for n in names:
+                    to = aliases.get(n.casefold(), n)
+                    if to not in folded:
+                        folded.append(to)
+                names = folded
             return names[:max(1, int(limit))]
         except Exception as e:
             log.info("library genres unavailable: %s", describe(e))
             return []
+
+    async def scene_aliases(self) -> dict[str, str]:
+        """The operator's own spelling rules — retired genre -> surviving one.
+
+        #1580 consolidated the genre vocabulary behind alias rules, and a
+        merged spelling still comes back from /library/genres (Navidrome
+        serves the raw tags) while /library/browse's exact match no longer
+        holds it. So the DJ could be steered to a shelf the browse cannot
+        serve. Admin-gated; empty on any failure, which restores the old
+        behaviour exactly.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {}
+        try:
+            r = await self._client.get(
+                "/library/scenes", auth=httpx.BasicAuth(user, password),
+                timeout=LIBRARY_TIMEOUT,
+            )
+            r.raise_for_status()
+            rows = _body(r).get("aliases") or []
+            out: dict[str, str] = {}
+            for a in rows:
+                if not isinstance(a, dict):
+                    continue
+                src = str(a.get("from") or "").strip()
+                dst = str(a.get("to") or "").strip()
+                if src and dst:
+                    out[src.casefold()] = dst
+            return out
+        except Exception as e:
+            log.info("scene aliases unavailable (%s) — genre names unfolded",
+                     describe(e))
+            return {}
 
     async def genre_neighbours(self) -> dict:
         """Which genres this library files NEAR each other, and how deep each
