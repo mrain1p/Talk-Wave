@@ -5139,7 +5139,18 @@
     body:not(.compact) .card .plartblock .plartwrap {
       width: var(--sleeve); height: var(--sleeve);
     }
-    body:not(.compact) .card .plmeta { width: 100%; }
+    /* …and the meta column stops backstopping a layout that is gone. Its
+       `overflow: hidden; max-height: 100%` and `flex: 1` were written for
+       the fixed-height, bottom-aligned block, where a column taller than
+       the box grew out of the TOP and had to clip itself. Stacked, the
+       block is auto-height and there is nothing to grow out of — but
+       `flex: 1` in a column is a height basis of 0 with shrink on, and the
+       clip would silently eat the chips row on a long title (the parallel
+       review's one finding I had not reached, 2026-09-06). Content-sized,
+       unclipped; the title's and album's own line clamps are the backstop. */
+    body:not(.compact) .card .plmeta {
+      width: 100%; flex: 0 0 auto; max-height: none; overflow: visible;
+    }
     /* The name has the room now, so it starts at the top of its ladder and
        only steps down for a genuinely long one. */
     body:not(.compact) .card .plartblock .pltrack { margin-top: 0; }
