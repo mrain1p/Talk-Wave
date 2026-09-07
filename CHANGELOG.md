@@ -4,6 +4,16 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.42
+
+Turn the phone sideways and the card knows what to do with it.
+
+- **Landscape has a layout of its own.** The tab bar becomes a rail down the left edge, and every card reads context on the left and the live part on the right: host and station beside the line on the phone card, the art and the booth's note beside the queue on the player, the show on air beside the schedule in the guide. It used to drop the tab bar across the middle of the card.
+- **The player's controls are one row** along the bottom in landscape — like, skip, phone, volume, the meter, the request box, SEND and PLAY together, nothing stacked.
+- **The show on air reads whole in the guide** when the schedule is beside it rather than under it, so there is nothing left to fold.
+- **A short landscape screen — a folded phone's cover — keeps the same layout** with an icon-only rail and tighter rows. Nothing is cut; the row counts follow the height.
+- **Under the hood:** a very long song title can no longer push the genre chips out of the player's title block.
+
 ## 0.99.41
 
 The three cards, gone over again with the phone in hand.
