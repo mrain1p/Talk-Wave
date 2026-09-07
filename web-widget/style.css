@@ -3613,7 +3613,14 @@
      rotates mid-call: the card takes the viewport, the identity compresses
      to a strip, the tagline steps out, and the conversation keeps the
      height. Page and installed app only — an embed answers to its frame. */
-  @media (orientation: landscape) and (max-height: 520px) and (min-width: 601px) {
+  /* (max-height: 560px) and nothing about width: the old `min-width: 601px`
+     excluded the narrower short-landscape widths and `520` excluded tall
+     handsets, so real rotated phones fell through to the desktop card.
+     Landscape is a RANGE of ratios (HANDOVER-landscape-2026-09-07 §1, §6.1).
+     This block is the compression every rotated card gets; the RAIL and the
+     two-column faces live in the surfaces section, after the desktop card,
+     where they out-rank it. */
+  @media (orientation: landscape) and (max-height: 560px) {
     body:not(.compact) { padding: 0; }
     body:not(.compact) .card {
       height: 100dvh; width: 100%; max-width: none;
@@ -5265,6 +5272,306 @@
        card can spare it. */
     body:not(.compact) .card .idleboard .stage { gap: 11px; }
     body:not(.compact) .card .idleboard .stagefoot { padding-top: 10px; }
+  }
+  /* -- LANDSCAPE: the tab bar becomes a left rail ------------------------
+     Rotated, the card is starved of height and given width, and a 46px bar
+     across the foot spends the scarce axis — it also landed mid-content,
+     because it was pinned to the card's foot while the card ran past the
+     viewport (operator's shots, 2026-09-06). A rail spends the free axis and
+     cannot land mid-content: it is a fixed strip down the left with the
+     faces laid out beside it, not a bar the faces have to end above.
+     Every face then reads CONTEXT LEFT, LIVE SURFACE RIGHT, and the left
+     column is 318px on all three so IN THE BOOTH, NOW PLAYING and ON AIR NOW
+     line up when the operator switches faces (HANDOVER-landscape-2026-09-07
+     §2, §5). The rail re-homes the existing .facebar and its buttons — same
+     nodes, same press handling; only their geometry changes.
+     Both thresholds are heights, never devices: 560 is any rotated handset,
+     400 is the short end of that range where the rail loses its words. */
+  @media (orientation: landscape) and (max-height: 560px) {
+    body:not(.compact):not(.panelpage) .card.faces {
+      --rail: 84px; --lhead: 36px; --lctl: 44px; --lreq: 190px;
+      --ident-h: 148px; --station-h: 62px; --portrait: 108px; --thumb: 40px;
+      --sleeve: 96px; --well-h: 72px; --plrow-h: 52px; --seg-h: 34px;
+      --hero-title: 22px; --control-h: 44px;
+      /* The rail is fixed, so the card makes room for it in its own
+         padding; the content pad is the handoff's 14. Safe-area on the
+         RIGHT is the card's (the rail takes the left, below). */
+      padding: 0 max(14px, env(safe-area-inset-right)) 12px calc(var(--rail) + 14px);
+      --card-pad-l: 0px; --card-pad-r: 0px;
+    }
+
+    /* THE RAIL. Fixed down the left, full height, the buttons stacked. The
+       divider between faces was a vertical inset shadow on a row; the row is
+       a column now, so the divider is horizontal. The active face carries its
+       own coral edge — the sliding rule (.faceind) is written by the script
+       as a translateX along a row and has no vertical form, so it stands
+       down here and the edge does its job. */
+    body:not(.compact):not(.panelpage) .card.faces .facebar {
+      position: fixed; top: 0; bottom: 0; left: 0; right: auto;
+      width: calc(var(--rail) + env(safe-area-inset-left)); height: auto;
+      display: flex; flex-direction: column; justify-content: flex-start;
+      padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left);
+      border-top: 0; border-right: 1px solid var(--edge);
+      background: var(--granite); z-index: 95;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .facebar .face {
+      flex: none; width: 100%; height: 64px; min-height: 0;
+      flex-direction: column; justify-content: center; gap: 5px;
+      border-left: 2px solid transparent; box-shadow: none;
+      /* 9.5, not the handoff's 9: the card has a type scale and the rail's
+         word is not exempt from it — 9.5 is the step every other micro-label
+         on the card already uses. */
+      font-size: 9.5px; letter-spacing: .14em;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .facebar .face + .face {
+      box-shadow: inset 0 1px 0 var(--edge);
+    }
+    body:not(.compact):not(.panelpage) .card.faces .facebar .face.on {
+      border-left-color: var(--coral);
+      background: color-mix(in srgb, var(--coral) 9%, transparent);
+    }
+    body:not(.compact):not(.panelpage) .card.faces .facebar .face .facesvg {
+      width: 18px; height: 18px;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .faceind { display: none; }
+
+    /* The header strip: one grammar on all three faces, flush to the
+       card's edges, 36px. */
+    body:not(.compact):not(.panelpage) .card.faces .eyebrow {
+      margin: 0 calc(-1 * max(14px, env(safe-area-inset-right))) 0 -14px;
+      padding: 0 14px; height: var(--lhead);
+    }
+    body:not(.compact):not(.panelpage) .card.faces .plhead {
+      height: var(--lhead); min-height: 0; padding-top: 0; padding-bottom: 0;
+      flex: none;
+    }
+
+    /* -- the phone face: identity, station, switch LEFT; the line, the
+       meters and the action row RIGHT. The rig is a wrapper with no box of
+       its own, so `display: contents` lets its children take grid areas of
+       the card directly; that is what moves the switch to the left column
+       without touching the markup. Hidden rows hold no height, so the
+       per-mode rows (talk, chat, machine) cost nothing when they are off. */
+    body:not(.compact):not(.panelpage) .card.faces {
+      display: grid;
+      grid-template-columns: 318px minmax(0, 1fr);
+      grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto auto auto auto;
+      grid-template-areas:
+        "head head"
+        "who  line"
+        "sta  line"
+        "rail line"
+        ".    line"
+        "sw   meters"
+        "sw   talk"
+        "sw   chat"
+        "sw   vm"
+        "sw   act";
+      column-gap: 14px; row-gap: 0;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .rig { display: contents; }
+    body:not(.compact):not(.panelpage) .card.faces .eyebrow { grid-area: head; }
+    body:not(.compact):not(.panelpage) .card.faces .who-row {
+      grid-area: who; align-self: start; height: var(--ident-h);
+    }
+    body:not(.compact):not(.panelpage) .card.faces .stationrow {
+      grid-area: sta; align-self: start;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .rig > .nprail { grid-area: rail; }
+    body:not(.compact):not(.panelpage) .card.faces .routeswitch {
+      grid-area: sw; align-self: end; margin: 0 0 0 0;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .linebox {
+      grid-area: line; margin: 0; min-height: 0; height: auto;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .meters { grid-area: meters; }
+    body:not(.compact):not(.panelpage) .card.faces .talkrow { grid-area: talk; }
+    body:not(.compact):not(.panelpage) .card.faces .chatrow { grid-area: chat; }
+    body:not(.compact):not(.panelpage) .card.faces .vmstudio { grid-area: vm; }
+    body:not(.compact):not(.panelpage) .card.faces .actionrow { grid-area: act; }
+    /* The portrait at the size the column has: the older landscape block
+       compressed it to 44px for a card that had nowhere to put it. */
+    body:not(.compact):not(.panelpage) .card.faces .avatar {
+      width: var(--portrait); height: var(--portrait);
+    }
+    body:not(.compact):not(.panelpage) .card.faces .avatar-mono {
+      font-size: calc(var(--portrait) * .32);
+    }
+    body:not(.compact):not(.panelpage) .card.faces .who-row .tagline { display: none; }
+
+    /* -- the overlays sit beside the rail, not above a bar. */
+    body:not(.compact):not(.panelpage) .card.faces .player,
+    body:not(.compact):not(.panelpage) .card.faces .guide {
+      position: fixed; top: 0; right: 0; bottom: 0;
+      left: calc(var(--rail) + env(safe-area-inset-left));
+      align-items: stretch; border-radius: 0;
+    }
+
+    /* -- the player: art, title, chips, progress and the booth LEFT; the
+       queue RIGHT; the control row spans the full width beneath, ONE row.
+       The sheet is a grid rather than a column, and the queue is the
+       column that scrolls. */
+    body:not(.compact):not(.panelpage) .card.faces .plscroll {
+      display: grid;
+      grid-template-columns: 318px minmax(0, 1fr);
+      grid-template-rows: auto auto minmax(0, 1fr);
+      column-gap: 14px; row-gap: 0;
+      padding: 12px 14px 0; overflow: hidden; flex: 1; min-height: 0;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .plscroll > .plartblock {
+      grid-column: 1; grid-row: 1; height: auto; min-height: 0;
+      flex-direction: row; align-items: flex-start; gap: 14px; padding: 0;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .plscroll > .plartblock .plartwrap {
+      width: var(--sleeve); height: var(--sleeve);
+    }
+    body:not(.compact):not(.panelpage) .card.faces .plscroll .plmeta {
+      flex: 1 1 auto; min-width: 0; width: auto; max-height: none; overflow: visible;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .plscroll > .plprog {
+      grid-column: 1; grid-row: 2; padding: 10px 0; margin: 0;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .plscroll > .plpanel:not(.plqueue) {
+      grid-column: 1; grid-row: 3; align-self: end; flex: none;
+      margin: 0 0 12px; max-height: none; min-height: var(--well-h);
+    }
+    body:not(.compact):not(.panelpage) .card.faces .plscroll > .plqgroup {
+      grid-column: 2; grid-row: 1 / 4; min-height: 0; margin: 0 0 12px;
+      border: 1px solid var(--edge); display: flex; flex-direction: column;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .plscroll .pltabs {
+      flex: none; padding: 0; margin: 0; border-bottom: 1px solid var(--edge);
+    }
+    body:not(.compact):not(.panelpage) .card.faces .plscroll .plqgroup .plpanel.plqueue {
+      flex: 1 1 auto; min-height: 0; padding: 0 14px;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .plscroll .plqgroup .plpanel.plqueue .plpanelbody {
+      height: auto; flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    }
+
+    /* THE CONTROL ROW IS ONE ROW: like, skip, phone, operator, volume,
+       meter, request, SEND, play — the three stacked rows become one band.
+       Every bordered box is border-box, or each renders 2px wider than its
+       width and the row overflows by ~50px (§5). The request field is the
+       one flexible thing in it and it holds a minimum, because the fixed
+       siblings would otherwise squeeze it to ~116px and wrap the
+       placeholder to three lines (§5). The play button keeps its word. */
+    body:not(.compact):not(.panelpage) .card.faces .pldock {
+      flex-direction: row; flex-wrap: nowrap; align-items: center;
+      gap: 8px; padding: 8px 14px 12px; height: auto;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .pldock,
+    body:not(.compact):not(.panelpage) .card.faces .pldock *,
+    body:not(.compact):not(.panelpage) .card.faces .pldock *::before,
+    body:not(.compact):not(.panelpage) .card.faces .pldock *::after {
+      box-sizing: border-box;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .pldock .plctl {
+      flex: none; gap: 6px; width: auto;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .pldock .plheart {
+      width: var(--lctl); height: var(--lctl);
+    }
+    body:not(.compact):not(.panelpage) .card.faces .pldock #plVol {
+      flex: 0 1 auto; min-width: 80px; width: 120px; height: var(--lctl);
+    }
+    body:not(.compact):not(.panelpage) .card.faces .pldock .plvu {
+      height: var(--lctl);
+    }
+    body:not(.compact):not(.panelpage) .card.faces .pldock .plreq {
+      flex: 1 1 auto; min-width: 0; gap: 8px; margin: 0;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .pldock .plreq input {
+      flex: 1 1 auto; min-width: var(--lreq); height: var(--lctl);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .pldock #plReqSend {
+      flex: none; height: var(--lctl); padding: 0 14px;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .pldock #plPlayBtn {
+      flex: none; width: auto; min-width: 120px; height: var(--lctl);
+      padding: 0 18px; margin: 0;
+    }
+    /* A reply to a request has no row to sit in; it hangs above the band. */
+    body:not(.compact):not(.panelpage) .card.faces .pldock .plreqmsg {
+      position: absolute; left: 14px; right: 14px; bottom: 100%;
+      margin: 0 0 4px; padding: 4px 0;
+    }
+
+    /* -- the guide: the show on air LEFT, unclamped — the schedule is beside
+       it, not under it, so there is nothing for a clamp to protect; the
+       listing RIGHT, and it is the column that scrolls. The Programming seam
+       divided two halves of one column; the columns divide themselves. */
+    body:not(.compact):not(.panelpage) .card.faces .gdscroll {
+      display: grid;
+      grid-template-columns: 318px minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      column-gap: 0; row-gap: 0; padding: 0; overflow: hidden;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .gdscroll > .gdhero {
+      grid-column: 1; grid-row: 1 / 4; min-height: 0; overflow-y: auto;
+      padding: 12px 14px; border-right: 1px solid var(--edge);
+      scrollbar-width: thin;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .gdscroll > .gdsection { display: none; }
+    body:not(.compact):not(.panelpage) .card.faces .gdscroll > .gdtodayhead {
+      grid-column: 2; grid-row: 1; padding: 12px 14px 8px; margin: 0;
+      border-bottom: 1px solid var(--hairline);
+    }
+    body:not(.compact):not(.panelpage) .card.faces .gdscroll > .gdlist,
+    body:not(.compact):not(.panelpage) .card.faces .gdscroll > .gdgrid,
+    body:not(.compact):not(.panelpage) .card.faces .gdscroll > .gdempty {
+      grid-column: 2; grid-row: 2; min-height: 0; overflow-y: auto;
+      padding: 0 14px; scrollbar-width: thin;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .gdscroll > .gdspans {
+      grid-column: 2; grid-row: 1; justify-self: end; align-self: center;
+      margin: 0 14px 0 0;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .gdscroll > .gdshelf {
+      grid-column: 2; grid-row: 3; padding: 0 14px 8px;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .gdscroll > .gdtoday { display: none; }
+    body:not(.compact):not(.panelpage) .card.faces .gdherobox { padding-top: 0; }
+    body:not(.compact):not(.panelpage) .card.faces .gdherobox.min .gdherobody .gddesc {
+      display: block; -webkit-line-clamp: none; overflow: visible;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .gdherofold { display: none; }
+    body:not(.compact):not(.panelpage) .card.faces .gdherobox .gdherofoot {
+      border-top: 0; padding-top: 12px;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .gdtop { display: none; }
+    /* Rows at the frames' pitch — 52 tall, 48 short — rather than the
+       portrait row's 75: the two lines of text are the same, the box around
+       them is not. Padding and the seam between rows are where the 23px
+       were; the type is untouched. */
+    body:not(.compact):not(.panelpage) .card.faces .gdrow {
+      padding: 6px 12px; margin: 4px 0 0;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .gdrowsub { margin-top: 3px; line-height: 1.2; }
+    body:not(.compact):not(.panelpage) .card.faces .gdwhen .gdwhend { line-height: 1.2; }
+  }
+
+  /* THE SHORT END OF THE RANGE (§4, §6.3): 68px less height, and three
+     things give in this order — the rail loses its words and 28px of width
+     (the title attribute still carries the name), the header strip drops to
+     32, the control row to 40. Rows and paddings are already at their floor
+     here; anything shorter should drop a row, not a pixel. The existing
+     .facesflat treatment is the OPPOSITE trade — word without icon — so it
+     is not reused. */
+  @media (orientation: landscape) and (max-height: 400px) {
+    body:not(.compact):not(.panelpage) .card.faces {
+      --rail: 56px; --lhead: 32px; --lctl: 40px; --lreq: 180px;
+      --ident-h: 118px; --station-h: 56px; --portrait: 84px;
+      --sleeve: 88px; --well-h: 64px; --plrow-h: 48px; --seg-h: 32px;
+      --control-h: 40px;
+    }
+    body:not(.compact):not(.panelpage) .card.faces .facebar .face { height: 56px; gap: 0; }
+    body:not(.compact):not(.panelpage) .card.faces .facebar .face .facelab { display: none; }
+    body:not(.compact):not(.panelpage) .card.faces .plscroll > .plprog { padding: 6px 0; }
+    body:not(.compact):not(.panelpage) .card.faces .gdscroll > .gdtodayhead { padding: 8px 14px 6px; }
+    body:not(.compact):not(.panelpage) .card.faces .gdrow { padding: 4px 12px; margin: 4px 0 0; }
+    body:not(.compact):not(.panelpage) .card.faces .pldock { padding: 6px 14px 8px; }
   }
   /* Installed, the card is the window rather than a fixed box, so it has the
      phone's room even on a tablet — and the phone block above only reaches
