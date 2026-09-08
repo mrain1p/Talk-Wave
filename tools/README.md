@@ -33,3 +33,24 @@ These three all place genuine calls, and they differ in what they bring with the
 **[`panel_dev_server.py`](panel_dev_server.py)** — the widget and panel against a fake backend, for driving them in a browser without a stack. Dev only, and it lives here so the Dockerfile cannot ship it.
 
 **[`make_library_sounds.py`](make_library_sounds.py)** — run once, commit the WAVs. Synthesizes the bundled sound packs from pure maths, which is a licensing decision before it is an aesthetic one.
+
+## `upstream_drift.py`
+
+Diffs the vocabularies Talk Wave hand-mirrors against SUB/WAVE's own source at
+HEAD. Three alignment passes have found the same disease — a constant copied
+out of the station and then the station moved — and the 2026-09-07 pass spent
+seven agents and ~27 minutes re-deriving by hand what this prints in one call.
+
+```bash
+python tools/upstream_drift.py            # what differs right now
+python tools/upstream_drift.py --record   # …and stamp the SHA compared against
+```
+
+Checks: webhook events, `/dj/say` kinds, takeover bounds, LLM providers,
+inheritable TTS engines, the MCP tool surface, per-provider default models.
+Exit code 1 when anything drifted. Needs `gh` authenticated.
+
+**Not in the test suite, on purpose.** The suite is network-free by house rule,
+and a test that fails because GitHub is slow teaches people to ignore failures.
+`tools/upstream-drift.json` records the station SHA of the last pass, so the
+next one can say what moved since rather than re-reading everything.

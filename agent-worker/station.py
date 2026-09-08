@@ -479,7 +479,71 @@ class StationClient:
         since = max(0.0, (datetime.now(timezone.utc) - newest).total_seconds())
         return since, message
 
-    async def dj_say(self, text: str, mode: str = "styled", kind: str = "callin") -> dict:
+    @staticmethod
+    def _epoch_secs(value) -> float:
+        """A station timestamp as epoch seconds, or 0.0. Epoch seconds, epoch
+        millis and an ISO string all arrive on this field depending on which
+        read produced it, so the shape is inferred rather than assumed —
+        the same generosity api/hook_receiver._epoch applies for the same
+        reason."""
+        if value in (None, ""):
+            return 0.0
+        try:
+            n = float(value)
+            return n / 1000.0 if n > 1e11 else n
+        except (TypeError, ValueError):
+            pass
+        try:
+            from datetime import datetime
+
+            return datetime.fromisoformat(
+                str(value).replace("Z", "+00:00")).timestamp()
+        except (TypeError, ValueError):
+            return 0.0
+
+    # The longest this will sit on a line waiting for a record to end. A
+    # track is three to five minutes; a hand-back that waited a whole one
+    # would land after the moment it was written about, so past this it goes
+    # out over the music rather than going out stale.
+    GAP_WAIT_CEILING_SECS = 150.0
+
+    async def seconds_until_gap(self) -> float:
+        """How long until the record now playing ends, or 0.0 if unknowable.
+
+        The station's own talk-slot scheduler holds spoken segments to the
+        boundary (#1562), and `broadcast/talk-air.ts` keeps MANUAL triggers —
+        which is every line this sidecar sends — exempt by design. So with the
+        switch on, this line is the only voice that still lands over a vocal.
+
+        `track.play` cannot answer this: it carries title, artist and source
+        and no duration (routes/webhooks.ts documents the payload). /now-playing
+        does — the same read the snapshot already makes — and the arithmetic is
+        the widget's: started + length - now.
+        """
+        try:
+            now = await self.now_playing()
+        except Exception as e:                                 # noqa: BLE001
+            log.info("no now-playing read for the gap: %s", describe(e))
+            return 0.0
+        track = (now.get("nowPlaying") or now.get("track")
+                 or now.get("current") or {}) if isinstance(now, dict) else {}
+        if not isinstance(track, dict):
+            return 0.0
+        started = self._epoch_secs(track.get("timestamp") or track.get("startedAt"))
+        try:
+            length = float(track.get("duration") or 0)
+        except (TypeError, ValueError):
+            length = 0.0
+        if not (started and length > 0):
+            return 0.0
+        left = (started + length) - time.time()
+        # A negative or absurd answer means the station's clock and ours
+        # disagree, or the record ended while we were asking. Either way there
+        # is no gap to wait for that we can prove.
+        return left if 0 < left <= 3600 else 0.0
+
+    async def dj_say(self, text: str, mode: str = "styled", kind: str = "callin",
+                     hold_for_gap: bool = False) -> dict:
         """Hand a line to the on-air DJ. `styled` lets the station rewrite it in
         the persona's own voice before speaking it, so the call-in agent's
         phrasing doesn't have to match the broadcast voice exactly.
@@ -508,6 +572,13 @@ class StationClient:
             log.warning("on-air line over the station's 500-char cap — "
                         "cutting at %d chars", 500)
             text = text[:500]
+
+        # HELD TO THE GAP, when the operator has asked for that and nobody
+        # is waiting on this call. Only the post-call hand-back passes
+        # hold_for_gap: a caller mid-conversation cannot be left listening to
+        # a record while their own request sits in a queue here.
+        if hold_for_gap:
+            await self._wait_for_gap()
 
         try:
             r = await self._client.post(
@@ -1204,6 +1275,38 @@ class StationClient:
                 if said:
                     return {"ok": False, "error": said}
             return {"ok": False, "error": str(e)[:120]}
+
+    async def _wait_for_gap(self) -> None:
+        """Sit on a line until the record ends, if the station asked for that.
+
+        Three ways this declines to wait, and each is the honest answer rather
+        than a fallback: the operator has not turned the switch on; the station
+        will not say where the record is (so there is no boundary to aim at);
+        or the wait is longer than a hand-back stays true for.
+        """
+        from station_config import StationConfig
+
+        sc = StationConfig()
+        try:
+            if not await sc.talk_between_tracks_only():
+                return
+        except Exception:                                      # noqa: BLE001
+            return
+        finally:
+            await sc.aclose()
+
+        left = await self.seconds_until_gap()
+        if not left:
+            log.info("talk-only-between-tracks is on but the record's end is "
+                     "unreadable — sending now rather than guessing")
+            return
+        if left > self.GAP_WAIT_CEILING_SECS:
+            log.info("%.0fs of record left, over the %.0fs hand-back ceiling "
+                     "— sending now rather than stale", left,
+                     self.GAP_WAIT_CEILING_SECS)
+            return
+        log.info("holding the on-air line %.1fs for the track gap", left)
+        await asyncio.sleep(left)
 
     async def clear_pinned_show(self) -> dict:
         """Cancel a takeover and resume the weekly schedule. Admin-only.
