@@ -114,9 +114,23 @@ class TestExposedSurface(unittest.TestCase):
         "POST /open-lines/premises/{premise_id}": "admin",
         "DELETE /open-lines/premises/{premise_id}": "admin",
         # The dashboard's station-override box: read what stands, clear it.
-        # Admin both ways — the read names a show before its airtime and the
-        # clear cancels an operator's (or a caller's) standing takeover.
+        # The READ is admin — it names a show before its airtime.
         "GET /station/override": "admin",
+        # The SET is the guide card's takeover button (2026-09-08), and
+        # "public" is this column's coarse word again: it is not
+        # admin-header-gated at the door, because the operator's own rule for
+        # this power is a TIER — "if a usertype has permission to change the
+        # dj/takeover, then they should have permission to do this from this
+        # page". _takeover_allowed is the gate: the phone's own guest door
+        # first, then `allow_takeover` (default admin) against the caller's
+        # tier, before anything reaches the station's admin client. Same
+        # setting, same ladder as the DJ's subwave_takeover_show.
+        "POST /station/override": "public",
+        # The CLEAR reads as admin here because the handler still consults
+        # _write_allowed — and it also admits the same takeover tier, so
+        # whoever the operator let pin a show can lift one. Not a widening of
+        # the power: subwave_cancel_takeover rides the identical setting, so
+        # that tier could already cancel one by asking the DJ.
         "POST /station/override/clear": "admin",
         "GET /settings": "admin",
         "POST /settings": "admin",

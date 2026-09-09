@@ -1224,7 +1224,7 @@ class StationClient:
             log.info("next schedule change unavailable: %s", describe(e))
             return {}
 
-    async def pin_show(self, show_id: str, minutes: int,
+    async def pin_show(self, show_id: str | None, minutes: int,
                        until: str = "fixed") -> dict:
         """Pin a show over the weekly grid for a bounded window. Admin-only.
 
@@ -1232,6 +1232,13 @@ class StationClient:
         lapses, then normal programming picks up where it would have been.
         Posting again while one is live REPLACES it, which is how "give it
         another hour" works — there is no separate extend endpoint.
+
+        `show_id` of None is DEFAULT PROGRAMMING pinned over the grid — the
+        station's own mix, held against the schedule (#1543,
+        schemas/schedule.ts:229). It is a real takeover with no show to name,
+        and `override_payload` already reads it back as one; passing it
+        through as `null` is what lets the two ends agree. Not a string:
+        `""` is not a show id and the route's schema refuses it.
 
         The switch is not instant. The station returns as soon as the pin is
         stored and airs the handover in the background, landing at the next

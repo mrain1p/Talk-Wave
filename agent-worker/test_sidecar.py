@@ -71,6 +71,7 @@ from tests.test_http import (  # noqa: F401
     TestTheAuthLockoutKeyIsUnspoofable,
     TestAPasswordAttemptCannotChooseItsOwnLockoutBucket,
     TestHttpSurface,
+    TestTheGuidesTakeoverIsGatedByItsSetting,
     TestJoinTokensExpire,
     TestTheModelListFollowsTheEndpoint,
     TestUsageControls,
@@ -81,6 +82,11 @@ from tests.test_http import (  # noqa: F401
 from tests.test_widget import (
     TestTheFacesSitSideBySide,
     TestTheGuideCardRidesItsOwnSwitch,
+    TestTheGuideOffersTheTakeover,
+    TestTheCardWearsOneSurfaceFamily,
+    TestThePlayersDockIsTwoBandsThatLineUp,
+    TestLandscapeSpendsTheAxisItHas,
+    TestNotOnTheScheduleReadsAsAHeading,
     TestSectionTagsCanShowTheirState,  # noqa: F401
     TestThePanelKeepsItsOwnRules,
     TestThePanelStylesStayOffTheCallPage,

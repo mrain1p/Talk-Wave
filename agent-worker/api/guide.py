@@ -50,6 +50,20 @@ GUIDE_TTL = 300
 _guide_cache: dict = {"at": 0.0, "data": None}
 
 
+def forget() -> None:
+    """Drop the cached week.
+
+    The guide is read from the station's /schedule and held for five
+    minutes, which is right for a listing that changes weekly — and wrong
+    the moment THIS server is the thing that changed it. The card's takeover
+    button posts a pin and then re-reads the week to find its own button
+    turned into the hand-back; without this it would re-read the answer from
+    before the press, for up to five minutes.
+    """
+    _guide_cache["data"] = None
+    _guide_cache["at"] = 0.0
+
+
 def _text(v, limit: int = 240) -> str:
     return str(v or "").strip()[:limit]
 

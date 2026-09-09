@@ -1083,7 +1083,14 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # (public_open_line), beside the record it reads and the handlers
         # that already read it, rather than becoming a fourth private helper
         # in here; this file only learned that the payload has the row.
-        "agent-worker/api/live.py": (688, "the shared payload build split "
+        # 697: takeoverMine, on the PER-CALLER side of the seam with the four
+        # door verdicts it sits beside, and for the same reason they are
+        # there — the answer depends on the tier and the shared payload is
+        # cached across every caller. Nine lines, six of them the note saying
+        # why it is not with `canAsk`: that block only exists when the help
+        # button is on, and the guide's takeover must not be offered or
+        # withheld by an unrelated setting.
+        "agent-worker/api/live.py": (697, "the shared payload build split "
                                           "from the per-caller resolve"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
         # snapshot head start, the MCP warm-up, the join riding prepare). The

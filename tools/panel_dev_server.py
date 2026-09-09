@@ -77,6 +77,11 @@ import secrets_store  # noqa: E402
 
 PORT = int(os.environ.get("PORT", "8123"))
 
+# What the guide's takeover button has pinned, this session. The real thing
+# lives on the station; here it is one dict so the button, the /guide payload
+# and the hand-back agree with each other.
+_PINNED: dict = {"showId": None}
+
 # The slow half of the panel, answered instantly. Shapes match what
 # handle_settings_options really returns; the values are fixtures.
 OPTIONS = {
@@ -348,7 +353,23 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.split("?")[0] == "/player/like":
             return self._json({"ok": True, "liked": True, "count": 4})
         if self.path.split("?")[0] == "/station/override/clear":
+            _PINNED["showId"] = None
             return self._json({"ok": True})
+        # The guide's own takeover. The real route clamps the window and
+        # answers {ok, showId, minutes}; this remembers the pin so /guide
+        # reports it back and the row's button turns into the hand-back.
+        if self.path.split("?")[0] == "/station/override":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n) or b"{}")
+            except Exception:
+                body = {}
+            if not isinstance(body, dict) or "showId" not in body:
+                return self._json({"error": "showId is needed - which show?"},
+                                  status=400)
+            _PINNED["showId"] = str(body.get("showId") or "")
+            return self._json({"ok": True, "showId": _PINNED["showId"],
+                               "minutes": 60, "until": "fixed"})
         if self.path.split("?")[0] == "/player/request":
             return self._json({"success": True, "message": "Sent to the booth"})
         # The dump card's press, from a fixture: the stub never has a live
@@ -740,6 +761,8 @@ class Handler(BaseHTTPRequestHandler):
                      "personaId": "wade"},
                 ],
                 "schedule": {str(i): week for i in range(7)},
+                **({"override": {"showId": _PINNED["showId"]}}
+                   if _PINNED["showId"] else {}),
             }, {"context": {"activeShow": {
                 "id": "overlook",
                 "episodeAngle": "Tonight, the quiet hum of a valley "
@@ -796,6 +819,11 @@ class Handler(BaseHTTPRequestHandler):
                 "sounds": {"cutRing": True, "pack": "classic",
                            "volume": int(settings_store.load()
                                          .get("call_volume") or 100)},
+                # Whether the guide offers this caller the takeover button —
+                # `allow_takeover` against their tier on the real payload, from
+                # the stub's own settings here so the panel can switch it.
+                "takeoverMine": settings_store.tier_reaches(
+                    settings_store.load().get("allow_takeover"), "admin"),
                 # Like callsPaused above: from the stub's own settings, so
                 # ticking the box in the panel offers the player on the card.
                 "swipePlayer": bool(settings_store.load().get("swipe_player")),

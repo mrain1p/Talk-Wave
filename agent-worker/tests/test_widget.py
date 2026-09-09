@@ -3845,6 +3845,11 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         # Operator, 2026-09-03: a button that paints the schedule as a grid.
         # Seven day rows over one hour ruler, the hour now marked, and a
         # block is a way INTO the show rather than a dead tile.
+        # 2026-09-08: the mark runs down ALL SEVEN, not just today's — "the
+        # line for current time only goes through todays but would be better
+        # if it stripes down all the weeks". It is a column every row is
+        # read against, so it is built once and appended per row; the
+        # stylesheet gives today's the strength and the rest its shadow.
         for el in ('id="guideGrid"', 'id="guideViewDay"', 'id="guideViewWeek"'):
             self.assertIn(el, self.html)
         self.assertIn("function paintGuideGrid", self.js)
@@ -3854,7 +3859,16 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         # from last night fills this morning instead of leaving it blank.
         self.assertIn("r.start < end && r.end > start", grid)
         self.assertIn("Math.max(0, r.start - start)", grid)
-        self.assertIn("gdnowmark", grid)
+        self.assertIn("function nowMark", self.js)
+        mark = self.js.split("function nowMark")[1][:300]
+        self.assertIn("gdnowmark", mark)
+        self.assertIn("(now.hour + 0.5) / 24 * 100", mark)
+        # Appended INSIDE the per-day loop, so every row carries one — the
+        # `dayIndex === now.dayIndex` guard that made it today's alone is
+        # what this replaced.
+        self.assertIn("cells.appendChild(nowMark(now));", grid)
+        self.assertNotIn("if (dayIndex === now.dayIndex) {", self.js)
+        self.assertIn(".gdgridrow.today .gdnowmark { opacity: .85; }", self.css)
         self.assertIn("setGuideView('day'); openInList(r.id)", grid)
         self.assertIn(".gdcells {", self.css)
         self.assertIn("grid-template-columns: repeat(24, var(--gd-hour))", self.css)
@@ -3878,14 +3892,33 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         self.assertIn("if (guideOpen && guideView === 'week') "
                       "{ applyGuideSpan(); repaintGuideGrid(); }", self.js)
 
-    def test_a_block_carries_a_name_only_when_one_fits(self):
-        # "U…" tells a reader nothing; clean colour plus the key does. And
-        # no time inside a block — its place and the ruler say when.
+    def test_a_block_too_narrow_for_its_name_carries_a_short_form(self):
+        # "U…" tells a reader nothing, so a block used to carry the full
+        # name or nothing at all — and at six hours across a phone that is a
+        # week of coloured bars with the key scrolled off the bottom: "i
+        # want to be able to see the schedule names or initials in the areas
+        # without any key" (operator, 2026-09-08).
+        #
+        # The name steps DOWN through forms that are each still readable AS
+        # a name — never a cut-off stub. The ladder is what this pins.
         self.assertIn("function fitsChars", self.js)
-        self.assertIn("label.length <= fitsChars(span)", self.js)
+        self.assertIn("function blockLabel", self.js)
+        self.assertIn("const shortened = blockLabel(label, span);", self.js)
+        ladder = self.js.split("function blockLabel")[1][:900]
+        # 1. the whole name, 2. the name without the tagline the station
+        # hangs off it after a middle dot, 3. the significant words,
+        # 4. the first of them, 5. the initials — and nothing at all in a
+        # block too narrow to hold even two characters.
+        self.assertIn("if (room < 2) return '';", ladder)
+        self.assertIn("if (full.length <= room) return full;", ladder)
+        self.assertIn("full.split('" + chr(92) + "u00b7')[0].trim()", ladder)
+        self.assertIn("GUIDE_STOPWORDS.includes(w.toLowerCase())", ladder)
+        self.assertIn("kept.map((w) => w[0]).join('').toUpperCase()", ladder)
+        # No time inside a block — its place and the ruler say when.
         self.assertNotIn("gdcelltime", self.js)
         self.assertNotIn("gdcelltime", self.css)
-        # The key decodes them, and each entry opens its show.
+        # The key still decodes the ones that fit nothing, and each entry
+        # opens its show.
         self.assertIn("On the air this week", self.js)
         self.assertIn(".card .gdkeyrow {", self.css)
 
@@ -3954,7 +3987,9 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         self.assertIn("function guideBody", self.js)
         hero = self.js.split("function guideHero")[1][:3000]
         self.assertIn("guideBody(show, cast, angle, runs, now, 'gdherobody')", hero)
-        row = self.js.split("function guideRow")[1][:2600]
+        # 2026-09-08: the row grew the takeover control, so the slice that
+        # reaches its body builder is longer than it was.
+        row = self.js.split("function guideRow")[1][:4200]
         self.assertIn("guideBody(show, cast, angle, runs, now)", row)
         self.assertIn("(live ? ' live' : '')", row)
         self.assertIn(".card .gdrow.live { border-color: var(--coral); }", self.css)
@@ -4019,3 +4054,398 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         # a lazy image in an overlay the browser is not painting never
         # loads at all.
         self.assertNotIn("img.loading = 'lazy'", self.js)
+
+
+def _phone_surface_block(css: str) -> str:
+    """The <=500px block that carries the phone's token values.
+
+    style.css has several `max-width: 500px` media blocks — the faces row's
+    own is the first one in the file — so a test that wants the SURFACES
+    block has to say which it means.
+    """
+    for chunk in css.split("@media (max-width: 500px) {")[1:]:
+        # The token line is the block's first statement, so a short look is
+        # enough to tell it from the faces block earlier in the file.
+        if "--sleeve:" in chunk[:900]:
+            return chunk[:9000]
+    raise AssertionError("the phone surfaces block is gone")
+
+
+class TestTheCardWearsOneSurfaceFamily(unittest.TestCase):
+    """The phone card is a GROUND with things standing on it, and there is
+    one answer to "what does a raised thing look like".
+
+    --pine is the ground and --granite is everything raised on it: the dock
+    band, the level meter, the action row. The stage, the route cells and the
+    station row's heart were the ground's own colour with a border round
+    them — which reads as one surface until a station palette colours --bg
+    and leaves --surface alone, and then the whole top of the card wears the
+    station's tint while the dock under it does not: "the theme color bleeds
+    into the transcript box and the off air on air card and the heart
+    button… inconsistent with the area below it" (operator, 2026-09-08).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+
+    def _phone_block(self):
+        # The <=500px SURFACES block — where the card takes the page's ground.
+        # (There is more than one such media block; this is the one that
+        # answers with the phone's own token values.)
+        return _phone_surface_block(self.css)
+
+    def test_the_stage_the_route_and_the_heart_take_the_docks_surface(self):
+        block = self._phone_block()
+        self.assertIn("background-color: var(--pine);", block)   # the card
+        rule = block.split(
+            "body:not(.panelpage):not(.compact) .card .linebox,")[1].split("}")[0]
+        self.assertIn(".card.routed .routeswitch .rcell:not(.on)", rule)
+        self.assertIn(".card .stationrow .nplike", rule)
+        self.assertIn("background-color: var(--granite);", rule)
+
+    def test_a_chosen_route_keeps_its_own_colour(self):
+        # `:not(.on)` and not a bare `.rcell`: the selected cell wears the
+        # route's own fill, and a surface rule at this specificity would
+        # paint straight over it.
+        block = self._phone_block()
+        self.assertNotIn(
+            "body:not(.panelpage):not(.compact) .card.routed .routeswitch .rcell {",
+            block)
+
+    def test_the_embed_is_left_alone(self):
+        # 348x320 has no dock band to match, and the compact card's own
+        # ground is --granite already, so the well would vanish into it.
+        block = self._phone_block()
+        for sel in ("body:not(.panelpage):not(.compact) .card .linebox,",
+                    "body:not(.panelpage):not(.compact) .card .stationrow .nplike"):
+            self.assertIn(sel, block)
+
+
+class TestThePlayersDockIsTwoBandsThatLineUp(unittest.TestCase):
+    """The strip over the request row, and they read as a grid or as a mess.
+
+    Operator, 2026-09-08: the phone button is a second door to a place the
+    faces ribbon already goes; the fader stopped at SEND's left edge instead
+    of the request field's right one; and the level's eleven bars needed 63px
+    of a 40px well, clipped by the `overflow: hidden` that hid the fault.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+
+    def test_the_level_and_send_share_one_tail_width(self):
+        self.assertIn(".card .pldock { --dock-tail: 64px; }", self.css)
+        vu = self.css.split("  .card .pldock .plvu {")[1].split("}")[0]
+        self.assertIn("width: var(--dock-tail)", vu)
+        self.assertIn(
+            ".card .pldock .plreq #plReqSend { width: var(--dock-tail); padding: 0; }",
+            self.css)
+
+    def test_the_fader_reaches_the_request_fields_edge(self):
+        # .plctl's gap is 6 and .plreq's is 10, so the level carries the 4 —
+        # on the surface where the fader FLEXES. The 620x544 card keeps its
+        # own `margin-left: auto`, which holds the level against the row's
+        # right edge instead.
+        self.assertIn(
+            "body:not(.compact) .card .pldock .plvu { margin-left: 4px; }",
+            self.css)
+        self.assertIn(".pldock .plvu { margin-left: auto; }", self.css)
+
+    def test_the_level_fits_inside_its_own_box(self):
+        vu = self.css.split("  .card .pldock .plvu {")[1].split("}")[0]
+        self.assertIn("gap: 2px", vu)
+        self.assertIn("justify-content: center", vu)
+        self.assertIn(".card .pldock .plvu span { width: 2px; }", self.css)
+        # 11 bars at 2px with a 2px gap is 42px; the well is 64 - 12 - 2.
+        self.assertIn("padding: 0 6px", vu)
+
+    def test_the_phone_button_stands_down_beside_the_faces_row(self):
+        self.assertIn(".card.faces .pldock #plPhoneBtn { display: none; }",
+                      self.css)
+        # …and only there. An embed and a player-only card have no ribbon,
+        # so the button is still the way back.
+        self.assertNotIn("\n  .pldock #plPhoneBtn { display: none; }", self.css)
+
+    def test_the_record_is_centred_on_the_phone(self):
+        # "the player album art and title should be centered. its weird
+        # anchored to the left" (operator, 2026-09-08). The panels under it
+        # keep the listing's left-aligned grammar.
+        block = _phone_surface_block(self.css)
+        art = block.split("body:not(.compact) .card .plartblock {")[1].split("}")[0]
+        self.assertIn("align-items: center", art)
+        self.assertIn("body:not(.compact) .card .plartblock .plmeta,", block)
+        self.assertIn("text-align: center; }", block)
+        self.assertIn(
+            "body:not(.compact) .card .plartblock .pltags "
+            "{ justify-content: center; }", block)
+
+    def test_the_queue_got_the_room_from_the_bands_above_it(self):
+        # Up next / Just played / Requests was being cut off, and every
+        # number here is one the operator named: a smaller sleeve, a smaller
+        # title, less air round the playhead.
+        block = _phone_surface_block(self.css)
+        self.assertIn("--sleeve: 120px; --well-h: 92px;", block)
+        self.assertIn("--hero-title: 22px;", block)
+        self.assertIn("body:not(.compact) .card .plprog { height: 32px; }", block)
+        self.assertIn("body:not(.compact) .card .pltabs "
+                      "{ padding: 10px 16px 8px; }", block)
+
+
+class TestLandscapeSpendsTheAxisItHas(unittest.TestCase):
+    """Rotated, the card is starved of height and given width — so nothing
+    may waste the width, and nothing may need more height than the screen.
+
+    Every claim here is an operator note from 2026-09-08, measured in the
+    stub at 891x411 before and after.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+
+    def _band(self):
+        return self.css.split(
+            "@media (orientation: landscape) and (max-height: 560px) {")[2]
+
+    def test_the_page_is_the_card_and_not_a_screenful_more(self):
+        # `min-height` is a floor, not a ceiling: where the browser's 100vh
+        # and 100dvh disagree the body stayed at the taller of the two while
+        # the card inside it was 100dvh, so the page had a screenful of
+        # nothing under the card and scrolled to show it — "regarding
+        # landscape on the phone i have to scroll down to see the full page".
+        first = self.css.split(
+            "@media (orientation: landscape) and (max-height: 560px) {")[1]
+        self.assertIn(
+            "body:not(.compact) { padding: 0; min-height: 0; height: 100dvh; }",
+            first)
+        # And NOT `overflow: hidden` with it: voicemail on a 411px-tall
+        # screen genuinely totals more than the viewport, and clipping the
+        # Hang up row is worse than a short scroll to reach it.
+        self.assertNotIn(
+            "body:not(.compact) { padding: 0; min-height: 0; height: 100dvh; "
+            "overflow: hidden; }", self.css)
+
+    def test_the_levels_fill_the_context_column(self):
+        # Identity, station row, then ninety-eight measured pixels of nothing
+        # before the route switch — "the wasted space to the left below the
+        # album name… so it better fits the transcript box on the right".
+        band = self._band()
+        self.assertIn('"meters line"', band)
+        self.assertNotIn('"sw   meters"', band)
+        meters = band.split(
+            "body:not(.compact):not(.panelpage) .card.faces .meters {")[1].split("}")[0]
+        self.assertIn("grid-area: meters", meters)
+        # It no longer opens the dock band — the dock is the right column's.
+        self.assertIn("border-top: 0", meters)
+
+    def test_the_booth_well_cannot_paint_over_the_record(self):
+        # `align-self: end` in a row that had collapsed under the well's own
+        # minimum overflowed UPWARDS: the booth's label behind the sleeve and
+        # the playhead's fill through the middle of the quote.
+        band = self._band()
+        self.assertIn(
+            "grid-template-rows: minmax(0, auto) auto minmax(var(--well-h), 1fr);",
+            band)
+        well = band.split(
+            "body:not(.compact):not(.panelpage) .card.faces "
+            ".plscroll > .plpanel:not(.plqueue) {")[1].split("}")[0]
+        self.assertIn("align-self: stretch", well)
+        self.assertNotIn("align-self: end", well)
+
+    def test_the_booth_well_says_as_much_as_its_column_holds(self):
+        # The 620x544 card's block clamps this quote to two lines so the
+        # queue below it has room, and every landscape width above 700 is
+        # inside that block — so a well with 98px of column showed 39px of
+        # words and 59px of nothing. Beside the queue rather than above it
+        # the well has nobody to take room from.
+        band = self._band()
+        head = ("body:not(.compact):not(.panelpage) .card.faces" + chr(10)
+                + "      .plscroll > .plpanel:not(.plqueue) .plpanelbody {")
+        body = band.split(head)[1].split("}")[0]
+        self.assertIn("overflow-y: auto", body)
+        # `safe`, because a flex box centring content taller than itself
+        # pushes the FIRST line out of the scrollable range.
+        self.assertIn("align-items: safe center", body)
+        qhead = ("body:not(.compact):not(.panelpage) .card.faces" + chr(10)
+                 + "      .plscroll .plpanelbody .plquote {")
+        quote = band.split(qhead)[1].split("}")[0]
+        self.assertIn("-webkit-line-clamp: none", quote)
+
+    def test_the_queue_column_takes_the_columns_height(self):
+        # The 620x544 card's block sets `.plqgroup { align-self: start }` and
+        # every landscape width above 700 is inside it, so the list stopped
+        # at the bottom of itself and left the sheet's lower right empty.
+        band = self._band()
+        group = band.split(
+            "body:not(.compact):not(.panelpage) .card.faces "
+            ".plscroll > .plqgroup {")[1][:900]
+        self.assertIn("align-self: stretch;", group)
+
+    def test_the_two_segmented_controls_do_not_sit_on_each_other(self):
+        # Both were placed in row 1 of the right column, both right-aligned,
+        # so 6H|12H|24H was drawn through DAY|WEEK — and with the DAY cell
+        # buried there was no way back out of the week view.
+        band = self._band()
+        self.assertIn("--gdspans-w: 116px;", band)
+        self.assertIn(".gdscroll > .gdtodayhead:has(~ .gdspans:not([hidden]))",
+                      band)
+        self.assertIn("padding-right: calc(14px + var(--gdspans-w) + 12px);", band)
+
+    def test_the_week_takes_the_whole_width(self):
+        # In week view the hero is `.gdaway`, so the 318px context column was
+        # 318px of black beside a grid squeezed into half the screen.
+        band = self._band()
+        self.assertIn(".gdscroll:has(> .gdgrid:not([hidden])) {", band)
+        self.assertIn("grid-template-columns: minmax(0, 1fr);", band)
+
+
+class TestTheGuideOffersTheTakeover(_TempStores):
+    """The operator's ask, 2026-09-08: "on the schedule should have a button
+    to switch DJ's right now, basically a show takeover… and for all items
+    including those not on the schedule. If a usertype has permission to
+    change the dj/takeover, then they should have permission to do this from
+    this page".
+
+    So the gate is the SETTING, not the panel's admin write check — the same
+    `allow_takeover` the DJ's own subwave_takeover_show rides — and the
+    widget is told the answer rather than working it out.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.js = widget_js()["call.js"]
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        cls.live_py = (AGENT_WORKER / "api" / "live.py").read_text(encoding="utf-8")
+        cls.override_py = (AGENT_WORKER / "api" / "override.py").read_text(
+            encoding="utf-8")
+
+    def test_live_carries_this_callers_own_answer(self):
+        # Beside openLinesTrigger and ABOVE the early return, not beside
+        # canAsk: canAsk exists only when the help button is on, and this
+        # offer must not depend on an unrelated setting.
+        self.assertIn('out["takeoverMine"] = settings_store.tier_reaches(',
+                      self.live_py)
+        self.assertIn('cfg_now.get("allow_takeover"), tier)', self.live_py)
+        head = self.live_py.split("def _for_this_caller")[1]
+        self.assertLess(head.index('out["takeoverMine"]'),
+                        head.index('if payload.get("canAsk") is None:'))
+
+    def test_the_widget_reads_the_flag_and_never_guesses(self):
+        self.assertIn("function takeoverOffered", self.js)
+        fn = self.js.split("function takeoverOffered")[1][:200]
+        self.assertIn("takeoverMine", fn)
+        # The row is built from it, and the shelved shows use the same
+        # builder — "for all items including those not on the schedule".
+        row = self.js.split("function guideRow")[1][:4200]
+        self.assertIn("if (takeoverOffered()) {", row)
+        self.assertIn("guideRow(show, personas, runs, now, '', false)", self.js)
+
+    def test_the_pinned_show_carries_the_way_back(self):
+        # Keyed to the PIN, not to what is on air: a takeover lands at the
+        # next track boundary, and until then the thing just done would have
+        # no row to be undone from.
+        row = self.js.split("function guideRow")[1][:4200]
+        self.assertIn("guideData.override.showId === show.id", row)
+        self.assertIn("if (pinned) sub.appendChild(takeoverBtn(show.id, true));", row)
+        self.assertIn("else if (!live) sub.appendChild("
+                      "takeoverBtn(show.id, false));", row)
+
+    def test_it_rides_the_second_line_and_not_the_show_name(self):
+        # It began beside the flag and the chevron on the title line, and at
+        # 360px "THE TRAIL AHEAD" came out "THE TRAIL AH..." — the show's own
+        # name given up for a control. The line under it carries a genre and
+        # a DJ and then a third of the row in white space.
+        self.assertIn("const subt = document.createElement('span'); "
+                      "subt.className = 'gdrowsubt';", self.js)
+        line = self.css.split("  .card .gdrowsub {")[1].split("}")[0]
+        self.assertIn("display: flex", line)
+        text = self.css.split("  .card .gdrowsub .gdrowsubt {")[1].split("}")[0]
+        self.assertIn("flex: 0 1 auto; min-width: 0;", text)
+        self.assertIn("text-overflow: ellipsis", text)
+        self.assertIn(".card .gdrowsub .gdtake { margin-left: auto; }", self.css)
+
+    def test_the_press_says_what_actually_happened(self):
+        btn = self.js.split("function takeoverBtn")[1][:2400]
+        # A pin is not instant and the button must not claim it is.
+        self.assertIn("'At the break'", btn)
+        self.assertIn("const TAKEOVER_MINUTES = 60;", self.js)
+        # The row underneath is a button too.
+        self.assertIn("e.stopPropagation();", btn)
+        # The caller's code rides it, like every other write the card makes.
+        self.assertIn("keyHeaders({ 'Content-Type': 'application/json' })", btn)
+        # And the week is re-read, so the button finds itself changed.
+        self.assertIn("loadGuide(true);", btn)
+
+    def test_the_endpoint_checks_the_same_gate_for_itself(self):
+        self.assertIn("def _takeover_allowed", self.override_py)
+        gate = self.override_py.split("def _takeover_allowed")[1][:1400]
+        # The phone's own door first — a code-gated line will not even say
+        # who is asking — then the permission against the caller's tier.
+        self.assertIn("if not _guest_ok(request):", gate)
+        self.assertIn('settings_store.load().get("allow_takeover"), '
+                      "caller_tier(request))", gate)
+        # Whoever may set one may lift one; the admin check still passes.
+        self.assertIn(
+            "if not (_write_allowed(request) or _takeover_allowed(request)):",
+            self.override_py)
+
+    def test_the_window_is_clamped_here_rather_than_refused_there(self):
+        # The station answers 400 for an out-of-range window, which reaches
+        # a caller as "that didn't work" for a number we could have fixed.
+        setter = self.override_py.split("async def handle_override_set")[1]
+        self.assertIn("max(StationClient.TAKEOVER_MIN_MINUTES,", setter)
+        self.assertIn("min(StationClient.TAKEOVER_MAX_MINUTES, asked or 60))",
+                      setter)
+        # showId must be STATED — `null` is Default programming and absent
+        # is a mistake, and the two must not read the same.
+        self.assertIn('if "showId" not in body:', setter)
+
+    def test_a_pin_drops_the_weeks_cache(self):
+        # /guide is held five minutes, which is right for a listing that
+        # changes weekly and wrong the moment this server is what changed it.
+        guide_py = (AGENT_WORKER / "api" / "guide.py").read_text(encoding="utf-8")
+        self.assertIn("def forget()", guide_py)
+        self.assertIn('_guide_cache["data"] = None', guide_py)
+        self.assertIn("guide.forget()", self.override_py)
+
+    def test_the_control_wears_the_cards_own_vocabulary(self):
+        rule = self.css.split("  .card .gdtake {")[1].split("}")[0]
+        # An outline, never a fill — the card allows one filled button per
+        # state and the guide's is not this.
+        self.assertIn("background: transparent", rule)
+        self.assertIn("border: 1px solid var(--coral)", rule)
+        # Coral is the station's side of the line; the hand-back undoes it.
+        self.assertIn(".card .gdtake.back { border-color: var(--cool); "
+                      "color: var(--cool); }", self.css)
+        # A 24px control still needs a thumb's worth of box.
+        self.assertIn(".card .gdherofold, .card .gdshelfcap, .card .gdtake,",
+                      self.css)
+        self.assertIn(".card .gdherofold::after, .card .gdtake::after,", self.css)
+
+
+class TestNotOnTheScheduleReadsAsAHeading(unittest.TestCase):
+    """"the not on the schedule bar at the bottom is kinda hard to noticed,
+    maybe use similar accent colors as the program guide header" (operator,
+    2026-09-08). PROGRAMME GUIDE and PROGRAMMING are both a coral label with
+    a coral pip; alpenglow ink on granite made this the one section heading
+    on the face that was not."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+
+    def test_the_bar_wears_the_faces_accent(self):
+        # The rule that actually paints is the SHELF-scoped one — the base
+        # `.card .gdshelfcap` is out-specified by it, and dressing that one
+        # instead changes nothing on screen.
+        rule = self.css.split("  .card .gdshelf .gdshelfcap {")[1].split("}")[0]
+        self.assertIn("color: var(--coral)", rule)
+        self.assertIn("border-left: 2px solid var(--coral)", rule)
+        self.assertIn("color-mix(in srgb, var(--coral) 40%, var(--edge))", rule)
+        # The count stays quiet: the heading is the thing to be found.
+        self.assertIn(".card .gdshelf .gdshelfn {\n"
+                      "    margin-left: auto; color: var(--sage-dim); "
+                      "font-weight: 400;\n  }", self.css)
