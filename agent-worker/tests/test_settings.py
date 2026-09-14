@@ -725,6 +725,25 @@ class TestTheProviderTablesAgreeWithEachOther(unittest.TestCase):
             else:
                 os.environ["OPENAI_API_KEY"] = old
 
+    def test_a_blank_deepseek_model_runs_what_the_station_runs(self):
+        # The station's own blank-model default is deepseek-v4-flash (its
+        # llm/internal/provider/registry.ts resolveModelId); this side fell
+        # to deepseek-chat, so an operator who set neither ran two different
+        # models on one station. Mirrored on the 2026-09-14 upstream pass;
+        # tools/upstream_drift.py flags the next time the station moves.
+        from call.providers import build_llm
+
+        old = os.environ.get("OPENAI_API_KEY")
+        os.environ["OPENAI_API_KEY"] = "sk-test"
+        try:
+            model = build_llm({"llm_provider": "deepseek", "llm_model": ""})
+            self.assertEqual(model.model, "deepseek-v4-flash")
+        finally:
+            if old is None:
+                os.environ.pop("OPENAI_API_KEY", None)
+            else:
+                os.environ["OPENAI_API_KEY"] = old
+
 
 class TestEverySecretRendersSomewhere(unittest.TestCase):
     """Keys render per-section now (secrets_store.SECRET_GROUPS), into the

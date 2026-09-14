@@ -993,6 +993,110 @@ class StationClient:
             log.warning("queue-track failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:140]}
 
+    async def queue_block(self, kind: str, track_id: str = "",
+                          block_id: str = "", artist: str = "",
+                          limit: int | None = None, order: str = "") -> dict:
+        """Queue a whole album, or a run by one artist, as ONE station action
+        — POST /dj/queue-block (SUB/WAVE 1.14, its #1632).
+
+        What it does that a loop of queue_track cannot: the record's own
+        disc/track order, the never-play list applied by the station with
+        every refusal NAMED in `skipped`, a 30-track cap that is reported
+        (`truncated`) rather than silent, and `runsPastShowChange` when the
+        block outlasts the show on air. An album is seeded from ANY of its
+        track ids — the station resolves the record — so no album id is
+        needed, which matters because /dj/search never returns one.
+
+        404 is `unsupported` whatever the body says: a station older than
+        1.14 has no route, and the route's own 404s (a seed the library no
+        longer holds) are equally well served by the caller falling back to
+        the per-track loop, which is the pre-1.14 behaviour byte for byte.
+        409 is the block wholly refused — every track on the never-play
+        list — in the station's own words. Admin-only.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        if not (track_id or block_id or artist):
+            return {"ok": False, "error": "nothing to seed the block from"}
+        body: dict = {"kind": "artist" if kind == "artist" else "album"}
+        if track_id:
+            body["trackId"] = str(track_id)
+        if block_id:
+            body["id"] = str(block_id)
+        if artist:
+            body["artist"] = str(artist)
+        # `limit` and `shuffle` are REFUSED on an album rather than ignored
+        # (schemas/dj.ts), so neither is sent unless it can mean something.
+        if body["kind"] == "artist":
+            if limit:
+                body["limit"] = max(1, min(30, int(limit)))
+            if order in ("natural", "shuffle"):
+                body["order"] = order
+        try:
+            r = await self._client.post(
+                "/dj/queue-block", json=body,
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            if r.status_code == 404:
+                return {"ok": False, "unsupported": True,
+                        "error": self._refusal_words(r)
+                        or "this station cannot queue a block"}
+            if r.status_code == 409:
+                return {"ok": False,
+                        "error": self._refusal_words(r)
+                        or "the station refused the block",
+                        "skipped": _body(r).get("skipped") or []}
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("queue-block slow to confirm (%s) — treating as queued", e)
+                return {"ok": True, "unconfirmed": True}
+            log.warning("queue-block failed: %s", describe(e))
+            return {"ok": False, "error": str(e)[:140]}
+
+    async def cancel_queued_block(self, block_id: str) -> dict:
+        """Take the unaired remainder of a queued block back out as one
+        action — DELETE /dj/queue/block/:id (SUB/WAVE 1.14, #1632).
+
+        Partial success is the NORMAL answer, not an error: a track the
+        mixer has already taken cannot be pulled and plays out, so the
+        station answers 200 with `removed` and `kept`. 404 means nothing of
+        the block is still waiting — aired, or cleared already — and comes
+        back as `reason: "nothing-left"` so the caller can say that rather
+        than "that didn't work". Admin-only.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        if not block_id:
+            return {"ok": False, "error": "no block to cancel"}
+        try:
+            r = await self._client.delete(
+                f"/dj/queue/block/{_seg(block_id)}",
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            if r.status_code == 404:
+                return {"ok": False, "reason": "nothing-left",
+                        "error": "none of that block is still waiting"}
+            r.raise_for_status()
+            d = _body(r)
+            return {"ok": True, "removed": int(d.get("removed") or 0),
+                    "kept": int(d.get("kept") or 0),
+                    "label": str(d.get("label") or "")}
+        except Exception as e:
+            # Like the single cancel: no unconfirmed optimism, because a
+            # block reported gone and then heard playing is the worse error.
+            log.warning("block cancel of %s failed: %s", block_id, describe(e))
+            return {"ok": False, "error": str(e)[:140]}
+
     async def submit_request(self, text: str, name: str = "") -> dict:
         """Public request endpoint — the same path the station's own request
         slip uses.

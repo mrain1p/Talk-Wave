@@ -194,6 +194,25 @@ def build_on_air_tools(
             result = await station.run_skill(name)
             if not result.get("ok"):
                 return actions.station_refused(result, "That segment didn't run")
+            if result.get("deferred") is True:
+                # HELD, not stood down — SUB/WAVE 1.15's pause-and-talk
+                # (#1645): on a show that opted in, a segment longer than
+                # the station's threshold waits for the record to END and
+                # airs in the clear. It comes back `aired: false, queued:
+                # true, deferred: true`, which the stand-down branch below
+                # read as "nothing is coming" — the one answer that is
+                # wrong. No hold here: the air is busy LATER, and the guard
+                # hears the station's own voice events when it is.
+                actions.note("skill", name)
+                return (
+                    f"The {name} segment is accepted and HELD: this show "
+                    "runs long segments as pause-and-talk breaks, so it goes "
+                    "out when the record playing now ENDS — in the clear, "
+                    "not over the music — and not this second. Tell the "
+                    "caller it's coming up after this song, in your own "
+                    "words; don't promise a time, and don't go quiet now — "
+                    "the air is yours until it starts."
+                )
             if result.get("aired") is False:
                 # Station 1.8's stand-down (their #1416): the skill ran, looked
                 # at what it fetched, and had nothing worth saying — a 200 with

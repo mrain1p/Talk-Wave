@@ -134,7 +134,11 @@ TOOLS: tuple[Tool, ...] = (
          "queue path as the exact pick, so the caps are this sidecar's own: "
          "30 tracks an album, one action against the call's limit for the "
          "whole batch. The DJ queues an album only when the caller clearly "
-         "asked for the lot — it never offers one unprompted.",
+         "asked for the lot — it never offers one unprompted. On SUB/WAVE "
+         "1.14+ the record goes in as ONE station press (its "
+         "subwave_queue_block, POST /dj/queue-block over REST): the "
+         "station's own running order, its never-play refusals named. Older "
+         "stations get the per-track loop.",
          needs_station_admin=True),
     Tool("subwave_queue_mix", "allow_album_queue", LOCAL,
          "Queues a run of picked tracks in one action — a few by one artist, "
@@ -188,7 +192,10 @@ TOOLS: tuple[Tool, ...] = (
          "Station admin credentials required. Shares the sound-search switch: "
          "both answer \"more of this feeling\" off the same analysis, and an "
          "operator happy with one has no reason to withhold the other. "
-         "Defaults to the track on air, so \"more like this\" needs no id.",
+         "Defaults to the track on air, so \"more like this\" needs no id. "
+         "The station's own MCP name for the same read is "
+         "subwave_similar_tracks (1.13); it stays off the allowlist because "
+         "this wrapper covers it, on-air default and switch included.",
          needs_station_admin=True),
     Tool("subwave_browse_library", "allow_library_search", LOCAL,
          "Browses the library by mood, energy, genre, era or "
@@ -338,6 +345,11 @@ TOOLS: tuple[Tool, ...] = (
     Tool("subwave_play_sfx", NEVER, NONE,
          "Fires a stinger on air immediately, over the programme.",
          "Nothing to add to a call, plenty to disrupt on air."),
+    # A station tool one of OUR wrappers serves under another name is named
+    # in that wrapper's note, not given a row: a row here would have to say
+    # `never`, and the capability is on (subwave_similar_tracks behind
+    # more_like_this, subwave_queue_block behind queue_album). The rows below
+    # are the other case — station tools no caller may fire at all.
     # The station grew these two at #1468 (release 1.11.0). They are the sfx
     # pair's shape exactly — full level, station-wide, queued with no cancel,
     # and a second press airs it twice — so they are named here rather than

@@ -440,16 +440,19 @@ class CallSession:
             or await self.station_cfg.voice_for(self.persona["id"])
         )
         # No I/O: active_show works off payloads the snapshot already has.
-        self.show_name = str((await self.station.active_show(
-            snap.get("now_playing"), snap.get("schedule")) or {}).get("name") or "")
+        live_show = await self.station.active_show(
+            snap.get("now_playing"), snap.get("schedule")) or {}
+        self.show_name = str(live_show.get("name") or "")
         self.instructions = await brain.build_system_prompt(
             self.station, self.persona, snapshot=snap, cfg=self.cfg,
             # The clock mirror (djSpeakClock, SUB/WAVE 1.8) rides the same
             # cached /settings read voice_for() just warmed — free here.
             speak_clock=await self.station_cfg.speak_clock(),
-            # Both off the same cached /settings read — free here.
+            # All off the same cached /settings read — free here.
             track_floor=await self.station_cfg.track_floor(),
             talk_between_tracks=await self.station_cfg.talk_between_tracks_only(),
+            pause_talk=await self.station_cfg.pause_talk_seconds(
+                str(live_show.get("id", ""))),
         )
         self.record = CallRecord(self.room_name, self.persona, self.cfg,
                                  self.tier, started=self.started_at)

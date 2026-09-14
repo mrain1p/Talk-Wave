@@ -25,6 +25,7 @@ import time
 from station import StationClient
 
 from ..actions import CallActions
+from .blocks import clear_as_block
 from .rows import _BATCH_BUDGET_SECS, _squash, _txt
 
 log = logging.getLogger("callin.agent")
@@ -142,6 +143,12 @@ def build_removal_tools(cfg: dict, station: StationClient,
                     "line, or the label of a mix you queued on this call. "
                     "Nothing was pulled.")
 
+        # A block the station queued as one press comes out as one press:
+        # exact membership, no title matching, and the station itself says
+        # what was already too late. Falls through when nothing is left.
+        as_block = await clear_as_block(station, actions, label, album, artist)
+        if as_block is not None:
+            return as_block
         state = await station.state()
         upcoming = [t for t in (state.get("upcoming") or [])
                     if isinstance(t, dict)]

@@ -19,18 +19,19 @@ from brain.briefing import (
 )
 
 
-async def _station_switches(speak_clock, track_floor, talk_between_tracks):
-    """The three station settings the prompt mirrors, filled in where the
+async def _station_switches(speak_clock, track_floor, talk_between_tracks,
+                            pause_talk=None, show_id=""):
+    """The four station settings the prompt mirrors, filled in where the
     caller did not pass them.
 
-    The call path passes all three — its StationConfig has /settings cached,
+    The call path passes all four — its StationConfig has /settings cached,
     so they are free there. This covers the preview and chat paths, which
     build their own snapshot, with the single authed read they already make.
     Each falls back to the station's own default: the clock speaks, there is
-    no length floor, talk is not held to the gaps.
+    no length floor, talk is not held to the gaps, no show pauses for talk.
     """
-    if speak_clock is not None and track_floor is not None             and talk_between_tracks is not None:
-        return speak_clock, track_floor, talk_between_tracks
+    if speak_clock is not None and track_floor is not None             and talk_between_tracks is not None and pause_talk is not None:
+        return speak_clock, track_floor, talk_between_tracks, pause_talk
 
     from station_config import StationConfig
 
@@ -42,13 +43,16 @@ async def _station_switches(speak_clock, track_floor, talk_between_tracks):
             track_floor = await sc.track_floor()
         if talk_between_tracks is None:
             talk_between_tracks = await sc.talk_between_tracks_only()
+        if pause_talk is None:
+            pause_talk = await sc.pause_talk_seconds(str(show_id or ""))
     except Exception:                                          # noqa: BLE001
         pass
     finally:
         await sc.aclose()
     return (True if speak_clock is None else speak_clock,
             0 if track_floor is None else track_floor,
-            False if talk_between_tracks is None else talk_between_tracks)
+            False if talk_between_tracks is None else talk_between_tracks,
+            0 if pause_talk is None else pause_talk)
 
 
 async def build_system_prompt(
@@ -57,6 +61,7 @@ async def build_system_prompt(
     speak_clock: bool | None = None,
     track_floor: int | None = None,
     talk_between_tracks: bool | None = None,
+    pause_talk: int | None = None,
 ) -> str:
     """`cfg` must be the settings ALREADY RESOLVED for this caller's tier.
 
@@ -102,14 +107,15 @@ async def build_system_prompt(
     # The clock mirror (djSpeakClock, SUB/WAVE 1.8). The call path passes it
     # in — its StationConfig caches /settings, so the read is free there;
     # this fallback covers the preview and chat paths with one authed read.
-    speak_clock, track_floor, talk_between_tracks = await _station_switches(
-        speak_clock, track_floor, talk_between_tracks)
+    speak_clock, track_floor, talk_between_tracks, pause_talk =         await _station_switches(speak_clock, track_floor, talk_between_tracks,
+                                pause_talk, show.get("id", ""))
 
     facts = await station_context(station, cfg, snap, show,
                                   speak_clock=speak_clock,
                                   persona_id=str(persona.get("id") or ""),
                                   track_floor=track_floor,
-                                  talk_between_tracks=talk_between_tracks)
+                                  talk_between_tracks=talk_between_tracks,
+                                  pause_talk=pause_talk)
 
     # NAME_BUDGET: identity strings ride the opening line of the prompt on
     # every turn, and while soul/topic are clipped to CARD_BUDGET their short

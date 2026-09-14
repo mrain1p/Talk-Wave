@@ -708,6 +708,13 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
     # Long on purpose. Not measured — only required to still exist and still
     # say why.
     EXEMPT = {
+        "agent-worker/test_sidecar.py":
+            "the aggregator: one import line per test class, so the single "
+            "command that CI, the hook, the skill and CLAUDE.md all name keeps "
+            "working — and TestNoTestClassIsSilentlySkipped forces every class "
+            "under tests/ to be named here. It grows by exactly one line per "
+            "test class and holds no logic a split could separate. Crossed "
+            "the ceiling on the 2026-09-14 upstream pass.",
         "agent-worker/brain/briefing.py":
             "the prompt's own vocabulary: one _fmt_* function per fact the "
             "station publishes, each turning a payload field into the "
@@ -1156,7 +1163,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # lifecycle attachments (the setup-note data channel).
         # 928: the landed guard's gated construction (closing_nudge) beside
         # the other guards — nine lines, in the wiring half.
-        "agent-worker/call/session.py": (936, "the ringing half (prepare, "
+        # 939 (2026-09-14): the live show is read once for its name AND its
+        # id, so the pause-and-talk mirror (SUB/WAVE 1.15, #1645) can ask the
+        # cached /settings read whether THIS show holds long segments.
+        "agent-worker/call/session.py": (939, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -1912,7 +1922,10 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         # speaking_secs copies into AirVerdict._spoken_secs, dropping it under
         # the ceiling — row removed, per the ratchet.
         # Batch 4 — the call tools
-        "agent-worker/call/tools/removal.py::build_removal_tools.clear_from_queue": (58, "Batch 4 — queue-clear matcher"),
+        # 58 -> 59 (2026-09-14): a block this call queued comes out with the
+        # station's own one-press cancel (SUB/WAVE 1.14, #1632) before the
+        # per-track matcher runs — one branch, the work in blocks.py.
+        "agent-worker/call/tools/removal.py::build_removal_tools.clear_from_queue": (59, "Batch 4 — queue-clear matcher"),
         # 37 -> 29 (2026-09-01): the shelf-next-door rung would have pushed
         # this to 44, so the whole what-to-say-on-a-miss ladder moved to
         # vocabulary._miss_hint — the seam that module was already cut on.
@@ -1922,7 +1935,10 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         # and caches; the slow one is the fallback for a station that has no
         # centroids to answer with, and that `if` is the branch.
         "agent-worker/call/tools/discovery.py::build_discovery_tools.browse_library": (30, "Batch 4 — library browse"),
-        "agent-worker/call/tools/albums.py::build_album_tools.queue_album": (32, "Batch 4 — album queue"),
+        # 32 -> 33 (2026-09-14): the station's one-press block queue (SUB/WAVE
+        # 1.14, #1632) is tried before the per-track loop — one branch, the
+        # press itself in blocks.py.
+        "agent-worker/call/tools/albums.py::build_album_tools.queue_album": (33, "Batch 4 — album queue"),
         "agent-worker/call/tools/albums.py::build_album_tools.queue_mix": (25, "Batch 4 — mix queue"),
         # Batch 5 — the brain
         "agent-worker/brain/briefing.py::_fmt_now_playing": (32, "Batch 5 — now-playing formatter"),

@@ -11,13 +11,16 @@ Three facts about the station shaped everything here:
 
 - Its /dj/search matches ALBUM names (Navidrome files them into the same
   full-text blob as titles and artists), and every row says which album it
-  came from — but not the track number, and not the album's id. The station
-  holds both internally (subsonic.getAlbum returns a tracklist in order) and
-  exposes neither over REST, so canonical running order cannot be promised.
-  Rows do carry the library `path`, and a normally-ripped album's filenames
-  lead with the track number, so path order IS album order for any library
-  that was ripped rather than dumped. Used when every kept row has one;
-  dropped without comment when not.
+  came from — but not the track number, and not the album's id. Since
+  SUB/WAVE 1.14 the station queues the record ITSELF from any one of its
+  track ids (POST /dj/queue-block, its #1632): disc/track order imposed by
+  the station, the never-play list applied there with every refusal named,
+  the cap reported. That is the path taken where it exists — see
+  blocks.queue_as_block. On an older station canonical running order cannot be
+  promised: rows do carry the library `path`, and a normally-ripped album's
+  filenames lead with the track number, so path order IS album order for
+  any library that was ripped rather than dumped. Used when every kept row
+  has one; dropped without comment when not.
 - Queueing rides POST /dj/queue-track, which the station does not rate-limit
   (the public request endpoint's 1-per-20s gate never sees it). So the caps
   here are the only pacing there is: ALBUM_MAX_TRACKS a batch, MIX_MAX_PICKS
@@ -323,6 +326,11 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
     decided the switch is on and the credentials exist."""
     from livekit.agents import llm as lk_llm
 
+    # Imported here rather than at the top: blocks.py speaks the receipt
+    # vocabulary this module owns (_batch_report and friends), so a load-time
+    # import each way would be a cycle. Once per call, like the SDK import.
+    from .blocks import queue_as_block
+
     @lk_llm.function_tool(name="subwave_queue_album")
     async def queue_album(album: str = "", artist: str = "") -> str:
         """Queue a WHOLE ALBUM — every track of it the library holds — as one
@@ -410,6 +418,12 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
                     "never-play list, so none of it can be queued. The "
                     "library HAS it — say it isn't one this station plays, "
                     "and offer something else.")
+        # ONE press at the station where it has one (SUB/WAVE 1.14, #1632).
+        # The per-track loop below is the older station's path — and the
+        # path for a record some of which this call already queued.
+        as_block = await queue_as_block(station, actions, group, keep)
+        if as_block is not None:
+            return as_block
         # Path order is album order for a normally-ripped library (the
         # filenames lead with the track number). Claimed only when every
         # track has a path to sort by.

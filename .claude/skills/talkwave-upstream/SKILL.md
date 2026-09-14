@@ -82,10 +82,17 @@ do with the response. Do this every pass, for the endpoints that feed the DJ:
 ### Opportunity sweep
 
 Once a pass, list what the station serves that we never call, and ask what a caller could do
-with it. The route table above is the source; today's unused set includes `/library/genres`,
-`/library/genres/related`, `/library/liked`, `/library/history`, `/library/blocklist/check`,
-`/library/coverage` and `/dj/playlists`. Report them under class 4 with the caller-facing
-sentence they'd enable, not as a bare endpoint list.
+with it. The route table above is the source; as of 2026-09-14 the unused set is `/dj/playlists`
+and `/playlists/*` (the operator's playlists — no route queues one whole), `POST
+/library/blocklist/check`, `/library/untagged`, `/library/observatory`, `/audience`,
+`/listeners`, `/stats`, `/archives` (past hours as audio) and `/connect/catalog` (the station's
+own action catalogue — a candidate source for `tools/upstream_drift.py` instead of scraping
+TypeScript). Report them under class 4 with the caller-facing sentence they'd enable, not as a
+bare endpoint list.
+
+`python tools/upstream_drift.py` first, every pass: it diffs the hand-mirrored vocabularies
+and the MCP surface in one call and stamps the station SHA it compared against, so the pass
+starts from "what moved since" rather than from everything.
 
 ## 3. Rank findings
 
@@ -108,6 +115,13 @@ to defer, and the roadmap file records agreed order. Read them first so the repo
 re-litigate; update them after the operator decides. Items already implemented: locca
 provider, `/dj/search` paging, the `/lyrics/current` read (all 0.10.47), the blocklist 409
 relay (0.10.91), the voice event lifecycle and the `djSpeakClock` mirror (0.10.89–0.10.90).
+
+Implemented on the 2026-09-14 pass, against 1.14/1.15: the one-press album via
+`POST /dj/queue-block` and its undo (#1632; `call/tools/blocks.py`, loop fallback on 404),
+the held-segment answer from `/dj/skill` on a pause-and-talk show (#1645) and the
+`pauseTalkMinSeconds` mirror in the briefing, and the DeepSeek blank-model default. A
+station MCP tool one of our wrappers serves under another name is named in that wrapper's
+registry note, not given a row — a row would have to say `never`.
 
 `/lyrics/current` is the one read we ship that **no released station serves** — it is still
 open upstream as #1316. The tool degrades to "no lyrics on file" by design, so it is not a

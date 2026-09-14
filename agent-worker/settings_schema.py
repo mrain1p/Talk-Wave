@@ -1590,7 +1590,10 @@ MODEL_CHOICES = {
     "openrouter": [],   # discovered live; the listing endpoint needs no key
     "google": ["gemini-2.5-flash", "gemini-2.5-pro"],
     "anthropic": ["claude-sonnet-5", "claude-haiku-4-5-20251001"],
-    "deepseek": ["deepseek-chat", "deepseek-reasoner"],
+    # deepseek-v4-flash first: it is what the station itself runs when its
+    # DeepSeek model is left blank (llm/internal/provider/registry.ts,
+    # resolveModelId), and the blank-model default below follows it.
+    "deepseek": ["deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"],
     # The two aggregators are deliberately EMPTY rather than seeded with
     # plausible ids. Their catalogues are namespaced (`openai/gpt-4.1-mini`)
     # and move, and a guessed id here is not a shorter list — it is a 404 on
@@ -1691,7 +1694,11 @@ STT_PROVIDER_KEY: dict[str, str | None] = {
 # failure model_for() exists to prevent. No model means the call refuses with a
 # sentence saying to pick one.
 OPENAI_PROTOCOL_HOSTS: dict[str, tuple[str, str]] = {
-    "deepseek": ("https://api.deepseek.com/v1", "deepseek-chat"),
+    # The default follows the STATION's own blank-model choice (its
+    # resolveModelId: deepseek-v4-flash) rather than DeepSeek's oldest alias,
+    # so an operator who set neither runs the same model on both. The drift
+    # tool (tools/upstream_drift.py) flags the day the station moves again.
+    "deepseek": ("https://api.deepseek.com/v1", "deepseek-v4-flash"),
     "requesty": ("https://router.requesty.ai/v1", ""),
     "gateway": ("https://ai-gateway.vercel.sh/v1", ""),
 }

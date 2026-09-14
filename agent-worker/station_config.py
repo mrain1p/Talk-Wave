@@ -570,6 +570,35 @@ class StationConfig:
         found = find(settings)
         return False if found is None else found
 
+    async def pause_talk_seconds(self, show_id: str) -> int:
+        """Past how many seconds THIS show's segments become pause-and-talk
+        breaks (#1645, SUB/WAVE 1.15), or 0 when it has not opted in.
+
+        Per-show opt-in (`shows[].pauseTalk`), station-wide threshold
+        (`pauseTalkMinSeconds`: default 20, bounds 5-90). It reaches every
+        segment this line fires: `skills/_agent.ts` marks a manual run
+        eligible and `queue.announce` resolves the placement whether or not
+        the trigger was scheduled — so a caller's segment on such a show
+        airs after the record ends, not now, and the DJ can only say so if
+        it knows the number.
+        """
+        settings = await self.settings()
+        values = settings.get("values") if isinstance(settings, dict) else None
+        if not isinstance(values, dict):
+            return 0
+        want = str(show_id or "")
+        shows = values.get("shows") if isinstance(values.get("shows"), list) else []
+        show = next((s for s in shows
+                     if isinstance(s, dict) and str(s.get("id") or "") == want),
+                    None)
+        if not want or not show or show.get("pauseTalk") is not True:
+            return 0
+        try:
+            n = int(values.get("pauseTalkMinSeconds"))
+        except (TypeError, ValueError):
+            return 20
+        return n if 5 <= n <= 90 else 20
+
     async def llm_config(self) -> dict:
         """What model the station itself runs its DJ on, so the call-in agent
         can default to the same thing rather than diverging.

@@ -127,6 +127,12 @@ class CallActions:
         # it is per-call state that both tool modules already share, and it
         # dies with the call the way the ledger above does.
         self.batches: list[tuple[str, list[str]]] = []
+        # Label -> the station's own id for a block it queued as ONE press
+        # (POST /dj/queue-block, SUB/WAVE 1.14). The ids above still serve
+        # the per-track clear on an older station; this is the handle for
+        # the one-press cancel (DELETE /dj/queue/block/:id), which is exact
+        # about membership and says itself what was already too late.
+        self.blocks: list[tuple[str, str]] = []
         # WHEN each of those landed. `taken` alone cannot answer "did
         # anything happen AFTER the caller asked", which is the whole
         # question call/asks.py exists to record.
@@ -308,6 +314,27 @@ class CallActions:
             if want == have or want in have or have in want:
                 return list(ids)
         return []
+
+    def note_block(self, label: str, block_id: str) -> None:
+        """Remember the station's block id behind a caller-facing label."""
+        label = str(label or "").strip()
+        block_id = str(block_id or "").strip()
+        if label and block_id:
+            self.blocks.append((label, block_id))
+
+    def block_id(self, wanted: str) -> str:
+        """The station block id behind a label this call used, or "".
+
+        The same loose match as batch_ids, for the same reason: the caller
+        paraphrases the name they were given. Newest first."""
+        want = " ".join(str(wanted or "").lower().split())
+        if not want:
+            return ""
+        for label, block_id in reversed(self.blocks):
+            have = " ".join(label.lower().split())
+            if want == have or want in have or have in want:
+                return block_id
+        return ""
 
     def _deliver(self, card: dict) -> None:
         """One card to whoever is listening — the hook, then the room."""

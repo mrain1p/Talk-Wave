@@ -1692,6 +1692,62 @@ class TestASegmentThatStoodDownIsNotReportedAsAiring(unittest.TestCase):
         self.assertTrue(guard.on_air, "a segment that ran must hold the gate")
 
 
+class TestAHeldSegmentIsNotReportedAsStoodDown(unittest.TestCase):
+    """SUB/WAVE 1.15's pause-and-talk (#1645): on a show that opted in, a
+    segment over the station's threshold is HELD for the end of the record
+    and airs in the clear. The station answers `aired: false, queued: true,
+    deferred: true` — and the stand-down branch read every `aired: false`
+    as "nothing is coming", which for this answer is the one false thing
+    the DJ could say. Found on the 2026-09-14 upstream pass by reading the
+    handler, not the PR title."""
+
+    class _Station:
+        def __init__(self, result):
+            self.result = result
+
+        async def run_skill(self, name):
+            return dict(self.result)
+
+    def _run(self, result):
+        import asyncio
+
+        from call.actions import CallActions
+        from call.air import OnAirGuard
+        from call.tools.broadcast import build_on_air_tools
+
+        station = self._Station(result)
+        guard = OnAirGuard(station, {"avoid_on_air_overlap": True})
+        actions = CallActions(5)
+        tools = {t.info.name: t for t in build_on_air_tools(
+            {"allow_skills": True}, station, actions, guard,
+            guarded=False, skills=["weather"])}
+        out = asyncio.run(tools["subwave_run_skill"](name="weather"))
+        return guard, actions, out
+
+    def test_a_held_run_is_reported_as_coming_after_the_record(self):
+        guard, actions, out = self._run(
+            {"ok": True, "aired": False, "queued": True, "deferred": True,
+             "spoken": "the long weather read"})
+        self.assertIn("HELD", out)
+        self.assertIn("after this song", out)
+        self.assertNotIn("chose not to air", out)
+        self.assertNotIn("Nothing is coming", out)
+        # It IS coming, so it is an action the caller made happen.
+        self.assertEqual(actions.count, 1)
+        self.assertEqual(actions.taken[0], ("skill", "weather"))
+        # The air is busy LATER: holding the floor now would gag the DJ for
+        # the length of a record. The guard hears the station's own voice
+        # events when the break actually starts.
+        self.assertFalse(guard.on_air)
+
+    def test_a_stand_down_still_reads_as_a_stand_down(self):
+        _, actions, out = self._run(
+            {"ok": True, "aired": False, "queued": False, "deferred": False,
+             "reason": "nothing usable to write the segment from"})
+        self.assertIn("chose not to air", out)
+        self.assertEqual(actions.count, 0)
+
+
 class TestAnObligationBelongsToTheCallerNotTheDJsWording(unittest.TestCase):
     """The promise guard stops reading the DJ's vocabulary for a speech act.
 
