@@ -556,6 +556,34 @@ async def fake_queue(self, track):
     return {"ok": True, "queuePosition": 2}
 
 
+async def fake_queue_block(self, kind, track_id="", block_id="", artist="",
+                           limit=None, order=""):
+    """The station's one-press block queue (SUB/WAVE 1.14, #1632), answered
+    the way the station would: the seed's whole record, in order."""
+    STATION_CALLS.append(("queue_block", {"kind": kind, "trackId": track_id,
+                                          "id": block_id, "artist": artist}))
+    fault = _fault("queue_block")
+    if fault == "unsupported":
+        return {"ok": False, "unsupported": True, "error": "no such route"}
+    if fault:
+        return {"ok": False, "skipped": [],
+                "error": "every track on that record is on the never-play "
+                         "blocklist — unblock it first (Library → Blocked)"}
+    seed = next((t for t in LIBRARY if str(t.get("id")) == str(track_id)), None)
+    record = [t for t in LIBRARY
+              if seed is not None and t.get("album")
+              and t.get("album") == seed.get("album")] or ([seed] if seed else [])
+    return {"ok": True, "kind": kind, "blockId": "blk-harness",
+            "label": str((seed or {}).get("album") or artist or "?"),
+            "queued": len(record), "queuePosition": 2, "truncated": 0,
+            "skipped": [], "runsPastShowChange": None}
+
+
+async def fake_cancel_block(self, block_id):
+    STATION_CALLS.append(("cancel_queued_block", {"blockId": block_id}))
+    return {"ok": True, "removed": 1, "kept": 0, "label": "the block"}
+
+
 async def fake_say(self, message, mode="styled", kind=""):
     STATION_CALLS.append(("dj_say", {"message": message, "mode": mode, "kind": kind}))
     return {"ok": True, "spoken": message}
@@ -699,6 +727,8 @@ def muzzle_the_station() -> None:
     StationClient.submit_request = fake_submit
     StationClient.request_status = fake_status
     StationClient.queue_track = fake_queue
+    StationClient.queue_block = fake_queue_block
+    StationClient.cancel_queued_block = fake_cancel_block
     StationClient.dj_say = fake_say
     StationClient.run_skill = fake_skill
     StationClient.skip_track = fake_skip

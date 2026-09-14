@@ -4,6 +4,21 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.43
+
+Two weeks of keeping pace with the station: SUB/WAVE went 1.13 → 1.15, and the DJ now reads what it publishes instead of guessing at it. Plus the phone card, the player and the guide gone over once more with the phone in hand, and a takeover you can set from the schedule.
+
+- **A whole album goes in as one press.** On SUB/WAVE 1.14+ the station queues the record itself — its own running order, the never-play list applied with every skipped track named, and a warning when the album would run past the show change. "Clear that album" comes back out the same way. Older stations keep the track-by-track push.
+- **A segment held for the end of the record is no longer "not coming".** On a show with pause-and-talk switched on (1.15), a long segment waits for the song to finish and airs in the clear; the DJ used to read that as the station standing down. It now says it's coming up after this song, and is told in advance which shows hold their segments.
+- **The request receipt is read the way the station writes it.** A track already in the queue, a request the booth answered in words, and a request the station has forgotten each get their true answer instead of "added to the queue, number three".
+- **Default programming counts as a takeover.** When the station's own mix is pinned over the grid, the card, the guide and the DJ all say so instead of "nothing is pinned".
+- **A show can be put on until the schedule would have changed anyway.** "Keep him on till his slot ends" is a real option now, with the end time when the station can say it. The takeover and its undo can also be set from the guide, for anyone whose tier allows it.
+- **Three settings the station applies to itself now reach the DJ.** The minimum track length, talk only between tracks, and a persona voice that inherits the station default. The sign-off after a call waits for the gap between records when that switch is on.
+- **Track lengths are on every list, and a record too short to be heard is refused before it is promised.** A track shorter than the crossfade mixes straight through unheard; the DJ no longer queues one.
+- **"More like this" uses the station's own sound read.** The public similar-tracks read answers where the old one needed admin access, and tells "not analysed yet" from "nothing close". Era windows read as years, a retired genre spelling is redirected to the shelf it is filed under now, and a block on an artist who only guests on a track is explained as such.
+- **The phone card, the player and the guide, gone over again.** One surface family on the card so a station palette no longer bleeds into the transcript; the player's dock lines up and the queue gets two rows of room; the guide names every block, keeps the clock down every row, and uses the whole width in landscape.
+- **Under the hood:** the station's DeepSeek default model is mirrored, a drift check diffs everything mirrored from the station in one call, and the station's own words for a refused takeover reach the DJ instead of an HTTP error.
+
 ## 0.99.42
 
 Turn the phone sideways and the card knows what to do with it.

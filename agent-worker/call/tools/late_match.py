@@ -69,7 +69,7 @@ async def _surface_late_match(
     does, the record says so — a request whose title never surfaced is the
     thing an operator reads the transcript to find.
     """
-    from .music import _fmt_track, _when_it_plays
+    from .music import _fmt_track, _when_it_plays, read_receipt
 
     track: dict = {}
     position = None
@@ -84,9 +84,14 @@ async def _surface_late_match(
             st = await station.request_status(str(rid))
         except Exception:
             continue
-        t = st.get("track") or st.get("matched") or {}
-        if isinstance(t, dict) and t.get("title"):
-            track, position = t, st.get("queuePosition")
+        verdict, t, _ack, pos = read_receipt(st)
+        if verdict == "failed":
+            break                      # nothing was queued; say nothing late
+        if verdict in ("queued", "standing"):
+            # 'standing' is already in the running order rather than newly
+            # added — _when_it_plays declines to guess on a null position and
+            # the line below reads "lined up", which stays true either way.
+            track, position = t, pos
             break
 
     if not track:

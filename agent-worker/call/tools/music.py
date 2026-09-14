@@ -41,12 +41,82 @@ log = logging.getLogger("callin.agent")
 _REFUSAL_HOLDS_SECS = 20.0
 
 
+async def _crossfade() -> float:
+    """The station's crossfade window, cached for the life of the call.
+
+    One read, off the same /settings payload the voice mirror already warms;
+    0 whenever it cannot be read, which turns the guard off rather than
+    guessing at a number.
+    """
+    if _CROSSFADE.get("secs") is None:
+        from station_config import StationConfig
+
+        sc = StationConfig()
+        try:
+            _CROSSFADE["secs"] = await sc.crossfade_seconds()
+        except Exception:                                      # noqa: BLE001
+            _CROSSFADE["secs"] = 0.0
+        finally:
+            await sc.aclose()
+    return float(_CROSSFADE.get("secs") or 0.0)
+
+
+_CROSSFADE: dict = {"secs": None}
+
+
 def _recent_refusal(state: dict) -> str:
-    """The station's own words, if it refused us moments ago."""
+    """The station's own words, if it refused us moments ago.
+
+    The hold is the station's OWN figure when it sent one — a 429 from
+    /request carries `retryAfter`, and its per-caller cooldown is 60s by
+    default, three times the local guess (upstream pass, 2026-09-07).
+    """
     at = state.get("at") or 0.0
-    if not at or time.monotonic() - at > _REFUSAL_HOLDS_SECS:
+    hold = state.get("hold") or _REFUSAL_HOLDS_SECS
+    if not at or time.monotonic() - at > hold:
         return ""
     return str(state.get("why") or "")
+
+
+def read_receipt(st: dict) -> tuple[str, dict, str, object]:
+    """What `GET /request/:id` actually said, as (verdict, track, ack, position).
+
+    The station writes four resolutions and every reader here used to key on
+    the title alone, so three of them read back as "added to the queue" with
+    an invented position (upstream pass, 2026-09-07). From
+    controller/src/routes/request.ts:
+
+      failed(message)                              -> 'failed'   (:228)
+      resolved({ack, track, queuePosition: n})     -> 'queued'   (:354)
+      resolved({ack: dup, track, position: null})  -> 'standing' (:346)
+      resolved({ack, track, queuePosition: null})  -> 'standing' (:394)
+      resolved({ack, track: null, position: null}) -> 'answered' (:380)
+      status 'pending'                             -> 'pending'
+      404 {status:'unknown'}, or anything else     -> 'unknown'
+
+    'standing' is the one that matters: the record is in the running order,
+    or the booth answered without queueing it. Either way nothing was ADDED,
+    and saying so is the difference between a true line and a promise the
+    station never made.
+    """
+    track = st.get("track") or st.get("matched") or {}
+    if not isinstance(track, dict):
+        track = {}
+    ack = str(st.get("ack") or st.get("message") or st.get("reply") or "")
+    position = st.get("queuePosition")
+    status = str(st.get("status") or "").lower()
+    if status == "failed":
+        return "failed", track, ack, None
+    if track.get("title"):
+        return ("queued" if position is not None else "standing"), track, ack, position
+    if status == "resolved":
+        return "answered", track, ack, None
+    if status == "pending":
+        return "pending", track, ack, None
+    # 404 {status:'unknown'} (request.ts:891) — pruned, or lost to a restart.
+    # "Still being matched" would send the DJ back to check something that no
+    # longer exists.
+    return "unknown", track, ack, None
 
 
 def _when_it_plays(position) -> str:
@@ -370,13 +440,33 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
 
     if exact_queue:
         @lk_llm.function_tool(name="subwave_queue_track")
-        async def queue_track(id: str, title: str, artist: str = "") -> str:
+        async def queue_track(id: str, title: str, artist: str = "",
+                             seconds: int = 0) -> str:
             """Queue THE EXACT track the caller picked from a search result.
             Use this — not a request — once they have chosen a specific track
             from what you found, passing the id shown beside it. Guarantees
-            they get that recording rather than a re-match."""
+            they get that recording rather than a re-match. `seconds` is the
+            track's length if the row showed one (m:ss — 4:21 is 261), which
+            lets the desk warn you before a very short one is swallowed by the
+            crossfade."""
             if actions.at_limit():
                 return actions.refusal()
+            # SHORTER THAN THE FADE IS NEVER HEARD. The station mixes the next
+            # record in over the tail; anything under that window goes in,
+            # comes out, and is gone — it booth-logs the fact for a listener
+            # request (#1606) but does not refuse it, so the DJ promised a
+            # record nobody ever heard. Only fires when the model passed a
+            # length AND the station published a fade, so a station that says
+            # neither behaves exactly as before.
+            fade = await _crossfade()
+            if fade and 0 < int(seconds or 0) < fade:
+                return (
+                    f"\"{title}\" is {int(seconds)}s and this station's "
+                    f"crossfade is about {int(fade)}s — it would be mixed "
+                    "straight through and never actually heard. NOT queued. "
+                    "Tell the caller that in your own words and offer the "
+                    "full-length version or something else of theirs."
+                )
             # ALREADY IN, FROM THIS CALL? Then say so instead of adding it
             # twice. On 2026-08-16 a caller got four queue slots for two
             # records: both went in at 84s as one parallel group, the model
@@ -502,6 +592,15 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             if res.get("error"):
                 refusals["at"] = time.monotonic()
                 refusals["why"] = str(res["error"])
+                # The station's own wait when it sent one (a 429 carries
+                # retryAfter; its per-caller cooldown is 60s by default),
+                # else the local guess. Holding 20 against a 60s gate bought
+                # the caller the same refusal twice.
+                wait = res.get("retryAfter")
+                if isinstance(wait, (int, float)) and wait:
+                    refusals["hold"] = float(wait)
+                else:
+                    refusals.pop("hold", None)
                 # Card it — the rate gate and the never-play rule have both
                 # been narrated as invented station faults ("queue's jammed",
                 # 2026-08-13). Deduped in denied(), so the burst that sends
@@ -536,14 +635,31 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                 actions.last_request_id = str(rid)
                 await asyncio.sleep(_INLINE_POLL_SECS)
                 st = await station.request_status(str(rid))
-                track = st.get("track") or st.get("matched") or {}
-                ack = st.get("ack") or st.get("message") or st.get("reply") or ""
-                if isinstance(track, dict) and track.get("title"):
+                verdict, track, ack, position = read_receipt(st)
+                if verdict == "failed":
+                    return (
+                        "The station could not place that request: "
+                        f"{ack or 'it found nothing close enough in the crates'}. "
+                        "NOTHING is queued — do not tell the caller it is "
+                        "coming, and do not promise a title. Offer to look "
+                        "for something else in their own words."
+                    )
+                if verdict == "standing":
+                    actions.note("request", _fmt_track(track))
+                    return (
+                        f"The station matched {_fmt_track(track)} but did NOT "
+                        "add a new queue entry — it is either already in the "
+                        "running order or the booth answered without queueing "
+                        "it. Say it is lined up already, not that you have "
+                        "just put it in, and do not guess at when it plays."
+                        + (f" Station says: {ack}" if ack else "")
+                    )
+                if verdict == "queued":
                     actions.note("request", _fmt_track(track))
                     out = (
                         f"Added to the queue: {_fmt_track(track)}. It is NOT playing "
                         "yet — it comes up later in the running order, after what's "
-                        f"on now. {_when_it_plays(st.get('queuePosition'))} "
+                        f"on now. {_when_it_plays(position)} "
                         "Tell the caller it's lined up, not that it's on — then "
                         "leave something real in the air, in your own voice, "
                         "rather than going flat."

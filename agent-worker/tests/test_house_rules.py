@@ -708,6 +708,49 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
     # Long on purpose. Not measured — only required to still exist and still
     # say why.
     EXEMPT = {
+        "agent-worker/test_sidecar.py":
+            "the aggregator: one import line per test class, so the single "
+            "command that CI, the hook, the skill and CLAUDE.md all name keeps "
+            "working — and TestNoTestClassIsSilentlySkipped forces every class "
+            "under tests/ to be named here. It grows by exactly one line per "
+            "test class and holds no logic a split could separate. Crossed "
+            "the ceiling on the 2026-09-14 upstream pass.",
+        "agent-worker/brain/briefing.py":
+            "the prompt's own vocabulary: one _fmt_* function per fact the "
+            "station publishes, each turning a payload field into the "
+            "sentence a DJ would say about it. They are siblings, not a "
+            "chain — nothing here calls anything else here except "
+            "station_context, which is the list of them — so a split would "
+            "be alphabetical rather than structural, and the seam it created "
+            "would run through the one place a reader goes to ask 'what does "
+            "the DJ actually get told?'. Crossed the ceiling at 0.99.43 when "
+            "the upstream pass of 2026-09-07 added the length floor, the "
+            "talk window and the era-window renderer.",
+        "agent-worker/station_config.py":
+            "the station's config mirror, and every method on it is the same "
+            "shape: read the one cached /settings payload, find one setting "
+            "wherever the station happens to nest it, fall back to the "
+            "station's own default when it is absent or unauthed. They share "
+            "that cache and its TTL, so splitting them means two modules "
+            "reading the same endpoint on their own clocks — which is the "
+            "drift the mirror exists to prevent. Crossed the ceiling at "
+            "0.99.43 when the upstream pass of 2026-09-07 added the length "
+            "floor (#1582), the talk-window switch (#1562) and the inherited "
+            "voice slot (#1566); each is ~25 lines of finding one key.",
+        "agent-worker/call/tools/music.py":
+            "the request and queue tools, and the length is the STATION'S "
+            "surface rather than this file's ambition: one wrapper per action "
+            "the DJ can take, each carrying the station's own refusal words "
+            "and the conduct note that stops the DJ narrating a queue entry "
+            "as an on-air spin. Crossed the ceiling at 0.99.43 when the "
+            "receipt reader (read_receipt) was pulled out of three "
+            "hand-rolled copies into one shared function — the upstream pass "
+            "of 2026-09-07 found all three reading a duplicate and an "
+            "agent-answered match back to the caller as 'added to the queue'. "
+            "The seam to split on is real (reads vs writes) but it is the "
+            "SAME `actions` budget, `refusals` gate and `_fmt_track` on both "
+            "sides, which is the coupling the 600-line rule exists to make "
+            "visible rather than to forbid.",
         "web-widget/skins.css":
             "nineteen skins, one self-contained token block each, and a test "
             "(TestASkinCannotReachPastItsTokens) that already forbids any "
@@ -1047,7 +1090,14 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # (public_open_line), beside the record it reads and the handlers
         # that already read it, rather than becoming a fourth private helper
         # in here; this file only learned that the payload has the row.
-        "agent-worker/api/live.py": (688, "the shared payload build split "
+        # 697: takeoverMine, on the PER-CALLER side of the seam with the four
+        # door verdicts it sits beside, and for the same reason they are
+        # there — the answer depends on the tier and the shared payload is
+        # cached across every caller. Nine lines, six of them the note saying
+        # why it is not with `canAsk`: that block only exists when the help
+        # button is on, and the guide's takeover must not be offered or
+        # withheld by an unrelated setting.
+        "agent-worker/api/live.py": (697, "the shared payload build split "
                                           "from the per-caller resolve"),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
         # snapshot head start, the MCP warm-up, the join riding prepare). The
@@ -1113,7 +1163,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # lifecycle attachments (the setup-note data channel).
         # 928: the landed guard's gated construction (closing_nudge) beside
         # the other guards — nine lines, in the wiring half.
-        "agent-worker/call/session.py": (928, "the ringing half (prepare, "
+        # 939 (2026-09-14): the live show is read once for its name AND its
+        # id, so the pause-and-talk mirror (SUB/WAVE 1.15, #1645) can ask the
+        # cached /settings read whether THIS show holds long segments.
+        "agent-worker/call/session.py": (939, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -1869,7 +1922,10 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         # speaking_secs copies into AirVerdict._spoken_secs, dropping it under
         # the ceiling — row removed, per the ratchet.
         # Batch 4 — the call tools
-        "agent-worker/call/tools/removal.py::build_removal_tools.clear_from_queue": (58, "Batch 4 — queue-clear matcher"),
+        # 58 -> 59 (2026-09-14): a block this call queued comes out with the
+        # station's own one-press cancel (SUB/WAVE 1.14, #1632) before the
+        # per-track matcher runs — one branch, the work in blocks.py.
+        "agent-worker/call/tools/removal.py::build_removal_tools.clear_from_queue": (59, "Batch 4 — queue-clear matcher"),
         # 37 -> 29 (2026-09-01): the shelf-next-door rung would have pushed
         # this to 44, so the whole what-to-say-on-a-miss ladder moved to
         # vocabulary._miss_hint — the seam that module was already cut on.
@@ -1879,11 +1935,14 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         # and caches; the slow one is the fallback for a station that has no
         # centroids to answer with, and that `if` is the branch.
         "agent-worker/call/tools/discovery.py::build_discovery_tools.browse_library": (30, "Batch 4 — library browse"),
-        "agent-worker/call/tools/albums.py::build_album_tools.queue_album": (32, "Batch 4 — album queue"),
+        # 32 -> 33 (2026-09-14): the station's one-press block queue (SUB/WAVE
+        # 1.14, #1632) is tried before the per-track loop — one branch, the
+        # press itself in blocks.py.
+        "agent-worker/call/tools/albums.py::build_album_tools.queue_album": (33, "Batch 4 — album queue"),
         "agent-worker/call/tools/albums.py::build_album_tools.queue_mix": (25, "Batch 4 — mix queue"),
         # Batch 5 — the brain
         "agent-worker/brain/briefing.py::_fmt_now_playing": (32, "Batch 5 — now-playing formatter"),
-        "agent-worker/brain/assemble.py::build_system_prompt": (28, "Batch 5 — prompt assembler entry; +1 2026-09-01: the persona id, so the booth window can tell our own lines from a co-host's"),
+        "agent-worker/brain/assemble.py::build_system_prompt": (29, "Batch 5 — prompt assembler entry; +1 2026-09-01: the persona id, so the booth window can tell our own lines from a co-host's; +1 2026-09-07: the live show resolved before the skills are narrowed, so a co-hosted segment (#1534) is only offered when somebody else is in the booth"),
         "agent-worker/brain/tool_rules.py::_tools": (28, "Batch 5 — the prompt god-function; +1 2026-08-31: the tool_speakfirst gate, so chat can drop the dead-air rule"),
         # Batch 6 — chat / onair / openlines / voicemail
         "agent-worker/voicemail/capture.py::answer": (45, "Batch 6 — voicemail answer pipeline"),

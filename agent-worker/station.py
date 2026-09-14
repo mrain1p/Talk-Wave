@@ -377,6 +377,18 @@ class StationClient:
             # Carried on the persona so the prompt's station-name line has a
             # fallback when /dj timed out — see brain/assemble.py.
             "station": dj.get("station", ""),
+            # How this persona sets a record up. 'announce' is the station's
+            # word for a DJ who says exactly "This is <artist>." and nothing
+            # else (#1497, schemas/persona.ts:84-88) — a manner the operator
+            # chose, which the call line was overriding with its own.
+            "linkStyle": ("announce"
+                          if str(dj.get("linkStyle") or "") == "announce"
+                          else "natural"),
+            # Where the station broadcasts from, as the station publishes it
+            # (public.ts resolveOnAirLocation — the broad location, never the
+            # precise one). The DJ had no answer to "where are you?" but its
+            # own invention.
+            "location": str(dj.get("location") or "").strip()[:80],
             "language": language,
         }
 
@@ -467,7 +479,71 @@ class StationClient:
         since = max(0.0, (datetime.now(timezone.utc) - newest).total_seconds())
         return since, message
 
-    async def dj_say(self, text: str, mode: str = "styled", kind: str = "callin") -> dict:
+    @staticmethod
+    def _epoch_secs(value) -> float:
+        """A station timestamp as epoch seconds, or 0.0. Epoch seconds, epoch
+        millis and an ISO string all arrive on this field depending on which
+        read produced it, so the shape is inferred rather than assumed —
+        the same generosity api/hook_receiver._epoch applies for the same
+        reason."""
+        if value in (None, ""):
+            return 0.0
+        try:
+            n = float(value)
+            return n / 1000.0 if n > 1e11 else n
+        except (TypeError, ValueError):
+            pass
+        try:
+            from datetime import datetime
+
+            return datetime.fromisoformat(
+                str(value).replace("Z", "+00:00")).timestamp()
+        except (TypeError, ValueError):
+            return 0.0
+
+    # The longest this will sit on a line waiting for a record to end. A
+    # track is three to five minutes; a hand-back that waited a whole one
+    # would land after the moment it was written about, so past this it goes
+    # out over the music rather than going out stale.
+    GAP_WAIT_CEILING_SECS = 150.0
+
+    async def seconds_until_gap(self) -> float:
+        """How long until the record now playing ends, or 0.0 if unknowable.
+
+        The station's own talk-slot scheduler holds spoken segments to the
+        boundary (#1562), and `broadcast/talk-air.ts` keeps MANUAL triggers —
+        which is every line this sidecar sends — exempt by design. So with the
+        switch on, this line is the only voice that still lands over a vocal.
+
+        `track.play` cannot answer this: it carries title, artist and source
+        and no duration (routes/webhooks.ts documents the payload). /now-playing
+        does — the same read the snapshot already makes — and the arithmetic is
+        the widget's: started + length - now.
+        """
+        try:
+            now = await self.now_playing()
+        except Exception as e:                                 # noqa: BLE001
+            log.info("no now-playing read for the gap: %s", describe(e))
+            return 0.0
+        track = (now.get("nowPlaying") or now.get("track")
+                 or now.get("current") or {}) if isinstance(now, dict) else {}
+        if not isinstance(track, dict):
+            return 0.0
+        started = self._epoch_secs(track.get("timestamp") or track.get("startedAt"))
+        try:
+            length = float(track.get("duration") or 0)
+        except (TypeError, ValueError):
+            length = 0.0
+        if not (started and length > 0):
+            return 0.0
+        left = (started + length) - time.time()
+        # A negative or absurd answer means the station's clock and ours
+        # disagree, or the record ended while we were asking. Either way there
+        # is no gap to wait for that we can prove.
+        return left if 0 < left <= 3600 else 0.0
+
+    async def dj_say(self, text: str, mode: str = "styled", kind: str = "callin",
+                     hold_for_gap: bool = False) -> dict:
         """Hand a line to the on-air DJ. `styled` lets the station rewrite it in
         the persona's own voice before speaking it, so the call-in agent's
         phrasing doesn't have to match the broadcast voice exactly.
@@ -496,6 +572,13 @@ class StationClient:
             log.warning("on-air line over the station's 500-char cap — "
                         "cutting at %d chars", 500)
             text = text[:500]
+
+        # HELD TO THE GAP, when the operator has asked for that and nobody
+        # is waiting on this call. Only the post-call hand-back passes
+        # hold_for_gap: a caller mid-conversation cannot be left listening to
+        # a record while their own request sits in a queue here.
+        if hold_for_gap:
+            await self._wait_for_gap()
 
         try:
             r = await self._client.post(
@@ -635,6 +718,35 @@ class StationClient:
             log.warning("neighbours for %s failed: %s", track_id, describe(e))
             return []
 
+    async def similar_tracks(self, track_id: str = "", query: str = "",
+                             limit: int = 12) -> dict:
+        """The station's CLAP audio neighbours — GET /similar-tracks (#1578).
+
+        Seeded by track id, or by free text when the caller only has a title.
+        Needs no admin credentials — it is gated by the STATION password, so
+        it works on a public station where the observatory read does not — and
+        it answers 200 with a `reason` rather than a 404 when it has nothing,
+        which is the difference between "not analysed yet" and "nothing like
+        it". Returns the whole body: {seed, results, reason}.
+        """
+        if not (track_id or query):
+            return {}
+        params: dict = {"limit": max(1, min(50, int(limit)))}
+        if track_id:
+            params["id"] = track_id
+        else:
+            params["q"] = query
+        try:
+            r = await self._client.get("/similar-tracks", params=params,
+                                       timeout=LIBRARY_TIMEOUT)
+            r.raise_for_status()
+            d = r.json()
+            return d if isinstance(d, dict) else {}
+        except Exception as e:
+            log.warning("similar-tracks (%s) failed: %s",
+                        track_id or query, describe(e))
+            return {}
+
     async def browse_library(self, moods: str = "", energy: str = "",
                              genre: str = "", year_from=None, year_to=None,
                              vocal: str = "", limit: int = 12) -> dict:
@@ -752,6 +864,53 @@ class StationClient:
             return {"unavailable": describe(e)}
 
     @staticmethod
+    def _guest_credit_words(body: dict, hit: dict) -> str:
+        """The refusal reworded when the block landed on a GUEST credit.
+
+        #1608 made an artist block reach the tracks that artist only appears
+        on, so the station can refuse "Under Pressure" naming Queen when the
+        caller asked for Bowie. Relayed flat that reads as the station not
+        knowing its own record; named as what it is, it is simply true.
+
+        Empty unless there is evidence: the block is on an artist, it names
+        somebody, and the row's own lead credit is somebody else. No track on
+        the body means no comparison and no rewording.
+        """
+        if str(hit.get("type") or "").lower() != "artist":
+            return ""
+        blocked = str(hit.get("name") or "").strip()
+        track = body.get("track") if isinstance(body, dict) else None
+        lead = str((track or {}).get("artist") or "") if isinstance(track, dict) else ""
+        if not (blocked and lead) or blocked.casefold() in lead.casefold():
+            return ""
+        return (f"that one features {blocked}, who is on this station's "
+                "never-play list")
+
+    @staticmethod
+    def _retry_after(resp) -> float:
+        """How long the station asked us to wait, in seconds, or 0.
+
+        Every 429 from POST /request carries `retryAfter` in the body AND a
+        Retry-After header (routes/request.ts:809-846); the per-caller
+        cooldown defaults to 60s, and the wrapper was holding a flat 20
+        regardless — so a caller heard "give it a moment", tried again, and
+        collected the same refusal twice (upstream pass, 2026-09-07).
+        """
+        try:
+            body = resp.json()
+        except Exception:                                      # noqa: BLE001
+            body = {}
+        for src in (body.get("retryAfter") if isinstance(body, dict) else None,
+                    resp.headers.get("Retry-After")):
+            try:
+                n = float(src)
+            except (TypeError, ValueError):
+                continue
+            if 0 < n <= 3600:
+                return n
+        return 0.0
+
+    @staticmethod
     def _refusal_words(response) -> str:
         """The station's own words for a refusal, rule and all.
 
@@ -785,6 +944,9 @@ class StationClient:
             elif hit.get("label"):
                 bits.append(str(hit["label"]))
             kind = "rule" if str(hit.get("kind")) == "rule" else "never-play list"
+            guest = StationClient._guest_credit_words(d, hit)
+            if guest:
+                return guest
             rule = "; ".join(bits)
             named = (f"blocked by the station's {kind}"
                      + (f" ({rule})" if rule else ""))
@@ -831,6 +993,110 @@ class StationClient:
             log.warning("queue-track failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:140]}
 
+    async def queue_block(self, kind: str, track_id: str = "",
+                          block_id: str = "", artist: str = "",
+                          limit: int | None = None, order: str = "") -> dict:
+        """Queue a whole album, or a run by one artist, as ONE station action
+        — POST /dj/queue-block (SUB/WAVE 1.14, its #1632).
+
+        What it does that a loop of queue_track cannot: the record's own
+        disc/track order, the never-play list applied by the station with
+        every refusal NAMED in `skipped`, a 30-track cap that is reported
+        (`truncated`) rather than silent, and `runsPastShowChange` when the
+        block outlasts the show on air. An album is seeded from ANY of its
+        track ids — the station resolves the record — so no album id is
+        needed, which matters because /dj/search never returns one.
+
+        404 is `unsupported` whatever the body says: a station older than
+        1.14 has no route, and the route's own 404s (a seed the library no
+        longer holds) are equally well served by the caller falling back to
+        the per-track loop, which is the pre-1.14 behaviour byte for byte.
+        409 is the block wholly refused — every track on the never-play
+        list — in the station's own words. Admin-only.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        if not (track_id or block_id or artist):
+            return {"ok": False, "error": "nothing to seed the block from"}
+        body: dict = {"kind": "artist" if kind == "artist" else "album"}
+        if track_id:
+            body["trackId"] = str(track_id)
+        if block_id:
+            body["id"] = str(block_id)
+        if artist:
+            body["artist"] = str(artist)
+        # `limit` and `shuffle` are REFUSED on an album rather than ignored
+        # (schemas/dj.ts), so neither is sent unless it can mean something.
+        if body["kind"] == "artist":
+            if limit:
+                body["limit"] = max(1, min(30, int(limit)))
+            if order in ("natural", "shuffle"):
+                body["order"] = order
+        try:
+            r = await self._client.post(
+                "/dj/queue-block", json=body,
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            if r.status_code == 404:
+                return {"ok": False, "unsupported": True,
+                        "error": self._refusal_words(r)
+                        or "this station cannot queue a block"}
+            if r.status_code == 409:
+                return {"ok": False,
+                        "error": self._refusal_words(r)
+                        or "the station refused the block",
+                        "skipped": _body(r).get("skipped") or []}
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("queue-block slow to confirm (%s) — treating as queued", e)
+                return {"ok": True, "unconfirmed": True}
+            log.warning("queue-block failed: %s", describe(e))
+            return {"ok": False, "error": str(e)[:140]}
+
+    async def cancel_queued_block(self, block_id: str) -> dict:
+        """Take the unaired remainder of a queued block back out as one
+        action — DELETE /dj/queue/block/:id (SUB/WAVE 1.14, #1632).
+
+        Partial success is the NORMAL answer, not an error: a track the
+        mixer has already taken cannot be pulled and plays out, so the
+        station answers 200 with `removed` and `kept`. 404 means nothing of
+        the block is still waiting — aired, or cleared already — and comes
+        back as `reason: "nothing-left"` so the caller can say that rather
+        than "that didn't work". Admin-only.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        if not block_id:
+            return {"ok": False, "error": "no block to cancel"}
+        try:
+            r = await self._client.delete(
+                f"/dj/queue/block/{_seg(block_id)}",
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            if r.status_code == 404:
+                return {"ok": False, "reason": "nothing-left",
+                        "error": "none of that block is still waiting"}
+            r.raise_for_status()
+            d = _body(r)
+            return {"ok": True, "removed": int(d.get("removed") or 0),
+                    "kept": int(d.get("kept") or 0),
+                    "label": str(d.get("label") or "")}
+        except Exception as e:
+            # Like the single cancel: no unconfirmed optimism, because a
+            # block reported gone and then heard playing is the worse error.
+            log.warning("block cancel of %s failed: %s", block_id, describe(e))
+            return {"ok": False, "error": str(e)[:140]}
+
     async def submit_request(self, text: str, name: str = "") -> dict:
         """Public request endpoint — the same path the station's own request
         slip uses.
@@ -867,7 +1133,11 @@ class StationClient:
                     if said:
                         log.warning("request refused (%s): %s",
                                     e.response.status_code, said)
-                        return {"error": said}
+                        out = {"error": said}
+                        wait = self._retry_after(e.response)
+                        if wait:
+                            out["retryAfter"] = wait
+                        return out
                     break
                 log.info("station 5xx on request (%s) — retrying once",
                          e.response.status_code)
@@ -1032,13 +1302,47 @@ class StationClient:
     TAKEOVER_MIN_MINUTES = 15
     TAKEOVER_MAX_MINUTES = 720
 
-    async def pin_show(self, show_id: str, minutes: int) -> dict:
+    async def next_schedule_change(self) -> dict:
+        """When the grid would next have moved on — GET /schedule/next-change.
+
+        #1610. Absent before that lands, and 404 is not a fault here: it means
+        this station cannot preview the window yet, so the DJ promises no end
+        time rather than an invented one.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {}
+        try:
+            r = await self._client.get(
+                "/schedule/next-change", auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            if r.status_code == 404:
+                return {}
+            r.raise_for_status()
+            d = r.json()
+            return d if isinstance(d, dict) else {}
+        except Exception as e:
+            log.info("next schedule change unavailable: %s", describe(e))
+            return {}
+
+    async def pin_show(self, show_id: str | None, minutes: int,
+                       until: str = "fixed") -> dict:
         """Pin a show over the weekly grid for a bounded window. Admin-only.
 
         The station calls this a takeover: it outranks the schedule until it
         lapses, then normal programming picks up where it would have been.
         Posting again while one is live REPLACES it, which is how "give it
         another hour" works — there is no separate extend endpoint.
+
+        `show_id` of None is DEFAULT PROGRAMMING pinned over the grid — the
+        station's own mix, held against the schedule (#1543,
+        schemas/schedule.ts:229). It is a real takeover with no show to name,
+        and `override_payload` already reads it back as one; passing it
+        through as `null` is what lets the two ends agree. Not a string:
+        `""` is not a show id and the route's schema refuses it.
 
         The switch is not instant. The station returns as soon as the pin is
         stored and airs the handover in the background, landing at the next
@@ -1053,7 +1357,14 @@ class StationClient:
         try:
             r = await self._client.post(
                 "/schedule/override",
-                json={"showId": show_id, "minutes": int(minutes)},
+                json=({"showId": show_id, "until": "schedule-change"}
+                      if until == "schedule-change"
+                      # `minutes` is REFUSED under schedule-change and REQUIRED
+                      # under fixed (schemas/schedule.ts:370-371); posting the
+                      # pair without `until` is byte-identical to what this
+                      # sent before the option existed, so an older station is
+                      # unaffected.
+                      else {"showId": show_id, "minutes": int(minutes)}),
                 auth=httpx.BasicAuth(user, password),
                 timeout=ACTION_TIMEOUT,
             )
@@ -1064,7 +1375,49 @@ class StationClient:
                 log.warning("takeover %s slow to confirm (%s) — treating as set", show_id, e)
                 return {"ok": True, "unconfirmed": True}
             log.warning("takeover %s failed: %s", show_id, describe(e))
+            # The station's own sentence, not httpx's. #1543/#1610 gave this
+            # route a zod schema whose refusals are written for an operator
+            # ("pick a show or Default programming", "must be an integer
+            # between 15 and 720"), and they were being replaced by
+            # "Client error '400 Bad Request' for url..." - queue_track has
+            # relayed the body for months (upstream pass, 2026-09-07).
+            if isinstance(e, httpx.HTTPStatusError):
+                said = self._refusal_words(e.response)
+                if said:
+                    return {"ok": False, "error": said}
             return {"ok": False, "error": str(e)[:120]}
+
+    async def _wait_for_gap(self) -> None:
+        """Sit on a line until the record ends, if the station asked for that.
+
+        Three ways this declines to wait, and each is the honest answer rather
+        than a fallback: the operator has not turned the switch on; the station
+        will not say where the record is (so there is no boundary to aim at);
+        or the wait is longer than a hand-back stays true for.
+        """
+        from station_config import StationConfig
+
+        sc = StationConfig()
+        try:
+            if not await sc.talk_between_tracks_only():
+                return
+        except Exception:                                      # noqa: BLE001
+            return
+        finally:
+            await sc.aclose()
+
+        left = await self.seconds_until_gap()
+        if not left:
+            log.info("talk-only-between-tracks is on but the record's end is "
+                     "unreadable — sending now rather than guessing")
+            return
+        if left > self.GAP_WAIT_CEILING_SECS:
+            log.info("%.0fs of record left, over the %.0fs hand-back ceiling "
+                     "— sending now rather than stale", left,
+                     self.GAP_WAIT_CEILING_SECS)
+            return
+        log.info("holding the on-air line %.1fs for the track gap", left)
+        await asyncio.sleep(left)
 
     async def clear_pinned_show(self) -> dict:
         """Cancel a takeover and resume the weekly schedule. Admin-only.
@@ -1180,10 +1533,60 @@ class StationClient:
             rows = _body(r).get("genres") or []
             names = [str(g.get("value") or "").strip() for g in rows
                      if isinstance(g, dict) and str(g.get("value") or "").strip()]
+            # FOLDED THE OPERATOR'S WAY (#1580). Navidrome serves the raw tag,
+            # so a spelling the operator retired still comes back here while
+            # /library/browse's exact match no longer holds it — the DJ would
+            # be steered to a shelf that cannot be served. Aliases are
+            # admin-gated and empty without credentials, which leaves the old
+            # list exactly as it was.
+            aliases = await self.scene_aliases()
+            if aliases:
+                folded: list[str] = []
+                for n in names:
+                    to = aliases.get(n.casefold(), n)
+                    if to not in folded:
+                        folded.append(to)
+                names = folded
             return names[:max(1, int(limit))]
         except Exception as e:
             log.info("library genres unavailable: %s", describe(e))
             return []
+
+    async def scene_aliases(self) -> dict[str, str]:
+        """The operator's own spelling rules — retired genre -> surviving one.
+
+        #1580 consolidated the genre vocabulary behind alias rules, and a
+        merged spelling still comes back from /library/genres (Navidrome
+        serves the raw tags) while /library/browse's exact match no longer
+        holds it. So the DJ could be steered to a shelf the browse cannot
+        serve. Admin-gated; empty on any failure, which restores the old
+        behaviour exactly.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {}
+        try:
+            r = await self._client.get(
+                "/library/scenes", auth=httpx.BasicAuth(user, password),
+                timeout=LIBRARY_TIMEOUT,
+            )
+            r.raise_for_status()
+            rows = _body(r).get("aliases") or []
+            out: dict[str, str] = {}
+            for a in rows:
+                if not isinstance(a, dict):
+                    continue
+                src = str(a.get("from") or "").strip()
+                dst = str(a.get("to") or "").strip()
+                if src and dst:
+                    out[src.casefold()] = dst
+            return out
+        except Exception as e:
+            log.info("scene aliases unavailable (%s) — genre names unfolded",
+                     describe(e))
+            return {}
 
     async def genre_neighbours(self) -> dict:
         """Which genres this library files NEAR each other, and how deep each

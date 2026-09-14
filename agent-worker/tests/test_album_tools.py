@@ -39,6 +39,14 @@ class _Station:
         self.queued: list[dict] = []
         self.searches: list[tuple] = []
         self.refuse: dict[str, str] = {}   # id -> the station's refusal words
+        # The one-press block queue (SUB/WAVE 1.14, #1632). None is a station
+        # WITHOUT the route — a 404, which the tool treats as "use the loop"
+        # — so every test written before the block still exercises the loop.
+        self.block: dict | None = None
+        self.blocks_asked: list[dict] = []
+        self.block_cancel: dict | None = None   # None = nothing of it left
+        self.block_cancels: list[str] = []
+        self.upcoming: list[dict] = []
 
     async def search_library(self, q, offset=0, limit=30):
         self.searches.append((q, offset, limit))
@@ -55,6 +63,24 @@ class _Station:
             return {"ok": False, "error": why}
         self.queued.append(track)
         return {"ok": True, "queuePosition": len(self.queued)}
+
+    async def queue_block(self, kind, track_id="", block_id="", artist="",
+                          limit=None, order=""):
+        self.blocks_asked.append({"kind": kind, "trackId": track_id,
+                                  "id": block_id, "artist": artist})
+        if self.block is None:
+            return {"ok": False, "unsupported": True, "error": "no such route"}
+        return dict(self.block)
+
+    async def cancel_queued_block(self, block_id):
+        self.block_cancels.append(block_id)
+        if self.block_cancel is None:
+            return {"ok": False, "reason": "nothing-left",
+                    "error": "none of that block is still waiting"}
+        return dict(self.block_cancel)
+
+    async def state(self):
+        return {"upcoming": list(self.upcoming)}
 
 
 def _tools(station, actions=None, cfg=None):
@@ -817,3 +843,192 @@ class TestAMixCanBeUndoneByTheNameItWasGiven(unittest.TestCase):
         actions.note_batch("mellow mix", ["old1", "old2"])
         actions.note_batch("mellow mix", ["m1", "m2"])
         self.assertEqual(actions.batch_ids("mellow mix"), ["m1", "m2"])
+
+
+class TestTheStationQueuesTheRecordItself(unittest.TestCase):
+    """SUB/WAVE 1.14's block queue (#1632), adopted 2026-09-14: one press at
+    the station instead of one push per track, the record's own disc/track
+    order instead of a guess from filenames, and every never-play refusal
+    named by the station rather than dropped here. The loop above stays for
+    the station without the route, and for the one thing only a loop can do
+    — skip a single track of thirty that this call already queued."""
+
+    BLOCK = {"ok": True, "kind": "album", "blockId": "blk1",
+             "label": "Rumours — Fleetwood Mac", "queued": 3,
+             "queuePosition": 1, "truncated": 0, "skipped": [],
+             "runsPastShowChange": None}
+
+    def _station(self, rows=None, **block):
+        st = _Station(rows if rows is not None else [_row(3), _row(1), _row(2)])
+        st.block = {**self.BLOCK, **block}
+        return st
+
+    def test_one_press_at_the_station_not_one_push_per_track(self):
+        from call.actions import CallActions
+
+        st = self._station()
+        actions = CallActions(5)
+        tool = _tools(st, actions)["subwave_queue_album"]
+        out = asyncio.run(tool(album="Rumours", artist="Fleetwood Mac"))
+        self.assertEqual(st.queued, [],
+                         "the per-track loop ran on a station with the block")
+        self.assertEqual(len(st.blocks_asked), 1)
+        self.assertEqual(st.blocks_asked[0]["kind"], "album")
+        self.assertIn(st.blocks_asked[0]["trackId"], {"id1", "id2", "id3"})
+        self.assertIn("3 track(s)", out)
+        self.assertIn("record's own running order", out)
+        self.assertIn("next up", out)
+        self.assertIn("NOT playing", out)
+        self.assertIn("ONE action", out)
+        self.assertEqual(actions.count, 1)
+        self.assertEqual(actions.taken[0][0], "album")
+
+    def test_both_handles_for_the_undo_are_kept(self):
+        from call.actions import CallActions
+
+        st = self._station()
+        actions = CallActions(5)
+        asyncio.run(_tools(st, actions)["subwave_queue_album"](album="Rumours"))
+        self.assertEqual(actions.block_id("rumours"), "blk1")
+        self.assertEqual(set(actions.batch_ids("Rumours")), {"id1", "id2", "id3"})
+        self.assertEqual(actions.queued_ids, {"id1", "id2", "id3"})
+
+    def test_the_stations_never_play_skips_are_named(self):
+        st = self._station(queued=2, skipped=[
+            {"title": "Track 2", "artist": "Fleetwood Mac", "reason": "blocked",
+             "blockedBy": {"kind": "rule", "label": "no live cuts"}}])
+        out = asyncio.run(_tools(st)["subwave_queue_album"](album="Rumours"))
+        self.assertIn("2 track(s)", out)
+        self.assertIn("never-play", out)
+        self.assertIn("NOT queued", out)
+
+    def test_a_truncated_record_says_it_was_capped(self):
+        st = self._station(queued=30, truncated=4)
+        out = asyncio.run(_tools(st)["subwave_queue_album"](album="Rumours"))
+        self.assertIn("capped", out)
+        self.assertIn("4 further", out)
+
+    def test_a_block_that_outlasts_the_show_says_so(self):
+        st = self._station(runsPastShowChange={
+            "at": "2026-09-14T21:00:00.000Z", "show": "Late Night", "bySec": 540})
+        out = asyncio.run(_tools(st)["subwave_queue_album"](album="Rumours"))
+        self.assertIn("9 minute(s) past the next show change", out)
+        self.assertIn("Late Night", out)
+        self.assertIn("handover", out)
+
+    def test_a_wholly_refused_record_is_not_claimed(self):
+        from call.actions import CallActions
+
+        st = _Station([_row(1)])
+        st.block = {"ok": False, "skipped": [],
+                    "error": 'every track on "Rumours" is on the never-play '
+                             "blocklist — unblock it first (Library → Blocked)"}
+        actions = CallActions(5)
+        out = asyncio.run(_tools(st, actions)["subwave_queue_album"](album="Rumours"))
+        self.assertIn("None of", out)
+        self.assertIn("do NOT claim", out)
+        self.assertIn("never-play", out)
+        self.assertEqual(actions.count, 0)
+        self.assertEqual(st.queued, [])
+        self.assertTrue(any(k == "refused" for k, _ in actions._denied))
+
+    def test_a_station_without_the_route_gets_the_per_track_loop(self):
+        st = _Station([_row(1), _row(2)])      # block None: the 404
+        out = asyncio.run(_tools(st)["subwave_queue_album"](album="Rumours"))
+        self.assertEqual(len(st.blocks_asked), 1)
+        self.assertEqual([t["id"] for t in st.queued], ["id1", "id2"])
+        self.assertIn("order the library files them", out)
+
+    def test_a_record_partly_queued_already_takes_the_loop_so_nothing_doubles(self):
+        # The station queues duplicates for an operator on purpose, and a
+        # block cannot leave one track out — only the loop can.
+        from call.actions import CallActions
+
+        st = self._station()
+        actions = CallActions(5)
+        actions.queued_ids.add("id1")
+        out = asyncio.run(_tools(st, actions)["subwave_queue_album"](album="Rumours"))
+        self.assertEqual(st.blocks_asked, [])
+        self.assertEqual([t["id"] for t in st.queued], ["id2", "id3"])
+        self.assertIn("ALREADY queued", out)
+
+    def test_asking_again_does_not_press_twice(self):
+        from call.actions import CallActions
+
+        st = self._station()
+        actions = CallActions(5)
+        tool = _tools(st, actions)["subwave_queue_album"]
+        asyncio.run(tool(album="Rumours"))
+        again = asyncio.run(tool(album="Rumours"))
+        self.assertEqual(len(st.blocks_asked), 1)
+        self.assertEqual(st.queued, [])
+        self.assertIn("ALREADY in the queue", again)
+        self.assertEqual(actions.count, 1)
+
+    def test_a_slow_confirmation_still_reads_as_queued(self):
+        st = self._station()
+        st.block = {"ok": True, "unconfirmed": True}
+        out = asyncio.run(_tools(st)["subwave_queue_album"](album="Rumours"))
+        self.assertIn("slow to confirm", out)
+        self.assertIn("3 track(s)", out)
+
+    def test_our_own_never_play_read_still_stops_a_pointless_press(self):
+        st = _Station([_row(1, blockedBy={"kind": "rule", "label": "x"})])
+        st.block = dict(self.BLOCK)
+        out = asyncio.run(_tools(st)["subwave_queue_album"](album="Rumours"))
+        self.assertEqual(st.blocks_asked, [])
+        self.assertIn("never-play list", out)
+
+
+class TestAQueuedBlockComesOutAsOnePress(unittest.TestCase):
+    """The block's undo — DELETE /dj/queue/block/:id — reached through the
+    clear-out tool by the name the caller was given. Exact membership, no
+    title matching, and the station itself says what was already too late;
+    when nothing of it is left the per-track matcher takes over and says
+    that honestly."""
+
+    def _after_queue(self, cancel):
+        from call.actions import CallActions
+
+        st = _Station([_row(1), _row(2), _row(3)])
+        st.block = dict(TestTheStationQueuesTheRecordItself.BLOCK)
+        st.block_cancel = cancel
+        actions = CallActions(5)
+        tools = _tools(st, actions, cfg={"allow_cancel_queue": True})
+        asyncio.run(tools["subwave_queue_album"](album="Rumours"))
+        return st, actions, tools["subwave_clear_from_queue"]
+
+    def test_the_album_name_finds_the_block_and_one_delete_clears_it(self):
+        st, actions, clear = self._after_queue(
+            {"ok": True, "removed": 3, "kept": 0,
+             "label": "Rumours — Fleetwood Mac"})
+        out = asyncio.run(clear(album="rumours"))
+        self.assertEqual(st.block_cancels, ["blk1"])
+        self.assertIn("Pulled 3", out)
+        self.assertIn("ONE action", out)
+        self.assertEqual(actions.count, 2)
+        self.assertEqual(actions.taken[-1][0], "clear")
+
+    def test_what_was_already_too_late_is_said_not_hidden(self):
+        _, _, clear = self._after_queue(
+            {"ok": True, "removed": 2, "kept": 1,
+             "label": "Rumours — Fleetwood Mac"})
+        out = asyncio.run(clear(label="Rumours"))
+        self.assertIn("Pulled 2", out)
+        self.assertIn("1 track(s) of it were too late", out)
+
+    def test_nothing_left_to_pull_is_not_an_action(self):
+        _, actions, clear = self._after_queue(
+            {"ok": True, "removed": 0, "kept": 1, "label": "Rumours"})
+        out = asyncio.run(clear(album="Rumours"))
+        self.assertIn("Too late", out)
+        self.assertIn("Nothing was pulled", out)
+        self.assertEqual(actions.count, 1)
+
+    def test_a_block_already_gone_falls_through_to_the_honest_miss(self):
+        st, actions, clear = self._after_queue(None)     # the cancel's 404
+        st.upcoming = [{"title": "Something Else", "subsonic_id": "zz"}]
+        out = asyncio.run(clear(album="Rumours"))
+        self.assertEqual(st.block_cancels, ["blk1"])
+        self.assertIn("did go into the queue on this call", out)
+        self.assertEqual(actions.count, 1)

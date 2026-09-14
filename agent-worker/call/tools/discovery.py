@@ -170,6 +170,30 @@ def build_discovery_tools(cfg: dict, station: StationClient,
 
         tools.append(search_by_sound)
 
+        # Defined beside the tool that uses it: which of the station's two
+        # neighbour reads answers, and what it said when neither did.
+        async def _neighbours_of(st, track_id: str):
+            """(rows, seed title, reason) for a track, from the better read.
+
+            /similar-tracks (#1578) first: CLAP audio neighbours, gated by the
+            STATION password rather than an admin credential — so it answers
+            on a public station where the observatory read cannot — and it
+            returns 200 with a typed `reason` when it has nothing, which tells
+            "not analysed yet" apart from "nothing close". The observatory
+            read is the fallback: admin-gated, and a 404 for any track the
+            library has not indexed, which the DJ could only ever narrate as
+            "not analysed yet" whatever the truth was.
+            """
+            body = await st.similar_tracks(track_id=track_id)
+            body = body if isinstance(body, dict) else {}
+            rows = body.get("results")
+            rows = rows if isinstance(rows, list) else []
+            seed = body.get("seed")
+            title = str(seed.get("title") or "") if isinstance(seed, dict) else ""
+            if rows:
+                return rows, title, ""
+            return await st.tracks_like(track_id), title, str(body.get("reason") or "")
+
         @lk_llm.function_tool(name="subwave_more_like_this")
         async def more_like_this(id: str = "") -> str:
             """More tracks like a given one — the station's own judgement of
@@ -222,13 +246,16 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                     "id was given. Ask the caller to name a record they like, "
                     "search for it, then call this with its id."
                 )
-            items = await station.tracks_like(track_id)
+            items, seed_title, why = await _neighbours_of(station, track_id)
+            reference = reference or seed_title
             if not items:
                 return (
-                    "The station has no neighbours on file for that one — it "
-                    "may not have been analysed yet. DO THIS NOW, in this same "
-                    "turn: put a request in describing what they're after. "
-                    "Don't report a fault and don't stop at saying you'll look."
+                    "The station has no neighbours on file for that one"
+                    + (f" — {why}" if why else
+                       " — it may not have been analysed yet")
+                    + ". DO THIS NOW, in this same turn: put a request in "
+                    "describing what they're after. Don't report a fault "
+                    "and don't stop at saying you'll look."
                 )
             items, _withheld = _drop_blocked(items)
             if not items:

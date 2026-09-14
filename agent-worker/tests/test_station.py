@@ -1444,3 +1444,173 @@ class TestTheGuideShapesTheStationsWeek(unittest.TestCase):
                 self.assertEqual([], d["shows"])
                 self.assertEqual([], d["personas"])
                 self.assertEqual(24, len(d["grid"]["mon"]))
+
+
+class TestTheBlockQueueClient(unittest.TestCase):
+    """POST /dj/queue-block and DELETE /dj/queue/block/:id — SUB/WAVE 1.14's
+    one-press album (#1632), adopted on the 2026-09-14 upstream pass.
+
+    Two answers here are successes the caller must not hear as failures: a
+    404 is a station without the route (or a seed it no longer holds), and
+    the album tool falls back to its per-track loop on it; a cancel's 404 is
+    "nothing of that block is still waiting", which is a fact about the
+    queue, not a fault.
+    """
+
+    def _call(self, handler, fn):
+        import httpx
+        from unittest import mock
+
+        import station as station_mod
+
+        async def run():
+            client = station_mod.StationClient(base_url="http://station")
+            client._client = httpx.AsyncClient(
+                base_url="http://station",
+                transport=httpx.MockTransport(handler))
+            try:
+                with mock.patch("station_config.admin_credentials",
+                                return_value=("op", "pw")):
+                    return await fn(client)
+            finally:
+                await client.aclose()
+
+        return asyncio.run(run())
+
+    def _answer(self, status, body, fn):
+        import json
+
+        import httpx
+
+        seen = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["method"] = request.method
+            seen["path"] = request.url.path
+            seen["body"] = json.loads(request.content) if request.content else {}
+            return httpx.Response(status, json=body)
+
+        return self._call(handler, fn), seen
+
+    def test_an_album_is_seeded_from_any_track_with_no_limit_or_order(self):
+        # The station REFUSES limit/shuffle on an album rather than ignoring
+        # them (schemas/dj.ts), so an album body must never carry either.
+        out, seen = self._answer(
+            200, {"ok": True, "queued": 3, "blockId": "b1", "queuePosition": 4,
+                  "truncated": 0, "skipped": [], "runsPastShowChange": None},
+            lambda c: c.queue_block("album", track_id="id7", limit=5,
+                                    order="shuffle"))
+        self.assertEqual((seen["method"], seen["path"]),
+                         ("POST", "/dj/queue-block"))
+        self.assertEqual(seen["body"], {"kind": "album", "trackId": "id7"})
+        self.assertTrue(out["ok"])
+        self.assertEqual((out["queued"], out["blockId"]), (3, "b1"))
+
+    def test_an_artist_block_carries_its_limit_and_order(self):
+        _, seen = self._answer(
+            200, {"ok": True, "queued": 5},
+            lambda c: c.queue_block("artist", artist="Toto", limit=5,
+                                    order="shuffle"))
+        self.assertEqual(seen["body"], {"kind": "artist", "artist": "Toto",
+                                        "limit": 5, "order": "shuffle"})
+
+    def test_a_station_without_the_route_is_unsupported_not_failed(self):
+        out, _ = self._answer(404, {"error": "Not found"},
+                              lambda c: c.queue_block("album", track_id="id7"))
+        self.assertFalse(out["ok"])
+        self.assertTrue(out["unsupported"])
+
+    def test_a_wholly_blocked_record_relays_the_words_and_the_skips(self):
+        out, _ = self._answer(
+            409, {"error": 'every track on "Rumours — Fleetwood Mac" is on '
+                           "the never-play blocklist — unblock it first "
+                           "(Library → Blocked)",
+                  "skipped": [{"title": "Dreams", "artist": "Fleetwood Mac",
+                               "reason": "blocked",
+                               "blockedBy": {"kind": "rule",
+                                             "label": "no soft rock"}}]},
+            lambda c: c.queue_block("album", track_id="id7"))
+        self.assertFalse(out["ok"])
+        self.assertFalse(out.get("unsupported"))
+        self.assertIn("never-play", out["error"])
+        self.assertEqual(out["skipped"][0]["title"], "Dreams")
+
+    def test_nothing_to_seed_from_never_reaches_the_station(self):
+        import httpx
+
+        calls = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.url.path)
+            return httpx.Response(200, json={})
+
+        out = self._call(handler, lambda c: c.queue_block("album"))
+        self.assertFalse(out["ok"])
+        self.assertEqual(calls, [])
+
+    def test_the_cancel_reports_removed_and_kept(self):
+        out, seen = self._answer(
+            200, {"removed": 9, "kept": 1, "label": "Rumours — Fleetwood Mac"},
+            lambda c: c.cancel_queued_block("b1"))
+        self.assertEqual((seen["method"], seen["path"]),
+                         ("DELETE", "/dj/queue/block/b1"))
+        self.assertEqual((out["removed"], out["kept"]), (9, 1))
+        self.assertIn("Rumours", out["label"])
+
+    def test_a_block_with_nothing_left_is_a_fact_not_a_failure(self):
+        out, _ = self._answer(404, {"error": "no queued tracks from that block"},
+                              lambda c: c.cancel_queued_block("b1"))
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["reason"], "nothing-left")
+
+
+class TestTheShowThatPausesForTalk(unittest.TestCase):
+    """station_config.pause_talk_seconds — SUB/WAVE 1.15's pause-and-talk
+    (#1645) mirrored: a per-show opt-in and a station-wide threshold, both
+    on the authed /settings read. A manual segment from this line is
+    eligible on the station's side, so on such a show the DJ's "coming
+    right up" is wrong by a record's length unless it knows the number.
+    """
+
+    SETTINGS = {"values": {
+        "pauseTalkMinSeconds": 30,
+        "shows": [{"id": "s_long", "name": "Late Night", "pauseTalk": True},
+                  {"id": "s_duck", "name": "Drive", "pauseTalk": False}],
+    }}
+
+    def _read(self, payload, show_id):
+        from unittest import mock
+
+        from station_config import StationConfig
+
+        async def run():
+            with mock.patch("station_config.admin_credentials",
+                            return_value=("op", "pw")):
+                sc = StationConfig(base_url="http://station")
+            # Primed, never fetched: the suite is network-free by house rule.
+            sc.prime("/settings", payload)
+            try:
+                return await sc.pause_talk_seconds(show_id)
+            finally:
+                await sc.aclose()
+
+        return asyncio.run(run())
+
+    def test_a_show_that_opted_in_reads_the_stations_threshold(self):
+        self.assertEqual(self._read(self.SETTINGS, "s_long"), 30)
+
+    def test_a_show_that_did_not_opt_in_is_zero(self):
+        self.assertEqual(self._read(self.SETTINGS, "s_duck"), 0)
+        self.assertEqual(self._read(self.SETTINGS, "s_missing"), 0)
+        self.assertEqual(self._read(self.SETTINGS, ""), 0)
+
+    def test_an_absent_threshold_is_the_stations_own_default(self):
+        # settings/defaults.ts: pauseTalkMinSeconds 20, bounds 5-90.
+        only_show = {"values": {"shows": [{"id": "s_long", "pauseTalk": True}]}}
+        self.assertEqual(self._read(only_show, "s_long"), 20)
+        wild = {"values": {"pauseTalkMinSeconds": 900,
+                           "shows": [{"id": "s_long", "pauseTalk": True}]}}
+        self.assertEqual(self._read(wild, "s_long"), 20)
+
+    def test_an_unreadable_station_is_zero(self):
+        self.assertEqual(self._read({"defaults": {}}, "s_long"), 0)

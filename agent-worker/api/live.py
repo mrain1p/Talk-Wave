@@ -248,6 +248,15 @@ def _for_this_caller(request: web.Request, payload: dict) -> dict:
         cfg_now.get("open_lines_enabled")
         and cfg_now.get("open_lines_guest_trigger")
         and tier in {"guest", "admin"})
+    # Whether the GUIDE offers this caller the show-takeover button. Same
+    # rule as the DJ's own takeover tool — `allow_takeover` against this
+    # caller's tier — because the operator's ask was exactly that: a
+    # usertype who may change the DJ on a call may change it from the
+    # schedule too (2026-09-08). Set here rather than beside `canAsk`
+    # because canAsk only exists when the help button is on, and this
+    # button's offer must not depend on an unrelated setting.
+    out["takeoverMine"] = settings_store.tier_reaches(
+        cfg_now.get("allow_takeover"), tier)
 
     if payload.get("canAsk") is None:
         return out                          # the help button is switched off

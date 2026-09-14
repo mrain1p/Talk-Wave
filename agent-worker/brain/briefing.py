@@ -185,6 +185,55 @@ def _listener_count(np: dict) -> int | None:
     return None
 
 
+def _fmt_station_floor(seconds: int) -> str:
+    """The shortest record the station will pick for itself.
+
+    #1582 gave the picker a minimum length; the MANUAL queue this call line
+    pushes through is not one of the paths it guards, so the station refuses a
+    41-second interlude for itself and accepts the same one from here. The
+    row's own length is printed beside it now (rows.py), so the DJ can hold to
+    the operator's floor rather than discover it.
+    """
+    if not seconds:
+        return ""
+    return (f"The station will not pick anything under {seconds}s for itself. "
+            "Track lengths are on the result rows — don't offer or queue one "
+            "below that unless the caller asks for it by name.")
+
+
+def _fmt_talk_window(between_tracks_only: bool) -> str:
+    """Whether the station is holding its own talk to the gaps.
+
+    #1562. Manual triggers — which is every line this sidecar sends — are
+    exempt by design. This side holds the post-call hand-back to the gap
+    itself (station.dj_say, hold_for_gap); the mid-call announcement is not
+    held, because a caller cannot be left waiting on a record's end.
+    """
+    if not between_tracks_only:
+        return ""
+    return ("The station is holding its own spoken segments to the gaps "
+            "between tracks. Announcements from this line still go straight "
+            "out over the music, so keep them short; the sign-off after the "
+            "call waits for the gap when the record's end is in reach.")
+
+
+def _fmt_pause_talk(seconds: int) -> str:
+    """Whether this show turns a long segment into a music-free break.
+
+    #1645 (SUB/WAVE 1.15). A segment over the threshold waits for the record
+    to END and airs in the clear — and a segment this line fires is
+    eligible. Without this the DJ promises "coming right up" for something
+    the station will hold for three minutes.
+    """
+    if not seconds:
+        return ""
+    return (f"This show runs long segments as PAUSE-AND-TALK breaks: anything "
+            f"over {int(seconds)}s waits for the record playing to end and "
+            "goes out in the clear, not over the music. When you run a "
+            "segment, say it's coming up after this song, not that it's on "
+            "now.")
+
+
 def _fmt_guests(show: dict) -> str:
     """Who else is in the booth.
 
@@ -206,7 +255,30 @@ def _fmt_guests(show: dict) -> str:
 
 
 # The show's musical shape, in the order it reads naturally aloud.
-_SHAPE_FIELDS = (("genres", ""), ("moods", ""), ("eras", ""), ("energies", " energy"))
+_SHAPE_FIELDS = (("genres", ""), ("moods", ""), ("energies", " energy"))
+
+
+def _fmt_era(era) -> str:
+    """One era window as a DJ would say it.
+
+    The station files these as `{fromYear, toYear}` with either end nullable
+    (schemas/show.ts EraWindow), and #1605 gave the operator a UI to set
+    single-year and open-ended ones — so the shapes are about to get commoner.
+    _fld() rendered the dict itself, which put "{'fromYear': 1990, 'toYear':
+    1999}" in a prompt the DJ reads out of.
+    """
+    if not isinstance(era, dict):
+        return _fld(era, 60)
+    lo, hi = era.get("fromYear"), era.get("toYear")
+    lo = int(lo) if isinstance(lo, (int, float)) and not isinstance(lo, bool) else None
+    hi = int(hi) if isinstance(hi, (int, float)) and not isinstance(hi, bool) else None
+    if lo and hi:
+        return str(lo) if lo == hi else f"{lo}-{hi}"
+    if lo:
+        return f"{lo} onwards"
+    if hi:
+        return f"up to {hi}"
+    return ""
 
 
 def _fmt_show_shape(show: dict) -> str:
@@ -222,9 +294,21 @@ def _fmt_show_shape(show: dict) -> str:
         values = [_fld(v, 60) for v in (show.get(key) or []) if str(v).strip()]
         if values:
             bits.append(", ".join(values[:4]) + suffix)
+    eras = [_fmt_era(e) for e in (show.get("eras") or [])]
+    eras = [e for e in eras if e]
+    if eras:
+        bits.append(", ".join(eras[:4]))
     if not bits:
         return ""
     strict = " The station holds to that strictly tonight." if show.get("filtersStrict") else ""
+    # A FIXED PLAYLIST IS NOT A FILTER (#1615, #1482, #1533). When the show
+    # runs off one, the picker plays it through before repeating and refuses
+    # anything outside it — but the REQUEST path does not apply that rule, so
+    # a caller's track goes in as an exception to the show rather than as part
+    # of it. The DJ should say so rather than describe it as a normal pick.
+    if show.get("playlistStrict") or show.get("playlistIds"):
+        strict += (" Tonight runs off a fixed playlist: a request still goes "
+                   "in, but as an exception to the show, not as part of it.")
     return "This show plays: " + "; ".join(bits) + "." + strict
 
 
@@ -491,7 +575,10 @@ def _fmt_schedule(schedule: dict, active_id: str, takeover: bool = False) -> str
 
 
 async def station_context(station, cfg: dict, snap: dict, show: dict,
-                          speak_clock: bool = True, persona_id: str = "") -> str:
+                          speak_clock: bool = True, persona_id: str = "",
+                          track_floor: int = 0,
+                          talk_between_tracks: bool = False,
+                          pause_talk: int = 0) -> str:
     """Everything true about the station right now, as prompt text.
 
     Every read is already in the SNAPSHOT — including the schedule — so this
@@ -507,6 +594,15 @@ async def station_context(station, cfg: dict, snap: dict, show: dict,
         # paid for on every turn.
         _fmt_guests(show),
         _fmt_show_shape(show),
+        # Two facts the station applies to itself and not to us — the
+        # length floor its picker holds to (#1582) and whether it is keeping
+        # its own talk to the gaps (#1562). Both off the cached /settings
+        # read; both a line, and only when set.
+        _fmt_station_floor(track_floor),
+        _fmt_talk_window(talk_between_tracks),
+        # And a third (#1645): whether this show holds a long segment for the
+        # end of the record. Per show, so it rides the live show's id.
+        _fmt_pause_talk(pause_talk),
         _fmt_recent(snap["state"], int(cfg.get("context_recent_tracks", 3))),
         _fmt_upcoming(snap["state"], int(cfg.get("context_upcoming", 2))),
         # Nothing on a normal night — see _fmt_stream_health.

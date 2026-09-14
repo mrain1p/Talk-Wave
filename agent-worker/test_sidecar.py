@@ -71,6 +71,7 @@ from tests.test_http import (  # noqa: F401
     TestTheAuthLockoutKeyIsUnspoofable,
     TestAPasswordAttemptCannotChooseItsOwnLockoutBucket,
     TestHttpSurface,
+    TestTheGuidesTakeoverIsGatedByItsSetting,
     TestJoinTokensExpire,
     TestTheModelListFollowsTheEndpoint,
     TestUsageControls,
@@ -81,6 +82,11 @@ from tests.test_http import (  # noqa: F401
 from tests.test_widget import (
     TestTheFacesSitSideBySide,
     TestTheGuideCardRidesItsOwnSwitch,
+    TestTheGuideOffersTheTakeover,
+    TestTheCardWearsOneSurfaceFamily,
+    TestThePlayersDockIsTwoBandsThatLineUp,
+    TestLandscapeSpendsTheAxisItHas,
+    TestNotOnTheScheduleReadsAsAHeading,
     TestSectionTagsCanShowTheirState,  # noqa: F401
     TestThePanelKeepsItsOwnRules,
     TestThePanelStylesStayOffTheCallPage,
@@ -577,3 +583,20 @@ if __name__ == "__main__":
     import unittest
 
     unittest.main(verbosity=2)
+
+# The 2026-09-14 upstream pass: SUB/WAVE 1.14's one-press block queue and its
+# undo, and 1.15's pause-and-talk reaching the skill tool and the briefing.
+from tests.test_station import (  # noqa: F401
+    TestTheBlockQueueClient,
+    TestTheShowThatPausesForTalk,
+)
+from tests.test_album_tools import (  # noqa: F401
+    TestTheStationQueuesTheRecordItself,
+    TestAQueuedBlockComesOutAsOnePress,
+)
+from tests.test_tools_logic import (  # noqa: F401
+    TestAHeldSegmentIsNotReportedAsStoodDown,
+)
+from tests.test_brain import (  # noqa: F401
+    TestTheDJIsToldWhenTheShowPausesForTalk,
+)

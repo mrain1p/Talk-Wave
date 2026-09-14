@@ -19,10 +19,49 @@ from brain.briefing import (
 )
 
 
+async def _station_switches(speak_clock, track_floor, talk_between_tracks,
+                            pause_talk=None, show_id=""):
+    """The four station settings the prompt mirrors, filled in where the
+    caller did not pass them.
+
+    The call path passes all four — its StationConfig has /settings cached,
+    so they are free there. This covers the preview and chat paths, which
+    build their own snapshot, with the single authed read they already make.
+    Each falls back to the station's own default: the clock speaks, there is
+    no length floor, talk is not held to the gaps, no show pauses for talk.
+    """
+    if speak_clock is not None and track_floor is not None             and talk_between_tracks is not None and pause_talk is not None:
+        return speak_clock, track_floor, talk_between_tracks, pause_talk
+
+    from station_config import StationConfig
+
+    sc = StationConfig()
+    try:
+        if speak_clock is None:
+            speak_clock = await sc.speak_clock()
+        if track_floor is None:
+            track_floor = await sc.track_floor()
+        if talk_between_tracks is None:
+            talk_between_tracks = await sc.talk_between_tracks_only()
+        if pause_talk is None:
+            pause_talk = await sc.pause_talk_seconds(str(show_id or ""))
+    except Exception:                                          # noqa: BLE001
+        pass
+    finally:
+        await sc.aclose()
+    return (True if speak_clock is None else speak_clock,
+            0 if track_floor is None else track_floor,
+            False if talk_between_tracks is None else talk_between_tracks,
+            0 if pause_talk is None else pause_talk)
+
+
 async def build_system_prompt(
     station: StationClient, persona: dict, snapshot: dict | None = None,
     cfg: dict | None = None, mode: str = "call",
     speak_clock: bool | None = None,
+    track_floor: int | None = None,
+    talk_between_tracks: bool | None = None,
+    pause_talk: int | None = None,
 ) -> str:
     """`cfg` must be the settings ALREADY RESOLVED for this caller's tier.
 
@@ -42,6 +81,10 @@ async def build_system_prompt(
     # A pre-fetched snapshot avoids repeating the station reads the caller is
     # already waiting on. Falls back to fetching if none was supplied.
     snap = snapshot or await station.snapshot(with_skills=bool(cfg.get("allow_skills")))
+    # Resolved before the skills are narrowed: a co-hosted segment is only
+    # runnable when somebody else is in the booth (#1534). No I/O - it works
+    # off payloads the snapshot already carries.
+    show = await station.active_show(snap["now_playing"], snap.get("schedule"))
     if snapshot is None and snap.get("skills"):
         # Only when we fetched it ourselves: the call path narrows the
         # catalogue to the on-air DJ before handing it over (session.prepare),
@@ -58,26 +101,21 @@ async def build_system_prompt(
             assigned = None
         finally:
             await sc.aclose()
-        snap["skills"] = runnable_skills(snap["skills"], assigned)
-    show = await station.active_show(snap["now_playing"], snap.get("schedule"))
+        snap["skills"] = runnable_skills(
+            snap["skills"], assigned, bool((show or {}).get("guests")))
 
     # The clock mirror (djSpeakClock, SUB/WAVE 1.8). The call path passes it
     # in — its StationConfig caches /settings, so the read is free there;
     # this fallback covers the preview and chat paths with one authed read.
-    if speak_clock is None:
-        from station_config import StationConfig
-
-        sc = StationConfig()
-        try:
-            speak_clock = await sc.speak_clock()
-        except Exception:                                     # noqa: BLE001
-            speak_clock = True
-        finally:
-            await sc.aclose()
+    speak_clock, track_floor, talk_between_tracks, pause_talk =         await _station_switches(speak_clock, track_floor, talk_between_tracks,
+                                pause_talk, show.get("id", ""))
 
     facts = await station_context(station, cfg, snap, show,
                                   speak_clock=speak_clock,
-                                  persona_id=str(persona.get("id") or ""))
+                                  persona_id=str(persona.get("id") or ""),
+                                  track_floor=track_floor,
+                                  talk_between_tracks=talk_between_tracks,
+                                  pause_talk=pause_talk)
 
     # NAME_BUDGET: identity strings ride the opening line of the prompt on
     # every turn, and while soul/topic are clipped to CARD_BUDGET their short

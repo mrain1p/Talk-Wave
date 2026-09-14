@@ -22,7 +22,7 @@ from __future__ import annotations
 from ..actions import CallActions
 from station import StationClient
 
-from .music import _when_it_plays
+from .music import _when_it_plays, read_receipt
 from .registry import library_search_needs_mcp
 from .rows import _fmt_track
 
@@ -124,14 +124,28 @@ def build_read_tools(cfg: dict, station: StationClient,
                     "the read failed. That is NOT a no: don't tell them it "
                     "was lost, say you can't see it from here just now."
                 )
-            track = st.get("track") or st.get("matched") or {}
-            if isinstance(track, dict) and track.get("title"):
+            verdict, track, ack, position = read_receipt(st)
+            if verdict == "failed":
+                return (
+                    "That request did not go in: "
+                    f"{ack or 'the station found nothing close enough'}. "
+                    "It is NOT queued. Say so plainly rather than leaving "
+                    "them expecting it."
+                )
+            if verdict == "standing":
+                return (
+                    "That request matched " + _fmt_track(track) + ", but the "
+                    "station added no new queue entry — it is already in the "
+                    "running order, or the booth answered without queueing "
+                    "it. Do not guess at when it plays."
+                )
+            if verdict == "queued":
                 return (
                     "That request is matched: " + _fmt_track(track) + ". "
                     "It is queued, not playing yet. "
-                    + _when_it_plays(st.get("queuePosition"))
+                    + _when_it_plays(position)
                 )
-            if str(st.get("status") or "").lower() == "pending":
+            if verdict == "pending":
                 return (
                     "Still being matched in the booth — not queued yet, and "
                     "not lost. Check again in a little while, and don't "

@@ -313,6 +313,96 @@ class TestAStandingOverrideIsVisibleAndClearable(unittest.TestCase):
         self.assertEqual(p["kind"], "genre-lock")
 
 
+class TestTheGuidesTakeoverIsGatedByItsSetting(_TempStores):
+    """POST /station/override — the guide card's "Put on air" button.
+
+    The operator's rule for this power is a TIER, not the panel's password:
+    "if a usertype has permission to change the dj/takeover, then they should
+    have permission to do this from this page" (2026-09-08). So the gate is
+    `allow_takeover` against the caller's own tier — the same setting the
+    DJ's subwave_takeover_show rides — and these exercise it through the real
+    router, because a permission that is only correct in a helper is no
+    comfort if the route forgets to call it.
+    """
+
+    def _post(self, body, headers=None):
+        import asyncio
+
+        from aiohttp.test_utils import TestClient, TestServer
+
+        import token_server
+
+        async def go():
+            client = TestClient(TestServer(token_server.build_app()))
+            await client.start_server()
+            try:
+                r = await client.post("/station/override", json=body,
+                                      headers=headers or {})
+                return r.status, await r.json()
+            finally:
+                await client.close()
+
+        return asyncio.run(go())
+
+    def test_the_setting_off_refuses_everyone(self):
+        import settings as settings_store
+
+        settings_store.save({"allow_takeover": settings_store.TIER_OFF})
+        status, body = self._post({"showId": "s1"})
+        self.assertEqual(status, 403)
+        self.assertIn("access level", body["error"])
+
+    def test_admin_only_refuses_a_caller_who_typed_nothing(self):
+        # The default. An open caller is not an operator, and the refusal is
+        # about their level rather than about the station being unreachable —
+        # so the phone's own door is open here and the tier is what refuses.
+        import settings as settings_store
+
+        settings_store.save({"allow_takeover": "admin", "front_access": "open"})
+        status, _ = self._post({"showId": "s1"})
+        self.assertEqual(status, 403)
+
+    def test_the_granted_tier_gets_through_to_the_station(self):
+        # Granted to everyone, the gate opens and the request reaches
+        # pin_show — which refuses for want of station credentials in a test
+        # box. 502, not 403: that is the difference between "you may not" and
+        # "the station would not", and it is what proves the gate opened.
+        import settings as settings_store
+
+        # front_access too: this rides the PHONE's own door first, and a
+        # fresh box has that shut until an admin password exists. That is the
+        # gate being right, not the takeover's — so open it and measure the
+        # one under test.
+        settings_store.save({"allow_takeover": "open", "front_access": "open"})
+        status, body = self._post({"showId": "s1", "minutes": 60})
+        self.assertEqual(status, 502)
+        self.assertFalse(body.get("ok"))
+
+    def test_a_missing_show_is_a_mistake_and_says_so(self):
+        # `showId: null` is Default programming (#1543) and absent is a bug
+        # in the caller — the two must not read the same.
+        import settings as settings_store
+
+        settings_store.save({"allow_takeover": "open", "front_access": "open"})
+        status, body = self._post({"minutes": 60})
+        self.assertEqual(status, 400)
+        self.assertIn("showId", body["error"])
+        # An empty string is neither: not a show id, and not the station's
+        # own mix. Refused rather than posted for the station to reject.
+        self.assertEqual(self._post({"showId": "  "})[0], 400)
+
+    def test_default_programming_is_a_pin_and_reaches_the_station(self):
+        # `showId: null` pins the station's own mix over the grid, which
+        # override_payload already reads back as a takeover — so it has to
+        # travel as null rather than as "". 502 here, like the named show:
+        # the gate opened and the station is what could not be reached.
+        import settings as settings_store
+
+        settings_store.save({"allow_takeover": "open", "front_access": "open"})
+        status, body = self._post({"showId": None})
+        self.assertEqual(status, 502)
+        self.assertFalse(body.get("ok"))
+
 class TestUsageControls(unittest.TestCase):
     """The guard against runaway spend — every refusal must fire, phrased
     in-world, and 0 must mean unlimited."""

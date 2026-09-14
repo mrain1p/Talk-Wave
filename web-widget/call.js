@@ -6876,11 +6876,51 @@
       if (guideOpen && guideView === 'week') { applyGuideSpan(); repaintGuideGrid(); }
     });
   })();
-  // Whether a name FITS its block, in the block's own type: 6.4px is one
-  // character of the 9.5px mono the label wears. A name that does not fit
-  // is left out rather than shown as a stub.
+  // Whether a name FITS its block, in the block's own type. 6.1px is one
+  // character of the 9.5px mono the label wears: ui-monospace advances
+  // 0.6em, and .gdcellname's .04em of tracking adds the rest. It was 6.4 —
+  // a rounding UP, from when the only two answers were the whole name or
+  // nothing — and the quarter-pixel it cost per character was the
+  // difference between "TA" and an unlabelled block in a two-hour cell on a
+  // 390px phone: 2.34 characters of room read as 1. The 14 is the block's
+  // own 6px padding each side plus its border.
   function fitsChars(span) {
-    return Math.floor((span * guideHourPx() - 14) / 6.4);
+    return Math.floor((span * guideHourPx() - 14) / 6.1);
+  }
+  // …and what to write in a block the full name does not fit. It used to be
+  // NOTHING — "U…" tells a reader less than clean colour plus the key does
+  // — but that left a six-hour week as coloured bars with the key scrolled
+  // off the bottom: "i want to be able to see the schedule names or
+  // initials in the areas without any key" (operator, 2026-09-08). So the
+  // name steps DOWN through forms that are all still readable as a name
+  // rather than being cut into a stub: the whole thing, then without a
+  // leading article, then the significant word, then the initials. The
+  // block keeps its full name on hover and a press still opens the show.
+  const GUIDE_STOPWORDS = ['the', 'a', 'an', 'and', 'of'];
+  function blockLabel(name, span) {
+    const room = fitsChars(span);
+    if (room < 2) return '';
+    const full = String(name || '').trim();
+    if (!full) return '';
+    if (full.length <= room) return full;
+    // The name only, where the station has hung a tagline off it after a
+    // middle dot ("THE PIAZZA · Golden-Era Pop").
+    const head = full.split('\u00b7')[0].trim();
+    if (head && head.length <= room) return head;
+    const words = head.split(/\s+/).filter(Boolean);
+    const big = words.filter((w) => !GUIDE_STOPWORDS.includes(w.toLowerCase()));
+    const kept = (big.length ? big : words);
+    const shorter = kept.join(' ');
+    if (shorter && shorter.length <= room) return shorter;
+    if (kept[0] && kept[0].length <= room) return kept[0];
+    const initials = kept.map((w) => w[0]).join('').toUpperCase();
+    return initials.length <= room ? initials : '';
+  }
+  function nowMark(now) {
+    const mark = document.createElement('span');
+    mark.className = 'gdnowmark'; mark.setAttribute('aria-hidden', 'true');
+    mark.style.left = ((now.hour + 0.5) / 24 * 100).toFixed(3) + '%';
+    return mark;
   }
   // The grid is painted from the last read, so the span control can
   // repaint it without asking the station again.
@@ -6903,6 +6943,9 @@
       t.textContent = fmtHour(h).replace(' ', '');
       track.appendChild(t);
     }
+    // …and the ruler carries the head of the same line, so it starts at
+    // the hour it names rather than in mid-air below it.
+    track.appendChild(nowMark(now));
     ruler.appendChild(track);
     grid.appendChild(ruler);
     GUIDE_DAYS.forEach((day, dayIndex) => {
@@ -6931,14 +6974,12 @@
           const label = show.title || show.name;
           // NO TIME INSIDE THE BLOCK: where it sits and the ruler above
           // already say when, and the second line was eating the room the
-          // name needed. And a name that does not FIT is left out rather
-          // than shown as a stub — "U…" tells a reader nothing, while
-          // clean colour plus the key underneath does (operator,
-          // 2026-09-03). The block keeps its full name on hover, and a
-          // press opens the show either way.
-          if (label.length <= fitsChars(span)) {
+          // name needed. What goes in is the longest form of the name that
+          // fits the block — see blockLabel.
+          const shortened = blockLabel(label, span);
+          if (shortened) {
             const n = document.createElement('span'); n.className = 'gdcellname';
-            n.textContent = label;
+            n.textContent = shortened;
             b.appendChild(n);
           }
           b.title = label + ' · ' + fmtRange(r.start, r.end);
@@ -6947,12 +6988,12 @@
           b.onclick = () => { setGuideView('day'); openInList(r.id); };
           cells.appendChild(b);
         });
-      if (dayIndex === now.dayIndex) {
-        const mark = document.createElement('span');
-        mark.className = 'gdnowmark'; mark.setAttribute('aria-hidden', 'true');
-        mark.style.left = ((now.hour + 0.5) / 24 * 100).toFixed(3) + '%';
-        cells.appendChild(mark);
-      }
+      // THE CLOCK IS A COLUMN, NOT A TICK ON ONE ROW. It was drawn on
+      // today's row alone, so the one thing every row is read against
+      // stopped at the first of seven (operator, 2026-09-08). Every row
+      // carries it at the same column; the stylesheet gives today's the
+      // strength and the other six its shadow.
+      cells.appendChild(nowMark(now));
       row.appendChild(cells);
       grid.appendChild(row);
     });
@@ -7425,6 +7466,69 @@
     box.appendChild(heroFoot(fold, runs, show.id));
     return box;
   }
+  // ---- THE TAKEOVER, FROM THE SCHEDULE ---------------------------------
+  // "on the schedule should have a button to switch DJ's right now, basically
+  // a show takeover... and for all items including those not on the schedule.
+  // If a usertype has permission to change the dj/takeover, then they should
+  // have permission to do this from this page" (operator, 2026-09-08).
+  //
+  // So the offer is the SERVER's answer, not the widget's guess: /live sends
+  // `takeoverMine`, which is `allow_takeover` resolved against this caller's
+  // own tier - the same gate the DJ's subwave_takeover_show rides. The
+  // endpoint checks it again for itself; this only decides whether a button
+  // a caller cannot use is drawn at all.
+  function takeoverOffered() {
+    return !!(shown || live || {}).takeoverMine;
+  }
+  // One press, one hour - the DJ tool's own default, and the station clamps
+  // the window at its end anyway. It is not instant and the button must not
+  // claim it is: the station stores the pin and airs the handover at the next
+  // track boundary, which is what "At the break" says.
+  const TAKEOVER_MINUTES = 60;
+  function takeoverBtn(showId, isLive) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'gdtake' + (isLive ? ' back' : '');
+    b.textContent = isLive ? 'Hand back' : 'Put on air';
+    b.title = isLive
+      ? 'Cancel the takeover and give the schedule back'
+      : 'Put this show on air now, ahead of the schedule';
+    const say = (word, bad) => {
+      b.textContent = word;
+      b.classList.toggle('bad', !!bad);
+    };
+    b.onclick = async (e) => {
+      // The row itself is a button - a press here is about the show, not
+      // about opening the row.
+      e.stopPropagation();
+      if (b.disabled) return;
+      b.disabled = true;
+      say('Sending');
+      try {
+        const r = await fetch(isLive ? '/station/override/clear'
+                                     : '/station/override', {
+          method: 'POST',
+          headers: keyHeaders({ 'Content-Type': 'application/json' }),
+          body: isLive ? '{}' : JSON.stringify(
+            { showId: showId, minutes: TAKEOVER_MINUTES }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.ok === false) {
+          throw new Error(d.error || 'the station said no');
+        }
+        say(isLive ? 'Handed back' : 'At the break');
+        b.classList.add('done');
+        // The station's own /schedule is what the guide reads and both ends
+        // cache it, so the pin will not show here for a few minutes - ask
+        // again rather than leaving a week that disagrees with what was
+        // just done.
+        loadGuide(true);
+      } catch (err) {
+        say(String(err.message || err).slice(0, 40), true);
+        b.disabled = false;
+      }
+    };
+    return b;
+  }
   // A LISTING ROW, not a card (design handoff, 2026-09-03): WHEN in its own
   // column, then the show's tone as a spine, then the name with its flag and
   // the way in. The row used to lead with the name and bury the time in a
@@ -7468,11 +7572,34 @@
     end.append(flag, chev);
     title.append(name, end);
     const sub = document.createElement('div'); sub.className = 'gdrowsub';
-    sub.textContent = showGenre(show) || show.tagline || '';
+    // The genre and the DJ in a span of their own, so the SECOND line can
+    // carry the takeover beside them and the ellipsis still lands on the
+    // words rather than on the row.
+    const subt = document.createElement('span'); subt.className = 'gdrowsubt';
+    subt.textContent = showGenre(show) || show.tagline || '';
     if (cast[0]) {
       const h = document.createElement('span'); h.className = 'gdrowhost';
-      h.textContent = (sub.textContent ? ' · ' : '') + cast[0].name;
-      sub.appendChild(h);
+      h.textContent = (subt.textContent ? ' · ' : '') + cast[0].name;
+      subt.appendChild(h);
+    }
+    sub.appendChild(subt);
+    // The takeover, on the row's SECOND line. It began on the first, beside
+    // the flag and the chevron - and at 360px "THE TRAIL AHEAD" came out as
+    // "THE TRAIL AH...", which is the show's name given up for a control.
+    // The line under it carries a genre and a DJ and then a third of the row
+    // in white space, which is where a button belongs.
+    //
+    // The PINNED show's button is the way back out of the pin - keyed to the
+    // pin and not to what is on air, because a takeover lands at the next
+    // track boundary and until then the thing just done would have no row to
+    // be undone from. A show airing in its own slot is the one row with
+    // nothing to offer: it is already the answer to the question the button
+    // asks.
+    if (takeoverOffered()) {
+      const pinned = !!(guideData && guideData.override
+                        && guideData.override.showId === show.id);
+      if (pinned) sub.appendChild(takeoverBtn(show.id, true));
+      else if (!live) sub.appendChild(takeoverBtn(show.id, false));
     }
     metaEl.append(title, sub);
     head.append(when, spine, metaEl);

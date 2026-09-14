@@ -194,6 +194,25 @@ def build_on_air_tools(
             result = await station.run_skill(name)
             if not result.get("ok"):
                 return actions.station_refused(result, "That segment didn't run")
+            if result.get("deferred") is True:
+                # HELD, not stood down — SUB/WAVE 1.15's pause-and-talk
+                # (#1645): on a show that opted in, a segment longer than
+                # the station's threshold waits for the record to END and
+                # airs in the clear. It comes back `aired: false, queued:
+                # true, deferred: true`, which the stand-down branch below
+                # read as "nothing is coming" — the one answer that is
+                # wrong. No hold here: the air is busy LATER, and the guard
+                # hears the station's own voice events when it is.
+                actions.note("skill", name)
+                return (
+                    f"The {name} segment is accepted and HELD: this show "
+                    "runs long segments as pause-and-talk breaks, so it goes "
+                    "out when the record playing now ENDS — in the clear, "
+                    "not over the music — and not this second. Tell the "
+                    "caller it's coming up after this song, in your own "
+                    "words; don't promise a time, and don't go quiet now — "
+                    "the air is yours until it starts."
+                )
             if result.get("aired") is False:
                 # Station 1.8's stand-down (their #1416): the skill ran, looked
                 # at what it fetched, and had nothing worth saying — a 200 with
@@ -288,14 +307,18 @@ def build_on_air_tools(
         # effect outlives the call: everything else here is over in a minute,
         # and this changes what the station IS for the next hour.
         @lk_llm.function_tool(name="subwave_takeover_show")
-        async def takeover_show(show: str, minutes: int = 60) -> str:
+        async def takeover_show(show: str, minutes: int = 60,
+                                until_schedule: bool = False) -> str:
             """Put a different show on air, ahead of the schedule, for a while.
             THIS is the tool for "change the DJ", "put Wade on", "switch to
             the jazz show" — a show change is never a song request. `show` is
             the show's name as the caller said it (a DJ's name finds their
             show). `minutes` defaults to an hour — pass more ONLY if they
-            asked for longer. This changes what EVERYONE hears, not just this
-            caller, and it outlasts the call, so use it when they have
+            asked for longer. Pass `until_schedule=True` INSTEAD when they ask
+            for it to run until the next show would have started anyway ("keep
+            him on till his slot ends") — the station works the window out and
+            `minutes` is ignored. This changes what EVERYONE hears, not just
+            this caller, and it outlasts the call, so use it when they have
             actually asked for it."""
             if actions.at_limit():
                 return actions.refusal()
@@ -329,6 +352,35 @@ def build_on_air_tools(
             asked = int(minutes or 0) or 60
             window = max(StationClient.TAKEOVER_MIN_MINUTES,
                          min(StationClient.TAKEOVER_MAX_MINUTES, asked))
+            # UNTIL THE GRID WOULD HAVE MOVED ON (#1610). The station resolves
+            # the window itself and REFUSES `minutes` in that mode, so nothing
+            # is clamped and nothing is guessed. A station without the option
+            # answers 400 and we say so plainly rather than silently pinning a
+            # fixed hour the caller did not ask for.
+            if until_schedule:
+                ends = await station.next_schedule_change()
+                result = await station.pin_show(picked.get("id"), 0,
+                                                until="schedule-change")
+                if not result.get("ok"):
+                    return actions.station_refused(
+                        result, "That takeover didn't go through. If the "
+                        "station wouldn't take 'until the schedule changes', "
+                        "ask them how long they want instead and use minutes")
+                name = str(picked.get("name") or "that show").strip()
+                actions.note("takeover", f"{name} until the schedule changes")
+                mins = ends.get("minutes") if isinstance(ends, dict) else None
+                how_long = (f" That is about {int(mins)} minutes from now."
+                            if isinstance(mins, (int, float)) and mins else
+                            " Don't put a time on it — the station has not "
+                            "said how long that is.")
+                whose_ = f" That is {who}'s show." if who else ""
+                return (
+                    f"Done — {name} is on until the schedule would have "
+                    f"changed anyway.{how_long}{whose_} It takes over at the "
+                    "end of the record playing now, not this second. Everyone "
+                    "listening is about to get a different show, so say so in "
+                    "your own words."
+                )
             result = await station.pin_show(picked.get("id"), window)
             if not result.get("ok"):
                 return actions.station_refused(result, "That takeover didn't go through")
@@ -469,6 +521,16 @@ def build_on_air_tools(
             # would cancel a takeover the operator set, from a caller who only
             # asked about a genre.
             pinned = (await station.schedule()).get("override") or {}
+            if isinstance(pinned, dict) and "showId" in pinned \
+                    and pinned.get("showId") is None:
+                # Default programming pinned over the grid (#1543): something
+                # IS up, it is just not a genre lock and not a show.
+                return (
+                    "What's pinned is DEFAULT PROGRAMMING — the station's own "
+                    "mix over the schedule, not a genre lock. This won't lift "
+                    "it. If they want the grid back, that is "
+                    "subwave_cancel_takeover — check they mean that first."
+                )
             show_id = str(pinned.get("showId") or "")
             if not show_id:
                 return ("Nothing is pinned — there's no genre lock to lift. "

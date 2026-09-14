@@ -162,29 +162,19 @@ def era_year(t: dict) -> str:
     return str(t.get("year") or "")[:12].strip()
 
 
-def _fmt_track(t: dict, with_id: bool = False) -> str:
-    # Every one of these fields comes from the station and goes into the
-    # prompt, where length is latency on every turn for the rest of the call
-    # and is paid for per token. The count is capped at 8 results; nothing
-    # capped the size of one, so a single malformed record — a title that is
-    # really a description, a tag dump in an album field — could dwarf the
-    # rest of the briefing. A track that needs more than this to name itself
-    # is not one the DJ can read out anyway.
-    def f(key: str, limit: int = 120) -> str:
-        return str(t.get(key) or "")[:limit].strip()
+def _feel_bits(t: dict, f) -> list[str]:
+    """The station's own per-track facts, in the order a DJ would say them.
 
-    bits = f"\"{f('title') or '?'}\" by {f('artist') or '?'}"
-    if f("album"):
-        # The era-resolved year, not the raw file year — see era_year. On the
-        # live library the difference is already real: "Action Man in Motown
-        # Suit" files as 2014 with originalYear 1981, and the station's own
-        # announcer now says 1981 while a raw read here said 2014 back.
-        year = era_year(t)
-        bits += f" ({f('album')}" + (f", {year})" if year else ")")
+    Split out of _fmt_track because it is a LADDER — one independent rung
+    per field the station may or may not have sent — and the complexity
+    counter cannot tell a ladder from a tangle. The twelfth rung (duration,
+    the 2026-09-07 upstream pass) is the one that tipped it over, and it is
+    the same shape as the first.
+    """
     # The station stores mood tags and an energy score per track and returns
     # them on every search hit. Dropping them left the DJ describing records it
     # had real information about purely from the title.
-    feel = []
+    feel: list[str] = []
     moods = t.get("moods") or []
     if isinstance(moods, list) and moods:
         feel.extend(str(m)[:40] for m in moods[:3])
@@ -221,10 +211,42 @@ def _fmt_track(t: dict, with_id: bool = False) -> str:
     bpm = t.get("bpm")
     if isinstance(bpm, (int, float)) and not isinstance(bpm, bool) and bpm:
         feel.append(f"{round(float(bpm))} bpm")
+    # HOW LONG IT IS. Every listing row has carried `duration` (dj.ts
+    # toAdminRow) and nothing here printed it, so the DJ offered a 41-second
+    # interlude and a nine-minute album side as if they were the same
+    # proposition — and could not tell a caller that the station's own picker
+    # refuses anything under its minimum-length floor (#1582). Seconds, as
+    # m:ss, the way a running order is read.
+    secs = t.get("duration")
+    if isinstance(secs, (int, float)) and 0 < secs < 86400:
+        feel.append(f"{int(secs) // 60}:{int(secs) % 60:02d}")
     if t.get("musicalKey"):
         feel.append(str(t["musicalKey"])[:12])
     if t.get("instrumental") is True:
         feel.append("instrumental")
+    return feel
+
+
+def _fmt_track(t: dict, with_id: bool = False) -> str:
+    # Every one of these fields comes from the station and goes into the
+    # prompt, where length is latency on every turn for the rest of the call
+    # and is paid for per token. The count is capped at 8 results; nothing
+    # capped the size of one, so a single malformed record — a title that is
+    # really a description, a tag dump in an album field — could dwarf the
+    # rest of the briefing. A track that needs more than this to name itself
+    # is not one the DJ can read out anyway.
+    def f(key: str, limit: int = 120) -> str:
+        return str(t.get(key) or "")[:limit].strip()
+
+    bits = f"\"{f('title') or '?'}\" by {f('artist') or '?'}"
+    if f("album"):
+        # The era-resolved year, not the raw file year — see era_year. On the
+        # live library the difference is already real: "Action Man in Motown
+        # Suit" files as 2014 with originalYear 1981, and the station's own
+        # announcer now says 1981 while a raw read here said 2014 back.
+        year = era_year(t)
+        bits += f" ({f('album')}" + (f", {year})" if year else ")")
+    feel = _feel_bits(t, f)
     if feel:
         bits += " — " + ", ".join(feel)
     # Never-play. A blocked row reaching a caller-facing list is a bug the

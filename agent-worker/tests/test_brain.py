@@ -946,3 +946,39 @@ class TestAnotherHostsLinesAreNotOurs(unittest.TestCase):
              "meta": {"personaId": "p_them", "personaName": "Wade"}},
         ])
         self.assertEqual("", out)
+
+
+class TestTheDJIsToldWhenTheShowPausesForTalk(unittest.TestCase):
+    """SUB/WAVE 1.15's pause-and-talk (#1645) reaches the briefing: on a show
+    that opted in, a segment this line fires waits for the record to end, so
+    "coming right up" is wrong by a record's length. Per show, off by
+    default on the station, so the line appears only with a number."""
+
+    class _Station:
+        async def schedule(self):
+            raise AssertionError("the briefing must reuse the snapshot, not re-read")
+
+    def _facts(self, **kw):
+        snap = {"now_playing": {}, "state": {}, "session": {}, "skills": [],
+                "schedule": {}}
+        return asyncio.run(briefing.station_context(
+            self._Station(), {}, snap, {"id": "s0"}, **kw))
+
+    def test_a_show_that_pauses_says_so_with_the_number(self):
+        text = self._facts(pause_talk=30)
+        self.assertIn("PAUSE-AND-TALK", text)
+        self.assertIn("over 30s", text)
+        self.assertIn("after this song", text)
+
+    def test_a_show_that_ducks_says_nothing(self):
+        self.assertNotIn("PAUSE-AND-TALK", self._facts(pause_talk=0))
+        self.assertNotIn("PAUSE-AND-TALK", self._facts())
+
+    def test_the_talk_window_line_says_what_this_side_actually_holds(self):
+        # The hand-back has waited for the gap since b434e40; the line used
+        # to say nothing from this side was held, which was true a release
+        # earlier and false now. The announcement is still not held.
+        line = briefing._fmt_talk_window(True)
+        self.assertIn("sign-off after the call waits for the gap", line)
+        self.assertIn("Announcements from this line still go straight", line)
+        self.assertEqual(briefing._fmt_talk_window(False), "")

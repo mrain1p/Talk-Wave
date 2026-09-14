@@ -167,6 +167,10 @@ async def send_on_air_callback(
     # earlier shutdown callback by the time this runs.
     fresh = StationClient()
     try:
-        await fresh.dj_say(line, mode="styled", kind="callin")
+        # The one sender that can afford to wait: the caller has hung up and
+        # this runs on a fresh client during shutdown, so holding it to the
+        # track gap costs nobody anything (#1562).
+        await fresh.dj_say(line, mode="styled", kind="callin",
+                           hold_for_gap=True)
     finally:
         await fresh.aclose()

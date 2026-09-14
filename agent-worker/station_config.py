@@ -169,7 +169,20 @@ def _fallback_voices() -> dict:
     return {"default": {"name": "Station DJ", "local_voice": "", "cloud_voice": "alloy"}}
 
 
-def _find_voice(node: Any) -> str | None:
+# Only these two share the seed roster's id-space, so only these two keep a
+# persona's own voice id when the slot inherits the station engine
+# (schemas/persona.ts TTS_INHERITABLE_VOICE_ENGINES).
+_INHERIT_CARRIES_VOICE = ("piper", "kokoro")
+
+
+def _station_tts(settings: dict) -> dict:
+    """The station's own tts block — `values.tts` — or an empty dict."""
+    values = settings.get("values") if isinstance(settings, dict) else None
+    tts = (values or {}).get("tts") if isinstance(values, dict) else None
+    return tts if isinstance(tts, dict) else {}
+
+
+def _find_voice(node: Any, station_tts: dict | None = None) -> str | None:
     if not isinstance(node, dict):
         return None
     for key in _VOICE_KEYS:
@@ -180,6 +193,22 @@ def _find_voice(node: Any) -> str | None:
     # the top level made mirroring silently find nothing.
     sub = node.get("tts")
     if isinstance(sub, dict):
+        # AN INHERIT SLOT HAS NO VOICE OF ITS OWN (#1566). The persona's
+        # stored id belongs to whatever engine it was last set under, and the
+        # station resolves the slot at speak time: piper/kokoro keep the id,
+        # 'cloud' takes the STATION's voice, and anything else falls to the
+        # engine's own default. Mirroring the stored id regardless is the
+        # wrong-id-space failure resolvePersonaVoiceSlot exists to prevent —
+        # "bm_george" under chatterbox is a reference WAV that is not there.
+        if str(sub.get("engine") or "").strip().lower() == "inherit":
+            st = station_tts if isinstance(station_tts, dict) else {}
+            engine = str(st.get("defaultEngine") or "piper").strip().lower()
+            if engine == "cloud":
+                cloud = st.get("cloud")
+                voice = (cloud or {}).get("voice") if isinstance(cloud, dict) else None
+                return voice if isinstance(voice, str) and voice else None
+            if engine not in _INHERIT_CARRIES_VOICE:
+                return None
         for key in _VOICE_KEYS:
             value = sub.get(key)
             if isinstance(value, str) and value:
@@ -193,13 +222,14 @@ def _extract_persona_voices(settings: dict) -> dict[str, str]:
     plausibly take: a list of persona objects, or a dict keyed by persona id.
     """
     found: dict[str, str] = {}
+    station_tts = _station_tts(settings)
 
     def walk(node: Any) -> None:
         if isinstance(node, list):
             for item in node:
                 if isinstance(item, dict):
                     pid = item.get("id") or item.get("personaId")
-                    voice = _find_voice(item)
+                    voice = _find_voice(item, station_tts)
                     if (isinstance(pid, str) and pid.startswith("p_")
                             and voice and pid not in found):
                         found[pid] = voice
@@ -214,7 +244,8 @@ def _extract_persona_voices(settings: dict) -> dict[str, str]:
                 if str(key).lower() == "defaults":
                     continue
                 if key.startswith("p_") and isinstance(value, (dict, str)):
-                    voice = value if isinstance(value, str) else _find_voice(value)
+                    voice = (value if isinstance(value, str)
+                             else _find_voice(value, station_tts))
                     if voice and key not in found:
                         found[key] = voice
                 walk(value)
@@ -265,7 +296,8 @@ def _persona_skills_from(settings: dict, persona_id: str) -> list[str] | None:
 
 
 def runnable_skills(catalogue: list[dict],
-                    assigned: list[str] | None) -> list[dict]:
+                    assigned: list[str] | None,
+                    has_guests: bool = True) -> list[dict]:
     """The segments this DJ may actually run, out of the station's catalogue.
 
     The catalogue is every skill the station HAS. Three things in it are not
@@ -283,6 +315,12 @@ def runnable_skills(catalogue: list[dict],
         and not others, so a caller could make tonight's host run a segment
         that belongs to someone else's show.
 
+    A fourth, since upstream #1534: `cohosts: true` marks a segment written as
+    a two-voice exchange. `runCapability` stands one down on a solo hour with a
+    200 and a reason, so offering it costs a caller a confident "let me get the
+    two of them on that" followed by nothing. `has_guests` defaults True so a
+    caller that cannot tell keeps the old behaviour.
+
     `cronOnly` is checked too, and deliberately in advance: upstream #1379 added
     it to withhold a clock-pinned skill from the station's own random picks, but
     `skillCatalog()` does not publish the field, so nothing here can see it yet.
@@ -298,6 +336,8 @@ def runnable_skills(catalogue: list[dict],
         if skill.get("enabled") is False or skill.get("ready") is False:
             continue
         if skill.get("cronOnly") is True:
+            continue
+        if skill.get("cohosts") is True and not has_guests:
             continue
         name = str(skill.get("name") or skill.get("kind") or "")
         if allowed is not None and name and name not in allowed:
@@ -460,6 +500,104 @@ class StationConfig:
 
         found = find(settings)
         return True if found is None else found
+
+    async def track_floor(self) -> int:
+        """The station's minimum track length in seconds, or 0 for no floor.
+
+        #1582 gave the picker, the discovery tools and the auto.m3u coast a
+        length floor; `music/track-floor.ts` names the paths it guards and the
+        MANUAL queue is not one of them. So the station refuses a 41-second
+        interlude for itself and accepts the same one pushed from here — the
+        DJ can only avoid offering it if it knows the number.
+        """
+        settings = await self.settings()
+        values = settings.get("values") if isinstance(settings, dict) else None
+        picker = (values or {}).get("picker") if isinstance(values, dict) else None
+        floor = (picker or {}).get("minTrackLengthSeconds") \
+            if isinstance(picker, dict) else None
+        try:
+            n = int(floor)
+        except (TypeError, ValueError):
+            return 0
+        return n if 0 < n <= 3600 else 0
+
+    async def crossfade_seconds(self) -> float:
+        """How long the station's crossfade runs, or 0 if it cannot be read.
+
+        A record shorter than the fade is mixed through without ever being
+        heard — the station booth-logs that for a listener request (#1606) but
+        it does not refuse it, and nothing on this side could see it coming.
+        The DJ promising a track the transition then eats is the failure this
+        exists to prevent.
+        """
+        settings = await self.settings()
+        values = settings.get("values") if isinstance(settings, dict) else None
+        raw = (values or {}).get("crossfadeDuration") \
+            if isinstance(values, dict) else None
+        try:
+            n = float(raw)
+        except (TypeError, ValueError):
+            return 0.0
+        return n if 0 < n <= 60 else 0.0
+
+    async def talk_between_tracks_only(self) -> bool:
+        """Whether the station holds spoken segments to track boundaries.
+
+        #1562. `broadcast/talk-air.ts` keeps MANUAL triggers exempt by design
+        and POST /dj/say is one of them — so with this on, every scheduled
+        voice waits for the gap and the call line's own hand-backs and
+        announcements become the one voice still ducking over a vocal. Read so
+        the DJ at least knows what the room sounds like; holding the line for
+        the gap is the other half and is not done here.
+        """
+        settings = await self.settings()
+
+        def find(node):
+            if isinstance(node, dict):
+                if isinstance(node.get("djTalkOnlyBetweenTracks"), bool):
+                    return node["djTalkOnlyBetweenTracks"]
+                for v in node.values():
+                    got = find(v)
+                    if got is not None:
+                        return got
+            elif isinstance(node, list):
+                for v in node:
+                    got = find(v)
+                    if got is not None:
+                        return got
+            return None
+
+        found = find(settings)
+        return False if found is None else found
+
+    async def pause_talk_seconds(self, show_id: str) -> int:
+        """Past how many seconds THIS show's segments become pause-and-talk
+        breaks (#1645, SUB/WAVE 1.15), or 0 when it has not opted in.
+
+        Per-show opt-in (`shows[].pauseTalk`), station-wide threshold
+        (`pauseTalkMinSeconds`: default 20, bounds 5-90). It reaches every
+        segment this line fires: `skills/_agent.ts` marks a manual run
+        eligible and `queue.announce` resolves the placement whether or not
+        the trigger was scheduled — so a caller's segment on such a show
+        airs after the record ends, not now, and the DJ can only say so if
+        it knows the number.
+        """
+        settings = await self.settings()
+        values = settings.get("values") if isinstance(settings, dict) else None
+        if not isinstance(values, dict):
+            return 0
+        want = str(show_id or "")
+        shows = values.get("shows") if isinstance(values.get("shows"), list) else []
+        show = next((s for s in shows
+                     if isinstance(s, dict) and str(s.get("id") or "") == want),
+                    None)
+        if not want or not show or show.get("pauseTalk") is not True:
+            return 0
+        try:
+            n = int(values.get("pauseTalkMinSeconds"))
+        except (TypeError, ValueError):
+            return 20
+        return n if 5 <= n <= 90 else 20
 
     async def llm_config(self) -> dict:
         """What model the station itself runs its DJ on, so the call-in agent

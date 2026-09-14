@@ -668,12 +668,12 @@
      height stay exactly as they are. */
   .card .gear, .card .plheart, .card button.plnote,
   .card .pltabs .pltab, .card .facebar .face, .card .gdtop,
-  .card .gdherofold, .card .gdshelfcap, .card #npHeart {
+  .card .gdherofold, .card .gdshelfcap, .card .gdtake, .card #npHeart {
     position: relative;
   }
   .card .gear::after, .card .plheart::after, .card button.plnote::after,
   .card .pltabs .pltab::after, .card .facebar .face::after,
-  .card .gdherofold::after, .card #npHeart::after {
+  .card .gdherofold::after, .card .gdtake::after, .card #npHeart::after {
     content: ""; position: absolute; inset: -7px -4px;
   }
   /* The smallest. */
@@ -1343,11 +1343,18 @@
     font: 700 10px/1 var(--font-mono); letter-spacing: .08em;
     text-transform: var(--skin-label-case); color: var(--alpenglow);
   }
-  /* Where the station's clock is, today only. */
+  /* WHERE THE STATION'S CLOCK IS, DOWN THE WHOLE WEEK. It was drawn on
+     today's row alone, which made it a marker on one line rather than the
+     column every row is read against — "would be better if it stripes down
+     all the weeks" (operator, 2026-09-08). Every row carries one now, at
+     the same column, so the seven segments read as one rule; today's is the
+     full-strength one and the rest are its shadow. */
   .gdnowmark {
     position: absolute; top: 0; bottom: 0; width: 2px; background: var(--coral);
-    pointer-events: none; opacity: .85;
+    pointer-events: none; opacity: .3;
   }
+  .gdgridrow.today .gdnowmark { opacity: .85; }
+  .gdruler .gdnowmark { opacity: .55; }
   /* The shelved shows: present, findable, and plainly not this week's
      business — dimmed, under a heading that says so. */
   .gdshelf { margin-top: 18px; }
@@ -3621,7 +3628,21 @@
      two-column faces live in the surfaces section, after the desktop card,
      where they out-rank it. */
   @media (orientation: landscape) and (max-height: 560px) {
-    body:not(.compact) { padding: 0; }
+    /* AND THE PAGE IS THE CARD, exactly. `min-height` on the body is a
+       floor, not a ceiling: where the browser's 100vh and its 100dvh
+       disagree — a retracting URL bar, a system bar overlaying the viewport
+       — the body stayed at the taller of the two while the card inside it
+       was 100dvh, so the page had a screenful of nothing under the card and
+       scrolled to show it: "regarding landscape on the phone i have to
+       scroll down to see the full page" (operator, 2026-09-08). The body
+       takes the same dvh the card does and the phantom height is gone.
+
+       NOT `overflow: hidden` with it, deliberately. That would also make the
+       page unscrollable, and there is one mode — voicemail on a 411px-tall
+       screen — whose rows genuinely total more than the viewport. Clipping
+       the Hang up row is a worse answer than a short scroll to reach it;
+       what this fixes is scrolling through emptiness, not scrolling at all. */
+    body:not(.compact) { padding: 0; min-height: 0; height: 100dvh; }
     body:not(.compact) .card {
       height: 100dvh; width: 100%; max-width: none;
       border: 0; border-radius: 0;
@@ -4755,11 +4776,32 @@
      instruments on one band lining up with nothing (operator, 2026-09-06).
      The bars still GROW from their own bottom; it is the row of them that
      is centred. */
+  /* THE STRIP LINES UP WITH THE ROW UNDER IT. The dock is two bands of
+     the same width and they read as a grid or they read as a mess: the
+     fader ended at SEND's LEFT edge and the level sat in a 58px box that
+     lined up with nothing, while its own eleven bars needed 63px of a 40px
+     well and were being clipped by the `overflow: hidden` that hid the
+     fault — "the visualizer is also spilling over too much" (operator,
+     2026-09-08). One tail width for the level and for SEND, one gap to
+     match .plreq's, and the fader's right edge is then the request field's
+     right edge exactly. */
+  .card .pldock { --dock-tail: 64px; }
   .card .pldock .plvu {
-    flex: none; width: 58px; height: 36px; box-sizing: border-box;
-    padding: 0 8px; overflow: hidden; align-items: center;
+    flex: none; width: var(--dock-tail); height: 36px; box-sizing: border-box;
+    padding: 0 6px; overflow: hidden; align-items: center;
+    justify-content: center; gap: 2px;
     background: var(--pine); border: 1px solid var(--hairline);
   }
+  /* 11 bars at 2px with a 2px gap is 42px in a 50px well — the row fits
+     inside its box instead of being cut off by it. */
+  .card .pldock .plvu span { width: 2px; }
+  .card .pldock .plreq #plReqSend { width: var(--dock-tail); padding: 0; }
+  /* THE PHONE IS THE RIBBON'S JOB NOW. This button was the way back to the
+     call card before the faces row existed; with the row up it is a second
+     door to the same place, in the one row that was short of width
+     (operator, 2026-09-08). It stays for a card with no ribbon — an embed,
+     or a station offering the player and nothing else. */
+  .card.faces .pldock #plPhoneBtn { display: none; }
   .card .pldock .plheart.liked, .card .pldock .plheart.on { color: var(--coral); }
   .card .pldock .plreq input { height: var(--control-h); }
   .card .pldock .plreq #plReqSend { height: var(--control-h); flex: none; }
@@ -4888,32 +4930,75 @@
     white-space: nowrap;
   }
   .card .gdrow.live .gdflag { color: var(--coral); }
+  /* THE TAKEOVER, on the row it changes. An outline and not a fill: it is
+     the furthest-reaching thing a reader can do from this face — it changes
+     what everyone listening hears, for an hour — and it still has to sit
+     inside a listing without becoming the listing. Coral, because what it
+     moves is the STATION's side of the line; the hand-back wears the cool,
+     because giving the schedule back is the un-doing of it. */
+  .card .gdtake {
+    flex: none; height: 24px; min-height: 0; margin: 0; padding: 0 8px;
+    background: transparent; border: 1px solid var(--coral);
+    border-radius: 0; color: var(--coral); cursor: pointer;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em;
+    text-transform: var(--skin-label-case); white-space: nowrap;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .card .gdtake:hover:not(:disabled) { background: var(--pick-live); }
+  .card .gdtake.back { border-color: var(--cool); color: var(--cool); }
+  .card .gdtake.back:hover:not(:disabled) { background: var(--pick-priv); }
+  /* The receipt outranks the card's own disabled look — a pin that WENT
+     THROUGH must not read like a control that was switched off. */
+  .card .gdtake.done { color: var(--coral); border-color: var(--coral); }
+  .card .gdtake.back.done { color: var(--cool); border-color: var(--cool); }
+  .card .gdtake.bad { color: var(--amber); border-color: var(--amber); }
   .card .gdchev {
     font-size: 10px; color: var(--sage-dim); display: inline-block;
     transition: transform .18s ease, color .18s ease;
   }
   .card .gdrow.open .gdchev { transform: rotate(90deg); color: var(--coral); }
+  /* A LINE WITH ROOM ON IT. The genre and the DJ take what they need and
+     the takeover sits in the third of the row they were leaving empty; the
+     ellipsis moves onto the words, where it belongs, instead of onto the
+     line. */
   .card .gdrowsub {
-    display: block; font-size: 12px; color: var(--sage); margin-top: 4px;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--sage); margin-top: 4px;
+  }
+  .card .gdrowsub .gdrowsubt {
+    flex: 0 1 auto; min-width: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  .card .gdrowsub .gdtake { margin-left: auto; }
   .card .gdrowsub .gdrowhost { color: var(--sage-dim); }
   .card .gdrow .gdbody { padding: 10px 0 2px; }
   /* NOT ON THE SCHEDULE was a dim word on a dark band — legible is the bar,
      not loud (operator, 2026-09-04). It is a heading now: the card's own
      raised surface, an edge, and ink a reader can find without looking for
-     it. */
+     it.
+     …AND IT WEARS THE FACE'S OWN ACCENT (operator, 2026-09-08: "the not on
+     the schedule bar at the bottom is kinda hard to noticed, maybe use
+     similar accent colors as the program guide header"). PROGRAMME GUIDE
+     and PROGRAMMING are both a coral label with a coral pip; alpenglow ink
+     on granite made this the one section heading on the face that was not.
+     Same three parts, same colour — the count and the chevron stay quiet,
+     because the heading is the thing that has to be findable. */
   .card .gdshelf .gdshelfcap {
     margin: 18px 0 0; padding: 10px 12px;
-    background: var(--granite); border: 1px solid var(--edge);
-    color: var(--alpenglow); font: 700 10px/1 var(--font-mono);
+    background: var(--granite);
+    border: 1px solid color-mix(in srgb, var(--coral) 40%, var(--edge));
+    border-left: 2px solid var(--coral);
+    color: var(--coral); font: 700 10px/1 var(--font-mono);
     letter-spacing: .16em; text-transform: var(--skin-label-case);
     display: flex; align-items: center; gap: 8px; width: 100%;
+  }
+  .card .gdshelf .gdshelfcap:hover {
+    border-color: var(--coral); border-left-color: var(--coral);
   }
   .card .gdshelf .gdshelfn {
     margin-left: auto; color: var(--sage-dim); font-weight: 400;
   }
-  .card .gdshelf .gdshelfchev { color: var(--sage-dim); }
+  .card .gdshelf .gdshelfchev { color: var(--coral); }
   /* …and a shelved show has no airing, so the time column it would sit in
      is 62px of nothing down the whole section. */
   .card .gdshelf .gdrow .gdwhen[hidden] { display: none; }
@@ -5095,10 +5180,10 @@
     body:not(.panelpage):not(.compact) {
       --ident-h: 160px; --station-h: 76px;
       --portrait: 108px; --thumb: 46px;
-      --sleeve: 148px; --well-h: 104px;
+      --sleeve: 120px; --well-h: 92px;
       --seg-h: 38px; --control-h: 44px; --chip-h: 28px;
       --dock-gap: 14px; --dock-pad: 14px;
-      --hero-title: 25px; --gd-hero-h: 236px;
+      --hero-title: 22px; --gd-hero-h: 236px;
       --card-pad-l: max(20px, env(safe-area-inset-left));
       --card-pad-r: max(20px, env(safe-area-inset-right));
     }
@@ -5108,6 +5193,23 @@
        the stage stays --pine, and the dock's hairline is what divides them. */
     body:not(.panelpage):not(.compact) .card {
       background-color: var(--pine);
+    }
+    /* …AND EVERYTHING RAISED ON IT TAKES THE DOCK'S SURFACE. The stage, the
+       route cells and the station row's heart were --pine, the card's own
+       ground, so they had a border and no surface — while the dock band
+       under them is --granite. On a station palette that colours --bg and
+       leaves --surface alone (which is most of them: look.py copies only the
+       tokens the station actually publishes) the whole top of the card then
+       wore the station's tint and the dock did not: "the theme color bleeds
+       into the transcript box and the off air on air card and the heart
+       button… inconsistent with the area below it" (operator, 2026-09-08).
+       One family on this card now — --pine is the ground, --granite is
+       everything standing on it, dock included. `:not(.on)` on the cells:
+       a selected route wears its own route colour and must keep it. */
+    body:not(.panelpage):not(.compact) .card .linebox,
+    body:not(.panelpage):not(.compact) .card.routed .routeswitch .rcell:not(.on),
+    body:not(.panelpage):not(.compact) .card .stationrow .nplike {
+      background-color: var(--granite);
     }
     /* The identity block was centred here; it is a row again. */
     body:not(.compact) .card:not([data-mode="chat"]) .who-row {
@@ -5139,10 +5241,22 @@
        cannot agree here: the player's hero is a picture AND a name where
        the other two are a name beside a face. The swipe gives up an exact
        match on this face for a title that can be read. */
+    /* CENTRED, not left-anchored. Stacked, the sleeve sat hard against
+       the card's left edge with the title under it and the rest of the
+       card's width empty beside both — "its weird anchored to the left"
+       (operator, 2026-09-08). The record is the subject of this face and it
+       is the one block that reads as a centred object; the panels under it
+       keep their left-aligned listing grammar.
+       The paddings are the operator's other note on this face — every pixel
+       here is one Up next / Just played / Requests did not have. */
     body:not(.compact) .card .plartblock {
-      flex-direction: column; align-items: flex-start; height: auto;
-      gap: 12px; padding: 16px 20px 12px;
+      flex-direction: column; align-items: center; height: auto;
+      gap: 10px; padding: 12px 20px 6px;
     }
+    body:not(.compact) .card .plartblock .plmeta,
+    body:not(.compact) .card .plartblock .pltrack,
+    body:not(.compact) .card .plartblock .plalbum { text-align: center; }
+    body:not(.compact) .card .plartblock .pltags { justify-content: center; }
     body:not(.compact) .card .plartblock .plartwrap {
       width: var(--sleeve); height: var(--sleeve);
     }
@@ -5161,6 +5275,18 @@
     /* The name has the room now, so it starts at the top of its ladder and
        only steps down for a genuinely long one. */
     body:not(.compact) .card .plartblock .pltrack { margin-top: 0; }
+    body:not(.compact) .card .plartblock .plalbum { margin-top: 4px; }
+    body:not(.compact) .card .plartblock .pltags { margin-top: 7px; }
+    /* THE PLAYHEAD IS A RULE WITH TWO CLOCKS ON IT, and it was carrying
+       16px of air above and below on a face whose list was being cut off
+       (operator, 2026-09-08). The band keeps its 38px; what it gives back
+       is the space around it. */
+    body:not(.compact) .card .plprog { height: 32px; }
+    /* THE FADER REACHES THE REQUEST FIELD'S RIGHT EDGE. .plctl's gap is 6
+       and .plreq's is 10, so the level needs the 4 to make the two seams
+       equal — and with the level the same width as SEND, the two bands of
+       the dock finally line up as a grid (operator, 2026-09-08). */
+    body:not(.compact) .card .pldock .plvu { margin-left: 4px; }
     /* The meters keep one row here: the level band is the dock's own
        instrument now, and the volume rides the call it belongs to. */
     body:not(.compact) .meters { flex-wrap: nowrap; }
@@ -5185,8 +5311,10 @@
        flush against the tab row under it, so the one card meant to sit
        proud of the sheet read as another band (operator, 2026-09-06). */
     body:not(.compact) .card .plscroll > .plpanel:not(.plqueue) {
-      margin: 16px 16px 14px; padding: 12px 14px;
+      margin: 10px 16px 10px; padding: 10px 14px;
     }
+    /* …and the tab row over the list, likewise. */
+    body:not(.compact) .card .pltabs { padding: 10px 16px 8px; }
     /* THE LIST FILLS WHAT THE SHEET LEAVES, AND SCROLLS INSIDE IT. The
        group flexes on this surface but the panel inside it did not, so a
        296px group carried a 156px body with 140px of nothing under it, and
@@ -5355,18 +5483,28 @@
     body:not(.compact):not(.panelpage) .card.faces {
       display: grid;
       grid-template-columns: 318px minmax(0, 1fr);
-      grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto auto auto auto;
+      /* THE LEVELS MOVED TO THE CONTEXT COLUMN. Identity, station row,
+         then ninety-eight measured pixels of nothing before the route
+         switch at the foot — "the wasted space to the left below the album
+         name… reposition some stuff there so it better fits the transcript
+         box on the right" (operator, 2026-09-08). The level meter is the
+         one band that belongs with the identity rather than with the
+         conversation: it says who is speaking, which is what the whole left
+         column is about. Moving it fills half that hole AND hands its rows
+         to the stage, so the transcript box grows by the same amount on the
+         right — one change answering both halves of the note. */
+      grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto auto auto auto;
       grid-template-areas:
-        "head head"
-        "who  line"
-        "sta  line"
-        "rail line"
-        ".    line"
-        "sw   meters"
-        "sw   talk"
-        "sw   chat"
-        "sw   vm"
-        "sw   act";
+        "head   head"
+        "who    line"
+        "sta    line"
+        "rail   line"
+        "meters line"
+        ".      line"
+        "sw     talk"
+        "sw     chat"
+        "sw     vm"
+        "sw     act";
       column-gap: 14px; row-gap: 0;
     }
     body:not(.compact):not(.panelpage) .card.faces .rig { display: contents; }
@@ -5384,7 +5522,13 @@
     body:not(.compact):not(.panelpage) .card.faces .linebox {
       grid-area: line; margin: 0; min-height: 0; height: auto;
     }
-    body:not(.compact):not(.panelpage) .card.faces .meters { grid-area: meters; }
+    body:not(.compact):not(.panelpage) .card.faces .meters {
+      grid-area: meters; align-self: start;
+      /* No longer the row that OPENS the dock band — the dock is the right
+         column's now — so it gives up the band's rule and full-bleed. The
+         station row above it already carries an edge. */
+      border-top: 0; margin: 12px 0 0; padding: 0;
+    }
     body:not(.compact):not(.panelpage) .card.faces .talkrow { grid-area: talk; }
     body:not(.compact):not(.panelpage) .card.faces .chatrow { grid-area: chat; }
     body:not(.compact):not(.panelpage) .card.faces .vmstudio { grid-area: vm; }
@@ -5411,16 +5555,27 @@
        queue RIGHT; the control row spans the full width beneath, ONE row.
        The sheet is a grid rather than a column, and the queue is the
        column that scrolls. */
+    /* THE WELL'S ROW HOLDS ITS OWN FLOOR. Row three was `minmax(0, 1fr)`
+       and the well inside it is `align-self: end` with a `min-height` — so
+       when the record above ran tall the row collapsed under that minimum
+       and the box, aligned to the row's END, overflowed UPWARDS: the booth's
+       label drawn behind the sleeve and the playhead's fill running through
+       the middle of the quote (operator's landscape shots, 2026-09-08).
+       A row that cannot be shorter than the thing in it cannot be overflowed
+       by it, and the sleeve column is what gives instead. */
     body:not(.compact):not(.panelpage) .card.faces .plscroll {
       display: grid;
       grid-template-columns: 318px minmax(0, 1fr);
-      grid-template-rows: auto auto minmax(0, 1fr);
+      grid-template-rows: minmax(0, auto) auto minmax(var(--well-h), 1fr);
       column-gap: 14px; row-gap: 0;
       padding: 12px 14px 0; overflow: hidden; flex: 1; min-height: 0;
     }
     body:not(.compact):not(.panelpage) .card.faces .plscroll > .plartblock {
       grid-column: 1; grid-row: 1; height: auto; min-height: 0;
       flex-direction: row; align-items: flex-start; gap: 14px; padding: 0;
+      /* The row above the well is the one that gives when the column is
+         short, and the title and album already clamp their own lines. */
+      overflow: hidden;
     }
     body:not(.compact):not(.panelpage) .card.faces .plscroll > .plartblock .plartwrap {
       width: var(--sleeve); height: var(--sleeve);
@@ -5432,12 +5587,40 @@
       grid-column: 1; grid-row: 2; padding: 10px 0; margin: 0;
     }
     body:not(.compact):not(.panelpage) .card.faces .plscroll > .plpanel:not(.plqueue) {
-      grid-column: 1; grid-row: 3; align-self: end; flex: none;
-      margin: 0 0 12px; max-height: none; min-height: var(--well-h);
+      grid-column: 1; grid-row: 3; align-self: stretch; flex: none;
+      margin: 0 0 12px; max-height: 100%; min-height: var(--well-h);
+    }
+    /* AND IT SAYS AS MUCH AS THE COLUMN CAN HOLD. The 620x544 card's block
+       cuts this quote to two lines so the queue below it has room — and
+       every landscape width above 700 is inside that block, so a well with
+       98px of column showed 39px of words and 59px of nothing (the other
+       half of "wasted space and overflow text", operator 2026-09-08).
+       Beside the queue rather than above it, the well has nobody to take
+       room from: it shows what fits and scrolls for the rest, which is also
+       the end of text being cut where the column is short.
+       `safe center` because a flex box that centres content taller than
+       itself pushes the FIRST line out of the scrollable range; where the
+       keyword is not understood the declaration is dropped and the base
+       rule's plain `center` stands, which is what it does today. */
+    body:not(.compact):not(.panelpage) .card.faces
+      .plscroll > .plpanel:not(.plqueue) .plpanelbody {
+      align-items: safe center; overflow-y: auto; scrollbar-width: thin;
+    }
+    body:not(.compact):not(.panelpage) .card.faces
+      .plscroll .plpanelbody .plquote {
+      display: block; -webkit-line-clamp: none; overflow: visible;
     }
     body:not(.compact):not(.panelpage) .card.faces .plscroll > .plqgroup {
       grid-column: 2; grid-row: 1 / 4; min-height: 0; margin: 0 0 12px;
       border: 1px solid var(--edge); display: flex; flex-direction: column;
+      /* STATED, because an older rule answers otherwise: the 620x544 card's
+         block sets `.plprog, .plqgroup, .plscroll .plpanel { align-self:
+         start }`, and every landscape width above 700 is inside it — so the
+         queue column stopped at the bottom of its own list and left the
+         sheet's whole lower right corner empty beside a full-height booth
+         (operator, 2026-09-08: "on the player page landscape wasted space").
+         It is the column that scrolls; it takes the column's height. */
+      align-self: stretch;
     }
     body:not(.compact):not(.panelpage) .card.faces .plscroll .pltabs {
       flex: none; padding: 0; margin: 0; border-bottom: 1px solid var(--edge);
@@ -5476,7 +5659,7 @@
       flex: 0 1 auto; min-width: 80px; width: 120px; height: var(--lctl);
     }
     body:not(.compact):not(.panelpage) .card.faces .pldock .plvu {
-      height: var(--lctl);
+      height: var(--lctl); margin-left: 0;
     }
     body:not(.compact):not(.panelpage) .card.faces .pldock .plreq {
       flex: 1 1 auto; min-width: 0; gap: 8px; margin: 0;
@@ -5486,7 +5669,7 @@
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     body:not(.compact):not(.panelpage) .card.faces .pldock #plReqSend {
-      flex: none; height: var(--lctl); padding: 0 14px;
+      flex: none; height: var(--lctl); padding: 0 14px; width: auto;
     }
     body:not(.compact):not(.panelpage) .card.faces .pldock #plPlayBtn {
       flex: none; width: auto; min-width: 120px; height: var(--lctl);
@@ -5524,9 +5707,43 @@
       grid-column: 2; grid-row: 2; min-height: 0; overflow-y: auto;
       padding: 0 14px; scrollbar-width: thin;
     }
+    /* TWO SEGMENTED CONTROLS, ONE HEADER ROW, AND THEY WERE ON TOP OF
+       EACH OTHER. Both are placed in row 1 of the right column and both are
+       right-aligned, so 6H|12H|24H was drawn straight through DAY|WEEK —
+       "D1A2H WE4EK" in the operator's shot — and with the DAY cell buried
+       under a span cell there was no way back out of the week view
+       (operator, 2026-09-08). The spans hold the right edge; the header
+       reserves their box so DAY|WEEK sits beside them, not beneath them.
+       Named, because it is the spans' own rendered width: three cells of
+       9.5px mono at .12em, 10px of padding each side, sharing borders. */
+    body:not(.compact):not(.panelpage) .card.faces .gdscroll { --gdspans-w: 116px; }
     body:not(.compact):not(.panelpage) .card.faces .gdscroll > .gdspans {
       grid-column: 2; grid-row: 1; justify-self: end; align-self: center;
       margin: 0 14px 0 0;
+    }
+    body:not(.compact):not(.panelpage) .card.faces
+      .gdscroll > .gdtodayhead:has(~ .gdspans:not([hidden])) {
+      padding-right: calc(14px + var(--gdspans-w) + 12px);
+    }
+
+    /* THE WEEK GETS THE WHOLE WIDTH. The left column carries the show on
+       air, and in week view that hero is `.gdaway` — so the grid was
+       squeezed into 489px of an 891px screen with 318px of black beside it,
+       and a seven-day listing showed "a small part of it" (operator,
+       2026-09-08). No hero, no left column. */
+    body:not(.compact):not(.panelpage) .card.faces
+      .gdscroll:has(> .gdgrid:not([hidden])) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    body:not(.compact):not(.panelpage) .card.faces
+      .gdscroll:has(> .gdgrid:not([hidden])) > .gdtodayhead,
+    body:not(.compact):not(.panelpage) .card.faces
+      .gdscroll:has(> .gdgrid:not([hidden])) > .gdgrid,
+    body:not(.compact):not(.panelpage) .card.faces
+      .gdscroll:has(> .gdgrid:not([hidden])) > .gdspans,
+    body:not(.compact):not(.panelpage) .card.faces
+      .gdscroll:has(> .gdgrid:not([hidden])) > .gdshelf {
+      grid-column: 1;
     }
     body:not(.compact):not(.panelpage) .card.faces .gdscroll > .gdshelf {
       grid-column: 2; grid-row: 3; padding: 0 14px 8px;
@@ -5549,6 +5766,14 @@
       padding: 6px 12px; margin: 4px 0 0;
     }
     body:not(.compact):not(.panelpage) .card.faces .gdrowsub { margin-top: 3px; line-height: 1.2; }
+    /* …and the takeover rides that line without lifting it. At the portrait
+       24px the control was taller than the two words beside it and pushed a
+       52px row to 58 — five rows of the listing costing a sixth. The hit
+       box (the ::after, +7px each way) is untouched, so the target is still
+       a thumb's. */
+    body:not(.compact):not(.panelpage) .card.faces .gdrowsub .gdtake {
+      height: 20px; padding: 0 7px;
+    }
     body:not(.compact):not(.panelpage) .card.faces .gdwhen .gdwhend { line-height: 1.2; }
   }
 
