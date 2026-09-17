@@ -488,6 +488,295 @@ def check_controls(browser, rep: Report, base: str) -> None:
     ctx.close()
 
 
+# Controls the sweep below must not press, and why each one. A deny list
+# rather than an allow list on purpose: an allow list goes stale silently the
+# day somebody adds a button, which is the failure this whole file exists to
+# stop. Anything not named here gets pressed.
+PANEL_KEEP_OFF = {
+    "logoutBtn": "signs out — everything after it would be pressing a gate",
+    "loginBtn": "the panel is already unlocked here; Unlock with no password "
+                "is the gate's own error path, not a control",
+    "setPwBtn": "opens the change-password flow",
+    "setGuestBtn": "sets a guest code the rest of the sweep would then need",
+    "uploadSoundBtn": "a file picker the harness cannot close",
+    "resetBtn": "resets every setting to defaults, mid-sweep",
+    "clearGuestBtn": "destructive",
+    "ovClear": "destructive — clears the station override",
+    "dumpBtn": "destructive — pulls the show off air",
+    "olEditDelete": "destructive — removes a topic",
+    "olCloseBtn": "closes the open line the rows after it are about",
+    "vmClearBtn": "destructive — clears the voicemail stage",
+    "callsClearBtn": "destructive",
+    "logsClearBtn": "destructive",
+    "saveOverlayDiscard": "throws away the edits the sweep just made",
+    "copyEmbedBtn": "writes the clipboard, which needs a permission grant",
+}
+
+
+def check_panel_controls(browser, rep: Report, base: str) -> None:
+    """Every page turned, every section opened, every safe control pressed.
+
+    ~3,000 lines of panel JS with no unit tests and no runner, and until now
+    this harness pressed ONE of its buttons. The panel's faults are the
+    0.9.63 shape — a guard testing a dict that had changed from null to {},
+    so the page fetched nothing, showed nothing and did not even prompt for a
+    password, and shipped. Nothing in the Python suite could see it; one
+    press can.
+
+    The panel is PAGES (#panelNav chips), not one long form, and a control on
+    a page nobody turned to has no client rects — measured here, 2026-09-17:
+    a sweep that only opened the sections on the landing page reached 21 of
+    the markup's 99 buttons and called that the panel. Each page is turned
+    to, opened out, and swept twice, because pressing a tab on the Players
+    page is how the controls behind it arrive.
+
+    The claim is mechanical on purpose: nothing throws, and the number of
+    controls reached is reported, so a page that silently stops painting
+    shows up as the count collapsing rather than as a green run.
+    """
+    page = browser.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{base}/settings", wait_until="load")
+    try:
+        page.wait_for_selector("#panelNav a[data-page]", state="attached",
+                               timeout=20000)
+    except Exception:
+        rep.add("FAIL", "panel sweep: the page painted at all",
+                "#panelNav never got its chips"
+                + (f"; first error: {errors[0][:120]}" if errors else ""))
+        page.close()
+        return
+
+    pages = page.evaluate(
+        "() => [...document.querySelectorAll('#panelNav a[data-page]')]"
+        " .map((a) => a.dataset.page)")
+    if len(pages) >= 5:
+        rep.add("ok", f"panel sweep: {len(pages)} pages in the nav "
+                      f"({', '.join(pages)})")
+    else:
+        rep.add("FAIL", "panel sweep: the nav has its pages",
+                f"only {pages}")
+
+    pressable = ("(off) => [...document.querySelectorAll('button[id]')]"
+                 " .filter((b) => !off.includes(b.id) && !b.disabled"
+                 "                && !b.hidden && b.getClientRects().length)"
+                 " .map((b) => b.id)")
+    press_one = ("(id) => { const b = document.getElementById(id);"
+                 " if (b && !b.disabled) b.click(); }")
+
+    pressed: set[str] = set()
+    threw: list[str] = []
+    for name in pages:
+        page.evaluate(
+            "(p) => { const a = document.querySelector("
+            "  '#panelNav a[data-page=\\'' + p + '\\']');"
+            " if (a) a.click(); }", name)
+        page.wait_for_timeout(350)
+        # Two rounds: the first presses the tabs and mode switches, the
+        # second reaches what they revealed.
+        for _round in (1, 2):
+            page.evaluate("() => { document.querySelectorAll('details')"
+                          " .forEach((d) => { d.open = true; }); }")
+            page.wait_for_timeout(250)
+            for el_id in page.evaluate(pressable, sorted(PANEL_KEEP_OFF)):
+                if el_id in pressed:
+                    continue
+                pressed.add(el_id)
+                before = len(errors)
+                try:
+                    page.evaluate(press_one, el_id)
+                except Exception as e:
+                    threw.append(f"{el_id}: {str(e)[:80]}")
+                    continue
+                page.wait_for_timeout(110)
+                if len(errors) > before:
+                    threw.append(f"{name}/{el_id}: {errors[before][:100]}")
+
+    # The floor is MEASURED, not chosen: 63 controls on 2026-09-17 across the
+    # twelve pages, against 21 for the same sweep before it learned to turn
+    # them. It is here to catch a page that stops painting, so it sits under
+    # the reading rather than at it.
+    if len(pressed) >= 50:
+        rep.add("ok", f"panel sweep: {len(pressed)} controls pressed across "
+                      f"{len(pages)} pages ({len(PANEL_KEEP_OFF)} held back "
+                      f"by name)")
+    else:
+        rep.add("FAIL", "panel sweep: the sweep reaches the panel's controls",
+                f"only {len(pressed)} pressable buttons across {len(pages)} "
+                f"pages — the panel is painting less than it used to")
+
+    if threw:
+        rep.add("FAIL", "panel sweep: no control throws when pressed",
+                "; ".join(threw[:4]))
+    else:
+        rep.add("ok", "panel sweep: no control throws when pressed")
+
+    # Whatever the presses did, this is still a panel: the section list and
+    # the nav survive and no gate came up. A control that blanks the page
+    # passes every row above and fails this one.
+    alive = page.evaluate(
+        "() => ({ nav: document.querySelectorAll('#panelNav a').length,"
+        " secs: document.querySelectorAll('details.sec').length,"
+        " gate: !!(document.getElementById('loginGate')"
+        "          && !document.getElementById('loginGate').hidden) })")
+    if alive["nav"] >= 5 and alive["secs"] >= 15 and not alive["gate"]:
+        rep.add("ok", "panel sweep: the page is still standing afterwards "
+                      f"({alive['secs']} sections, {alive['nav']} pages, "
+                      "no gate)")
+    else:
+        rep.add("FAIL", "panel sweep: the page survives its own controls",
+                f"{alive}")
+    page.close()
+
+
+def check_error_paths(browser, rep: Report, base: str) -> None:
+    """The afternoon everything is down, which nothing had ever looked at.
+
+    The stub answers every diagnostic ok, and each fixture in it carries a
+    note saying "flip this to see the other branch" — so the panel's failure
+    rendering and the card's outage line were reachable only by editing the
+    stub by hand. They are the surfaces an operator needs most and the ones
+    least often seen. `GET /stub/failing?stages=...` turns them on.
+
+    Four things are worth a row each, and the first two are the reason this
+    is driven rather than read:
+
+      * a failed test PAINTS as a failure — `.result.bad` with the reason in
+        it, not a blank box and not a green one;
+      * the hearing test names WHICH engine failed, because a voice that
+        cannot speak fails it without the ear being touched, and sending the
+        operator to the wrong section is worse than no test;
+      * a 401 that may only mean "the key was withheld from a draft address"
+        does NOT offer to paste a key — panel.js suppresses that prompt when
+        the answer carries a note, and nothing had exercised the suppression;
+      * a caller who opens the app during an outage is told so, and can
+        still reach the settings gear — the one case the operator most needs
+        it, and the corner controls are driven off the /live that just
+        failed.
+    """
+    ctx = browser.new_context(viewport={"width": 1100, "height": 900},
+                              reduced_motion="reduce")
+    ctx.request.get(f"{base}/stub/failing"
+                    "?stages=env,station,llm,tts,stt,hooks,live")
+    try:
+        _panel_down(ctx, rep, base)
+        _card_down(ctx, rep, base)
+    finally:
+        # Whatever happened above, the next check meets a working stub.
+        ctx.request.get(f"{base}/stub/failing?stages=")
+        ctx.close()
+
+
+def _panel_down(ctx, rep: Report, base: str) -> None:
+    page = ctx.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{base}/settings", wait_until="load")
+    try:
+        page.wait_for_selector("#llmResult", state="attached", timeout=20000)
+    except Exception:
+        rep.add("FAIL", "errors: the panel painted at all",
+                "#llmResult never attached"
+                + (f"; first error: {errors[0][:120]}" if errors else ""))
+        page.close()
+        return
+
+    # Clicked through the DOM, not page.click: every section is a closed
+    # <details> and the buttons are attached rather than visible.
+    press = "(id) => { const b = document.getElementById(id); if (b) b.click(); }"
+    read = ("(id) => { const el = document.getElementById(id);"
+            " return el ? { cls: el.className, text: el.textContent } : null; }")
+
+    bad = []
+    for btn, out in (("testStationBtn", "stationResult"),
+                     ("testLlmBtn", "llmResult"),
+                     ("testTtsBtn", "ttsResult"),
+                     ("testSttBtn", "sttResult")):
+        page.evaluate(press, btn)
+    page.wait_for_timeout(1200)
+    for btn, out in (("testStationBtn", "stationResult"),
+                     ("testLlmBtn", "llmResult"),
+                     ("testTtsBtn", "ttsResult"),
+                     ("testSttBtn", "sttResult")):
+        got = page.evaluate(read, out)
+        if not got:
+            bad.append(f"{out} is not in the DOM")
+        elif "bad" not in got["cls"]:
+            bad.append(f"{out} class {got['cls']!r} after a failed {btn}")
+        elif len((got["text"] or "").strip()) < 8:
+            bad.append(f"{out} says nothing: {got['text']!r}")
+    if bad:
+        rep.add("FAIL", "errors: every failed check paints as one", "; ".join(bad))
+    else:
+        rep.add("ok", "errors: station, model, voice and hearing all paint "
+                      "their failure with a reason")
+
+    # WHICH engine. The stub answers stage="ear", so the ear has to be named.
+    heard = (page.evaluate(read, "sttResult") or {}).get("text") or ""
+    if "ear" in heard.lower():
+        rep.add("ok", "errors: the hearing test names the ear rather than "
+                      "the voice")
+    else:
+        rep.add("FAIL", "errors: the hearing test says which engine failed",
+                f"stage was 'ear' and the row reads {heard[:120]!r}")
+
+    # The note, and the prompt it must suppress. maybeOfferKey appends a
+    # paste-a-key control into the result row; with a note there is nothing
+    # to offer, because the key exists and was withheld on purpose.
+    llm = page.evaluate(
+        "() => { const el = document.getElementById('llmResult');"
+        " return el ? { text: el.textContent,"
+        " offers: el.querySelectorAll('input, button').length } : null; }")
+    if llm and "withheld" in (llm["text"] or "") and not llm["offers"]:
+        rep.add("ok", "errors: a 401 from a draft address explains the "
+                      "withheld key instead of asking for one")
+    else:
+        rep.add("FAIL", "errors: the withheld-key note replaces the key prompt",
+                f"{llm}")
+
+    if errors:
+        rep.add("FAIL", "errors: no JS exception with everything down",
+                errors[0][:160])
+    else:
+        rep.add("ok", "errors: no JS exception with everything down")
+    page.close()
+
+
+def _card_down(ctx, rep: Report, base: str) -> None:
+    page = ctx.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    # Loaded WHILE /live is failing: call.js holds one failed poll for 90
+    # seconds against a card that answered recently, so an outage the caller
+    # arrives into is the only shape that paints immediately.
+    page.goto(f"{base}/", wait_until="load")
+    page.wait_for_timeout(1500)
+    got = page.evaluate(
+        "() => ({ status: (document.getElementById('statusText')||{}).textContent,"
+        " dot: (document.querySelector('#status .dot')||{}).className,"
+        " gear: !!(document.getElementById('gearBtn')"
+        "          && !document.getElementById('gearBtn').hidden) })")
+    if "unreachable" in (got["status"] or "").lower():
+        rep.add("ok", f"errors: the card says {got['status']!r} when /live "
+                      "is down at load")
+    else:
+        rep.add("FAIL", "errors: an outage at load reads as one",
+                f"the status line says {got['status']!r}")
+    if got["gear"]:
+        rep.add("ok", "errors: the settings gear survives the failed /live "
+                      "the corner controls are driven off")
+    else:
+        rep.add("FAIL", "errors: the gear survives a failed /live",
+                "no way into settings from an unreachable card")
+    if errors:
+        rep.add("FAIL", "errors: no JS exception on the outage card",
+                errors[0][:160])
+    else:
+        rep.add("ok", "errors: no JS exception on the outage card")
+    page.close()
+
+
 def check_offline(browser, rep: Report, base: str, stub) -> None:
     """The installed app opens with the server gone — sw.js's one job.
 
@@ -973,6 +1262,8 @@ def main() -> None:
                 check_guide_gestures(browser, rep, base)
                 check_idle_line(browser, rep, base)
                 check_panel(browser, rep, base)
+                check_panel_controls(browser, rep, base)
+                check_error_paths(browser, rep, base)
                 # Last: it takes the server away.
                 check_offline(browser, rep, base, proc)
             finally:

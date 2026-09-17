@@ -184,6 +184,71 @@ HOOK_TEST = {
     "detail": "the station's push reached http://192.168.1.40:8100/hooks/station",
 }
 
+# --- the same fixtures, failing ------------------------------------------
+#
+# Every fixture above carries a note saying "flip this to see the other
+# branch", which meant the panel's failure rendering was reachable only by
+# editing this file by hand — so nothing ever drove it, and the operator's
+# worst afternoon was the one surface nobody had looked at. FAILING makes
+# those branches reachable at runtime instead:
+#
+#     GET /stub/failing?stages=env,station,llm,tts,stt,hooks,live
+#
+# with an empty `stages` clearing it again. tools/widget_check.py drives it;
+# nothing a human does on the page can reach it.
+#
+# The shapes are the real handlers' failure shapes, not invented ones —
+# api/diagnostics.py answers {"ok": false, "error": ...} with a `note` when a
+# key was withheld from a draft address, and the hearing test says which of
+# the two engines failed in `stage`.
+FAILING: set[str] = set()
+
+ENV_DOWN = {
+    "ok": False,
+    "livekit": {"ok": False, "url": "ws://stub", "detail": "connection refused"},
+    "livekitAuth": {"ok": False, "detail": "no worker has registered"},
+    "admin": {"ok": False, "detail": "401 from the station"},
+    "webhook": {"registered": False, "received": 0,
+                "url": "http://192.168.1.40:8100/hooks/station",
+                "detail": "not registered"},
+    "listeners": {"requestsOpen": False, "detail": "station unreachable"},
+    "keys": {"ok": False, "missing": ["google", "deepgram"]},
+    "stt": {"ok": False, "detail": "deepgram · 401 unauthorized"},
+    "llm": {"ok": False, "detail": "google · no API key stored"},
+    "tts": {"ok": False, "detail": "local · connection refused"},
+}
+
+STATION_DOWN = {"ok": False, "stationUrl": "http://192.168.1.40:4533",
+                "error": "connection refused"}
+
+# With the note, which is the branch that matters: a key only ever travels to
+# the host it was saved for, so testing a typed address gets a 401 that is not
+# the key being wrong. panel.js suppresses its offer-to-paste-a-key prompt
+# when a note is present, and that suppression has never been driven.
+LLM_DOWN = {"ok": False, "error": "401 from the provider",
+            "note": "tested against the address in the box, which is not the "
+                    "one the stored key was saved for — so the key was "
+                    "withheld and this 401 may only mean that."}
+
+TTS_DOWN = {"ok": False, "voice": "-Cliff1",
+            "error": "connection refused reaching the voice server"}
+
+# stage="ear", so the panel has to name WHICH engine failed. stage="voice" is
+# the other half and reads as a voice fault with the ear untouched.
+STT_DOWN = {"ok": False, "stage": "ear", "provider": "deepgram",
+            "model": "nova-2-phonecall", "error": "401 unauthorized"}
+
+HOOK_DOWN = {"ok": False, "fired": False,
+             "url": "http://192.168.1.40:8100/hooks/station",
+             "detail": "the station took the registration and nothing came "
+                       "back — from the panel this looks identical to working "
+                       "until something asks"}
+
+
+def _down(stage: str) -> bool:
+    return stage in FAILING
+
+
 # Enough spread — kinds, tiers, tools, ratings, verdicts, DAYS — that every
 # calls-toolbar filter has at least two answers, stacked filters leave a
 # checkable remainder, and the ACTIVITY charts get a week of buckets with a
@@ -593,6 +658,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = self.path.split("?")[0]
 
+        # The stub's own control surface, and the only route here that is not
+        # pretending to be the worker. See FAILING.
+        if path == "/stub/failing":
+            from urllib.parse import parse_qs, urlparse
+            want = parse_qs(urlparse(self.path).query).get("stages", [""])[0]
+            FAILING.clear()
+            FAILING.update(w.strip() for w in want.split(",") if w.strip())
+            return self._json({"failing": sorted(FAILING)})
+
         if path == "/open-lines":
             return self._json(_open_lines_status())
         # The station-override box, standing: a takeover with ~42 minutes to
@@ -758,8 +832,10 @@ class Handler(BaseHTTPRequestHandler):
         # slowest surface by far — a real run is a station read, a LiveKit
         # round trip, an LLM call and a TTS call, none of which exist here.
         if path == "/test/env":
-            return self._json(dict(PIPELINE_ENV))
+            return self._json(dict(ENV_DOWN if _down("env") else PIPELINE_ENV))
         if path == "/test/station":
+            if _down("station"):
+                return self._json(dict(STATION_DOWN))
             return self._json({"ok": True, "liveDj": "Francesca", "toolCount": 9})
         # The two stages that were NOT stubbed, so the pipeline check could
         # never be read end to end here — and they are the two whose verdicts
@@ -767,15 +843,15 @@ class Handler(BaseHTTPRequestHandler):
         # each: under desiredMs passes, over it warns, at or over budgetMs
         # fails outright.
         if path == "/test/llm":
-            return self._json(dict(LLM_TEST))
+            return self._json(dict(LLM_DOWN if _down("llm") else LLM_TEST))
         if path == "/test/tts":
-            return self._json(dict(TTS_TEST))
+            return self._json(dict(TTS_DOWN if _down("tts") else TTS_TEST))
         if path == "/test/stt":
-            return self._json(dict(STT_TEST))
+            return self._json(dict(STT_DOWN if _down("stt") else STT_TEST))
         # Registration only ever proved the station accepted a row; this is the
         # station pushing back at us, which is the half that fails in the wild.
         if path == "/hooks/test":
-            return self._json(dict(HOOK_TEST))
+            return self._json(dict(HOOK_DOWN if _down("hooks") else HOOK_TEST))
         # The speed test, shaped like handle_speed_test's answer: stages with
         # counts/estimate flags and the compound turn. The LLM stage is the
         # slow one on purpose — the chokepoint colouring is the thing to see.
@@ -856,6 +932,14 @@ class Handler(BaseHTTPRequestHandler):
                 "episodeAngle": "Tonight, the quiet hum of a valley "
                                 "preparing for rest."}}}))
         if path == "/live":
+            # The caller-facing outage. call.js holds one failed poll for 90
+            # seconds against a card that answered recently, so this only
+            # paints "Station unreachable" on a page LOADED while it is set —
+            # which is the shape a caller who opens the app during an outage
+            # actually meets, and the one nothing had driven.
+            if _down("live"):
+                return self._send(503, json.dumps({"error": "unreachable"}),
+                                  "application/json")
             return self._json({
                 "reachable": True, "onAir": True, "guestRequired": False,
                 # From the stub's own settings, like the real /live — the
