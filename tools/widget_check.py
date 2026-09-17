@@ -26,6 +26,13 @@ the incidents were made of:
   - the two-pages contract as the BROWSER sees it (which sheets and scripts
     actually attached, not which tags the HTML mentions)
   - compact mode actually compacting
+  - the three faces (phone, player, guide) on four surfaces — a portrait
+    phone, a landscape phone, a folded phone's cover, the 620x544 page card
+    — each holding the rules the card's design system states in words
+    (added 2026-09-17: five releases of card work had shipped past a
+    harness that drove one face at one width)
+  - the installed app OPENING with the server gone, which is the service
+    worker's one job
 
 Failed fetches against the stub's fixture gaps are reported, not fatal —
 the stub is not the product; a JS exception is.
@@ -39,6 +46,7 @@ flag, and none should be added.
 from __future__ import annotations
 
 import argparse
+import re
 import socket
 import subprocess
 import sys
@@ -165,6 +173,218 @@ def check_page(page, rep: Report, name: str, url: str,
                     "is dead in the browser")
 
 
+# --- the three faces, on every surface ---------------------------------------
+# The card became three faces on 2026-09-03 (0.99.39) and then had four passes
+# with the phone in hand (0.99.40–0.99.43): five releases this harness could
+# not see, because it drove one face at one width. Every promise pinned here
+# is one the changelog or the card's design system
+# (.claude/skills/talkwave-card-design) states in words:
+#   - the whole surface never scrolls; only a face's own middle does
+#     (operator's rule, 2026-09-01) — #lineBox, .plpanelbody, #guideScroll
+#   - the page card is 620x544 exactly (0.99.40, "the card on a computer
+#     works again")
+#   - a landscape phone turns the faces row into a rail down the left edge
+#     (0.99.42), and a folded phone's cover keeps the rail icon-only
+#   - nothing overflows sideways on any of them
+FACES = (
+    # (face, its button, the view it reveals, the regions allowed to scroll —
+    # at least one of them must). The guide's middle is one column in
+    # portrait and, in landscape, a grid whose listing column scrolls while
+    # the show on air stands unclamped beside it (0.99.42).
+    ("phone", "facePhone", None, ("#lineBox",)),
+    ("player", "facePlayer", "playerView", (".plpanelbody",)),
+    ("guide", "faceGuide", "guideView",
+     ("#guideScroll", "#guideScroll > .gdlist", "#guideScroll > .gdgrid")),
+)
+SURFACES = (
+    # (surface, viewport, the promise particular to it)
+    ("phone", (390, 844), "bleed"),          # ≤500px wide: the card is the screen
+    ("landscape", (844, 390), "rail"),       # landscape, ≤560 tall: the rail
+    ("cover", (720, 360), "rail-icons"),     # landscape, ≤400 tall: icons only
+    ("desktop", (1100, 800), "card"),        # the 620x544 page card
+)
+
+# What sw.js precaches, read from the file so the offline check waits for
+# the real list rather than a number that goes stale when the shell grows.
+SHELL_URLS = re.findall(
+    r"'(/[^']*)'",
+    re.search(r"const SHELL = \[(.*?)\];",
+              (REPO / "web-widget" / "sw.js").read_text(encoding="utf-8"),
+              re.S).group(1))
+
+_RECT = ("(sel) => { const el = document.querySelector(sel);"
+         " if (!el) return null; const r = el.getBoundingClientRect();"
+         " return [r.width, r.height]; }")
+_STYLE = ("([sel, prop]) => { const el = document.querySelector(sel);"
+          " return el ? getComputedStyle(el)[prop] : null; }")
+_PAGE_SCROLL = ("(() => { const d = document.documentElement; return ["
+                "d.scrollHeight - d.clientHeight, d.scrollWidth - d.clientWidth"
+                "]; })()")
+
+
+def _surface_promise(page, promise: str, vw: int) -> str:
+    """'' when the surface keeps its particular promise, else why not."""
+    if promise == "bleed":
+        rect = page.evaluate(_RECT, ".card")
+        if not rect or abs(rect[0] - vw) > 1:
+            return f"card is {rect and round(rect[0])}px wide on a {vw}px phone"
+        return ""
+    if promise == "card":
+        rect = page.evaluate(_RECT, ".card")
+        if not rect or abs(rect[0] - 620) > 1 or abs(rect[1] - 544) > 1:
+            return (f"card is {rect and round(rect[0])}x{rect and round(rect[1])}"
+                    ", not 620x544")
+        return ""
+    # The rail: the faces row goes down the left edge as a column.
+    pos = page.evaluate(_STYLE, [".facebar", "position"])
+    direction = page.evaluate(_STYLE, [".facebar", "flexDirection"])
+    if pos != "fixed" or direction != "column":
+        return f"faces row is {pos}/{direction}, not a fixed column rail"
+    if promise == "rail-icons":
+        lab = page.evaluate(_STYLE, [".facebar .face .facelab", "display"])
+        if lab != "none":
+            return f"rail label is {lab!r} on a folded cover — should be icon-only"
+    return ""
+
+
+def check_faces(browser, rep: Report, base: str) -> None:
+    """Every face on every surface: the view shows, its own middle scrolls,
+    the page around it does not, and the surface keeps its own promise."""
+    for surface, (vw, vh), promise in SURFACES:
+        # Reduced motion, so a face switch lands at once instead of mid-swipe
+        # — the sheet's own rule is that it kills every animation.
+        ctx = browser.new_context(viewport={"width": vw, "height": vh},
+                                  reduced_motion="reduce")
+        page = ctx.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(f"{base}/", wait_until="networkidle")
+        page.wait_for_timeout(400)
+        name = f"faces@{surface} {vw}x{vh}"
+
+        offered = page.evaluate(
+            "() => document.querySelector('.card.faces') !== null"
+            " && !document.getElementById('faceBar').hidden"
+            " && ['facePhone', 'facePlayer', 'faceGuide'].every("
+            "  id => { const b = document.getElementById(id);"
+            "  return b && !b.hidden && b.getBoundingClientRect().width > 0; })")
+        if not offered:
+            rep.add("FAIL", f"{name}: all three faces offered",
+                    "the stub switches the player and the guide on; the row "
+                    "at the card's foot does not show all three")
+            ctx.close()
+            continue
+
+        for face, btn, view, scrollers in FACES:
+            if view is not None:
+                page.click(f"#{btn}")
+                page.wait_for_timeout(350)
+            faults: list[str] = []
+            shown = page.evaluate(
+                "(view) => { const p = document.getElementById('playerView'),"
+                " g = document.getElementById('guideView');"
+                " const vis = el => el && !el.hidden"
+                "   && el.getBoundingClientRect().height > 0;"
+                " if (!view) return !vis(p) && !vis(g);"
+                " return vis(document.getElementById(view)); }", view)
+            if not shown:
+                faults.append("the face's view is not the one showing")
+            over = {s: page.evaluate(_STYLE, [s, "overflowY"]) for s in scrollers}
+            if not any(v in ("auto", "scroll") for v in over.values()):
+                faults.append(f"none of the face's middle scrolls: {over}")
+            dy, dx = page.evaluate(_PAGE_SCROLL)
+            if dy > 1 or dx > 0:
+                faults.append(f"the page scrolls ({dy}px down, {dx}px "
+                              "sideways) — only the face's middle may")
+            why = _surface_promise(page, promise, vw)
+            if why:
+                faults.append(why)
+            if errors:
+                faults.append("JS exception: " + errors[0][:120])
+                errors.clear()
+            if faults:
+                rep.add("FAIL", f"{name}: {face} face", "; ".join(faults))
+            else:
+                rep.add("ok", f"{name}: {face} face — shows, its middle "
+                              f"scrolls, the page holds, {promise} kept")
+        ctx.close()
+
+
+def check_offline(browser, rep: Report, base: str, stub) -> None:
+    """The installed app opens with the server gone — sw.js's one job.
+
+    Not `set_offline`: that reaches the page's own network, and whether it
+    reaches a worker's fetches has changed between browser versions. The
+    stub is killed instead, which is what "no signal" actually is. So this
+    runs LAST — nothing after it has a server to talk to.
+    """
+    if stub is None:
+        rep.add("note", "offline: skipped — needs the stub this run booted "
+                        "(not --base), so it can be taken away")
+        return
+    ctx = browser.new_context(viewport={"width": 390, "height": 844})
+    page = ctx.new_page()
+    page.goto(f"{base}/", wait_until="load")
+    # call.js registers /sw.js on the real page over a secure context;
+    # 127.0.0.1 counts. Wait for the worker to install its shell — every
+    # entry of SHELL, fetched one by one — before taking the server away.
+    # Polled through evaluate (which awaits a promise) rather than
+    # wait_for_function (which does not, and returned on the pending
+    # promise itself: the first run killed the stub mid-install and read
+    # the half-cached shell as a broken worker).
+    shell = len(SHELL_URLS)
+    held = 0
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        held = page.evaluate(
+            "() => caches.keys().then(ks => ks.length ? caches.open(ks[0])"
+            ".then(c => c.keys()).then(k => k.length) : 0)")
+        if held >= shell:
+            break
+        page.wait_for_timeout(200)
+    if held < shell:
+        rep.add("FAIL", "offline: the service worker installed its shell",
+                f"{held} of {shell} shell entries cached within 10s")
+        ctx.close()
+        return
+    stub.kill()
+    stub.wait()
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", int(base.rsplit(":", 1)[1])),
+                                          timeout=0.3):
+                time.sleep(0.2)
+        except OSError:
+            break
+    failed: list[str] = []
+    page.on("requestfailed",
+            lambda r: failed.append(r.url) if r.url.startswith(base) else None)
+    try:
+        page.reload(wait_until="load")
+    except Exception as e:
+        rep.add("FAIL", "offline: the app opens with no signal",
+                f"reload with the server gone did not load: {str(e)[:120]}")
+        ctx.close()
+        return
+    page.wait_for_timeout(400)
+    has_card = page.evaluate("() => !!document.getElementById('callBtn')")
+    shell_lost = [u for u in failed if u.rsplit(".", 1)[-1] in ("css", "js")]
+    if has_card and not shell_lost:
+        rep.add("ok", "offline: the app opens with the server gone — page, "
+                      "sheets and scripts all answered from the shell")
+    else:
+        rep.add("FAIL", "offline: the app opens with no signal",
+                ("no card" if not has_card else "") +
+                (" shell files not cached: " + ", ".join(
+                    u.rsplit("/", 1)[-1] for u in shell_lost) if shell_lost else ""))
+    live = [u.rsplit("/", 1)[-1] for u in failed if u not in shell_lost]
+    if live:
+        rep.add("note", f"offline: {len(live)} live fetch(es) failed as they "
+                        "must (never cached)", ", ".join(live[:4]))
+    ctx.close()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--base", default="",
@@ -253,6 +473,10 @@ def main() -> None:
                             f"{overflow}px in a 360px frame — the "
                             "re-inflated-embed shape")
                 page.close()
+
+                check_faces(browser, rep, base)
+                # Last: it takes the server away.
+                check_offline(browser, rep, base, proc)
             finally:
                 browser.close()
     finally:

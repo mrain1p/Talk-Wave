@@ -66,6 +66,9 @@ os.environ.setdefault("LOG_TO_FILE", "0")
     "open_lines_enabled": True,
     # The pull-down player, so the eyebrow ribbon and the sheet are drivable.
     "swipe_player": True,
+    # The third card too, so the faces row offers all three and the guide
+    # can be driven (widget_check drives every face on every surface).
+    "show_guide": True,
     # Go-live on, so the dashboard's Live-on-air cluster stands and its
     # door cards can be looked at without first granting the permission.
     "allow_on_air": "guest",

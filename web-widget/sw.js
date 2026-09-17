@@ -24,13 +24,19 @@
 
 // v2: the brand mark landed (0.97.29) and icon-192.png changed bytes under
 // the same name — a bump is the only way the offline shell's copy follows.
-const CACHE = 'talkwave-v2';
+// v3: skins.css joined the shell (2026-09-17). The page had loaded it since
+// 0.99.2 and this list never learned, so an app opened with no signal came
+// up without the sheet that carries the operator's skin. The list is now
+// pinned to what index.html actually loads (TestTheServiceWorkerStaysOutOf
+// TheWay in the suite); a bump is still what makes an installed copy follow.
+const CACHE = 'talkwave-v3';
 
-// The page, and the two scripts and stylesheet it cannot start without.
+// The page, and the two scripts and two stylesheets it cannot start without.
 // Unversioned URLs on purpose: at install time we do not know the ?v= tags,
 // and these are only ever the fallback. The versioned copies get cached as
 // they are actually requested, which is where the real speed comes from.
-const SHELL = ['/', '/style.css', '/shared.js', '/call.js', '/icon-192.png'];
+const SHELL = ['/', '/style.css', '/skins.css', '/shared.js', '/call.js',
+               '/icon-192.png'];
 
 self.addEventListener('install', (e) => {
   // addAll rejects the whole install if any one URL fails, which would leave
