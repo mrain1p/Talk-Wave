@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import hmac
 import logging
 import re
+import secrets
 import uuid
 
 from aiohttp import web
@@ -123,6 +125,16 @@ def _network_of(ip: str) -> str:
     return "off-network"
 _live_calls: dict[str, float] = {}       # room -> started at
 
+# room -> the one-shot secret minted beside it. /call-ended is public (a
+# hanging-up browser has no credential and the beacon has to land), and it used
+# to free whatever room string it was handed — so a caller could POST their own
+# room and walk straight back past the one-live-phone-in check, the concurrency
+# ceiling and the operator's dump button, as many times as they liked. The
+# secret goes out once, in the mint's own answer, to the browser that was given
+# the room; nobody else is holding it.
+_call_release: dict[str, str] = {}
+_RELEASE_BYTES = 16
+
 _CALL_ASSUMED_MAX = 1800.0               # forget a room after 30 min
 
 # How long a minted join token stays valid. Long enough to cover a slow page
@@ -163,6 +175,7 @@ def _check_usage(request: web.Request, cfg: dict) -> str | None:
     for room, started in list(_live_calls.items()):
         if now - started > _CALL_ASSUMED_MAX:
             _live_calls.pop(room, None)
+            _call_release.pop(room, None)
     # A cooldown older than the longest configurable wait can never matter
     # again; without this the per-caller map grows by one entry per IP forever.
     for key, at in list(_caller_last.items()):
@@ -210,12 +223,30 @@ def on_air_call_live() -> bool:
 
 async def handle_call_ended(request: web.Request) -> web.Response:
     """The widget reports a hangup so a finished call stops counting against
-    the concurrency limit immediately, rather than aging out."""
+    the concurrency limit immediately, rather than aging out.
+
+    Public, and it stays public: the browser doing the reporting is the
+    anonymous stranger who was just on the call. What it now has to show is
+    the `release` value minted with its own room — see _call_release. The
+    operator's panel is let through on the admin gate instead, which is how
+    the dump button and the pipeline probe still clear their rooms.
+    """
     try:
         body = await request.json()
-        _live_calls.pop(str(body.get("room", "")), None)
     except Exception:
-        pass
+        return _cors(request, web.json_response({"ok": True}))
+    room = str(body.get("room", ""))
+    wanted = _call_release.get(room, "")
+    shown = str(body.get("release", ""))
+    if not (wanted and shown and hmac.compare_digest(wanted, shown)):
+        if not _write_allowed(request):
+            # Quiet and shaped like success: a caller probing this learns
+            # nothing, and a stale tab replaying an old room is not an error
+            # worth showing anybody. The slot simply ages out as it always did.
+            log.info("ignoring unauthorised /call-ended for room=%s", room[:24])
+            return _cors(request, web.json_response({"ok": True}))
+    _live_calls.pop(room, None)
+    _call_release.pop(room, None)
     return _cors(request, web.json_response({"ok": True}))
 
 
@@ -411,12 +442,18 @@ async def handle_token(request: web.Request) -> web.Response:
 
     import time as _time
 
+    release = ""
     if not probe:
         now = _time.time()
         _recent_mints.append(now)
         _caller_last[_caller_key(request)] = now
         if not voicemail:
             _live_calls[room] = now
+            # The proof this browser may hand its own slot back. Only a room
+            # that TOOK a slot gets one — a probe and a voicemail hold no
+            # slot, so there is nothing for them to release.
+            release = secrets.token_urlsafe(_RELEASE_BYTES)
+            _call_release[room] = release
         ip = _caller_key(request)
         _mint_info[room] = {
             "client": _describe_client(request.headers.get("User-Agent", "")),
@@ -442,5 +479,6 @@ async def handle_token(request: web.Request) -> web.Response:
     )
     return _cors(
         request,
-        web.json_response({"token": token, "url": LIVEKIT_PUBLIC_URL, "room": room}),
+        web.json_response({"token": token, "url": LIVEKIT_PUBLIC_URL,
+                           "room": room, "release": release}),
     )

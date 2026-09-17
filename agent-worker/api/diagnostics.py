@@ -439,7 +439,11 @@ async def _a_calls_worth_of_context(cfg: dict) -> tuple[str, list, str]:
         override = str(cfg.get("persona_override") or "").strip()
         roster = {p.get("id"): p for p in snap["personas"]}
         persona = roster.get(override) or station.persona_from(snap["dj"], snap["personas"])
-        prompt = await brain.build_system_prompt(station, persona, snapshot=snap)
+        # No snapshot= : this one was fetched WITHOUT with_skills, and handing
+        # it over made assemble skip both the skills read and the narrowing its
+        # own comment promises — so the measured prompt was missing the
+        # segments a real call carries. See the note at handle_prompt.
+        prompt = await brain.build_system_prompt(station, persona)
         parts.append("the DJ's real prompt")
     except Exception as e:                                     # noqa: BLE001
         log.info("bench: no station prompt (%s)", _plain_error(e)[:120])
@@ -814,7 +818,13 @@ async def handle_prompt_preview(request: web.Request) -> web.Response:
         override = str(cfg.get("persona_override") or "").strip()
         roster = {p.get("id"): p for p in snap["personas"]}
         persona = roster.get(override) or station.persona_from(snap["dj"], snap["personas"])
-        text = await brain.build_system_prompt(station, persona, snapshot=snap)
+        # The snapshot above is for resolving the PERSONA only. It is fetched
+        # without with_skills, and passing it on made assemble use it as-is —
+        # so the operator's preview never carried "Segments you can run on air"
+        # and never narrowed the catalogue to this DJ, while the live call did
+        # both. Preview and call disagreeing about identical config is the one
+        # thing this page exists to rule out, so assemble fetches its own.
+        text = await brain.build_system_prompt(station, persona)
     finally:
         await station.aclose()
 
@@ -886,7 +896,9 @@ async def handle_speed_test(request: web.Request) -> web.Response:
         persona = st.persona_from(snap["dj"], snap["personas"])
         import brain
 
-        prompt = await brain.build_system_prompt(st, persona, snapshot=snap)
+        # No snapshot= : a timing figure for a prompt smaller than the one a
+        # call pays for is the wrong figure. See the note at handle_prompt.
+        prompt = await brain.build_system_prompt(st, persona)
         record("Prompt assembly", (_time.perf_counter() - t0) * 1000,
                f"{len(prompt)} chars (~{len(prompt)//4} tokens, paid every turn)",
                counts=False)
@@ -985,6 +997,10 @@ async def handle_speed_test(request: web.Request) -> web.Response:
             cfg.get("tts_base_url") or "",
             adapter_path=adapter_path,
             mode=str(cfg.get("tts_mode", "")),
+            # tts_key_ok was decided up at the top of this handler and then
+            # only used for the SPEAK leg; the catalogue lookup carried the
+            # stored key to a previewed host regardless (invariant 4).
+            allow_stored=tts_key_ok,
         )
         voice, voice_note = pick_speakable_voice(voice, available)
         if voice_note:
@@ -1387,7 +1403,9 @@ async def handle_test_station(request: web.Request) -> web.Response:
     allowed = et["mcp"]
     result: dict = {"ok": False, "mcpUrl": mcp_url, "stationUrl": base}
 
-    station = StationClient(base_url=base)
+    # remember=False: this URL may be one the operator is only previewing, and
+    # a preview must not write its DJ into the worker's wrong-DJ fallback.
+    station = StationClient(base_url=base, remember=False)
     try:
         health = await station.health()
         result["station"] = bool(health)

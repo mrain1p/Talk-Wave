@@ -1357,7 +1357,11 @@ def beneath() -> dict:
 URL_FIELDS = ("station_base_url", "station_mcp_url", "llm_base_url",
               "tts_base_url", "vm_air_base_url")
 
-_URLISH = re.compile(r"^(https?|wss?)://[^\s/?#]+", re.IGNORECASE)
+# Anchored at BOTH ends. Anchored only at the front, this said yes to
+# "http://192.168.1.10:7700/api the NAS" — a note the operator typed after the
+# address — and the panel stored it as a live URL, which every station read
+# then failed on with nothing saying why.
+_URLISH = re.compile(r"^(https?|wss?)://[^\s/?#]+(?:[/?#]\S*)?$", re.IGNORECASE)
 
 
 def complain(patch: dict) -> str | None:
@@ -1381,10 +1385,18 @@ def complain(patch: dict) -> str | None:
     # so a floor above its own ceiling saved without complaint and the
     # behaviour after that was nobody's intention. Merged against what is
     # already stored, because a patch usually carries one half of a pair.
-    return _complain_about_pairs({**load(), **{
-        k: _coerce(v, FIELDS[k][1]) for k, v in patch.items()
-        if k in FIELDS and v not in ("", None)
-    }})
+    merged = load()
+    for k, v in patch.items():
+        if k not in FIELDS:
+            continue
+        # A blank in the patch is not "unchanged": save() pops the override and
+        # the field falls to the layer below. Filtering blanks out of this view
+        # judged the pair against the value being DELETED — so clearing a floor
+        # of 300 while lowering the ceiling to 200 was refused for a conflict
+        # the save would not have left behind.
+        merged[k] = (_coerce(v, FIELDS[k][1]) if v not in ("", None)
+                     else beneath().get(k, FIELDS[k][1]))
+    return _complain_about_pairs(merged)
 
 
 def _complain_about_pairs(cfg: dict) -> str | None:
@@ -1417,7 +1429,8 @@ def _sane_url(field: str, value: str) -> str:
     """
     value = str(value or "").strip()
     if value and not _URLISH.match(value):
-        log.warning("ignoring %s=%r — that is not a URL; using the default", field, value)
+        log.warning("ignoring %s=%r — that is not a URL; falling through to "
+                    "the layer beneath it", field, value)
         return ""
     return value
 
@@ -1429,13 +1442,22 @@ def tts_mode() -> str:
     return str(load()["tts_mode"]).lower()
 
 
+# Both of these fall THROUGH an unusable stored value to the layer beneath it
+# rather than straight past it (invariant 1). Jumping to the built-in default
+# meant an operator whose panel held "Gordon" — the browser autofill that
+# started all of this — silently lost their SUBWAVE_BASE_URL, so the
+# container's own env named one station and every call went to another. The
+# env layer is sane-checked in its own right: it is where the commented
+# "# blank derives …" value came from.
 def station_base_url() -> str:
-    resolved = _sane_url("station_base_url", load()["station_base_url"])
+    resolved = (_sane_url("station_base_url", load()["station_base_url"])
+                or _sane_url("station_base_url", beneath()["station_base_url"]))
     return (resolved or FIELDS["station_base_url"][1]).rstrip("/")
 
 
 def station_mcp_url() -> str:
-    explicit = _sane_url("station_mcp_url", load().get("station_mcp_url"))
+    explicit = (_sane_url("station_mcp_url", load().get("station_mcp_url"))
+                or _sane_url("station_mcp_url", beneath()["station_mcp_url"]))
     return explicit or f"{station_base_url()}/mcp"
 
 

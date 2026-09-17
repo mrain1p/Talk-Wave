@@ -180,8 +180,12 @@ if __name__ == "__main__":
             # mid-load and the worker never becomes ready.
             initialize_process_timeout=180.0,
             # The back-to-air handoff (LLM compose + POST) runs during
-            # shutdown; the 10s default could kill it mid-compose on a cold
-            # model and the handoff only gets one chance per call.
+            # shutdown, and the 10s default is tight for a cold model.
+            # It does NOT bound the ordinary hang-up, though the raised
+            # figure was written here as if it did: a caller dropping the
+            # line runs the shutdown callbacks with no timeout over them at
+            # all. What this covers is a worker-initiated close and a
+            # JobTermination from the server — verified 2026-09-17.
             shutdown_process_timeout=60.0,
             # The SDK warns at 1000MB, which is a threshold for a job process
             # that calls a cloud STT over the network. This one runs

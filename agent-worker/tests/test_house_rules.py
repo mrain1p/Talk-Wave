@@ -918,6 +918,14 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "receipt card lands. Crossed the ceiling when 0.10.65 added the "
             "card-routing cases; same subject-placement rule as the modules "
             "around it.",
+        "agent-worker/tests/test_secrets_and_auth.py":
+            "one subject, and the file says it in a line: something not "
+            "leaving, or somebody not getting in. It grows a case per place a "
+            "stored secret could travel, and those places are found one at a "
+            "time — crossed the ceiling on the 2026-09-17 review pass, which "
+            "found the panel's voice lookup handing a previewed host the "
+            "stored TTS key. Same subject-placement rule as the modules "
+            "around it.",
         "agent-worker/tests/test_voice.py":
             "one subject: whether a speech backend can say the thing — "
             "discovery, sample rates, pace, and now the shipped adapter "
@@ -1340,7 +1348,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # seam) plus a docstring paragraph naming the discovery half. Both are
         # on the synthesis/config side; the seam above has not moved and the
         # discovery split is still the one worth making.
-        "agent-worker/tts_adapter.py": (669, "a voice-discovery module split "
+        # 675 on the 2026-09-17 review pass: available_voices takes
+        # allow_stored, so a previewed host is asked without the stored key
+        # (invariant 4) — on the discovery side, which is the split above.
+        "agent-worker/tts_adapter.py": (675, "a voice-discovery module split "
                                              "out from the AdapterTTS class"),
         # 0.10.113 pushed it over while rebuilding the duck: the pads were
         # collapsed into one constant and a measured voice.end was made to

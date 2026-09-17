@@ -351,6 +351,28 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
+        # The mint, shaped like api/tokens.handle_token's answer. There is no
+        # LiveKit here so the join cannot go anywhere — what this exists for is
+        # `release`, the per-room secret the widget must keep and hand back to
+        # /call-ended, because a widget that forgets it leaves the slot held
+        # until it ages out and nothing on screen says so.
+        if self.path.split("?")[0] == "/token":
+            return self._json({"token": "stub-token", "url": "ws://stub",
+                               "room": "callin-g-stub00000000",
+                               "release": "stub-release"})
+        # Freeing the slot needs that same secret. Answered ok either way,
+        # like the real route, but a widget that forgot it says so on the
+        # console here instead of silently holding a line in production.
+        if self.path.split("?")[0] == "/call-ended":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n) or b"{}")
+            except Exception:
+                body = {}
+            if not isinstance(body, dict) or body.get("release") != "stub-release":
+                print("  [stub] /call-ended without the minted release — "
+                      "the real server would leave the slot held")
+            return self._json({"ok": True})
         # The player's listener actions, from fixtures — enough to drive the
         # heart filling and the SENT beat without a station.
         if self.path.split("?")[0] == "/player/like":
