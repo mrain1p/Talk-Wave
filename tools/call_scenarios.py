@@ -296,7 +296,10 @@ class Caller:
     async def hangup(self) -> None:
         req = urllib.request.Request(
             f"{SERVER}/call-ended",
-            data=json.dumps({"room": self.grant.get("room", "")}).encode(),
+            # The release the mint handed us, beside the room: the id alone
+            # stops a slot being freed since 2026-09-17 (a caller holds it).
+            data=json.dumps({"room": self.grant.get("room", ""),
+                             "release": self.grant.get("release", "")}).encode(),
             method="POST", headers={"Content-Type": "application/json"})
         try:
             urllib.request.urlopen(req, timeout=5).read()
