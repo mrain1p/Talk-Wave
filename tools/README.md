@@ -22,7 +22,7 @@ These three all place genuine calls, and they differ in what they bring with the
 
 ## Does the widget actually render?
 
-**[`widget_check.py`](widget_check.py)** — both pages plus the embed's compact mode in a real headless browser, checking what the Python suite's text reads cannot see: a page that throws on load, CSS that parsed but died (computed-style spot checks — the class of bug that once re-inflated every embed to 896px and once ate `.skinart` with 23 modules green), and the two-pages contract as the browser actually resolved it. Playwright for Python, dev-box only (`pip install playwright && playwright install chromium`) — the image and CI need nothing. Boots its own stub; refuses any non-localhost base with no override flag, same rule as the call harness. Run it after any change to `web-widget/`, before a release. Proven on adoption day by recreating the comment-eats-rule incident: the suite stayed green, this failed on the exact dead rule.
+**[`widget_check.py`](widget_check.py)** — both pages plus the embed's compact mode in a real headless browser, checking what the Python suite's text reads cannot see: a page that throws on load, CSS that parsed but died (computed-style spot checks — the class of bug that once re-inflated every embed to 896px and once ate `.skinart` with 23 modules green), and the two-pages contract as the browser actually resolved it. Playwright for Python, dev-box only (`pip install playwright && playwright install chromium`) — the image and CI need nothing. Boots its own stub; refuses any non-localhost base with no override flag, same rule as the call harness. Run it after any change to `web-widget/`, before a release. Proven on adoption day by recreating the comment-eats-rule incident: the suite stayed green, this failed on the exact dead rule. Since 2026-09-17 it also drives the three faces (phone, player, guide) on four surfaces — a portrait phone, a landscape phone, a folded phone's cover, the 620x544 page card — pinning what the card's design system says in words (only a face's own middle scrolls, the rail in landscape, the card's fixed size), and ends by killing the stub and reloading: the installed app must open with the server gone, which is the service worker's one job. With `--base` the offline check is skipped, since there is no stub of its own to take away.
 
 ## What actually happened on the line?
 
@@ -49,6 +49,14 @@ python tools/upstream_drift.py --record   # …and stamp the SHA compared agains
 Checks: webhook events, `/dj/say` kinds, takeover bounds, LLM providers,
 inheritable TTS engines, the MCP tool surface, per-provider default models.
 Exit code 1 when anything drifted. Needs `gh` authenticated.
+
+It also reads the station's own Connect catalogue (`connect/catalog.ts`, the
+source behind its admin-gated `GET /connect/catalog`) — not as a mirror, since
+most of the ~50 endpoints it advertises are nothing the DJ would call, but for
+movement: an endpoint newly advertised since the last `--record` is printed as
+a take-advantage candidate, and one the station stopped advertising that
+`station.py` still calls counts as drift. The first read prints the whole
+not-called-here inventory once.
 
 **Not in the test suite, on purpose.** The suite is network-free by house rule,
 and a test that fails because GitHub is slow teaches people to ignore failures.
