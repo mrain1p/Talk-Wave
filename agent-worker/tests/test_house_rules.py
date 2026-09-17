@@ -1041,7 +1041,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # the chat build can drop it instead of negating it.
         # 747: the person-name-is-a-roster-ask clause on the takeover
         # bullet (the Rosie exchange) and the re-measured budget note.
-        "agent-worker/brain/tool_rules.py": (747, "the declarations at the top "
+        # 756: "a few by one artist" became its own bullet (2026-09-17) —
+        # the station's one-press artist run, the picks rule under it now
+        # saying which asks still go through rows — and the station's own
+        # playlists joined the bulk section, only ever on the caller's ask.
+        "agent-worker/brain/tool_rules.py": (756, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
         # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —
@@ -1939,7 +1943,8 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         # 1.14, #1632) is tried before the per-track loop — one branch, the
         # press itself in blocks.py.
         "agent-worker/call/tools/albums.py::build_album_tools.queue_album": (33, "Batch 4 — album queue"),
-        "agent-worker/call/tools/albums.py::build_album_tools.queue_mix": (25, "Batch 4 — mix queue"),
+        # queue_mix left the ledger 2026-09-17: its pick-parsing loop moved
+        # out to _parse_picks when the one-artist press joined it.
         # Batch 5 — the brain
         "agent-worker/brain/briefing.py::_fmt_now_playing": (32, "Batch 5 — now-playing formatter"),
         "agent-worker/brain/assemble.py::build_system_prompt": (29, "Batch 5 — prompt assembler entry; +1 2026-09-01: the persona id, so the booth window can tell our own lines from a co-host's; +1 2026-09-07: the live show resolved before the skills are narrowed, so a co-hosted segment (#1534) is only offered when somebody else is in the booth"),

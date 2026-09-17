@@ -43,6 +43,11 @@ STATION_FILES = {
     "settings/vocab.ts": "LLM_PROVIDERS",
     "mcp/tools.ts": "the MCP tool surface",
     "llm/internal/provider/registry.ts": "per-provider default model ids",
+    # The station saying it itself: the curated catalogue behind its Connect
+    # page (GET /connect/catalog, admin-gated live — so read at source). Not
+    # a mirrored constant like the rest; see catalogue_report().
+    "connect/catalog.ts": "the Connect catalogue — every endpoint the station "
+                          "advertises to integrators",
 }
 
 
@@ -175,6 +180,71 @@ def check_default_models(src: dict) -> tuple[list, list]:
     return [f"{p}={m}" for p, m in station], [f"{p}={m}" for p, m in mine]
 
 
+# ------------------------------------------------------------- the catalogue
+# Added 2026-09-17 (the 09-14 pass's "worth pointing the tool at next"). The
+# checks above diff constants we MIRROR; the catalogue is different in kind:
+# ~50 endpoints the station advertises, most of which Talk Wave does not
+# call and never will, so "station == mine" can never be the test. What is
+# worth noticing is the MOVEMENT — an endpoint newly advertised since the
+# last recorded pass (a "take advantage" candidate, the class the 09-14 pass
+# listed by hand as unused reads), and one the station stopped advertising
+# that we still call (the one shape here that counts as drift).
+
+def _param(path: str) -> str:
+    """Path params to one spelling so `/x/{_seg(id)}` here and `/x/:id`
+    there compare equal."""
+    return re.sub(r"(\{[^}]+\}|:[A-Za-z_]+)", ":p", path)
+
+
+def catalogue_endpoints(text: str) -> set[str]:
+    body = _strip_comments(text)
+    return {f"{m} {_param(p)}" for m, p in
+            re.findall(r"method:\s*'([A-Z]+)',\s*path:\s*'([^']+)'", body)}
+
+
+def consumed_paths() -> set[str]:
+    """Every station path station.py calls, by path alone: the client does
+    not state the method beside the path in one regex-able place. An
+    f-string path carries `{_seg(x)}`, hence the loose middle."""
+    return {_param(p) for p in
+            re.findall(r"""f?["'](/[a-z][^"'\s]*)["']""", worker("station.py"))}
+
+
+def catalogue_report(src: dict, was: dict) -> tuple[int, list[str]]:
+    """Print the catalogue's movement; return (drift count, advertised list)."""
+    adv = catalogue_endpoints(src.get("connect/catalog.ts", ""))
+    if not adv:
+        print("?? catalogue: nothing parsed from connect/catalog.ts — the "
+              "file moved or its shape changed; look before trusting this")
+        return 1, []
+    mine = consumed_paths()
+    used = sorted(e for e in adv if e.split(" ", 1)[1] in mine)
+    known = set(was.get("catalog") or [])
+    print(f"catalogue: {len(adv)} endpoints advertised, {len(used)} of them "
+          "called here")
+    if not known:
+        unused = sorted(e for e in adv if e not in used)
+        print("      first read — not called here (the take-advantage "
+              "inventory; later runs print only what moved):")
+        for e in unused:
+            print(f"        {e}")
+        return 0, sorted(adv)
+    new = sorted(adv - known)
+    gone = sorted(known - adv)
+    drifted = 0
+    if new:
+        print(f"      NEW since last pass: {new}")
+    lost = [e for e in gone if e.split(" ", 1)[1] in mine]
+    if lost:
+        drifted = 1
+        print(f"DRIFT catalogue: no longer advertised, still called here: {lost}")
+    if gone and not lost:
+        print(f"      dropped since last pass (not called here): {gone}")
+    if not (new or gone):
+        print("      unchanged since last pass")
+    return drifted, sorted(adv)
+
+
 CHECKS = {
     "webhook events": check_webhook_events,
     "say kinds": check_say_kinds,
@@ -237,12 +307,21 @@ def main() -> int:
             print(f"      talk wave: {mine}")
 
     print()
+    try:
+        cat_drift, advertised = catalogue_report(src, was)
+    except Exception as e:                                      # noqa: BLE001
+        print(f"?? catalogue: report itself failed ({e})")
+        cat_drift, advertised = 1, list(was.get("catalog") or [])
+    drifted += cat_drift
+
+    print()
     if args.record:
         STAMP.write_text(json.dumps(
-            {"sha": head["sha"], "date": head["date"], "drifted": drifted},
+            {"sha": head["sha"], "date": head["date"], "drifted": drifted,
+             "catalog": advertised},
             indent=2) + "\n", encoding="utf-8")
         print(f"recorded {head['sha'][:12]} in {STAMP.relative_to(ROOT)}")
-    print(f"{drifted} of {len(CHECKS)} checks drifted"
+    print(f"{drifted} of {len(CHECKS) + 1} checks drifted"
           if drifted else "nothing drifted")
     return 1 if drifted else 0
 

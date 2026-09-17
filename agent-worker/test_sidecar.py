@@ -592,6 +592,8 @@ from tests.test_station import (  # noqa: F401
 )
 from tests.test_album_tools import (  # noqa: F401
     TestTheStationQueuesTheRecordItself,
+    TestARunByOneArtistIsOnePress,
+    TestAStationPlaylistGoesInWhole,
     TestAQueuedBlockComesOutAsOnePress,
 )
 from tests.test_tools_logic import (  # noqa: F401

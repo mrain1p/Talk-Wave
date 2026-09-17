@@ -4,6 +4,15 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.44
+
+The DJ gets two more one-liners at the station, and the card's last five releases get the checks they were built without.
+
+- **"A few by one artist" is one press.** On SUB/WAVE 1.14+ the station lines up its own pick of an artist's best-known songs, instead of the DJ searching, guessing and pushing them one at a time. The DJ is told how many went in and not which, so it cannot invent titles; "clear those Eminem tracks" takes the run back out in one press.
+- **The station's own playlists play on request.** "Play the Sunday chill playlist" queues the operator's playlist whole, in its order, as one action. Asked with no name, the DJ lists what the station has and queues nothing. Rides the album switch.
+- **The installed app opens offline with its skin.** The offline shell had never learned that the page loads a second stylesheet, so an app opened with no signal came up without the operator's skin.
+- **Under the hood:** the widget harness now drives all three cards on a portrait phone, a landscape phone, a folded phone's cover and the page card, and proves the app opens with the server gone; the drift tool reads the station's Connect catalogue and reports endpoints newly advertised since the last pass; the README's pictures are of the three cards as they are, guide and landscape rail included.
+
 ## 0.99.43
 
 Two weeks of keeping pace with the station: SUB/WAVE went 1.13 → 1.15, and the DJ now reads what it publishes instead of guessing at it. Plus the phone card, the player and the guide gone over once more with the phone in hand, and a takeover you can set from the schedule.

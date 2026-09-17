@@ -22,6 +22,7 @@ from station import StationClient
 from ..actions import CallActions
 from ..background import spawn
 from .albums import build_album_tools
+from .playlists import build_playlist_tools
 from .late_match import _surface_late_match
 from .registry import library_search_needs_mcp
 from .removal import build_removal_tools
@@ -709,6 +710,7 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
 
     if bulk_queue:
         tools += build_album_tools(station, actions)
+        tools += build_playlist_tools(station, actions)
 
     return tools
 

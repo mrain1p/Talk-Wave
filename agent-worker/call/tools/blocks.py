@@ -116,6 +116,57 @@ async def queue_as_block(station: StationClient, actions: CallActions,
 
 
 
+async def queue_artist_run(station: StationClient, actions: CallActions,
+                           artist: str, count: int) -> str | None:
+    """A run by ONE artist as ONE station press — POST /dj/queue-block
+    {kind:'artist'} (SUB/WAVE 1.14, #1632) — or None on a station without
+    the route, when the mix tool sends the DJ back to picking rows itself.
+
+    The station chooses the run: its Last.fm-ranked top songs by the
+    artist, or a walk of their albums where Last.fm has no coverage (most
+    of a niche catalogue), never-play list applied and every refusal named.
+    That beats what the DJ did by hand until 2026-09-17 — a search page,
+    its own guess at which are the known ones, then N pushes — which is why
+    "a few by one artist" comes here and a mix ACROSS artists still goes
+    through picks. The station does not say WHICH tracks went in, and the
+    receipt says so, because a DJ that reads "5 queued" and names five
+    titles has invented four of them.
+    """
+    actions.mark_working(6.0)
+    res = await station.queue_block("artist", artist=artist, limit=count)
+    if res.get("unsupported"):
+        return None
+    if not res.get("ok"):
+        actions.denied("refused", f"a run by {artist} was refused by the "
+                       "station and not queued")
+        why = _txt(res.get("error"), 140) or "the station refused it"
+        return (f"Nothing by {artist} made it into the queue: {why}. Tell "
+                "the caller plainly — do NOT claim the run is lined up.")
+    queued = int(res.get("queued") or 0)
+    if res.get("unconfirmed") and not queued:
+        queued = count
+    blocked = len([s for s in (res.get("skipped") or [])
+                   if isinstance(s, dict) and s.get("reason") == "blocked"])
+    actions.note("mix", f"{queued} by {artist}")
+    # The handle for "clear those Eminem tracks": the station's block id
+    # under the name the caller used, and under the station's own label
+    # when it differs, so either paraphrase finds it.
+    if res.get("blockId"):
+        for name in dict.fromkeys((artist, _txt(res.get("label"), 80))):
+            actions.note_block(name, str(res["blockId"]))
+    head = (f"Queued {queued} track(s) by {artist} in one press — the "
+            "station's own pick of their best-known songs")
+    if res.get("unconfirmed"):
+        head += ". The station was slow to confirm, but it has gone through"
+    head += (". The station did not name which tracks, so do NOT list "
+             "titles — say how many are in and whose they are. None of it "
+             "is playing yet: it lines up behind what's already queued. ")
+    head += _first_position([(None, res.get("queuePosition"))])
+    tail = _batch_report([None] * queued, [], 0, 0, withheld=blocked,
+                         dropped=int(res.get("truncated") or 0))
+    return " ".join(b for b in (head, tail, _runs_past(res)) if b).strip()
+
+
 async def clear_as_block(station: StationClient, actions: CallActions,
                           *names: str) -> str | None:
     """A block this call queued, taken out with the station's own one press

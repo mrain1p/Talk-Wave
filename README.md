@@ -14,14 +14,18 @@ Talk-Wave is a companion app with its own realtime voice agent wearing the perso
 
 <table>
 <tr>
-<td width="34%" valign="top"><img src="docs/call-desktop.png" alt="A live call in the station's own show theme: Wade mid-sentence, meters running, live captions, the talk bar open" /></td>
-<td width="33%" valign="top"><img src="docs/player-web.png" alt="The station player, open as the page's front: the record playing with its art and tags, what's up next, the DJ's own line on the segue, and a request box wired to the booth" /></td>
+<td width="34%" valign="top"><img src="docs/call-desktop.png" alt="The phone card on a web page: Cliff in the booth, the record on the station, the off-air / on-air route switch, the private line, and the row of three cards at its foot" /></td>
+<td width="33%" valign="top"><img src="docs/player-web.png" alt="The station player card, the page's front: the record playing with its art, the booth's note, up next and just played, and a request box wired to the booth" /></td>
 <td width="33%" valign="top"><img src="docs/settings-desktop.png" alt="The operator's dashboard: who is on air, station health, the three lines with their switches, and the activity charts" /></td>
 </tr>
 <tr>
-<td valign="top"><img src="docs/call-mobile.png" alt="The same live call on a phone" /></td>
+<td valign="top"><img src="docs/call-mobile.png" alt="The phone card on a phone" /></td>
 <td valign="top"><img src="docs/settings-mobile.png" alt="The dashboard on a phone" /></td>
 <td valign="top"><img src="docs/player-mobile.png" alt="The station player on a phone, in the light theme" /></td>
+</tr>
+<tr>
+<td valign="top"><img src="docs/guide-mobile.png" alt="The programme guide on a phone: the show on air with its host and hours, then today's shows hour by hour with the one on air lit" /></td>
+<td colspan="2" valign="top"><img src="docs/guide-landscape.png" alt="The same guide with the phone turned sideways: the three cards become a rail down the left edge, the show on air reads whole beside the schedule" /></td>
 </tr>
 </table>
 

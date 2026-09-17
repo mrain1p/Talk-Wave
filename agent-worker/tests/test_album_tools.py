@@ -47,6 +47,11 @@ class _Station:
         self.block_cancel: dict | None = None   # None = nothing of it left
         self.block_cancels: list[str] = []
         self.upcoming: list[dict] = []
+        # The station's own playlists (/dj/playlists) and each one's rows
+        # (/playlists/:id). None is a read that FAILED, which the tool must
+        # keep apart from a station with none.
+        self.playlists_list: list | None = None
+        self.playlist_entries: dict[str, list | None] = {}
 
     async def search_library(self, q, offset=0, limit=30):
         self.searches.append((q, offset, limit))
@@ -67,7 +72,8 @@ class _Station:
     async def queue_block(self, kind, track_id="", block_id="", artist="",
                           limit=None, order=""):
         self.blocks_asked.append({"kind": kind, "trackId": track_id,
-                                  "id": block_id, "artist": artist})
+                                  "id": block_id, "artist": artist,
+                                  "limit": limit, "order": order})
         if self.block is None:
             return {"ok": False, "unsupported": True, "error": "no such route"}
         return dict(self.block)
@@ -81,6 +87,13 @@ class _Station:
 
     async def state(self):
         return {"upcoming": list(self.upcoming)}
+
+    async def playlists(self):
+        return None if self.playlists_list is None else list(self.playlists_list)
+
+    async def playlist_tracks(self, playlist_id):
+        rows = self.playlist_entries.get(playlist_id)
+        return None if rows is None else list(rows)
 
 
 def _tools(station, actions=None, cfg=None):
@@ -978,6 +991,222 @@ class TestTheStationQueuesTheRecordItself(unittest.TestCase):
         out = asyncio.run(_tools(st)["subwave_queue_album"](album="Rumours"))
         self.assertEqual(st.blocks_asked, [])
         self.assertIn("never-play list", out)
+
+
+class TestARunByOneArtistIsOnePress(unittest.TestCase):
+    """"A few Eminem tracks" on SUB/WAVE 1.14+ is the station's own ranked
+    pick in one press — POST /dj/queue-block {kind:'artist'} — not a search
+    plus the DJ's guesses plus five pushes. The receipt is honest about what
+    the station did not say (which tracks), the run comes back out by the
+    caller's own words, and a station without the route sends the DJ back
+    to picking rows rather than pretending anything went in."""
+
+    BLOCK = {"ok": True, "kind": "artist", "blockId": "blk7",
+             "label": "Eminem", "queued": 5, "queuePosition": 2,
+             "truncated": 0, "skipped": [], "runsPastShowChange": None}
+
+    def _run(self, block, cfg=None, **kw):
+        from call.actions import CallActions
+
+        st = _Station([_row(1, artist="Eminem")])
+        st.block = block
+        actions = CallActions(5)
+        tools = _tools(st, actions, cfg=cfg)
+        return st, actions, tools, asyncio.run(tools["subwave_queue_mix"](**kw))
+
+    def test_the_artist_alone_is_one_station_press(self):
+        st, actions, _, out = self._run(dict(self.BLOCK), artist="Eminem",
+                                        count=5)
+        self.assertEqual(len(st.blocks_asked), 1)
+        self.assertEqual(st.blocks_asked[0]["kind"], "artist")
+        self.assertEqual(st.blocks_asked[0]["artist"], "Eminem")
+        self.assertEqual(st.blocks_asked[0]["limit"], 5)
+        self.assertEqual(st.searches, [], "no search — the station picks")
+        self.assertEqual(st.queued, [], "no per-track pushes")
+        self.assertIn("Queued 5 track(s) by Eminem in one press", out)
+        self.assertIn("number 2 in the queue", out)
+        self.assertIn("ONE action", out)
+        self.assertEqual(actions.count, 1)
+        self.assertEqual(actions.taken[-1][0], "mix")
+
+    def test_the_receipt_forbids_inventing_titles(self):
+        # The station answers with a count and a label, never the tracks.
+        # A DJ that reads "5 queued" and names five songs has made up four.
+        _, _, _, out = self._run(dict(self.BLOCK), artist="Eminem")
+        self.assertIn("did not name which tracks", out)
+        self.assertIn("do NOT list titles", out)
+
+    def test_a_few_means_five_and_the_count_is_held_to_the_mix_cap(self):
+        st, _, _, _ = self._run(dict(self.BLOCK), artist="Eminem")
+        self.assertEqual(st.blocks_asked[0]["limit"], 5)
+        st, _, _, _ = self._run(dict(self.BLOCK), artist="Eminem", count=40)
+        self.assertEqual(st.blocks_asked[0]["limit"], 8)
+        st, _, _, _ = self._run(dict(self.BLOCK), artist="Eminem", count=1)
+        self.assertEqual(st.blocks_asked[0]["limit"], 2)
+
+    def test_a_station_without_the_route_sends_the_dj_back_to_picks(self):
+        st, actions, _, out = self._run(None, artist="Eminem")
+        self.assertIn("cannot line up a run by Eminem in one press", out)
+        self.assertIn("Nothing was queued", out)
+        self.assertEqual(st.queued, [])
+        self.assertEqual(actions.count, 0, "an honest miss costs no action")
+
+    def test_picks_win_when_the_dj_passes_both(self):
+        # Rows the DJ chose are the more explicit ask; the artist field is
+        # then only a label's worth of context, never a second press.
+        st, _, _, out = self._run(dict(self.BLOCK), artist="Eminem",
+                                  picks="id1 Track 1\nid2 Track 2")
+        self.assertEqual(st.blocks_asked, [])
+        self.assertEqual([t["id"] for t in st.queued], ["id1", "id2"])
+        self.assertIn("Queued 2 track(s)", out)
+
+    def test_a_refusal_is_said_not_dressed_up(self):
+        _, actions, _, out = self._run(
+            {"ok": False, "error": 'nothing by "Eminem" in the library'},
+            artist="Eminem")
+        self.assertIn("Nothing by Eminem made it into the queue", out)
+        self.assertIn("do NOT claim", out)
+        self.assertEqual(actions.count, 0, "a refusal costs the caller nothing")
+        self.assertEqual(actions.taken, [])
+
+    def test_never_play_refusals_and_the_cap_are_relayed(self):
+        block = dict(self.BLOCK, queued=3, truncated=2, skipped=[
+            {"title": "X", "reason": "blocked", "blockedBy": "artist"},
+        ])
+        _, _, _, out = self._run(block, artist="Eminem")
+        self.assertIn("Queued 3 track(s)", out)
+        self.assertIn("1 more track(s) matched but are on this station's "
+                      "never-play list", out)
+        self.assertIn("2 further track(s) were not queued", out)
+
+    def test_the_run_comes_out_by_the_artists_name(self):
+        from call.actions import CallActions
+
+        st = _Station([])
+        st.block = dict(self.BLOCK)
+        st.block_cancel = {"ok": True, "removed": 5, "kept": 0,
+                           "label": "Eminem"}
+        actions = CallActions(5)
+        tools = _tools(st, actions, cfg={"allow_cancel_queue": True})
+        asyncio.run(tools["subwave_queue_mix"](artist="Eminem"))
+        out = asyncio.run(tools["subwave_clear_from_queue"](artist="eminem"))
+        self.assertEqual(st.block_cancels, ["blk7"])
+        self.assertIn("Pulled 5", out)
+        self.assertEqual(actions.count, 2)
+
+    def test_no_picks_and_no_artist_queues_nothing_and_says_how(self):
+        st, actions, _, out = self._run(dict(self.BLOCK))
+        self.assertIn("Nothing was queued", out)
+        self.assertIn("`artist` alone", out)
+        self.assertEqual(st.blocks_asked, [])
+        self.assertEqual(actions.count, 0)
+
+
+class TestAStationPlaylistGoesInWhole(unittest.TestCase):
+    """"Play the Sunday chill playlist" queues the operator's own curation,
+    every track in its order, as one action — read through /dj/playlists
+    and /playlists/:id, pushed track by track since the station has no
+    one-press for a playlist. Asked with no name it is a look at the shelf;
+    a slow read is not an empty shelf; a name that fits two queues nothing
+    until the caller says which."""
+
+    LISTS = [{"id": "pl1", "name": "Sunday chill", "songCount": 3},
+             {"id": "pl2", "name": "Late set", "songCount": 2},
+             {"id": "pl3", "name": "Sunday drive", "songCount": 4}]
+
+    def _station(self, lists=LISTS, entries=None):
+        st = _Station([])
+        st.playlists_list = lists
+        st.playlist_entries = entries if entries is not None else {
+            "pl1": [_row(1, album="A"), _row(2, album="B"), _row(3, album="C")],
+            "pl2": [_row(4)], "pl3": [_row(5)]}
+        return st
+
+    def _run(self, st, cfg=None, **kw):
+        from call.actions import CallActions
+
+        actions = CallActions(5)
+        tools = _tools(st, actions, cfg=cfg)
+        return actions, asyncio.run(tools["subwave_queue_playlist"](**kw))
+
+    def test_the_tool_rides_the_album_switch(self):
+        self.assertIn("subwave_queue_playlist", _tools(self._station()))
+        self.assertNotIn("subwave_queue_playlist",
+                         _tools(self._station(), cfg={"allow_album_queue": False}))
+
+    def test_no_name_lists_the_shelf_and_queues_nothing(self):
+        st = self._station()
+        actions, out = self._run(st)
+        self.assertIn("NOTHING has been queued", out)
+        for name in ("Sunday chill", "Late set", "Sunday drive"):
+            self.assertIn(name, out)
+        self.assertEqual(st.queued, [])
+        self.assertEqual(actions.count, 0)
+
+    def test_the_named_playlist_goes_in_whole_in_its_own_order(self):
+        st = self._station()
+        actions, out = self._run(st, name="sunday chill")
+        self.assertEqual([t["id"] for t in st.queued], ["id1", "id2", "id3"])
+        self.assertIn('Queued the station\'s playlist "Sunday chill": 3 track(s), '
+                      "in its own order", out)
+        self.assertIn("ONE action", out)
+        self.assertEqual(actions.count, 1)
+        self.assertEqual(actions.taken[-1][0], "playlist")
+        # Said to the caller by name, so it can be asked back out by name.
+        self.assertEqual(actions.batch_ids("the sunday chill one"),
+                         ["id1", "id2", "id3"])
+
+    def test_a_name_that_fits_two_queues_nothing_until_the_caller_says(self):
+        st = self._station()
+        actions, out = self._run(st, name="Sunday")
+        self.assertIn("More than one playlist answers to that", out)
+        self.assertIn("NOTHING queued", out)
+        self.assertEqual(st.queued, [])
+        self.assertEqual(actions.count, 0)
+
+    def test_an_unknown_name_names_what_the_station_has(self):
+        st = self._station()
+        actions, out = self._run(st, name="Monday blues")
+        self.assertIn('No playlist called "Monday blues"', out)
+        self.assertIn("Sunday chill", out)
+        self.assertEqual(st.queued, [])
+        self.assertEqual(actions.count, 0)
+
+    def test_a_failed_read_is_not_an_empty_shelf(self):
+        # "Do you have playlists?" → the station's read timed out. The DJ
+        # must not say "no playlists" off the back of a slow shelf.
+        actions, out = self._run(self._station(lists=None))
+        self.assertIn("couldn't be READ", out)
+        self.assertNotIn("no playlists", out)
+        self.assertEqual(actions.count, 0)
+        st = self._station(entries={"pl1": None})
+        _, out = self._run(st, name="Sunday chill")
+        self.assertIn("couldn't be READ", out)
+        self.assertEqual(st.queued, [])
+
+    def test_a_station_with_none_says_so(self):
+        _, out = self._run(self._station(lists=[]))
+        self.assertIn("no playlists of its own", out)
+
+    def test_an_empty_playlist_queues_nothing_and_says_so(self):
+        st = self._station(entries={"pl2": []})
+        actions, out = self._run(st, name="Late set")
+        self.assertIn("is empty on the station", out)
+        self.assertEqual(actions.count, 0)
+
+    def test_a_long_playlist_is_capped_and_the_cap_is_said(self):
+        st = self._station(entries={"pl1": [_row(i) for i in range(1, 41)]})
+        _, out = self._run(st, name="Sunday chill")
+        self.assertEqual(len(st.queued), 30)
+        self.assertIn("10 further track(s) were not queued", out)
+
+    def test_a_refusal_is_carded_and_said(self):
+        st = self._station(entries={"pl2": [_row(4)]})
+        st.refuse["id4"] = "on the never-play list"
+        actions, out = self._run(st, name="Late set")
+        self.assertIn('None of "Late set" made it into the queue', out)
+        self.assertIn("do NOT claim", out)
+        self.assertEqual(actions.count, 0)
 
 
 class TestAQueuedBlockComesOutAsOnePress(unittest.TestCase):

@@ -254,6 +254,7 @@ class TestExposedSurface(unittest.TestCase):
         # upgrade turned album floods on.
         "subwave_queue_album": "allow_album_queue",
         "subwave_queue_mix": "allow_album_queue",
+        "subwave_queue_playlist": "allow_album_queue",
         # Its undo. The station has had DELETE /dj/queue/:id all along, while
         # the prompt told the DJ a request could never be cancelled — so a
         # caller who changed their mind was told it was impossible. Off by

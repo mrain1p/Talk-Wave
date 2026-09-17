@@ -880,6 +880,29 @@ class TestTheServiceWorkerStaysOutOfTheWay(unittest.TestCase):
         # visibly breaks on any other platform.
         self.assertIn("maskable", [i.get("purpose") for i in m["icons"]])
 
+    def test_the_offline_shell_is_what_the_page_actually_loads(self):
+        # sw.js precaches a hand-written list, and the page's own <link> and
+        # <script> tags are the truth — the same reason api/widget.py tags
+        # assets by reading the page rather than from a list of names. The
+        # two drifted once: skins.css was added to the page at 0.99.2 and
+        # never to the shell, so an installed app opened with no signal came
+        # up without the sheet that carries the operator's skin (2026-09-17).
+        import re
+
+        shell = re.search(r"const SHELL = \[(.*?)\];", self.sw, re.S)
+        self.assertIsNotNone(shell, "sw.js has no SHELL list to pin")
+        in_shell = set(re.findall(r"'(/[^']*)'", shell.group(1)))
+        loads = {"/" + a for a in re.findall(
+            r'(?:src|href)="/([\w.-]+\.(?:js|css))"', self.index)}
+        self.assertTrue(loads, "index.html loads no local script or sheet?")
+        missing = sorted(loads - in_shell)
+        self.assertEqual(
+            missing, [],
+            "loaded by index.html but missing from sw.js's offline shell — "
+            "the installed app opens without it when there is no signal: "
+            "%r" % (missing,))
+        self.assertIn("/", in_shell, "the page itself must be in the shell")
+
 
 class TestThePreviewCannotDisagreeWithTheCard(unittest.TestCase):
     """The panel's preview resolves the look through the same code a caller
