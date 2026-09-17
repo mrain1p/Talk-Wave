@@ -133,6 +133,7 @@ from tests.test_widget import (
     TestThePreviewCannotDisagreeWithTheCard,
     TestTheServiceWorkerStaysOutOfTheWay,
     TestTheStationsOwnColoursReachTheCard,
+    TestTheStubAnswersWhatTheWidgetAsksFor,
     TestTheWidgetActuallyParses,
     TestTheStatusChipDescribesTheCallNotTheSDK,
     TestWidgetServerContract,

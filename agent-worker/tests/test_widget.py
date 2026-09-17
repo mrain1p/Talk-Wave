@@ -2422,6 +2422,80 @@ class TestAHostThemeIsADefaultNotADecree(unittest.TestCase):
                          "a bare .show selector will restyle the lit ticker")
 
 
+class TestTheStubAnswersWhatTheWidgetAsksFor(unittest.TestCase):
+    """A path the widget fetches must be answered by the dev stub, or be
+    listed here as a known gap with a reason.
+
+    tools/panel_dev_server.py is the only backend the browser harness has, and
+    an unknown path there is a 404 with nothing on screen to say so. That is
+    how /player/abilities hid: the widget had fetched it since the operator
+    side of the player landed, the stub never learned, and the harness drove a
+    card whose skip, un-heart and command buttons could not appear — so the
+    press-everything sweep could not reach them and the fault that WAS there
+    (three controls painting while hidden) went unmeasured for two weeks
+    (2026-09-17).
+
+    The list below is a BASELINE to shrink, not a target. Each entry is a path
+    the harness therefore cannot drive; adding a fixture and deleting the line
+    is always the better move than adding a line.
+    """
+
+    # path -> why the stub does not answer it yet
+    KNOWN_GAPS = {
+        "/auth/guest": "the guest-code gate; the stub opens the line instead",
+        "/auth/password": "the panel's own sign-in, which the stub has no "
+                          "password for",
+        "/calls/": "one call record by id — the stub serves the list only",
+        "/player/booth-log": "the player's booth tab reads the station's "
+                             "48-hour action log",
+        "/player/command": "operator mode runs a real chat turn through the "
+                           "DJ's brain",
+        "/prompt": "the assembled system prompt, which needs a station",
+        "/settings/secrets": "the key store's status; the stub has no secrets",
+        "/settings/sounds/": "one uploaded clip by name; the stub serves the"
+                             " shelf and the category write, not the file",
+        "/test/admin": "a station-credentials probe",
+        "/vm-greeting": "a rendered greeting clip",
+        "/voicemail/draft": "the studio's upload, which needs the mastering "
+                            "chain",
+        "/voicemail/draft/": "and its per-draft read",
+    }
+
+    def test_every_path_the_widget_fetches_is_stubbed_or_listed(self):
+        import re
+
+        stub = (REPO / "tools" / "panel_dev_server.py").read_text(
+            encoding="utf-8")
+        served = {"/" + p.name
+                  for p in (REPO / "web-widget").iterdir() if p.is_file()}
+        js = chr(10).join(widget_js(exclude=()).values())
+        fetched = set(re.findall(r"""fetch\(\s*['"`](/[^'"`?${]*)""", js))
+
+        missing = sorted(
+            p for p in fetched
+            if p not in served
+            and f'"{p}"' not in stub and f"'{p}'" not in stub
+            and p not in self.KNOWN_GAPS)
+        self.assertEqual(
+            missing, [],
+            "the widget fetches these and the dev stub answers 404, so the "
+            "browser harness cannot drive whatever they feed. Add a fixture "
+            "to tools/panel_dev_server.py, or add the path to KNOWN_GAPS "
+            "with the reason: %r" % (missing,))
+
+    def test_no_gap_is_listed_that_has_since_been_stubbed(self):
+        # The list is a baseline to shrink; a row that outlived its gap would
+        # quietly excuse the next real one.
+        stub = (REPO / "tools" / "panel_dev_server.py").read_text(
+            encoding="utf-8")
+        stale = sorted(p for p in self.KNOWN_GAPS
+                       if f'"{p}"' in stub or f"'{p}'" in stub)
+        self.assertEqual(
+            stale, [],
+            "these are stubbed now — drop them from KNOWN_GAPS so the list "
+            "keeps meaning something: %r" % (stale,))
+
+
 class TestTheWidgetActuallyParses(unittest.TestCase):
     """Every .js in web-widget/, syntax-checked for real.
 
