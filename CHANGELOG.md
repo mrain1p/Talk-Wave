@@ -4,12 +4,14 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
-## Unreleased
+## 0.99.44
 
-- **"A few by one artist" is one press.** On SUB/WAVE 1.14+ the DJ asks the station for its own pick of an artist's best-known songs — Last.fm-ranked, or a walk of their albums where Last.fm has nothing — instead of searching, guessing which are the known ones and pushing them one at a time. The receipt says how many went in and whose they are, and tells the DJ the station did not name the tracks, so it cannot invent titles. "Clear those Eminem tracks" takes the run back out as one press. An older station sends the DJ back to picking rows itself.
-- **The station's own playlists can be queued on request.** "Play the Sunday chill playlist" puts the operator's playlist in whole, in its order, as one action; asked with no name the DJ lists what the station has and queues nothing. Rides the album switch. A slow read is reported as a slow shelf, never as an empty one.
-- **The installed app opens offline with its skin.** The service worker's offline shell never learned that the page loads a second stylesheet, so an app opened with no signal came up without the operator's skin. The shell is now pinned to what the page actually loads, and the widget harness proves the app opens with the server gone.
-- **Under the hood:** the widget harness drives all three cards on four surfaces — a portrait phone, a landscape phone, a folded phone's cover and the 620x544 page card — pinning the rules the last five releases were built to; the drift tool reads the station's own Connect catalogue and reports endpoints newly advertised since the last pass; the README's pictures are of the three cards as they are now, the guide and the landscape rail included.
+The DJ gets two more one-liners at the station, and the card's last five releases get the checks they were built without.
+
+- **"A few by one artist" is one press.** On SUB/WAVE 1.14+ the station lines up its own pick of an artist's best-known songs, instead of the DJ searching, guessing and pushing them one at a time. The DJ is told how many went in and not which, so it cannot invent titles; "clear those Eminem tracks" takes the run back out in one press.
+- **The station's own playlists play on request.** "Play the Sunday chill playlist" queues the operator's playlist whole, in its order, as one action. Asked with no name, the DJ lists what the station has and queues nothing. Rides the album switch.
+- **The installed app opens offline with its skin.** The offline shell had never learned that the page loads a second stylesheet, so an app opened with no signal came up without the operator's skin.
+- **Under the hood:** the widget harness now drives all three cards on a portrait phone, a landscape phone, a folded phone's cover and the page card, and proves the app opens with the server gone; the drift tool reads the station's Connect catalogue and reports endpoints newly advertised since the last pass; the README's pictures are of the three cards as they are, guide and landscape rail included.
 
 ## 0.99.43
 
