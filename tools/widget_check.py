@@ -385,6 +385,85 @@ def check_offline(browser, rep: Report, base: str, stub) -> None:
     ctx.close()
 
 
+# --- the panel's own rows ----------------------------------------------------
+# Kept in one function at the end of the file so the panel's checks and the
+# call page's never have to be untangled from each other.
+
+
+def check_panel(browser, rep: Report, base: str) -> None:
+    """The operator's page, driven rather than read.
+
+    paintSecrets relocates the three static station buttons — Test access,
+    Test station + tools, Reload from station — out of their markup row into
+    the station keyblock's bar, and every paint begins by wiping that host.
+    The SECOND paint was looking the three up by id AFTER its own
+    `innerHTML = ''` had removed them from the document, getting null for all
+    three and appending nothing: they disappeared until a page reload. Every
+    Save keys, every Clear and Reset repaints secrets, so saving the station
+    credentials was exactly when 'Test access' went away. Source cannot see
+    this; two paints in a real DOM can.
+    """
+    page = browser.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{base}/settings", wait_until="load")
+    # The panel paints secrets from /settings, which it awaits. `attached`,
+    # not the default `visible`: every section is a closed <details> until
+    # somebody opens it, and this row's subject is what is IN the DOM.
+    try:
+        page.wait_for_selector("#keys_station .testrow button",
+                               state="attached", timeout=20000)
+    except Exception:
+        # Say WHY rather than only that it did not appear: a gate standing, a
+        # load still running and an exception are three different faults.
+        state = page.evaluate(
+            "() => ({ msg: (document.getElementById('saveMsg') || {}).textContent,"
+            " panel: document.getElementById('panel').className,"
+            " gate: !document.getElementById('loginGate').hidden })")
+        rep.add("FAIL", "panel: station keyblock painted",
+                f"no button in #keys_station — {state}"
+                + (f"; first error: {errors[0][:120]}" if errors else ""))
+        page.close()
+        return
+
+    BTNS = ("testAdminBtn", "testStationBtn", "reloadStationBtn")
+    # Inside #keys_station's own bar, not merely present somewhere: the fault
+    # left them in the document as detached nodes on the first paint too.
+    where = ("(ids) => ids.map(id => { const b = document.getElementById(id);"
+             " return b && !b.hidden && !!b.closest('#keys_station') ? 1 : 0; })")
+    before = page.evaluate(where, list(BTNS))
+    if all(before):
+        rep.add("ok", "panel: the three station buttons sit in the key block")
+    else:
+        rep.add("FAIL", "panel: station buttons after the first paint",
+                ", ".join(n for n, ok in zip(BTNS, before) if not ok))
+
+    # Force a second paintSecrets the way the operator does: type a station
+    # credential and press Save keys. The stub has no /settings/secrets route,
+    # so the POST fails — and postSecrets repaints on every branch, which is
+    # the paint this row is here for.
+    page.evaluate(
+        "() => { const el = document.getElementById('sec_subwave_admin_user');"
+        " if (el) { el.value = 'widget-check'; }"
+        " const bar = document.querySelector('#keys_station .testrow');"
+        " if (bar) bar.querySelector('button').click(); }")
+    page.wait_for_timeout(600)
+    after = page.evaluate(where, list(BTNS))
+    if all(after):
+        rep.add("ok", "panel: they survive a second paintSecrets "
+                      "(the Save-keys repaint)")
+    else:
+        rep.add("FAIL", "panel: station buttons after a repaint",
+                "gone until a reload: "
+                + ", ".join(n for n, ok in zip(BTNS, after) if not ok))
+
+    if errors:
+        rep.add("FAIL", "panel: no JS exception while repainting", errors[0][:160])
+    else:
+        rep.add("ok", "panel: no JS exception while repainting")
+    page.close()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--base", default="",
@@ -475,6 +554,7 @@ def main() -> None:
                 page.close()
 
                 check_faces(browser, rep, base)
+                check_panel(browser, rep, base)
                 # Last: it takes the server away.
                 check_offline(browser, rep, base, proc)
             finally:
