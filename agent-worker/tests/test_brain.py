@@ -21,6 +21,89 @@ from brain import briefing, conduct
 from tests.support import AGENT_WORKER, _TempStores
 
 
+class TestThePreviewShowsTheSamePromptTheCallGets(_TempStores):
+    """/prompt is the page an operator reads to answer "what does the DJ
+    actually know?". It handed assemble a snapshot it had fetched itself,
+    WITHOUT with_skills — so the preview never carried "Segments you can run
+    on air" and never narrowed the catalogue to the DJ on air, while a real
+    call did both. Preview and call disagreeing on identical config is the one
+    thing that page exists to rule out. The self-check and the speed test made
+    the same mistake, the last of them mis-measuring the prompt it prices.
+    """
+
+    class _FakeConfig:
+        """StationConfig without the station. Every one of these is a read
+        assemble makes on the preview path only."""
+
+        def __init__(self, *a, **kw):
+            pass
+
+        async def persona_skills(self, persona_id):
+            return None                   # nothing assigned: all of them run
+
+        async def speak_clock(self):
+            return True
+
+        async def track_floor(self):
+            return 0
+
+        async def talk_between_tracks_only(self):
+            return False
+
+        async def pause_talk_seconds(self, show_id):
+            return 0
+
+        async def aclose(self):
+            pass
+
+    class _FakeStation:
+        def __init__(self):
+            self.asked = []
+
+        async def snapshot(self, with_skills=False):
+            self.asked.append(with_skills)
+            return {"dj": {}, "personas": [], "now_playing": {}, "state": {},
+                    "session": {}, "schedule": {},
+                    # The station only publishes the catalogue when asked, so
+                    # a snapshot fetched without the flag has none — which is
+                    # exactly how the preview lost them.
+                    "skills": ([{"kind": "weather", "label": "Weather"}]
+                               if with_skills else [])}
+
+        async def active_show(self, now_playing, schedule):
+            return {}
+
+        async def schedule(self):
+            raise AssertionError("the briefing must reuse the snapshot")
+
+    def _prompt(self):
+        st = self._FakeStation()
+        with unittest.mock.patch("station_config.StationConfig", self._FakeConfig):
+            text = asyncio.run(brain.build_system_prompt(
+                st, {"id": "p_cliff", "name": "Cliff"}))
+        return text, st
+
+    def test_the_preview_asks_for_the_skills_the_call_would_get(self):
+        settings_store.save({"allow_skills": "open"})
+        text, st = self._prompt()
+        self.assertEqual(st.asked, [True])
+        self.assertIn("Segments you can run", text)
+        self.assertIn("weather", text)
+
+    def test_with_segments_off_it_asks_for_none_and_shows_none(self):
+        settings_store.save({"allow_skills": "off"})
+        text, st = self._prompt()
+        self.assertEqual(st.asked, [False])
+        self.assertNotIn("Segments you can run", text)
+
+    def test_no_operator_surface_hands_assemble_its_own_snapshot(self):
+        # The fix is at the call sites; a fourth one added tomorrow would put
+        # the disagreement straight back.
+        src = (AGENT_WORKER / "api" / "diagnostics.py").read_text(encoding="utf-8")
+        self.assertNotIn("build_system_prompt(station, persona, snapshot=", src)
+        self.assertNotIn("build_system_prompt(st, persona, snapshot=", src)
+
+
 class TestPrompts(unittest.TestCase):
     def test_demojibake_repairs_double_encoding(self):
         self.assertEqual(briefing.demojibake("night â€” slow"), "night — slow")

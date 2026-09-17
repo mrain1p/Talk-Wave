@@ -19,8 +19,8 @@ import admin_auth
 import secrets_store
 import settings as settings_store
 from api.auth import _auth_configured, _write_allowed
-from api.credentials import _is_saved_host
-from api.hooks import _hook_state, register_station_webhook
+from api.credentials import _credentials_travel_to, _is_saved_host
+from api.hooks import _hook_state, _register_once
 from api.live_cache import _live_cache
 from api.wire import _cors
 from log_setup import describe
@@ -31,6 +31,9 @@ from tts_adapter import available_voices as tts_voice_list
 from tts_adapter import resolve_adapter
 
 log = logging.getLogger("callin.token")
+
+# Held by reference — api/tokens._prefetch_tasks' reason, same hazard.
+_register_tasks: set = set()
 
 
 async def handle_get_settings(request: web.Request) -> web.Response:
@@ -103,7 +106,9 @@ async def handle_post_secrets(request: web.Request) -> web.Response:
     if not _hook_state.get("registered"):
         _hook_state.pop("gave_up", None)   # new credentials earn a fresh attempt
         _hook_state.pop("attempts", None)
-        asyncio.create_task(register_station_webhook())
+        task = asyncio.create_task(_register_once())
+        _register_tasks.add(task)
+        task.add_done_callback(_register_tasks.discard)
     return _cors(request, web.json_response({"secrets": status}))
 
 
@@ -189,7 +194,8 @@ async def handle_voice_effect_set(request: web.Request) -> web.Response:
         {"ok": True, "effects": voice_effects.read()}))
 
 
-async def _tts_voices(base_url: str, cfg: dict | None = None) -> list[str]:
+async def _tts_voices(base_url: str, cfg: dict | None = None,
+                      allow_stored: bool = True) -> list[str]:
     """Ask the configured TTS server what voices it actually has.
 
     The lookup itself lives in tts_adapter, because the WORKER consults the
@@ -206,10 +212,9 @@ async def _tts_voices(base_url: str, cfg: dict | None = None) -> list[str]:
         return settings_store.OPENAI_VOICES
     cfg = cfg or {}
     found = await tts_voice_list(
-        base_url,
+        base_url, allow_stored=allow_stored,
         adapter_path=resolve_adapter(cfg.get("tts_adapter")),
-        mode=str(cfg.get("tts_mode", "")),
-    )
+        mode=str(cfg.get("tts_mode", "")))
     return found or settings_store.OPENAI_VOICES
 
 
@@ -367,7 +372,7 @@ def _custom_llm_endpoint(cfg: dict) -> str:
     return ""
 
 
-async def _endpoint_models(cfg: dict) -> list[str]:
+async def _endpoint_models(cfg: dict, allow_stored: bool = True) -> list[str]:
     """Whatever the operator's own OpenAI-protocol server says it serves.
 
     Mirrors the station's GET /settings/llm/discover: keyless on purpose — a
@@ -385,8 +390,8 @@ async def _endpoint_models(cfg: dict) -> list[str]:
     if not base:
         return []
     headers = {}
-    if (str(cfg.get("llm_provider", "")).lower() == "openai-compatible"
-            and os.environ.get("OPENAI_COMPAT_API_KEY")):
+    if (allow_stored and os.environ.get("OPENAI_COMPAT_API_KEY")
+            and str(cfg.get("llm_provider", "")).lower() == "openai-compatible"):
         headers["Authorization"] = f"Bearer {os.environ['OPENAI_COMPAT_API_KEY']}"
     try:
         async with httpx.AsyncClient(timeout=6.0) as c:
@@ -442,11 +447,15 @@ async def handle_settings_options(request: web.Request) -> web.Response:
             return _cors(request, web.json_response(_options_cache["data"]))
 
     cfg = settings_store.load()
-    saved_station = settings_store.station_base_url()
+    saved, saved_station = dict(cfg), settings_store.station_base_url()
     # Let the panel preview a URL it hasn't saved yet.
     for key in ("tts_base_url", "llm_base_url", "station_base_url"):
         if request.query.get(key):
             cfg[key] = request.query[key]
+    # And the dropdown lookups below obey invariant 4 like the Test buttons
+    # do: a previewed address is asked WITHOUT the stored key attached.
+    tts_key_ok, _ = _credentials_travel_to(cfg["tts_base_url"], saved["tts_base_url"])
+    llm_key_ok, _ = _credentials_travel_to(cfg["llm_base_url"], saved["llm_base_url"])
 
     station = StationClient(base_url=cfg.get("station_base_url"))
     # StationConfig reads admin-only endpoints, so it carries the station
@@ -469,7 +478,7 @@ async def handle_settings_options(request: web.Request) -> web.Response:
         ) = await asyncio.gather(
             station.personas(),
             station_cfg.voice_source(),
-            _tts_voices(cfg.get("tts_base_url", ""), cfg),
+            _tts_voices(cfg.get("tts_base_url", ""), cfg, allow_stored=tts_key_ok),
             _ollama_models(cfg.get("llm_base_url", "")),
             _openai_models(secrets_store.get("openai_api_key")),
             _openrouter_models(),
@@ -477,7 +486,7 @@ async def handle_settings_options(request: web.Request) -> web.Response:
             _anthropic_models(secrets_store.get("anthropic_api_key")),
             station_cfg.llm_config(),
             *(_protocol_models(p) for p in settings_store.OPENAI_PROTOCOL_HOSTS),
-            _endpoint_models(cfg),
+            _endpoint_models(cfg, allow_stored=llm_key_ok),
         )
     finally:
         await station.aclose()

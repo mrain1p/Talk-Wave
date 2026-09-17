@@ -159,8 +159,11 @@ def _caller_key(request: web.Request) -> str:
         for hop in reversed(hops):
             if not _peer_is_a_trusted_proxy(hop):
                 return hop
-        if hops:
-            return hops[0]
+        # Every hop trusted falls through to the socket, which is what the
+        # paragraph above promises. It used to return hops[0] instead — the
+        # leftmost entry, the one the CLIENT wrote — so anyone who filled the
+        # header with trusted-looking addresses got back exactly the free
+        # rotation the rightmost rule exists to deny them.
     return request.remote or "unknown"
 
 

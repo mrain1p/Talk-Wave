@@ -179,10 +179,15 @@ def _body(r: httpx.Response) -> dict:
 def _sent_but_unconfirmed(e: Exception) -> bool:
     """True when the request reached the station but the answer didn't come
     back in time. The action has almost certainly run, so this must NOT be
-    reported as a failure — the honest line is "it's gone through"."""
-    return isinstance(e, httpx.TimeoutException) and not isinstance(
-        e, httpx.ConnectTimeout
-    )
+    reported as a failure — the honest line is "it's gone through".
+
+    Only a ReadTimeout says that. It used to be every TimeoutException bar
+    ConnectTimeout, which swept in PoolTimeout — raised BEFORE a connection is
+    even acquired, so nothing left this process — and WriteTimeout, where the
+    request body never finished going out. Both were reported to the caller as
+    done, which is the one thing a receipt must never get wrong.
+    """
+    return isinstance(e, httpx.ReadTimeout)
 
 # Last-known-good persona, shared across calls in this process.
 #
@@ -229,7 +234,15 @@ def _recall_persona() -> dict | None:
 
 
 class StationClient:
-    def __init__(self, base_url: str | None = None, timeout: float = 4.5) -> None:
+    def __init__(self, base_url: str | None = None, timeout: float = 4.5,
+                 remember: bool = True) -> None:
+        # remember=False is for a client built on a URL the operator is only
+        # PREVIEWING (handle_test_station). The persona caches — this process's
+        # and data/last-persona.json on the shared /data mount — are the
+        # worker's wrong-DJ fallback, and a preview of somebody else's station
+        # used to write the foreign DJ into both, so the next real caller whose
+        # /dj read was slow got greeted by a DJ from another station.
+        self._remember = remember
         # 4.5s, down from 8s (2026-08-10). A warm station answers a read in
         # ~15ms; the only slow read is a cold or overloaded one, and waiting
         # 8s for it put ~12s of ringing in front of a caller (it used to be
@@ -393,9 +406,16 @@ class StationClient:
         }
 
         if name:
-            _persona_cache["value"] = resolved
-            _persona_cache["at"] = time.time()
-            _remember_persona(resolved, resolved["station"])
+            if self._remember:
+                _persona_cache["value"] = resolved
+                _persona_cache["at"] = time.time()
+                _remember_persona(resolved, resolved["station"])
+            return resolved
+
+        if not self._remember:
+            # A preview reports what THIS station answered, nothing else. The
+            # fallbacks below are the home station's last-known-good DJ, and
+            # handing one back here would make a dead preview look alive.
             return resolved
 
         # No live answer. Prefer the in-process cache (fastest, same call),
@@ -911,6 +931,30 @@ class StationClient:
         return 0.0
 
     @staticmethod
+    def _block_404_is_unsupported(response, words: str) -> bool:
+        """Whether a 404 from /dj/queue-block is about the STATION or the ASK.
+
+        It used to be read as always the station's: no route here, fall back
+        to the per-track loop. SUB/WAVE 1.14 answers a JSON-bodied 404 for
+        'artist not found' and 'nothing by "X" in the library' too, so a
+        misspelt name came back as "this station cannot do one-press runs at
+        all" — a claim about the whole station, from a typo.
+
+        Unsupported is a 404 with no JSON error body (a station older than
+        1.14, which has no route), the framework's own words, or a message
+        about the SEED — that last so the album loop fallback still runs for a
+        track the library no longer holds. Everything else is a refusal the
+        caller should hear in the station's own words.
+        """
+        body = _body(response)
+        if not (body.get("error") or body.get("message")):
+            return True
+        low = (words or "").lower()
+        if low == "not found" or low.startswith("cannot post"):
+            return True
+        return "track not found" in low or "album not resolvable" in low
+
+    @staticmethod
     def _refusal_words(response) -> str:
         """The station's own words for a refusal, rule and all.
 
@@ -1007,10 +1051,11 @@ class StationClient:
         track ids — the station resolves the record — so no album id is
         needed, which matters because /dj/search never returns one.
 
-        404 is `unsupported` whatever the body says: a station older than
-        1.14 has no route, and the route's own 404s (a seed the library no
-        longer holds) are equally well served by the caller falling back to
-        the per-track loop, which is the pre-1.14 behaviour byte for byte.
+        404 is `unsupported` only when the station has no route to speak of,
+        or when the SEED is what went missing — both fall back to the
+        per-track loop, which is the pre-1.14 behaviour byte for byte. A 1.14
+        404 that names what it could not find is a refusal instead; see
+        _block_404_is_unsupported.
         409 is the block wholly refused — every track on the never-play
         list — in the station's own words. Admin-only.
         """
@@ -1042,9 +1087,14 @@ class StationClient:
                 timeout=ACTION_TIMEOUT,
             )
             if r.status_code == 404:
-                return {"ok": False, "unsupported": True,
-                        "error": self._refusal_words(r)
-                        or "this station cannot queue a block"}
+                words = self._refusal_words(r)
+                if self._block_404_is_unsupported(r, words):
+                    return {"ok": False, "unsupported": True,
+                            "error": words or "this station cannot queue a block"}
+                # No flag: the caller must not fall back to the album loop and
+                # must not tell anyone the station lacks the feature. This 404
+                # answered the ASK — relay it like any other refusal.
+                return {"ok": False, "error": words}
             if r.status_code == 409:
                 return {"ok": False,
                         "error": self._refusal_words(r)

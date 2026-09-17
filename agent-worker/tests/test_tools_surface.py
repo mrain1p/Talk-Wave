@@ -74,10 +74,15 @@ class TestExposedSurface(unittest.TestCase):
         # Gated twice over, which this column is too coarse to say: a real
         # call needs the guest code, a pipeline probe needs the admin one.
         "POST /token": "admin",
-        # Frees a concurrency slot by room id. Unauthenticated on purpose —
-        # the widget calls it on hangup — and safe because the id is 48 bits
-        # of uuid4, so you cannot release a slot you were not already in.
-        "POST /call-ended": "public",          # releases a slot; no secrets
+        # Frees a concurrency slot by room id. Still unauthenticated at the
+        # door — the widget calls it on hangup and has no credential — and
+        # this column's coarseness again: what it actually wants is the
+        # per-room `release` minted with the token, and _write_allowed is the
+        # OTHER way in, for the operator's dump button. Pinned public while
+        # the id alone was enough, which was the hole: the id is handed to the
+        # caller, so a caller could free their OWN slot and walk straight back
+        # past the one-live-phone-in check and the concurrency ceiling.
+        "POST /call-ended": "admin",
         # Public deliberately: the only person with an opinion about a call is
         # the anonymous stranger who was just on it, and there is no
         # credential they could hold. All it can do is set one of two words on
@@ -590,10 +595,15 @@ class TestStationActionResults(unittest.TestCase):
     def test_read_timeout_is_unconfirmed_not_failed(self):
         # Reached the station, answer never came back — the action has run.
         self.assertTrue(self.station._sent_but_unconfirmed(self.httpx.ReadTimeout("x")))
-        self.assertTrue(self.station._sent_but_unconfirmed(self.httpx.PoolTimeout("x")))
-        # Never got there at all — that IS a failure.
+        # Never got there at all — that IS a failure. PoolTimeout is raised
+        # while WAITING FOR A CONNECTION, before one is acquired, and a
+        # WriteTimeout means the body never finished going out; both were read
+        # as "it's gone through" and told the caller their request had landed.
         self.assertFalse(
             self.station._sent_but_unconfirmed(self.httpx.ConnectTimeout("x")))
+        self.assertFalse(self.station._sent_but_unconfirmed(self.httpx.PoolTimeout("x")))
+        self.assertFalse(
+            self.station._sent_but_unconfirmed(self.httpx.WriteTimeout("x")))
         self.assertFalse(self.station._sent_but_unconfirmed(ValueError("x")))
 
     def test_a_5xx_on_a_request_is_retried_once(self):

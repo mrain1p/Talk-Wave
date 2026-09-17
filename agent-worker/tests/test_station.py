@@ -183,6 +183,17 @@ class TestTuneIn(unittest.TestCase):
         self.assertEqual(out, ["/stream.mp3"])
         self.assertNotIn("192.168", "".join(out))
 
+    def test_a_bare_origin_in_the_playlist_is_not_turned_into_a_path(self):
+        # Same answer, one line further down it. A station that lists its own
+        # ORIGIN — no path — used to come back as the mount
+        # "/192.168.1.10:7700", which the widget would then have asked the
+        # operator's own server for. The host is thrown away; there is no path
+        # left, so there is no mount to offer.
+        out = self.tune_in._parse_playlist(
+            "#EXTM3U\nhttp://192.168.1.10:7700\n"
+            "http://192.168.1.10:7700/stream.mp3\n")
+        self.assertEqual(out, ["/stream.mp3"])
+
     def test_mp3_is_ordered_first_whatever_the_station_lists(self):
         # Every browser plays mp3; Safari is unreliable on opus. The widget
         # tries these in order, so the order is the whole point.
@@ -834,6 +845,47 @@ class TestATimingOutStationKeepsTheRightDJ(unittest.TestCase):
         c = self._client()
         out = c.persona_from({}, [])
         self.assertEqual(out["name"], "the DJ")
+
+    def test_a_previewed_station_never_becomes_the_fallback_dj(self):
+        # /test/station builds a client on a URL the operator has TYPED and
+        # not saved. That client wrote whatever DJ answered into both caches —
+        # including data/last-persona.json on the /data mount the WORKER reads
+        # when its own /dj read times out. One press of Test against somebody
+        # else's station and the next slow-read caller was greeted by a DJ
+        # from another station, on this station's air.
+        import station
+        from station import StationClient
+
+        StationClient().persona_from(
+            {"name": "Cliff", "id": "p_cliff", "station": "Yosemite FM"}, [])
+        station._persona_cache.update(value=None, at=0.0)
+
+        preview = StationClient(base_url="http://someone-else.example",
+                                remember=False)
+        seen = preview.persona_from(
+            {"name": "Foreign", "id": "p_foreign", "station": "Other FM"}, [])
+        self.assertEqual(seen["name"], "Foreign")   # still REPORTED, just not kept
+
+        station._persona_cache.update(value=None, at=0.0)
+        self.assertEqual(StationClient().persona_from({}, [])["name"], "Cliff")
+
+    def test_a_previewed_station_does_not_borrow_the_home_dj_either(self):
+        # The other direction, and the reason the fallback reads are skipped:
+        # a preview that answered nothing must look dead, not look like home.
+        from station import StationClient
+
+        StationClient().persona_from(
+            {"name": "Cliff", "id": "p_cliff", "station": "Yosemite FM"}, [])
+        out = StationClient(remember=False).persona_from({}, [])
+        self.assertEqual(out["name"], "the DJ")
+
+    def test_the_station_probe_is_the_client_that_forgets(self):
+        # The fix only holds at the call site.
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "api" / "diagnostics.py").read_text(encoding="utf-8")
+        body = src.split("async def handle_test_station")[1].split("\nasync def")[0]
+        self.assertIn("remember=False", body)
 
 
 class TestATimingOutStationKeepsTheRightVoice(unittest.TestCase):
@@ -1519,6 +1571,36 @@ class TestTheBlockQueueClient(unittest.TestCase):
                               lambda c: c.queue_block("album", track_id="id7"))
         self.assertFalse(out["ok"])
         self.assertTrue(out["unsupported"])
+
+    def test_a_bare_404_with_no_json_is_a_station_that_has_no_route(self):
+        import httpx
+
+        out = self._call(
+            lambda r: httpx.Response(404, text="Cannot POST /dj/queue-block"),
+            lambda c: c.queue_block("album", track_id="id7"))
+        self.assertTrue(out["unsupported"])
+
+    def test_a_404_naming_what_it_could_not_find_is_a_refusal(self):
+        # SUB/WAVE 1.14 answers a JSON-bodied 404 for a name the library does
+        # not hold. Read as `unsupported`, one misspelt artist had the DJ tell
+        # the caller the station cannot do one-press runs AT ALL — a claim
+        # about the whole station, made because of a typo.
+        out, _ = self._answer(
+            404, {"error": 'nothing by "Eminemm" in the library'},
+            lambda c: c.queue_block("artist", artist="Eminemm"))
+        self.assertFalse(out["ok"])
+        self.assertNotIn("unsupported", out)
+        self.assertIn("Eminemm", out["error"])
+
+    def test_a_seed_shaped_404_stays_unsupported_so_the_album_loop_runs(self):
+        # The one 404 a caller SHOULD fall back on: the seed itself is gone,
+        # and the per-track loop is the pre-1.14 behaviour byte for byte.
+        for said in ("track not found", "album not resolvable for this track"):
+            with self.subTest(said=said):
+                out, _ = self._answer(
+                    404, {"error": said},
+                    lambda c: c.queue_block("album", track_id="id7"))
+                self.assertTrue(out["unsupported"])
 
     def test_a_wholly_blocked_record_relays_the_words_and_the_skips(self):
         out, _ = self._answer(

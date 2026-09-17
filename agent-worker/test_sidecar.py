@@ -78,6 +78,8 @@ from tests.test_http import (  # noqa: F401
     TestTheSettingsGearIsForTheOperator,
     TestTheOnAirDoorIsGatedAtTheMint,
     TestTheMintGivesTheWorkerAHeadStart,
+    TestACallerCannotFreeTheirOwnSlot,
+    TestTheSettingsApiRegistersThroughTheLock,
 )
 from tests.test_widget import (
     TestTheFacesSitSideBySide,
@@ -613,4 +615,5 @@ from tests.test_tools_logic import (  # noqa: F401
 )
 from tests.test_brain import (  # noqa: F401
     TestTheDJIsToldWhenTheShowPausesForTalk,
+    TestThePreviewShowsTheSamePromptTheCallGets,
 )

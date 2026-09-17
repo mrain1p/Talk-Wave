@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -91,7 +92,13 @@ def _parse_playlist(text: str) -> list[str]:
     seen, out = set(), []
     for match in _URL_RE.findall(text or "")[:_MAX_SCANNED]:
         url = match.strip().rstrip(",;")
-        path = "/" + url.split("//", 1)[-1].split("/", 1)[-1] if "//" in url else url
+        # urlsplit, not string surgery: splitting on the first '/' after '//'
+        # turned a BARE ORIGIN — 'http://192.168.1.10:7700', which is what a
+        # station publishes when its mount list is just the origin — into the
+        # path '/192.168.1.10:7700', and that was then offered to the browser
+        # as a mount on the operator's own origin. urlsplit gives '' there,
+        # which the guard below already drops.
+        path = urlsplit(url).path if "//" in url else url
         if path in ("/", "") or path in seen or len(path) > 300:
             continue
         seen.add(path)
