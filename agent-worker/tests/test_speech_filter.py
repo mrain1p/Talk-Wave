@@ -393,3 +393,76 @@ class TestALineIsGradedByWhatKindOfWrongItIs(unittest.TestCase):
         self.assertIn("do not claim it worked", inspect.getsource(actions),
                       "the refusal tail the graders read is no longer pinned in "
                       "CallActions.station_refused")
+
+
+class TestTheGraderAndTheStripperAgree(unittest.TestCase):
+    """What the grader calls a stage direction, the filter has to remove.
+
+    They are two halves of one rule and they had written it down twice. The
+    filter's copy refused to cross a newline or run past 120 characters; the
+    grader's did both. So a stage direction spanning a line break — which is
+    exactly how a model writes a long one — was flagged as a fault by the
+    drill and left in the speech by the filter, and the caller heard the
+    asterisks. Four shapes, measured 2026-09-17, on a line where
+    `strip_stage_directions` is on by default.
+
+    The patterns have one home now (speech_filter.STAGE_*) and the grader
+    imports them. This test is what stops the next person restating one.
+    """
+
+    # Each one is a shape a model actually produces. The last two are the
+    # control: the rule must not eat ordinary speech to pass the rest.
+    STAGE = (
+        "Right then. *shuffles records* Here we go.",
+        "Right then. *shuffles\nrecords* Here we go.",
+        "Right then. *" + "shuffles the records slowly, " * 6 + "* Here we go.",
+        "Right then. [pause] Here we go.",
+        "Right then. [sound of\nrain on the window] Here we go.",
+    )
+    NOT_STAGE = (
+        "I've got (about three minutes) before the news.",
+        "That's Kings of Leon, (the early stuff) mind.",
+    )
+
+    def test_the_two_modules_share_the_patterns_rather_than_matching(self):
+        # Not "they agree today" — the same objects. Two regexes that happen
+        # to be equal is the arrangement that produced the fault.
+        import speech_filter
+        import spoken_rules
+
+        self.assertIs(spoken_rules._ASTERISKS, speech_filter.STAGE_ASTERISK)
+        self.assertIs(spoken_rules._BRACKETS, speech_filter.STAGE_BRACKET)
+
+    def test_every_shape_a_model_writes_is_actually_removed(self):
+        # Asserted against the SHAPES, not against the grader. Now that both
+        # sides read one pattern, "does the grader flag what the filter
+        # misses" can no longer be true by construction — narrowing the
+        # pattern narrows the grader with it, and a test phrased that way
+        # would pass while the caller heard every one of these.
+        import speech_filter
+        import spoken_rules
+
+        heard = []
+        for line in self.STAGE:
+            out = speech_filter.clean_for_speech(line)
+            if "*" in out or "[" in out:
+                heard.append(f"{line[:40]!r} -> {out[:40]!r}")
+            # And the drill has to agree it was one, or a fault it reports
+            # means something different from what the filter acts on.
+            self.assertTrue(
+                any(f.startswith("stage-direction")
+                    for f in spoken_rules.check_spoken_line(line)),
+                f"the grader does not call this a stage direction: {line!r}")
+        self.assertEqual(
+            heard, [],
+            f"these go out on air with the marks still in them: {heard}")
+
+    def test_ordinary_parenthetical_speech_is_left_alone(self):
+        # The other half of the trade. A filter that deletes real words is
+        # worse than one that misses a stage direction, because the caller
+        # cannot tell that anything went missing.
+        import speech_filter
+
+        for line in self.NOT_STAGE:
+            out = speech_filter.clean_for_speech(line)
+            self.assertIn("(", out, line)

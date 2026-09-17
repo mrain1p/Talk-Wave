@@ -417,6 +417,7 @@ from tests.test_tools_logic import (  # noqa: F401
     TestOnlyThisDJsSegmentsCanBeRun,
 )
 from tests.test_speech_filter import (  # noqa: F401
+    TestTheGraderAndTheStripperAgree,
     TestALineIsGradedByWhatKindOfWrongItIs,
     TestATypedToolCallNeverReachesTheSpeaker,
     TestPunctuationIsSpokenNotSpelled,
