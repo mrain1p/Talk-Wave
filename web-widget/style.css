@@ -5366,7 +5366,15 @@
     /* The bands at this box's budget, and it is measured rather than
        estimated: 323px of scroller holds art 100 + progress 38 + well 74 +
        tabs 43 + two queue rows 68, to the pixel. */
-    body:not(.compact) .card .plartblock { padding: 8px 16px; gap: 12px; }
+    /* 5px of vertical padding, not 8: the meta column beside the sleeve is
+       title 21 + album 6+34 + chips 9+20 = 90, and at 8px the column's
+       content box was 84 — so the chip row was drawn with its bottom six
+       pixels cut off, a half-row of pills under the playhead (measured on
+       the stub, 2026-09-17). The block keeps its 100; the column gets 90
+       and a one-line title fits whole. A two-line title still pushes the
+       chips past the clip, and now past it ENTIRELY rather than to a
+       sliver — the give-way the base rule describes, done cleanly. */
+    body:not(.compact) .card .plartblock { padding: 5px 16px; gap: 12px; }
     body:not(.compact) .card .pldock { padding: 8px 16px 6px; gap: 8px; }
     body:not(.compact) .card .pltabs { padding: 7px 16px; }
     body:not(.compact) .card .plscroll > .plpanel:not(.plqueue) {
@@ -5400,6 +5408,21 @@
        card can spare it. */
     body:not(.compact) .card .idleboard .stage { gap: 11px; }
     body:not(.compact) .card .idleboard .stagefoot { padding-top: 10px; }
+    /* WITH AN OPEN LINE UP the middle is a label and a quote (39px) where
+       the one-line hint was 19, and the three steps ran 151px in the 123px
+       board: "ALSO ON THE LINE" showed with the sentence under it cut off
+       (measured on the stub, 2026-09-17 — the live card had open lines off
+       and fit). The valve still scrolls a genuinely long premise; what
+       this fixes is the ordinary one-line case. Gap 7, foot padding 6, and
+       the foot drops its micro-label — the sentence reads on its own, and
+       the label was 14 of the 28 missing px: 34 + 1 + 39 + 24 + 3×7 = 119. */
+    body:not(.compact) .card .idleboard .stage:has(.stagemid .openhead) { gap: 7px; }
+    body:not(.compact) .card .idleboard .stage:has(.stagemid .openhead) .stagefoot {
+      padding-top: 6px;
+    }
+    body:not(.compact) .card .idleboard .stage:has(.stagemid .openhead) .stagefootlab {
+      display: none;
+    }
   }
   /* -- LANDSCAPE: the tab bar becomes a left rail ------------------------
      Rotated, the card is starved of height and given width, and a 46px bar

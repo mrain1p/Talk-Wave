@@ -4,6 +4,10 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+- **Two pixel faults on the card as it sits on a web page.** The player's genre chips were drawn with their bottom six pixels cut off under the playhead, and with an open line up the phone face showed "ALSO ON THE LINE" with the sentence beneath it hidden. Both found by pressing every control on every card with the phone in hand, and both fixed inside the 620x544 card's own rules.
+
 ## 0.99.44
 
 The DJ gets two more one-liners at the station, and the card's last five releases get the checks they were built without.
