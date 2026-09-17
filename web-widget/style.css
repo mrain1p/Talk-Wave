@@ -5027,9 +5027,19 @@
   }
   /* The host's circle beside the show's name — the same picture the row's
      own body carries, at the size the hero can afford. */
+  /* `flex-wrap: wrap`, the same as .gdperson: when the face is pressed open
+     to its 260px portrait, the names no longer squeeze into the 70px left
+     beside it ("THE O…" on a phone, 2026-09-17) — they drop under the
+     picture with the whole column, and a wide column keeps them beside. */
   .card .gdheroid {
     display: flex; align-items: center; gap: 12px; margin-top: 12px; flex: none;
+    flex-wrap: wrap;
   }
+  /* Wrapping alone does nothing: `.gdheronames` is `flex: 1`, whose basis is
+     0%, and a zero-basis item always "fits" beside the portrait and then
+     shrinks into the sliver that is left. With the picture open the names
+     take a full line of their own. */
+  .card .gdheroid:has(.gdzoom.big) .gdheronames { flex-basis: 100%; }
   .card .gdherofig {
     position: relative; flex: none; width: 62px; height: 62px;
     display: inline-flex; align-items: center; justify-content: center;

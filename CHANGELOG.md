@@ -7,6 +7,8 @@ Release notes for operators. One entry per release to `main`; work in flight on
 ## Unreleased
 
 - **Two pixel faults on the card as it sits on a web page.** The player's genre chips were drawn with their bottom six pixels cut off under the playhead, and with an open line up the phone face showed "ALSO ON THE LINE" with the sentence beneath it hidden. Both found by pressing every control on every card with the phone in hand, and both fixed inside the 620x544 card's own rules.
+- **The guide's portrait opens without squeezing the show's name.** Pressing the host's picture enlarges it; on a phone the name beside it was crushed to "THE O…". The name now drops under the picture, whole.
+- **Under the hood:** the widget harness presses every control a caller can reach and reads back what each should leave behind, so the by-hand pass that found the faults above runs on every release; the stub mints a token and stands a refusing LiveKit client in for the SDK, so the call walks its real path to "Could not connect" instead of stopping at the mint.
 
 ## 0.99.44
 
