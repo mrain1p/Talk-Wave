@@ -1143,6 +1143,19 @@ class TestAStationPlaylistGoesInWhole(unittest.TestCase):
         self.assertNotIn("subwave_queue_playlist",
                          _tools(self._station(), cfg={"allow_album_queue": False}))
 
+    def test_the_module_that_builds_it_is_the_one_music_reaches_for(self):
+        # Named rather than only reached. Everything above drives this tool
+        # through music.build_library_tools, so call/tools/playlists.py was
+        # exercised on every run and mentioned in the suite only in prose —
+        # which is how it sat inside TestNewCodeDoesNotArriveUntested's blind
+        # spot until that guard stopped reading docstrings (2026-09-17).
+        from call.actions import CallActions
+        from call.tools import playlists
+
+        built = playlists.build_playlist_tools(self._station(), CallActions(5))
+        self.assertEqual([t.info.name for t in built],
+                         ["subwave_queue_playlist"])
+
     def test_no_name_lists_the_shelf_and_queues_nothing(self):
         st = self._station()
         actions, out = self._run(st)

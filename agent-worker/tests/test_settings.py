@@ -1510,3 +1510,39 @@ class TestThePlayerOperatorSideFollowsTheMatrix(unittest.TestCase):
         self.assertFalse(self._abilities({}, "open")["unlike"])
         self.assertFalse(
             self._abilities({"show_track_like": False}, "admin")["unlike"])
+
+
+class TestTheTierLadderIsOneCopy(unittest.TestCase):
+    """`caller_tiers` was peeled out of settings.py and settings re-exports
+    it, so `settings_store.TIERS` and `caller_tiers.TIERS` must be the same
+    object rather than two that agree today.
+
+    This is the binding rule of the whole codebase — one source of truth
+    beats a split — applied to the module it is most expensive to get wrong:
+    the tier ladder is the security half a reviewer audits for fail-closed
+    behaviour, and 31 call sites read it through `settings_store.<name>`. A
+    second definition here would be a permission ladder that forked without
+    a single test going red.
+
+    It is also how the module gets NAMED in the suite. Every tier test in
+    this file reaches it through settings, so nothing imported it, and
+    TestNewCodeDoesNotArriveUntested was passing it on the word
+    "caller_tiers" in another file's prose until 2026-09-17.
+    """
+
+    def test_settings_re_exports_the_leaf_rather_than_restating_it(self):
+        import caller_tiers
+
+        for name in ("TIERS", "TIER_OFF", "TIERED_PERMISSIONS", "TIER_CHOICES",
+                     "tier_reaches", "normalise_tier", "permission_reaches",
+                     "tier_from_room", "tier_from_vm_room", "on_air_from_room",
+                     "permissions_for", "guest_door_open"):
+            self.assertIs(getattr(settings_store, name),
+                          getattr(caller_tiers, name), name)
+
+    def test_the_leaf_stays_a_leaf(self):
+        # One way, and it has to stay one way: settings imports caller_tiers,
+        # so an import back would be a cycle and the "pure leaf" claim in its
+        # docstring would be false.
+        src = (AGENT_WORKER / "caller_tiers.py").read_text(encoding="utf-8")
+        self.assertNotIn("import settings", src)

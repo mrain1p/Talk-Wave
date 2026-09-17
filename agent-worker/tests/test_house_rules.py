@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import unittest
@@ -117,8 +118,13 @@ class TestTheRoutingTableIsInOnePlace(unittest.TestCase):
         self.assertGreater(len(self.handlers), 20)
 
     def test_every_handler_in_the_package_is_routed(self):
-        orphans = sorted(f"{mod}:{name}" for name, mod in self.handlers.items()
-                         if name not in self.server)
+        # WHOLE WORD. A bare substring test passes for `handle_live` as long
+        # as `handle_live_preview` is routed, which is exactly the shape this
+        # codebase keeps producing: delete the /live route and nothing says
+        # so. `_` is a word character, so the boundary does the work.
+        orphans = sorted(
+            f"{mod}:{name}" for name, mod in self.handlers.items()
+            if not re.search(r"\b" + re.escape(name) + r"\b", self.server))
         self.assertEqual(
             orphans, [],
             "these handlers exist and nothing serves them — either register "
@@ -233,7 +239,50 @@ class TestNewCodeDoesNotArriveUntested(unittest.TestCase):
     suite at all. It does not judge how well. It exists so that adding a file
     is a decision to test it rather than an oversight, and it adapts on its own
     — a module added tomorrow is covered by this rule the moment it lands.
+
+    Low is not the same as free, and it was free until 2026-09-17: the check
+    was a substring search over the suite's whole text, so a module whose stem
+    is an ordinary word — `notes.py`, `topics.py`, `record.py` — passed on the
+    prose in somebody else's docstring. It reads NAMES now: identifiers the
+    suite's code actually uses, plus string constants that are whole dotted
+    paths (importlib and mock.patch reach modules that way). A comment can no
+    longer cover a file.
     """
+
+    @staticmethod
+    def _names_the_suite_uses(tests_dir) -> set:
+        """Every module name the suite's CODE mentions, prose excluded."""
+        import ast
+
+        seen: set = set()
+        for path in sorted(tests_dir.glob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for a in node.names:
+                        seen.add(a.name)
+                        seen.add(a.name.split(".")[-1])
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module:
+                        seen.add(node.module)
+                        seen.add(node.module.split(".")[-1])
+                    for a in node.names:
+                        seen.add(a.name)
+                elif isinstance(node, ast.Attribute):
+                    seen.add(node.attr)
+                elif isinstance(node, ast.Name):
+                    seen.add(node.id)
+                elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    # A module can be reached by string too — importlib,
+                    # mock.patch, a path joined onto AGENT_WORKER, a ledger
+                    # key. What they all have in common is NO SPACES; prose
+                    # always has them, which is the whole distinction being
+                    # drawn here. Split into parts so "call/air_verdict.py"
+                    # and "a/b.py::f.g" both name what they name.
+                    if re.fullmatch(r"[\w./\:-]+", node.value):
+                        seen.add(node.value)
+                        seen.update(re.split(r"[./\:-]+", node.value))
+        return seen
 
     def test_every_module_is_reached_by_the_suite(self):
         here = AGENT_WORKER
@@ -241,9 +290,9 @@ class TestNewCodeDoesNotArriveUntested(unittest.TestCase):
         # suite's source" and "this file" were the same string; after the split
         # they are not, and reading only this module would have quietly dropped
         # the check to whatever test_house_rules.py happens to mention.
-        suite_src = "\n".join(
-            p.read_text(encoding="utf-8")
-            for p in sorted((here / "tests").glob("*.py")))
+        named = self._names_the_suite_uses(here / "tests")
+        # A scan that quietly matched nothing would pass this forever.
+        self.assertGreater(len(named), 500)
 
         untested = []
         for path in sorted(here.rglob("*.py")):
@@ -257,7 +306,7 @@ class TestNewCodeDoesNotArriveUntested(unittest.TestCase):
                 continue
             rel = path.relative_to(here)
             dotted = str(rel.with_suffix("")).replace("\\", "/").replace("/", ".")
-            if dotted not in suite_src and path.stem not in suite_src:
+            if dotted not in named and path.stem not in named:
                 untested.append(str(rel).replace("\\", "/"))
 
         self.assertEqual(

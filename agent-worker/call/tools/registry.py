@@ -445,7 +445,28 @@ def local_tool_names(cfg: dict, *, local_search_available: bool | None = None) -
         if tool.needs_station_admin and not local_search_available:
             continue      # cannot be built at all — don't claim it exists
         names.append(tool.name)
+    if "subwave_find_music" in names and not _finder_has_routes(names):
+        # The dispatcher is a MODE over the other finders, not a capability
+        # of its own: with fewer than MIN_ROUTES of them reachable, the
+        # builder returns nothing and the panel was listing a tool no caller
+        # could reach. Found 2026-09-17 by
+        # TestTheBuildersAndTheRegistryAgreeGateByGate.
+        names.remove("subwave_find_music")
     return names
+
+
+def _finder_has_routes(names: list[str]) -> bool:
+    """Are enough of the tools the finder routes to actually unlocked?
+
+    Asked of `finding`, never restated here: the route table and the
+    threshold have one definition each, and this applies them to the
+    registry's own answer the way the builder applies them to the built list.
+    The import is function-local because `finding` imports LiveKit at build
+    time and this module is deliberately a leaf.
+    """
+    from .finding import MIN_ROUTES, ROUTES
+
+    return sum(1 for n in ROUTES.values() if n in names) >= MIN_ROUTES
 
 
 def on_the_surface(cfg: dict, name: str) -> bool:

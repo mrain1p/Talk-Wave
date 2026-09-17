@@ -940,3 +940,93 @@ class TestABlindCallGetsTheChatsEyes(unittest.TestCase):
         ready = src.index("station_ready")
         self.assertLess(ready, src.index("MCPToolset("))
         self.assertLess(ready, src.index("build_read_tools("))
+
+
+class TestTheBuildersAndTheRegistryAgreeGateByGate(unittest.TestCase):
+    """The registry says which switch unlocks a tool; the builder decides
+    whether to build it. Two spellings of one fact, and nothing compared them.
+
+    Named in the review's deferred tier (2026-09-17): every local builder
+    re-spells its gate as a literal `cfg.get("allow_x")`, so changing a row's
+    gate in the registry leaves the builder handing the tool out under the
+    OLD switch, with a green suite and a panel promising one thing while the
+    call line does another. `test_the_panel_never_claims_a_tool_that_will_
+    not_be_built` already guards that shape for one tool; this is the whole
+    table, one gate at a time.
+
+    The surface is assembled the way `call.session._build_tools` assembles
+    it, because that is what a caller meets. Two deliberate omissions, each
+    of which would otherwise read as a disagreement:
+
+      * the read twins (`subwave_now_playing`, `subwave_station_state`)
+        stand in for the MCP tools only where MCP is absent, so they are not
+        part of the local set;
+      * `build_call_control_tools` takes no settings at all — hanging up is
+        not a permission — so there is nothing here to agree with.
+    """
+
+    @staticmethod
+    def _surface(cfg: dict) -> set:
+        from unittest import mock
+
+        import station_config
+        from call.actions import CallActions
+        from call.tools import broadcast, curation, discovery, finding, music
+
+        actions = CallActions(5)
+        # Credentials present: without them every wrapper is (correctly)
+        # withheld and every gate would agree by building nothing.
+        with mock.patch.object(station_config, "admin_credentials",
+                               return_value=("dj", "s")):
+            local = (music.build_library_tools(cfg, None, actions)
+                     + discovery.build_discovery_tools(cfg, None, actions)
+                     + curation.build_curation_tools(cfg, None, actions)
+                     + broadcast.build_on_air_tools(cfg, None, actions, None))
+            # LAST, exactly as the session does it: the one finder replaces
+            # the tools it routes to, and it is a switch like any other.
+            local = finding.apply_finder_dispatch(cfg, local)
+        return {t.info.name for t in local}
+
+    @staticmethod
+    def _listed(cfg: dict) -> set:
+        from unittest import mock
+
+        import station_config
+        from call.tools import registry
+
+        with mock.patch.object(station_config, "admin_credentials",
+                               return_value=("dj", "s")):
+            return {n for n in registry.local_tool_names(cfg)
+                    if n not in ("subwave_now_playing", "subwave_station_state")}
+
+    def test_one_switch_at_a_time_builds_exactly_what_the_registry_lists(self):
+        from call.tools import registry
+
+        gates = sorted({t.gate for t in registry.TOOLS
+                        if t.gate not in (registry.NEVER, registry.READ)})
+        # A scan that quietly found no gates would pass this forever.
+        self.assertGreater(len(gates), 12)
+
+        disagreed = []
+        for gate in gates:
+            cfg = {gate: "admin"}
+            built, listed = self._surface(cfg), self._listed(cfg)
+            if built != listed:
+                disagreed.append(
+                    f"{gate}: built-not-listed={sorted(built - listed)} "
+                    f"listed-not-built={sorted(listed - built)}")
+        self.assertEqual(
+            disagreed, [],
+            "the registry row and the builder disagree about what this "
+            f"switch unlocks: {disagreed}")
+
+    def test_with_nothing_switched_on_only_the_free_reads_are_built(self):
+        # The floor, named rather than counted: with no permission at all a
+        # caller still gets the booth's own ledger and the lyrics of what is
+        # playing, because neither is an action and neither is the station's
+        # to refuse. A third name arriving here is a decision somebody has
+        # to make on purpose, and a builder that forgot its gate shows up
+        # here first and loudest.
+        free = {"subwave_booth_log", "subwave_current_lyrics"}
+        self.assertEqual(self._surface({}), free)
+        self.assertEqual(self._listed({}), free)

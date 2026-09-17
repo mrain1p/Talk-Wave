@@ -16,6 +16,7 @@ from __future__ import annotations
 import tests  # noqa: F401
 
 from tests.test_settings import (  # noqa: F401
+    TestTheTierLadderIsOneCopy,
     TestEverySettingIsRealAndEveryKeyIsDeclared,
     TestTheGuestDoorRuleHasOneSpelling,
     TestTheJsonStoreIdiom,
@@ -239,6 +240,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheSignOffIsHeardBeforeTheLineCloses,
 )
 from tests.test_tools_surface import (  # noqa: F401
+    TestTheBuildersAndTheRegistryAgreeGateByGate,
     TestABlindCallGetsTheChatsEyes,
     TestARefusalIsACardTheDJCannotSpin,
     TestActionsAllHaveAReceipt,
