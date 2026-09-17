@@ -321,6 +321,44 @@ def _batch_report(queued: list, refused: list, dupes: int, unqueued: int,
     return " ".join(bits)
 
 
+def _parse_picks(picks: str) -> list[tuple[str, str]]:
+    """The mix tool's picks, one per line as "<id> <title>", into (id, title)
+    pairs — first mention wins, a bare comma run of ids is tolerated with
+    the titles unknown."""
+    entries: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for line in (picks or "").splitlines():
+        line = line.strip().lstrip("-*•").strip()
+        if not line:
+            continue
+        head = line.split(",", 1)[0].strip()
+        if "," in line and " " not in head:
+            for tok in line.split(","):
+                tok = tok.strip()
+                if tok and tok not in seen:
+                    seen.add(tok)
+                    entries.append((tok, ""))
+            continue
+        parts = line.split(None, 1)
+        tid = parts[0].strip().strip(",")
+        title = parts[1].strip() if len(parts) > 1 else ""
+        title = title.lstrip("—-:").strip().strip("\"")
+        if tid and tid not in seen:
+            seen.add(tid)
+            entries.append((tid, title))
+    return entries
+
+
+def _run_size(count) -> int:
+    """How many the station is asked for in a one-artist run: the DJ's
+    number within the mix cap, and "a few" when it gave none."""
+    try:
+        n = int(count or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return max(2, min(MIX_MAX_PICKS, n)) if n > 0 else 5
+
+
 def build_album_tools(station: StationClient, actions: CallActions) -> list:
     """The two bulk tools. Caller (music.build_library_tools) has already
     decided the switch is on and the credentials exist."""
@@ -329,7 +367,7 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
     # Imported here rather than at the top: blocks.py speaks the receipt
     # vocabulary this module owns (_batch_report and friends), so a load-time
     # import each way would be a cycle. Once per call, like the SDK import.
-    from .blocks import queue_as_block
+    from .blocks import queue_artist_run, queue_as_block
 
     @lk_llm.function_tool(name="subwave_queue_album")
     async def queue_album(album: str = "", artist: str = "") -> str:
@@ -472,43 +510,41 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
         return (head + " " + tail).strip()
 
     @lk_llm.function_tool(name="subwave_queue_mix")
-    async def queue_mix(picks: str, label: str = "") -> str:
-        """Queue a RUN of tracks you already picked — "a few Eminem songs",
-        "a 90s rock mix", "queue both of those" — as one action. Build the
-        run from real result rows first (name search, browse by genre/era,
-        sound search, favourites), then pass one pick per line: the id from
-        the row, a space, then its title. 2 to 8 picks; choose a spread
-        yourself rather than copying a whole results page. `label` is two or
-        three words for the caller's receipt ("90s rock mix"). For a single
-        track use subwave_queue_track; for a complete album use
-        subwave_queue_album. Never pass an id you did not get from a row."""
+    async def queue_mix(picks: str = "", label: str = "", artist: str = "",
+                        count: int = 0) -> str:
+        """Queue a RUN of tracks as one action. Two shapes:
+        * By ONE artist — "a few Eminem songs", "some more by them": pass
+          `artist` (and `count`, 2 to 8; default 5) with NO picks. The
+          station lines up its own pick of their best-known songs in one
+          press — do not search and choose first.
+        * A mix you built — "a 90s rock mix", "queue both of those": find
+          real rows first (name search, browse by genre/era, sound search,
+          favourites), then pass one pick per line: the id from the row, a
+          space, then its title. 2 to 8 picks; choose a spread yourself
+          rather than copying a whole results page.
+        `label` is two or three words for the caller's receipt ("90s rock
+        mix"). For a single track use subwave_queue_track; for a complete
+        album use subwave_queue_album. Never pass an id you did not get from
+        a row."""
         if actions.at_limit():
             return actions.refusal()
-        entries: list[tuple[str, str]] = []
-        seen: set[str] = set()
-        for line in (picks or "").splitlines():
-            line = line.strip().lstrip("-*•").strip()
-            if not line:
-                continue
-            head = line.split(",", 1)[0].strip()
-            if "," in line and " " not in head:
-                # A bare comma run of ids — tolerated, titles unknown.
-                for tok in line.split(","):
-                    tok = tok.strip()
-                    if tok and tok not in seen:
-                        seen.add(tok)
-                        entries.append((tok, ""))
-                continue
-            parts = line.split(None, 1)
-            tid = parts[0].strip().strip(",")
-            title = parts[1].strip() if len(parts) > 1 else ""
-            title = title.lstrip("—-:").strip().strip("\"")
-            if tid and tid not in seen:
-                seen.add(tid)
-                entries.append((tid, title))
+        artist = (artist or "").strip()
+        if artist and not (picks or "").strip():
+            # ONE press at the station where it has one (SUB/WAVE 1.14,
+            # #1632); an older station sends the DJ back to its own picks.
+            as_block = await queue_artist_run(station, actions, artist,
+                                              _run_size(count))
+            if as_block is not None:
+                return as_block
+            return (f"This station cannot line up a run by {artist} in one "
+                    "press. Search for them, choose 2 to 8 real rows "
+                    "yourself, and call again with those picks. Nothing was "
+                    "queued.")
+        entries = _parse_picks(picks)
         if not entries:
             return ("No picks to queue. Pass one per line: the id from the "
-                    "result row, a space, then the title. Nothing was queued.")
+                    "result row, a space, then the title — or `artist` alone "
+                    "for a run by one artist. Nothing was queued.")
         dropped = max(0, len(entries) - MIX_MAX_PICKS)
         entries = entries[:MIX_MAX_PICKS]
         rows = [{"id": tid, "title": title or f"caller's pick {i + 1}"}

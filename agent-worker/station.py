@@ -1213,6 +1213,58 @@ class StationClient:
             log.info("recent tracks unavailable: %s", describe(e))
             return []
 
+    async def playlists(self) -> list[dict] | None:
+        """The station's own playlists — /dj/playlists, the read its Connect
+        catalogue advertises — id, name and songCount each. Admin-gated.
+
+        None when the read FAILED and [] when the station has none: a slow
+        shelf is not an empty one, and the tool says which (the same
+        distinction _rows_for_query keeps for the album tools).
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return None
+        try:
+            r = await self._client.get(
+                "/dj/playlists", auth=httpx.BasicAuth(user, password))
+            r.raise_for_status()
+            items = _body(r).get("results") or []
+            return [p for p in items if isinstance(p, dict) and p.get("id")]
+        except Exception as e:
+            log.info("playlists unavailable: %s", describe(e))
+            return None
+
+    async def playlist_tracks(self, playlist_id: str) -> list[dict] | None:
+        """One playlist's entries in the order the operator keeps them —
+        /playlists/:id — as the queue-ready rows /dj/search returns and the
+        per-track push takes (id/title/artist/album/year/duration). Admin-
+        gated; None when the read failed, [] for an empty playlist.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return None
+        try:
+            r = await self._client.get(
+                f"/playlists/{_seg(playlist_id)}",
+                auth=httpx.BasicAuth(user, password))
+            r.raise_for_status()
+            rows = []
+            for e in _body(r).get("entries") or []:
+                if not isinstance(e, dict) or not e.get("id"):
+                    continue
+                rows.append({"id": e.get("id"), "title": e.get("title"),
+                             "artist": e.get("artist"), "album": e.get("album"),
+                             "year": e.get("year"),
+                             "duration": e.get("durationSec")})
+            return rows
+        except Exception as e:
+            log.info("playlist %s unavailable: %s", playlist_id, describe(e))
+            return None
+
     async def run_skill(self, name: str) -> dict:
         """Fire one of the station's own segments. Admin-only."""
         from station_config import admin_credentials

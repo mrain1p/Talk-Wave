@@ -141,12 +141,28 @@ TOOLS: tuple[Tool, ...] = (
          "stations get the per-track loop.",
          needs_station_admin=True),
     Tool("subwave_queue_mix", "allow_album_queue", LOCAL,
-         "Queues a run of picked tracks in one action — a few by one artist, "
-         "or a genre/era mix built from real search and browse rows.",
+         "Queues a run of tracks in one action — a few by one artist, or a "
+         "genre/era mix built from real search and browse rows.",
          "Station admin credentials required. Shares the album switch on "
          "purpose: both are bulk queueing, one sentence taking several queue "
          "slots, and an operator who allows one has decided the real "
-         "question. Capped at 8 picks a batch; one action per batch.",
+         "question. Capped at 8 picks a batch; one action per batch. On "
+         "SUB/WAVE 1.14+ a run by ONE artist is one station press (its "
+         "subwave_queue_block, POST /dj/queue-block over REST): the "
+         "station's own pick of their best-known songs, never-play refusals "
+         "named. A mix across artists is still the DJ's own picks.",
+         needs_station_admin=True),
+    Tool("subwave_queue_playlist", "allow_album_queue", LOCAL,
+         "Queues one of the station's own playlists — every track of it, in "
+         "its order — as one action. Asked with no name, it lists the "
+         "playlists and queues nothing.",
+         "Station admin credentials required. Rides the album switch: the "
+         "same bulk grant, and a playlist is the operator's own curation. "
+         "Read through the station's /dj/playlists and /playlists/:id, "
+         "pushed track by track (the station has no one-press for a "
+         "playlist), so the never-play list applies on each push. 30 tracks "
+         "a playlist, one action for the lot; the DJ queues one only when "
+         "the caller names it.",
          needs_station_admin=True),
     Tool("subwave_cancel_queued_track", "allow_cancel_queue", LOCAL,
          "Takes a queued track back out before it airs.",

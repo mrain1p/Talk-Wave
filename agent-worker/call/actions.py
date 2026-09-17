@@ -39,6 +39,7 @@ class CallActions:
         # thirty cards land for it.
         "album": ("💿", "Album queued"),
         "mix": ("🎶", "Mix queued"),
+        "playlist": ("📃", "Playlist queued"),
         "like": ("❤️", "Liked the track on air"),
         "unlike": ("🤍", "Removed the like"),
         "announcement": ("📢", "Message sent to air"),

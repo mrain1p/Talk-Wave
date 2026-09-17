@@ -382,10 +382,19 @@ def finding_rule(cfg: dict) -> str:
       offer a whole album unprompted; a caller asking for a song gets a song.
       Called with just an artist it lists that artist's albums, which is how
       "pick an album of theirs" starts.
-    * A HANDFUL OF PICKS -> "a few Eminem tracks", "queue up a mix of lofi".
+    * A FEW BY ONE ARTIST -> "a few Eminem tracks", "some more by them":
+      subwave_queue_mix with `artist` and NO picks. The station lines up its
+      own pick of their best-known songs in one press — do not search and
+      choose first. Only if its receipt says the station can't do that, find
+      rows and pass picks as below.
+    * A HANDFUL OF PICKS -> "queue up a mix of lofi", "a 90s rock run".
       Find real rows first — {"; ".join(finders)} — then choose a spread
       YOURSELF and pass the chosen ids with their titles to subwave_queue_mix
       in one go. Your picks, not the first page wholesale.
+    * ONE OF THE STATION'S OWN PLAYLISTS -> "play the Sunday chill playlist":
+      subwave_queue_playlist with its name, only when the caller names one.
+      With no name it lists what the station has and queues nothing. Never
+      offer a playlist unprompted.
   **A mix you have SPOKEN is not a mix.** It exists when subwave_queue_mix
   returns a receipt, and the receipt's count is the only number you may say.
   Never announce the run and move on, and never queue ONE track to stand in
