@@ -445,7 +445,52 @@ def local_tool_names(cfg: dict, *, local_search_available: bool | None = None) -
         if tool.needs_station_admin and not local_search_available:
             continue      # cannot be built at all — don't claim it exists
         names.append(tool.name)
+    if "subwave_find_music" in names and not _finder_has_routes(names):
+        # The dispatcher is a MODE over the other finders, not a capability
+        # of its own: with fewer than MIN_ROUTES of them reachable, the
+        # builder returns nothing and the panel was listing a tool no caller
+        # could reach. Found 2026-09-17 by
+        # TestTheBuildersAndTheRegistryAgreeGateByGate.
+        names.remove("subwave_find_music")
     return names
+
+
+def _finder_has_routes(names: list[str]) -> bool:
+    """Are enough of the tools the finder routes to actually unlocked?
+
+    Asked of `finding`, never restated here: the route table and the
+    threshold have one definition each, and this applies them to the
+    registry's own answer the way the builder applies them to the built list.
+    The import is function-local because `finding` imports LiveKit at build
+    time and this module is deliberately a leaf.
+    """
+    from .finding import MIN_ROUTES, ROUTES
+
+    return sum(1 for n in ROUTES.values() if n in names) >= MIN_ROUTES
+
+
+def on_the_surface(cfg: dict, name: str) -> bool:
+    """Will this call line actually be handed `name`?
+
+    The same answer the MCP server and the panel already get, asked by the
+    tools themselves — because a tool's own RESULT is an instruction, and it
+    is the one the model reads LAST. The drill at the shipped defaults
+    (2026-09-17, GATES=shipped TIER=open) watched the sound search answer
+    "queue the exact one they pick with subwave_queue_track" on a line where
+    `allow_exact_queue` is off, watched the DJ do exactly that, watched the
+    surface refuse a tool it had never been given — and then heard the DJ
+    tell the caller the record had landed. The prompt's rules ride their
+    switches; these strings did not, and they arrive after the prompt.
+
+    So any string that names a tool asks here first. Answering from the
+    registry rather than from the gate name is the point: `allow_exact_queue`
+    on its own is not the condition — the exact queue also needs the station
+    credentials its ids come from — and a second copy of that rule is exactly
+    how the two would drift apart again.
+    """
+    local_ok = not library_search_needs_mcp()
+    return (name in local_tool_names(cfg, local_search_available=local_ok)
+            or name in mcp_allowlist(cfg, local_search_available=local_ok))
 
 
 def blocked_names() -> list[str]:

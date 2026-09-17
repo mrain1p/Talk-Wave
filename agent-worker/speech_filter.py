@@ -40,17 +40,26 @@ _DIRECTION_VERBS = (
     "rings|ringing|rang|clicks|clicking|crackles|crackling|fades|fading|"
     "scratches|buzzes|buzzing|beeps|hums|hisses|whirs|creaks|slams|clatters|"
     "thuds|clunks|closes|opens|starts|stops|plays|playing|dials|dialling|"
-    "dialing|laughs|laughing|chuckles|sighs|sighing|coughs|pauses|shuffles|"
-    "taps|clears|rustles|jingles|squeaks|blares|swells|cuts|continues"
+    "dialing|laughs|laughing|chuckles|chuckling|sighs|sighing|coughs|"
+    "coughing|pauses|pausing|shuffles|shuffling|taps|tapping|clears|"
+    "clearing|rustles|jingles|squeaks|blares|swells|cuts|continues|"
+    "whispers|whispering|mutters|muttering|mumbles|mumbling|shouts|"
+    "shouting|snorts|sniffs|groans|gasps|grins|winks|exhales|inhales|"
+    "leans|adjusts|shifts|scoffs|yawns|hesitates|beat"
 )
 
 # "(laughs)", "(chuckles softly)", "(Phone rings)" — parenthetical *actions*
-# only. Ordinary parenthetical speech is left alone: the verb-first form is
-# open-ended but must start on the verb, and the verb-last form only fires on
-# the closed list above.
+# only. Ordinary parenthetical speech is left alone.
+#
+# BOTH halves now fire on the closed list above. The verb-first half used to
+# be open-ended — any word ending in s/ing/ed — which is not a verb test at
+# all: "(yes)", "(thanks)", "(Kings of Leon)", "(sounds good)" and "(plus a
+# cover)" are ordinary speech and every one of them was deleted before the
+# caller heard it. The trailing words stay open so "(sighs deeply)" and
+# "(clears throat)" still go.
 _PAREN_ACTION = re.compile(
     r"\((?:"
-    r"[a-z]+(?:s|ing|ed)(?:\s+[a-z]+){0,3}"                     # "(shuffles records)"
+    r"(?:" + _DIRECTION_VERBS + r")(?:\s+[a-z]+){0,3}"          # "(shuffles records)"
     r"|"
     r"(?:[a-z]+\s+){1,3}(?:" + _DIRECTION_VERBS + r")"          # "(Phone rings)"
     r")\)",

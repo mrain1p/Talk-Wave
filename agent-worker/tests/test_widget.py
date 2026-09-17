@@ -379,6 +379,189 @@ class TestPanelLoadsOnOpen(unittest.TestCase):
         strays = sorted(f for f in settings_store.SCHEMA if f not in settings_store.FIELDS)
         self.assertFalse(strays, f"settings that cannot be saved: {strays}")
 
+    # --- arriving must not spend the operator's lockout ----------------------
+    # api/auth.py counts wrong admin keys per address and locks out at five
+    # (_AUTH_MAX_FAILS) for 300 seconds. Opening the panel used to fire FIVE
+    # admin-keyed requests before anything asked whether this browser was
+    # signed in: panel-charts.js's /calls and /stats/listeners at script load,
+    # loadSettings' /settings and /settings/options, and the night tile's
+    # /calls 800ms in. A password the operator had changed on another device
+    # therefore spent the whole retry budget before they could type the new
+    # one, and the correct password was then refused for five minutes; a
+    # reload after the cooldown burned five more and earned a ban until
+    # restart. tryUnlock had guarded its own two requests since it was
+    # written — these five ran in front of it.
+
+    def _body(self, decl: str) -> str:
+        start = self.js.index(decl)
+        return self.js[start : self.js.index("\n  }", start)]
+
+    def test_one_probe_stands_in_front_of_every_keyed_request(self):
+        opener = self._open_handler()
+        probe = opener.index("await afetch('/settings')")
+        self.assertLess(
+            probe, opener.index("await loadSettings()"),
+            "open_() must probe /settings ONCE before loadSettings fires its "
+            "pair — that is the whole point of the gate")
+        self.assertIn(
+            "probe.status === 401", opener,
+            "the probe's answer has to be read, or it is just a sixth request")
+        self.assertIn(
+            "return;", opener[opener.index("probe.status === 401"):],
+            "a 401 must stop open_() dead — anything after it spends another "
+            "try against the five-wrong-keys lockout")
+
+    def test_a_stored_key_the_server_refuses_is_forgotten(self):
+        gate = self._open_handler()
+        gate = gate[gate.index("probe.status === 401"):]
+        self.assertIn(
+            "localStorage.removeItem('callinAdminKey')", gate,
+            "a stale stored key is worse than none — left in place it spends "
+            "one of the five on every reload")
+        self.assertIn("showLoginGate(", gate)
+
+    def test_the_charts_and_the_tile_wait_to_be_asked(self):
+        charts = (REPO / "web-widget" / "panel-charts.js").read_text(
+            encoding="utf-8")
+        self.assertIn(
+            "window.Panel.loadCharts", charts,
+            "panel-charts.js must publish its data read rather than firing it "
+            "at script load, where it runs before any password is checked")
+        # The strip's two reads may only appear inside that published loader.
+        after = charts[charts.index("window.Panel.loadCharts"):]
+        for url in ("/calls", "/stats/listeners"):
+            self.assertEqual(
+                charts.count("afetch('%s')" % url), after.count("afetch('%s')" % url),
+                "panel-charts.js reads %s outside the published loader" % url)
+        # The night tile's /calls is deferred by a timer, so the only guard
+        # that means anything is where the timer is started from.
+        self.assertEqual(
+            self.js.count("paintNightTileOnce();"), 1,
+            "paintNightTileOnce() is called from somewhere other than "
+            "afterSignIn — it used to fire at load, 800ms in, keyed")
+        after_sign_in = self._body("function afterSignIn()")
+        self.assertIn("paintNightTileOnce()", after_sign_in)
+        self.assertIn("window.Panel.loadCharts", after_sign_in)
+
+    def test_signing_in_releases_the_same_reads_arriving_does(self):
+        # Both ways in call afterSignIn(). Only the load path used to reach
+        # these at all, so after a successful unlock the ACTIVITY strip kept
+        # its em-dash frames and said "no records to read" for the whole rest
+        # of the session, however far in the operator got.
+        self.assertIn("afterSignIn();", self._body("async function tryUnlock()"))
+        self.assertIn("afterSignIn();", self._open_handler())
+
+    # --- a repaint must not overwrite what the operator is doing -------------
+
+    def test_the_slow_provider_lists_keep_what_was_typed(self):
+        # loadSettings drops the curtain and sets `loaded` BEFORE awaiting
+        # /settings/options (~5s against a station, a TTS server and Ollama),
+        # so the panel is deliberately usable across that window. The second
+        # paint() then refilled every field from overrides/resolved and called
+        # markClean(), discarding anything typed into it without a word. The
+        # comment above it was true of fill(), which keeps its selection, and
+        # not of paint(), which runs three lines later.
+        import re
+
+        self.assertIn("function paint({ keep = false } = {})", self.js,
+                      "paint() must be able to run without overwriting values")
+        body = self._body("async function loadSettings()")
+        self.assertIn("paint({ keep: true })", body)
+        self.assertEqual(
+            len(re.findall(r"(?<![A-Za-z])paint\(\);", body)), 1,
+            "only the FIRST paint in loadSettings is authoritative; the one "
+            "after the options land runs while the operator may be typing")
+
+    def test_a_key_save_and_a_model_reload_keep_the_model_just_picked(self):
+        # "pick provider, pick model, Save keys" is the order this section's
+        # layout invites, and both postSecrets and "Test keys + reload models"
+        # land in syncModels at the end of it — each one used to put the
+        # stored model back over the pick, so the next Save posted the
+        # provider alone.
+        for caller in ("async function postSecrets(", "refreshModelsBtn"):
+            with self.subTest(caller=caller):
+                near = self.js[self.js.index(caller):][:2400]
+                self.assertIn("syncModels({ keep: true })", near)
+
+    def test_a_stored_choice_the_list_cannot_offer_is_not_an_edit(self):
+        # The TTS server is down so the voice list falls back to OpenAI's and
+        # the stored Kokoro voice is not in it; the roster is empty so the
+        # chosen DJ has no option. Assigning a value no option carries yields
+        # '', and '' is an instruction to CLEAR the setting, not an absence:
+        # Save read "1 change" on an untouched panel, and the next save of any
+        # unrelated field posted tts_voice:'' — which the server pops.
+        fill = self._body("function fill(sel, values")
+        self.assertIn("overrides[sel]", fill,
+                      "fill() must carry a stored value the list does not "
+                      "offer as its own option, or the assignment yields ''")
+        patch = self._body("function pendingPatch()")
+        self.assertIn("!dirty.has(f)", patch,
+                      "a select reading '' against a real override is only a "
+                      "change if a human made it one")
+
+    def test_discarding_still_discards(self):
+        # paint() refilling every control IS the discard, so the edits have to
+        # be forgotten first or the fields holding them are the ones a plain
+        # paint() now protects.
+        import re
+
+        near = self.js[self.js.index("saveOverlayDiscard"):][:900]
+        self.assertRegex(near, r"dirty\.clear\(\);\s*\n\s*paint\(\);")
+
+    def test_a_save_always_reaches_a_verdict(self):
+        # The read-back after a successful write is a second authenticated
+        # request and can fail on its own. A 401 there — this address just hit
+        # the lockout from another tab, or the password changed elsewhere —
+        # used to land in `resolved` and `overrides` as undefined with no
+        # status check: paint() threw, "Saving…" sat on screen although the
+        # write HAD landed, and every keystroke after that threw inside
+        # pendingPatch, so Save and Discard were dead until a reload.
+        body = self._body("async function saveSettings(patch)")
+        self.assertIn("rf.status === 401", body,
+                      "the read-back's status has to be checked before its "
+                      "body is believed")
+        self.assertIn("typeof fresh.resolved === 'object'", body)
+        self.assertIn("typeof fresh.overrides === 'object'", body)
+        self.assertIn("} finally {", body,
+                      "'Saving…' must always resolve to a verdict")
+        self.assertIn("$('saveMsg').textContent = verdict;", body)
+
+    def test_the_station_buttons_survive_a_second_paint(self):
+        # paintSecrets relocates #testAdminBtn, #testStationBtn and
+        # #reloadStationBtn into the station keyblock's bar and hides their
+        # markup row. The paint begins by wiping that host, so the NEXT
+        # paintSecrets was looking up three ids its own innerHTML = '' had
+        # just removed, getting null for all three and appending nothing: the
+        # buttons vanished until a reload. Every Save keys, every Clear and
+        # Reset repaint secrets, so saving the station credentials was exactly
+        # when 'Test access' went away.
+        self.assertIn("const STATION_BTNS = ", self.js,
+                      "the three static buttons must be held from load, not "
+                      "looked up after the host has been wiped")
+        body = self._body("function paintSecrets()")
+        self.assertIn("STATION_BTNS.forEach", body)
+        for btn in ("testAdminBtn", "testStationBtn", "reloadStationBtn"):
+            self.assertNotIn(
+                "$('%s')" % btn, body,
+                "%s is looked up inside paintSecrets, after the wipe that "
+                "removed it from the document" % btn)
+
+    def test_the_panel_stores_the_guest_code_with_its_clock(self):
+        # rememberCallKey is the one writer that also stamps CALL_KEY_AT, the
+        # expiry clock call.js reads. Writing the raw key here left a code set
+        # from the panel with no clock at all, so on a shared machine call.js
+        # started the timer at the first visit to the call page instead of
+        # when the operator stored it.
+        self.assertNotIn(
+            "localStorage.setItem(CALL_KEY", self.js,
+            "the panel must store the shared call key through shared.js's "
+            "rememberCallKey, which also stamps its clock")
+        self.assertNotIn(
+            "localStorage.removeItem(CALL_KEY", self.js,
+            "clearing the key by hand leaves the stale CALL_KEY_AT behind")
+        self.assertIn("rememberCallKey(code || '')", self.js)
+        self.assertIn("rememberCallKey('')", self.js)
+
 
 class TestWidgetServerContract(unittest.TestCase):
     """The widget is plain browser JS with no toolchain and no test harness of
@@ -431,6 +614,43 @@ class TestWidgetServerContract(unittest.TestCase):
 
         return set(re.findall(r"\$\('([A-Za-z0-9_-]+)'\)", src)) | set(
             re.findall(r"getElementById\('([A-Za-z0-9_-]+)'\)", src))
+
+    def test_neither_caller_facing_script_touches_a_jar_by_hand(self):
+        # In a cross-site embed with third-party storage blocked — Chrome
+        # Incognito's default — reading `window.localStorage` does not come
+        # back null, it THROWS. The throw landed inside shared.js's IIFE, so
+        # `window.Callin` was never assigned; call.js destructures that
+        # global on the first line of its own and threw in turn, and the
+        # embed sat on "Checking…" behind a disabled Call button with no way
+        # out but a different browser (2026-09-17).
+        #
+        # shared.js probes each jar ONCE inside a try and publishes either
+        # the real object or a Map-backed stand-in (`store`, `tabStore`) —
+        # and that only holds for as long as nothing reaches past it. The
+        # panel's own scripts are deliberately not checked: /settings is the
+        # operator's first-party page, where the jar is never blocked.
+        shared = self.sources["shared.js"]
+        self.assertIn("function safeStorage(kind)", shared,
+                      "shared.js has lost the storage probe")
+        # Reached through window[kind], so the read that throws is inside
+        # the try on every engine.
+        self.assertIn("window[kind]", shared)
+        published = shared.split("  return {")[-1]
+        for name in ("store", "tabStore"):
+            with self.subTest(published=name):
+                self.assertIn(name, published,
+                              f"safeStorage's {name} is not published on the "
+                              "Callin global, so call.js cannot use it")
+        for name in ("shared.js", "call.js"):
+            src = re.sub(r"//[^\n]*", "", self.sources[name])
+            for jar in ("localStorage.", "sessionStorage."):
+                with self.subTest(file=name, jar=jar):
+                    self.assertNotIn(
+                        jar, src,
+                        f"{name} reaches for {jar} directly. In a "
+                        "blocked-storage embed that throws where it is "
+                        "written and takes the whole widget down with it — "
+                        "go through Callin's store / tabStore instead.")
 
     def test_the_scan_found_something_to_check(self):
         # A silently-empty scan would make every assertion below pass forever.
@@ -502,6 +722,20 @@ class TestWidgetServerContract(unittest.TestCase):
                     f"{'/'.join(scripts)} reads element ids that {page} does not "
                     f"declare and never creates — those controls are dead: "
                     f"{missing}")
+
+    def test_no_clock_rounds_its_seconds(self):
+        import re
+
+        # A clock has no sixtieth second. panel-sounds.js's shelf formatter
+        # rounded — String(Math.round(secs % 60)) — so a 179.6s clip read
+        # "2:60" on the shelf while the slot card for the same clip said
+        # 2:59. Every mm:ss in these files floors, and this is cheap to keep
+        # true across all three of them.
+        for name, src in self.sources.items():
+            with self.subTest(name):
+                self.assertFalse(
+                    re.findall(r"Math\.round\([^()]*% 60", src),
+                    "a seconds formatter that rounds renders :60")
 
     def test_the_widget_is_still_dependency_free(self):
         # No build step, no bundler, no node_modules. The moment the widget
@@ -848,6 +1082,32 @@ class TestTheServiceWorkerStaysOutOfTheWay(unittest.TestCase):
                     f"'{path}'", self.sw,
                     f"{path} is not in the worker's never-touch list — it "
                     "would be answered from a cache")
+
+    def test_only_the_home_page_becomes_the_offline_shell(self):
+        # /panel.html and /embed-test.html are served by the same add_static
+        # and are not in NEVER, so the navigate branch used to write
+        # whichever same-origin page was opened LAST under the '/' key. Open
+        # the operator's page once in the profile that carries the installed
+        # app, and the app came up wearing the settings form with no signal
+        # (2026-09-17).
+        nav = self.sw.split("req.mode === 'navigate'")[1].split("\n    return;")[0]
+        self.assertIn("url.pathname === '/'", nav,
+                      "the navigate branch caches any same-origin page "
+                      "under the '/' key again")
+        self.assertIn("res.ok && home", nav,
+                      "the put is not gated on the home page")
+        self.assertIn("home ?", nav,
+                      "the offline fallback still answers '/' for every "
+                      "navigation — a page an older worker cached would go "
+                      "on being served as the app")
+
+    def test_the_cache_name_moved_with_the_rule(self):
+        # Changing WHAT is cached without changing the cache name leaves
+        # every installed copy answering out of the old entries — here, the
+        # wrong page still sitting under '/'.
+        self.assertIn("const CACHE = 'talkwave-v4';", self.sw,
+                      "the offline-shell rule changed and the cache name "
+                      "did not, so an installed app keeps the old '/'")
 
     def test_the_worker_only_installs_on_the_real_page(self):
         # An embed on somebody else's site installing a worker for this origin
@@ -1225,6 +1485,27 @@ class TestTheStationsOwnColoursReachTheCard(unittest.TestCase):
         self.assertEqual(tokens["--sage"], "#8a6f55")
         self.assertEqual(tokens["--coral"], "oklch(0.62 0.16 70)")
 
+    def test_a_failed_first_poll_does_not_cost_the_page_its_first_paint(self):
+        # The operator's configured theme is applied by the FIRST /live read
+        # and by nothing else — along with the skin, the door order, the
+        # theme glyph, the music handoff, the abilities read and the
+        # player's auto-open, which all hang off the same flag. `first` used
+        # to be `!live`, and refreshLive's own catch sets `live = {}` on a
+        # real outage: a page whose first poll failed could never answer it
+        # true again, so every one of those ran NEVER, and the card wore the
+        # default theme and door order until a reload (2026-09-17).
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertNotIn("const first = !live;", call_js)
+        self.assertIn("const first = !lastLiveAt;", call_js)
+        # And the order is the whole of it: lastLiveAt is written only by a
+        # GOOD poll, so reading it after the write answers false on the very
+        # first one.
+        body = call_js.split("async function refreshLive")[1]
+        self.assertLess(body.index("const first = !lastLiveAt;"),
+                        body.index("lastLiveAt = Date.now();"),
+                        "the stamp is written before `first` reads it, so "
+                        "the first good poll is not the first paint")
+
     def test_nothing_the_widget_does_not_name_comes_through(self):
         # The station's set includes fonts. This widget ships no font files
         # and makes no third-party request for one, so a --display-font
@@ -1292,7 +1573,7 @@ class TestTheStationsOwnColoursReachTheCard(unittest.TestCase):
         # viewer option since the cycle) is applied first and returns.
         call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
         fn = call_js.split("function applyConfiguredTheme")[1][:700]
-        self.assertIn("localStorage.getItem('callinTheme')", fn)
+        self.assertIn("store.getItem('callinTheme')", fn)
         self.assertIn("applyThemeChoice(stored)", fn)
 
 
@@ -2141,6 +2422,80 @@ class TestAHostThemeIsADefaultNotADecree(unittest.TestCase):
                          "a bare .show selector will restyle the lit ticker")
 
 
+class TestTheStubAnswersWhatTheWidgetAsksFor(unittest.TestCase):
+    """A path the widget fetches must be answered by the dev stub, or be
+    listed here as a known gap with a reason.
+
+    tools/panel_dev_server.py is the only backend the browser harness has, and
+    an unknown path there is a 404 with nothing on screen to say so. That is
+    how /player/abilities hid: the widget had fetched it since the operator
+    side of the player landed, the stub never learned, and the harness drove a
+    card whose skip, un-heart and command buttons could not appear — so the
+    press-everything sweep could not reach them and the fault that WAS there
+    (three controls painting while hidden) went unmeasured for two weeks
+    (2026-09-17).
+
+    The list below is a BASELINE to shrink, not a target. Each entry is a path
+    the harness therefore cannot drive; adding a fixture and deleting the line
+    is always the better move than adding a line.
+    """
+
+    # path -> why the stub does not answer it yet
+    KNOWN_GAPS = {
+        "/auth/guest": "the guest-code gate; the stub opens the line instead",
+        "/auth/password": "the panel's own sign-in, which the stub has no "
+                          "password for",
+        "/calls/": "one call record by id — the stub serves the list only",
+        "/player/booth-log": "the player's booth tab reads the station's "
+                             "48-hour action log",
+        "/player/command": "operator mode runs a real chat turn through the "
+                           "DJ's brain",
+        "/prompt": "the assembled system prompt, which needs a station",
+        "/settings/secrets": "the key store's status; the stub has no secrets",
+        "/settings/sounds/": "one uploaded clip by name; the stub serves the"
+                             " shelf and the category write, not the file",
+        "/test/admin": "a station-credentials probe",
+        "/vm-greeting": "a rendered greeting clip",
+        "/voicemail/draft": "the studio's upload, which needs the mastering "
+                            "chain",
+        "/voicemail/draft/": "and its per-draft read",
+    }
+
+    def test_every_path_the_widget_fetches_is_stubbed_or_listed(self):
+        import re
+
+        stub = (REPO / "tools" / "panel_dev_server.py").read_text(
+            encoding="utf-8")
+        served = {"/" + p.name
+                  for p in (REPO / "web-widget").iterdir() if p.is_file()}
+        js = chr(10).join(widget_js(exclude=()).values())
+        fetched = set(re.findall(r"""fetch\(\s*['"`](/[^'"`?${]*)""", js))
+
+        missing = sorted(
+            p for p in fetched
+            if p not in served
+            and f'"{p}"' not in stub and f"'{p}'" not in stub
+            and p not in self.KNOWN_GAPS)
+        self.assertEqual(
+            missing, [],
+            "the widget fetches these and the dev stub answers 404, so the "
+            "browser harness cannot drive whatever they feed. Add a fixture "
+            "to tools/panel_dev_server.py, or add the path to KNOWN_GAPS "
+            "with the reason: %r" % (missing,))
+
+    def test_no_gap_is_listed_that_has_since_been_stubbed(self):
+        # The list is a baseline to shrink; a row that outlived its gap would
+        # quietly excuse the next real one.
+        stub = (REPO / "tools" / "panel_dev_server.py").read_text(
+            encoding="utf-8")
+        stale = sorted(p for p in self.KNOWN_GAPS
+                       if f'"{p}"' in stub or f"'{p}'" in stub)
+        self.assertEqual(
+            stale, [],
+            "these are stubbed now — drop them from KNOWN_GAPS so the list "
+            "keeps meaning something: %r" % (stale,))
+
+
 class TestTheWidgetActuallyParses(unittest.TestCase):
     """Every .js in web-widget/, syntax-checked for real.
 
@@ -2432,7 +2787,13 @@ class TestThePanelReadsAtAGlance(unittest.TestCase):
         for surface in (self.js,
                         (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")):
             self.assertIn("THEME_ICONS.station", surface)
-            self.assertIn("localStorage.getItem('callinTheme')", surface)
+            # The same stored KEY — that is what makes the two cycles one
+            # mental model. HOW each surface reaches it differs by design
+            # since 2026-09-17: the call page goes through Callin's storage
+            # shim, because a blocked jar in a cross-site embed throws and
+            # takes the whole widget down with it, while /settings is the
+            # operator's own first-party page and reads the jar directly.
+            self.assertIn("getItem('callinTheme')", surface)
         self.assertIn("panelThemeOptions", self.js)
 
 
@@ -2520,79 +2881,201 @@ class TestTheStylesheetParsesToTheEnd(unittest.TestCase):
             self.assertFalse(depth, f"{name} ends inside an unclosed comment")
 
 
+# --- reading a stylesheet well enough to answer "which rule wins" ---------
+#
+# Written for TestHiddenActuallyHides below, which used to ask a much weaker
+# question — does a `[hidden]` rule naming any of this element's classes
+# exist ANYWHERE in the sheet — and passed four shipped faults because of it.
+# Answering "does it WIN" needs three things a regex over the text cannot
+# give: source order, specificity, and rules that are inside an @media block.
+
+
+def _css_rules(*sheets: str) -> list[tuple[int, str, str, str]]:
+    """(order, selector, body, enclosing at-rule) for every rule.
+
+    Order runs across the sheets in the order the page loads them, because
+    that is what decides a tie. Brace-aware rather than a split on "}": the
+    split folds an @media opener into the selector of the rule inside it, so
+    every display rule in a media query was invisible to the check below.
+    """
+    rules: list[tuple[int, str, str, str]] = []
+    for sheet in sheets:
+        text = re.sub(r"/\*.*?\*/", "", sheet, flags=re.S)
+        buf, stack = "", []
+        for ch in text:
+            if ch == "{":
+                stack.append(buf.strip())
+                buf = ""
+            elif ch == "}":
+                sel = stack.pop() if stack else ""
+                if sel and not sel.startswith("@"):
+                    at = next((o for o in reversed(stack)
+                               if o.startswith("@")), "")
+                    rules.append((len(rules), sel, buf, at))
+                buf = ""
+            else:
+                buf += ch
+    return rules
+
+
+def _specificity(sel: str) -> tuple[int, int, int]:
+    """(ids, classes, elements) for one selector — close, not exact.
+
+    Both sides of every comparison it is used for are class-based rules in
+    the same stylesheet, so the approximation costs nothing that matters. The
+    point is that a comparison HAPPENS.
+    """
+    ids = len(re.findall(r"#[\w-]+", sel))
+    attrs = len(re.findall(r"\[[^\]]*\]", sel))
+    rest = re.sub(r"\[[^\]]*\]", " ", sel)
+    pseudo_els = len(re.findall(r"::[\w-]+", rest))
+    rest = re.sub(r"::[\w-]+", " ", rest)
+    # :not()/:is()/:has() take the specificity of what is inside them;
+    # :where() takes none. Drop the wrappers, keep the contents.
+    rest = re.sub(r":where\([^)]*\)", " ", rest)
+    rest = re.sub(r":(?:not|is|has)\(", " ", rest).replace(")", " ")
+    classes = len(re.findall(r"\.[\w-]+", rest))
+    pseudo_cls = len(re.findall(r":[\w-]+", rest))
+    tags = len(re.findall(r"(?:^|[\s>+~])[a-zA-Z][\w-]*", rest))
+    return (ids, classes + attrs + pseudo_cls, tags + pseudo_els)
+
+
+def _subjects(rules, declares, *, on_hidden: bool):
+    """The rules whose SUBJECT could match a shipped-hidden element.
+
+    Ancestor context is dropped from the match on both sides — over-matching
+    is a spot rule somebody writes once, under-matching is another shipped
+    ghost — but it still counts towards specificity, which is how the real
+    cascade reads it.
+
+    Each one comes back with the key that decides the cascade: `!important`
+    first, then specificity, then source order.
+    """
+    out = []
+    for order, sel, body, at in rules:
+        decl = declares.search(body)
+        if not decl:
+            continue
+        important = int("!important" in body[decl.end():decl.end() + 40])
+        for one in sel.split(","):
+            one = one.strip()
+            if not one:
+                continue
+            compound = one.split()[-1].split(">")[-1]
+            # A [hidden] rule answers only where it fires; any other rule
+            # carrying [hidden] or a state pseudo-class is conditional on
+            # something this check cannot see, so it proves nothing either
+            # way.
+            if ("[hidden]" in compound) != on_hidden:
+                continue
+            if not on_hidden and ":" in compound:
+                continue
+            tag = (re.match(r"([a-z][\w-]*)", compound) or [None, ""])[1]
+            ident = (re.search(r"#([\w-]+)", compound) or [None, ""])[1]
+            classes = frozenset(re.findall(r"\.([A-Za-z][\w-]*)", compound))
+            # Nothing weaker than the UA's own `[hidden] {display:none}` can
+            # un-hide anything, so a bare tag rule is not a show.
+            if not on_hidden and not (classes or ident):
+                continue
+            key = (important,) + _specificity(one) + (order,)
+            out.append((key, tag, ident, classes, one.strip(), at))
+    return out
+
+
+def _matching(subjects, tag, ident, classes):
+    for key, sub_tag, sub_id, sub_classes, sel, at in subjects:
+        if sub_tag and sub_tag != tag:
+            continue
+        if sub_id and sub_id != ident:
+            continue
+        if not sub_classes <= classes:
+            continue
+        yield key, sel, at
+
+
+def _ships_hidden(html: str):
+    """(tag, id, classes, the class attribute as written) per hidden element."""
+    for m in re.finditer(r"<(\w+)([^>]*)>", html):
+        tag, attrs = m.group(1), m.group(2)
+        cls = re.search(r'class="([^"]+)"', attrs)
+        # The ATTRIBUTE, not the word: class="avatar hidden" names a CSS
+        # class that hides by rule, not the browser attribute.
+        bare = attrs.replace(cls.group(0), "") if cls else attrs
+        # NOT \b: a word boundary treats the dash in aria-hidden as one, so
+        # every decorative element carrying aria-hidden="true" read as
+        # shipping hidden and was reported unhideable. Latent until the first
+        # one with a class rule behind it (.skinart, 0.10.139).
+        if not re.search(r"(?<![-\w])hidden\b", bare):
+            continue
+        ident = re.search(r'id="([\w-]+)"', attrs)
+        yield (tag, ident.group(1) if ident else "",
+               frozenset(cls.group(1).split()) if cls else frozenset(),
+               cls.group(1) if cls else "")
+
+
 class TestHiddenActuallyHides(unittest.TestCase):
     """An author `display` beats the UA's [hidden] rule, and this codebase
-    has now paid for that four separate times: .guestgate (spot-fixed long
+    has now paid for that five separate times: .guestgate (spot-fixed long
     ago), the six URL rows sitting fully visible under the slot cards, the
-    empty picker menu floating as a ghost box, and the calls toolbar's
-    latent copy of the same fault. Every element the markup ships hidden
-    whose class also sets a display must carry a `.cls[hidden]` spot rule —
-    found mechanically, so the fifth one cannot ship."""
+    empty picker menu floating as a ghost box, the calls toolbar's latent
+    copy of the same fault, and .facebar — which had a spot rule the whole
+    time and lost to the landscape rail five classes to two, so a hidden
+    face bar painted 56x390 down the side of a landscape phone (measured in
+    the browser, 2026-09-17). Every element the markup ships hidden whose
+    class also sets a display must carry a `.cls[hidden]` spot rule that
+    WINS — found mechanically, so the sixth one cannot ship.
+
+    All four got past the first version of this test, which asked whether a
+    `[hidden]` rule naming any of the element's classes existed ANYWHERE in
+    the sheet. That is not the question a browser asks. A spot rule only
+    answers a display rule it actually BEATS — same subject, and then
+    !important, specificity and source order in that order — and a rule
+    inside an @media block, which the old text split could not even see,
+    answers only inside that block. This version asks it that way.
+    """
+
+    # A display that is not `none`: a rule that would UN-hide.
+    SHOWS = re.compile(r"display\s*:(?!\s*none\b)")
+    # What answers one. `visibility: hidden` counts: .pill reserves its space
+    # on purpose, and that is the accepted fix there.
+    CLEARS = re.compile(r"display\s*:\s*none|visibility\s*:\s*hidden")
 
     def test_every_shipped_hidden_element_can_actually_hide(self):
-        import re
-
-        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
-
-        # Every selector whose SUBJECT (last compound) is class-based and
-        # whose body sets a display other than none. Ancestor context is
-        # ignored on purpose — over-matching there is a spot rule someone
-        # writes once, under-matching is the fifth shipped ghost.
-        subjects = []              # (tag or "", frozenset(classes))
-        for rule in css.split("}"):
-            if "{" not in rule:
-                continue
-            sel, body = rule.split("{", 1)
-            # (?!\s*none): without the inner \s* the outer \s* backtracks a
-            # space and the lookahead inspects " none", which passes.
-            if not re.search(r"display\s*:(?!\s*none\b)", body):
-                continue
-            for one in sel.split(","):
-                compound = one.strip().split()[-1] if one.strip() else ""
-                if "[hidden]" in compound or ":" in compound:
-                    continue
-                tag = (re.match(r"([a-z][\w-]*)", compound) or [None, ""])[1]
-                classes = frozenset(re.findall(r"\.([A-Za-z][\w-]*)", compound))
-                if classes:
-                    subjects.append((tag, classes))
+        style = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        # panel.html loads panel.css AFTER style.css, so a display rule in
+        # there wins every tie against one here — and the old check never
+        # opened the file.
+        panel = (REPO / "web-widget" / "panel.css").read_text(encoding="utf-8")
 
         unhideable = []
-        for page in ("index.html", "panel.html"):
+        for page, sheets in (("index.html", (style,)),
+                             ("panel.html", (style, panel))):
+            rules = _css_rules(*sheets)
+            shows = _subjects(rules, self.SHOWS, on_hidden=False)
+            hides = _subjects(rules, self.CLEARS, on_hidden=True)
             html = (REPO / "web-widget" / page).read_text(encoding="utf-8")
-            for m in re.finditer(r"<(\w+)([^>]*)>", html):
-                tag, attrs = m.group(1), m.group(2)
-                cls = re.search(r'class="([^"]+)"', attrs)
-                # The ATTRIBUTE, not the word: class="avatar hidden" names a
-                # CSS class that hides by rule, not the browser attribute.
-                bare = attrs.replace(cls.group(0), "") if cls else attrs
-                # NOT \b: a word boundary treats the dash in aria-hidden as one,
-                # so every decorative element carrying aria-hidden="true" read
-                # as shipping hidden and was reported unhideable. Latent until
-                # the first one with a class rule behind it (.skinart, 0.10.139).
-                if not re.search(r"(?<![-\w])hidden\b", bare):
-                    continue
-                if not cls:
-                    continue
-                el_classes = set(cls.group(1).split())
-                for sub_tag, sub_classes in subjects:
-                    if sub_tag and sub_tag != tag:
+            for tag, ident, classes, written in _ships_hidden(html):
+                for key, sel, at in _matching(shows, tag, ident, classes):
+                    answered = [
+                        h for h, _s, h_at in _matching(hides, tag, ident,
+                                                       classes)
+                        # A spot rule inside a media query answers a display
+                        # rule inside the same one, and nothing else.
+                        if h > key and (not h_at or h_at == at)
+                    ]
+                    if answered:
                         continue
-                    if not sub_classes <= el_classes:
-                        continue
-                    # A spot rule re-hiding any of the element's classes is
-                    # the accepted fix; .pill's visibility reserve counts.
-                    if any(re.search(r"\." + re.escape(c) + r"[^,{]*\[hidden\]",
-                                     css) for c in el_classes):
-                        continue
+                    where = f" (in {at})" if at else ""
                     unhideable.append(
-                        f"{page}: <{tag} class=\"{cls.group(1)}\">")
-                    break
+                        f'{page}: <{tag} class="{written}"> is shown by '
+                        f'`{sel}`{where}')
 
         self.assertEqual(
             [], sorted(set(unhideable)),
-            "these ship hidden but a display rule targets them, which beats "
-            "the UA's [hidden] rule — add a `.cls[hidden]` spot rule: "
-            f"{sorted(set(unhideable))}")
+            "these ship hidden but a display rule beats the UA's [hidden] "
+            "rule for them — add a `.cls[hidden]` spot rule that outranks the "
+            f"rule named: {sorted(set(unhideable))}")
+
 
 class TestTheCallerIsNotRescuedMidAnnouncement(_TempStores):
     """MAX_HOLD_MS was 20s, set when the worker's own ceiling was 90s. Both
@@ -3126,7 +3609,7 @@ class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
         # pauses and KEEPS it, which silences the mic path just as well, and
         # closePlayer(true) then takes the sheet without touching the audio.
         # What is pinned is the silence, not how it is reached.
-        call = self.js.split("async function startCall")[1][:2400]
+        call = self.js.split("async function startCall")[1][:3200]
         self.assertIn("parkPlayer()", call)
         self.assertIn("closePlayer(true)", call)
         park = self.js.split("function parkPlayer")[1][:300]
@@ -3741,8 +4224,12 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
     def test_the_strip_keeps_its_own_sideways_drag(self):
         # Every swipe across the day's hours turned the page instead of
         # scrolling them (operator, 2026-09-03).
-        swipe = self.js.split("function bindFaceSwipe")[1][:1400]
-        self.assertIn("closest('.gdtoday')", swipe)
+        swipe = self.js.split("function bindFaceSwipe")[1][:1800]
+        # BOTH strips. .gdtoday was the only one named, and the sheet hides
+        # it on all four surfaces — so the real sideways scroller, the week
+        # grid, had no exemption at all and dragging it rightward paged to
+        # the player instead of scrolling the hours back (2026-09-17).
+        self.assertIn("closest('.gdtoday, .gdgrid')", swipe)
         strip = self.css.split("  .gdtoday {")[1].split("}")[0]
         self.assertIn("touch-action: pan-x", strip)
         self.assertIn("overflow-x: auto", strip)
@@ -3877,7 +4364,7 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
             self.assertIn(el, self.html)
         self.assertIn("function paintGuideGrid", self.js)
         self.assertIn("function setGuideView", self.js)
-        grid = self.js.split("function paintGuideGrid")[1][:4200]
+        grid = self.js.split("function paintGuideGrid")[1][:5200]
         # Every run that TOUCHES a day is drawn on it, clipped — a show
         # from last night fills this morning instead of leaving it blank.
         self.assertIn("r.start < end && r.end > start", grid)
@@ -3926,7 +4413,11 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         # a name — never a cut-off stub. The ladder is what this pins.
         self.assertIn("function fitsChars", self.js)
         self.assertIn("function blockLabel", self.js)
-        self.assertIn("const shortened = blockLabel(label, span);", self.js)
+        # The hour's width is passed IN: paintGuideGrid measures it before
+        # it empties the grid, because measuring afterwards cost the reader
+        # their scroll position on every poll.
+        self.assertIn("const shortened = blockLabel(label, span, hourPx);",
+                      self.js)
         ladder = self.js.split("function blockLabel")[1][:900]
         # 1. the whole name, 2. the name without the tagline the station
         # hangs off it after a middle dot, 3. the significant words,

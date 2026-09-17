@@ -8,7 +8,7 @@
    Shared foundation comes from shared.js via the Callin global. */
 (function () {
   const {
-    $, ASKS, ASK_GROUPS, NEVER, CALL_KEY,
+    $, ASKS, ASK_GROUPS, NEVER, rememberCallKey,
     ctx, playSound, pack, setSounds, getVolume, THEME_ICONS, LINK_ICONS,
     playFirstWorking, readPlayerHandoff, writePlayerHandoff,
   } = window.Callin;
@@ -802,6 +802,7 @@
     const field = $('door_order');
     if (!field) return;
     field.value = order.join(',');
+    markEdited('door_order');
     field.dispatchEvent(new Event('input', { bubbles: true }));
     paintDoorOrder();
   }
@@ -971,6 +972,13 @@
   // schema arrives, before the slow provider lists have loaded, so every
   // read of this has to survive it being empty.
   let options = {}, overrides = {}, resolved = {}, secrets = {};
+  // Which fields a HUMAN has edited this visit. A repaint assigns `.value`
+  // and fires nothing, so a trusted event is the only honest signal that a
+  // box on screen holds the operator's intent rather than the panel's last
+  // paint — and repaints keep landing WHILE the panel is usable (the slow
+  // provider lists, a key save, a model-list reload). Filled by the trusted
+  // -event listener beside markClean; read by setField and pendingPatch.
+  const dirty = new Set();
   let openLineLive = false;
   // What a field falls back to when cleared — see settings.beneath().
   let beneath = {};
@@ -999,8 +1007,49 @@
       o.value = v; o.textContent = labels ? (labels[v] || v) : v;
       el.appendChild(o);
     });
+    // A STORED choice the current list does not offer still belongs in the
+    // box. The TTS server is down, so /settings/options falls back to the
+    // OpenAI voices and the operator's Kokoro voice is not among them; the
+    // roster came back empty, so their chosen DJ has no option; a provider
+    // key stopped answering, so the model lists fell back. Assigning a value
+    // no option carries yields '' — and '' is a real instruction to this
+    // panel, not an absence: Save read "1 change" on a panel nobody had
+    // touched, and the next save of ANY unrelated field posted
+    // tts_voice:'', which the server pops. The voice, the DJ or the model
+    // reverted to the default with nothing said. Carried as its own option,
+    // named for what it is, the assignment sticks and the diff stays empty.
+    const stored = overrides[sel];
+    if (stored && ![...el.options].some((o) => o.value === String(stored))) {
+      const o = document.createElement('option');
+      o.value = String(stored);
+      // Only a list with something IN it can be said not to offer this. The
+      // first paint runs before the ~5s provider read lands and every list is
+      // empty then; labelling every dropdown "not offered" for five seconds
+      // would be the same lie pointing the other way.
+      o.textContent = (values || []).length
+        ? stored + ' — not offered by the current server'
+        : String(stored);
+      o.dataset.unavailable = '1';
+      el.appendChild(o);
+    }
     if (keep && [...el.options].some((o) => o.value === keep)) el.value = keep;
   }
+
+  // The one place that decides whether a repaint may overwrite what is on
+  // screen. `keep` repaints — the slow options list landing, a key save, a
+  // model-list reload — happen while the panel is deliberately usable and
+  // must not overwrite a field the operator has edited since. A plain
+  // repaint (a fresh load, a save, an explicit Discard) is authoritative and
+  // assigns everything, which is what makes Discard a discard.
+  function setField(f, value, keep) {
+    if (keep && dirty.has(f)) return;
+    $(f).value = value;
+  }
+  // A control the panel writes ON THE OPERATOR'S BEHALF — the access cells,
+  // the door-order buttons, the guest-code nudge — is still their edit, but
+  // the event it dispatches afterwards is synthetic, and the listener beside
+  // markClean only believes trusted ones. These say so directly.
+  const markEdited = (f) => dirty.add(f);
 
   const PROVIDER_KEY = {
     openai: 'openai_api_key', google: 'google_api_key',
@@ -1017,7 +1066,7 @@
   // the markup — a drift trap every time a choice changed.
   const hasChoices = (f) => !!(SCHEMA.fields[f] && SCHEMA.fields[f].choices);
 
-  function fillStatic(f) {
+  function fillStatic(f, keep) {
     const el = $(f);
     const choices = SCHEMA.fields[f].choices || [];
     el.innerHTML = '';
@@ -1026,17 +1075,17 @@
       o.value = c[0]; o.textContent = c[1] || c[0];
       el.appendChild(o);
     });
-    el.value = resolved[f] != null ? String(resolved[f]) : '';
+    setField(f, resolved[f] != null ? String(resolved[f]) : '', keep);
     // `auto` is the stored default and is deliberately not one of the three
     // choices — it is a rule for picking between two of them, not a third
     // kind of access. Show whichever it currently resolves to, which is what
     // it is actually doing.
     if (f === 'front_access' && resolved[f] === 'auto') {
-      el.value = guestConfigured ? 'guest' : 'open';
+      setField(f, guestConfigured ? 'guest' : 'open', keep);
     }
   }
 
-  function syncModels() {
+  function syncModels({ keep = false } = {}) {
     const llm = $('llm_provider').value || resolved.llm_provider;
     const list = (options.llmModels || {})[llm] || [];
     const liveList = (options.modelsDiscovered || {})[llm];
@@ -1048,7 +1097,12 @@
     }
     fill('llm_model', list, { labels,
       blankLabel: blankFor('llm_model', 'a model') });
-    $('llm_model').value = overrides.llm_model || '';
+    // Not while the operator is mid-flow: "pick a provider, pick a model,
+    // Save keys" is the order the layout invites, and postSecrets and
+    // "Test keys + reload models" both land here — each one used to put the
+    // stored model back over the one just picked, so the following Save
+    // posted the provider alone (see setField).
+    setField('llm_model', overrides.llm_model || '', keep);
 
     const note = $('modelSourceNote');
     if (!liveList && PROVIDER_KEY[llm]) {
@@ -1078,7 +1132,7 @@
         'small.en': 'small.en — hears phone audio clearly better; ~3x base per turn',
         'medium.en': 'medium.en — hears the most; ~8x base — test before trusting it',
       } });
-    $('stt_model').value = overrides.stt_model || '';
+    setField('stt_model', overrides.stt_model || '', keep);
     // The ladder describes the BUILT-IN models; behind a cloud pick it
     // would explain four options that are not in the dropdown.
     if ($('whisperLadder')) $('whisperLadder').hidden = stt !== 'local';
@@ -2352,10 +2406,15 @@
   // implementation, one meaning (this browser forgets both credentials).
   $('dashLogoutBtn').onclick = () => $('logoutBtn').click();
 
-  paintNightTileOnce();
   function paintNightTileOnce() {
     // Deferred: afetch needs the stored key, and the tile is furniture, not
     // a gate — a failed read paints "sign in" and the dash carries on.
+    //
+    // No longer fired from here. This ran on every page load, 800ms in, and
+    // its /calls was one of the FIVE admin-keyed requests a stale stored
+    // password spent the operator's whole lockout budget on before they
+    // could type the new one. afterSignIn() calls it once the probe in
+    // open_() says this browser is actually in.
     setTimeout(paintNightTile, 800);
   }
 
@@ -2836,13 +2895,22 @@
     });
   }
 
-  function paint() {
+  // `keep: true` = a repaint that runs while the panel is already usable, and
+  // may refresh the OPTION LISTS but not overwrite a field the operator has
+  // edited. loadSettings' second paint (when the ~5s provider read finally
+  // lands) used to refill every field from overrides/resolved and then
+  // markClean() — so anything typed during the load window was discarded
+  // without a word. The old comment above it was true of fill(), which keeps
+  // its selection, and not of paint(), which runs three lines later.
+  function paint({ keep = false } = {}) {
     fill('tts_mode', options.ttsModes, {
       blankLabel: blankFor('tts_mode', 'a backend'),
       labels: { local: 'Local — your own OpenAI-compatible speech server',
                 cloud: 'Cloud — a hosted speech API' },
     });
-    SELECT_FIELDS.filter(hasChoices).forEach(fillStatic);
+    // Arrow, not a bare reference: forEach hands the INDEX as the second
+    // argument, and this one's second argument is `keep`.
+    SELECT_FIELDS.filter(hasChoices).forEach((f) => fillStatic(f, keep));
     fill('tts_adapter', options.ttsAdapters);
     fill('tts_voice', options.voices, { blankLabel: "Station's voice for this DJ" });
     // Labelled, because the ids alone do not say what they are — "gateway" in
@@ -2862,24 +2930,30 @@
     });
 
     SELECT_FIELDS.filter((f) => !hasChoices(f))
-      .forEach((f) => { $(f).value = overrides[f] || ''; });
+      .forEach((f) => { setField(f, overrides[f] || '', keep); });
     TEXT_FIELDS.forEach((f) => {
       // The order field is the one text field whose STORED value can be blank
       // while the thing it controls has a real order — blank means "fall
       // through", and the resolved value is what the card is actually using.
       // Showing the operator an empty list to drag would be a lie.
-      $(f).value = overrides[f] || '';
+      setField(f, overrides[f] || '', keep);
       // What an EMPTY box does is a real setting with real behaviour, so say
       // it: the resolved value if something lower down supplies one, else the
-      // schema's own description of the default.
+      // schema's own description of the default. The placeholder is not a
+      // value, so it is never held back.
       const meta = SCHEMA.fields[f] || {};
       if (resolved[f]) $(f).placeholder = resolved[f];
       else if (meta.placeholder) $(f).placeholder = meta.placeholder;
     });
-    NUM_FIELDS.forEach((f) => { $(f).value = overrides[f] !== '' ? overrides[f] : resolved[f]; });
-    CHECK_FIELDS.forEach((f) => { $(f).checked = !!resolved[f]; });
+    NUM_FIELDS.forEach((f) => {
+      setField(f, overrides[f] !== '' ? overrides[f] : resolved[f], keep);
+    });
+    CHECK_FIELDS.forEach((f) => {
+      if (keep && dirty.has(f)) return;
+      $(f).checked = !!resolved[f];
+    });
 
-    syncModels();
+    syncModels({ keep });
     paintPermissions();
     // Assigning .value fires no input event, so the control that renders this
     // field has to be told the value moved underneath it.
@@ -2969,9 +3043,15 @@
     // Both credentials, not just the panel one. They are stored separately
     // because they buy different things, but "sign out" means signed out —
     // clearing only the admin key left the phone still open on a deployment
-    // whose whole point was that it wasn't.
+    // whose whole point was that it wasn't. The caller's code goes through
+    // shared.js's rememberCallKey, here and in setGuest: it is the one writer
+    // that also stamps CALL_KEY_AT, the shared-machine expiry clock call.js
+    // reads. Writing the raw key from this page left the code with no clock,
+    // so on a kiosk call.js started the timer at the first visit to the call
+    // page instead of when the operator stored it — and clearing it by hand
+    // left the stale stamp standing.
     localStorage.removeItem('callinAdminKey');
-    localStorage.removeItem(CALL_KEY);
+    rememberCallKey('');
     location.reload();
   };
 
@@ -2995,14 +3075,14 @@
       const access = $('front_access');
       if (code && access && access.value === 'open') {
         access.value = 'guest';
+        markEdited('front_access');
         access.dispatchEvent(new Event('change', { bubbles: true }));
       }
       paintSecurity();
       // The operator's own browser shouldn't now be locked out of the phone
       // it just locked — the admin password opens the guest door anyway, but
       // storing the code saves them typing it.
-      if (code) localStorage.setItem(CALL_KEY, code);
-      else localStorage.removeItem(CALL_KEY);
+      rememberCallKey(code || '');
       await refreshLiveData();
       showResult(out, true, code
         ? 'Guest code set. Callers are asked for it before the line opens; this '
@@ -3748,6 +3828,18 @@
   // one hand-written host div, one hand-written Save button and one hardcoded
   // exception for the station pair, and splitting the keys across four
   // sections that way would have been four of each.
+  // The station block's three static buttons, held from load. They are
+  // relocated into that block's bar on every paint (below), and the paint
+  // begins by wiping the host — so the SECOND paintSecrets was looking up
+  // three ids its own `innerHTML = ''` had just removed from the document,
+  // getting null for all three, and appending nothing. They disappeared
+  // until a page reload, and the paints that do it are every Save keys,
+  // every Clear and Reset: saving the station credentials was exactly when
+  // 'Test access' went away. Holding the ELEMENTS survives the wipe — a
+  // detached node re-appends fine.
+  const STATION_BTNS = ['testAdminBtn', 'testStationBtn', 'reloadStationBtn']
+    .map((id) => $(id)).filter(Boolean);
+
   function paintSecrets() {
     const byGroup = {};
     Object.keys(secrets).forEach((f) => {
@@ -3774,16 +3866,14 @@
       if (group === 'station') {
         // The operator wants the station's four buttons on one row. The
         // block repaints wholesale, so the static three are RELOCATED here
-        // on every paint; their original row is left empty and hidden.
-        ['testAdminBtn', 'testStationBtn', 'reloadStationBtn'].forEach((id) => {
-          const btn = $(id);
-          if (btn) {
-            if (btn.parentElement && btn.parentElement !== bar) {
-              btn.parentElement.hidden = true;
-            }
-            bar.appendChild(btn);
-            btn.hidden = false;
+        // on every paint, from the references held above rather than by id;
+        // their original row is left empty and hidden.
+        STATION_BTNS.forEach((btn) => {
+          if (btn.parentElement && btn.parentElement !== bar) {
+            btn.parentElement.hidden = true;
           }
+          bar.appendChild(btn);
+          btn.hidden = false;
         });
       }
 
@@ -3888,7 +3978,9 @@
       // round-trips — and a failure here costs nothing but staleness.
       try {
         options = await afetch('/settings/options').then((r) => r.json());
-        paintProviderChoices(); syncModels();
+        // keep: "pick provider, pick model, Save keys" is the order this
+        // section's layout invites, and this ran at the end of it.
+        paintProviderChoices(); syncModels({ keep: true });
       } catch (e) { /* the dropdowns stay as they were */ }
     } catch (e) {
       paintSecrets();
@@ -3932,13 +4024,18 @@
     loaded = true;
 
     // Then the provider lists, which only fill in the dropdowns. fill()
-    // keeps whatever is already selected, so this cannot steal a choice made
-    // while it was in flight.
+    // keeps whatever is already selected — but paint() runs three lines
+    // later and used to reassign EVERY field from overrides/resolved and
+    // call markClean(), so the fill()'s promise was true and the paint's
+    // wasn't: the panel is deliberately usable across this ~5s window (the
+    // curtain drops and `loaded` is set above, before the await), and
+    // anything typed into it was silently thrown away when the lists landed.
+    // `keep` refreshes the option lists and leaves edited fields alone.
     try {
       const ro = await optionsSoon;
       if (ro.status !== 401) {
         options = await ro.json();
-        paint();
+        paint({ keep: true });
       }
     } catch (e) {
       // The panel is still usable without them — every field keeps its
@@ -4060,6 +4157,19 @@
     $('loginPw').focus();
   }
 
+  // Everything admin-keyed that is NOT the settings themselves, run only once
+  // something has confirmed this browser is signed in — see open_(). Both
+  // ways in call it: arriving with a working stored key, and typing one.
+  // Only open_() used to reach these, indirectly, by firing them at load, so
+  // after a successful unlock the ACTIVITY strip kept its em-dash frames and
+  // said "no records to read" for the whole rest of the session.
+  function afterSignIn() {
+    paintNightTileOnce();
+    // Published by panel-charts.js, which loads after this file; absent when
+    // the strip is not in the markup at all.
+    if (window.Panel.loadCharts) window.Panel.loadCharts();
+  }
+
   async function tryUnlock() {
     const pw = $('loginPw').value;
     if (!pw) return;
@@ -4080,6 +4190,7 @@
       $('loginGate').hidden = true;
       $('loginPw').value = '';
       $('loginMsg').textContent = '';
+      afterSignIn();
     } catch (e) {
       localStorage.removeItem('callinAdminKey');
       $('loginMsg').textContent = (e && e.body && e.body.error) || 'wrong password';
@@ -4093,6 +4204,15 @@
     const patch = {};
     SELECT_FIELDS.concat(TEXT_FIELDS).forEach((f) => {
       const base = hasChoices(f) ? String(resolved[f]) : (overrides[f] || '');
+      // A select the current option list cannot offer reads back as '', and
+      // '' is not "unchanged" here — it is an instruction to clear the
+      // setting, which the server obeys by popping the override. fill() now
+      // carries an unavailable stored value as its own option so the
+      // assignment sticks, but an option list built anywhere else can still
+      // strand one, and the operator's voice or DJ must not be reset by a
+      // panel they never touched. Untouched means untouched.
+      if (SELECT_FIELDS.indexOf(f) !== -1
+          && $(f).value === '' && base && !dirty.has(f)) return;
       if ($(f).value !== base) patch[f] = $(f).value;
     });
     NUM_FIELDS.forEach((f) => {
@@ -4107,7 +4227,13 @@
   let userTouched = false;
   ['input', 'change'].forEach((kind) => {
     document.addEventListener(kind, (e) => {
-      if (e.isTrusted) userTouched = true;
+      if (!e.isTrusted) return;
+      userTouched = true;
+      // Per field as well as at all: which boxes hold the operator's intent
+      // is what setField and pendingPatch need to know. `dirty` is declared
+      // with the panel's other state, above.
+      const id = e.target && e.target.id;
+      if (id && ALL_FIELDS.indexOf(id) !== -1) dirty.add(id);
     }, true);
   });
 
@@ -4907,6 +5033,9 @@
     // open line it is the operator's own choice; with neither ticked there is
     // no caller under admin to be a guest.
     tier.checked = guest;
+    // Ticking a cell IS an edit to these two, and the events below are
+    // synthetic — nothing else would record it.
+    markEdited('front_access'); markEdited('guest_tier');
     sel.dispatchEvent(new Event('change', { bubbles: true }));
     tier.dispatchEvent(new Event('change', { bubbles: true }));
     paintSecurity();
@@ -5147,24 +5276,64 @@
     forgetHaystacks();
   }
 
+  // The read-back after a write is a SECOND authenticated request, and it can
+  // fail on its own: a 401 here — this address just hit the lockout from
+  // another tab, or the password changed on the operator's other device —
+  // used to land straight in `resolved` and `overrides` as undefined, with
+  // no status check. paint() then threw, so "Saving…" sat on screen although
+  // the write HAD landed, and from that moment every keystroke threw inside
+  // pendingPatch: Save and Discard were both dead until a reload. The body
+  // runs under try/finally now, the verdict is decided before anything that
+  // can throw, and the read-back only assigns when both halves are objects.
   async function saveSettings(patch) {
     $('saveMsg').textContent = 'Saving…';
-    const r = await afetch('/settings', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch),
-    });
-    if (!r.ok) {
-      const e = await r.json().catch(() => ({}));
-      $('saveMsg').textContent = e.error || 'Save failed';
-      return;
+    let verdict = 'Save failed', wrote = false;
+    try {
+      const r = await afetch('/settings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        verdict = e.error || 'Save failed';
+        return;
+      }
+      wrote = true;
+      verdict = 'Saved — applies to the next caller';
+      const rf = await afetch('/settings');
+      if (rf.status === 401) {
+        // The settings are written; this browser just isn't signed in any
+        // more. Say both, and send them to the gate the way a load does.
+        showLoginGate(await rf.json().catch(() => ({})));
+        verdict = 'Saved — but this browser was signed out. Sign in to carry on.';
+        return;
+      }
+      const fresh = await rf.json().catch(() => null);
+      if (fresh && typeof fresh.resolved === 'object' && fresh.resolved
+          && typeof fresh.overrides === 'object' && fresh.overrides) {
+        resolved = fresh.resolved; overrides = fresh.overrides;
+        if (fresh.beneath) beneath = fresh.beneath;
+        // What was just saved IS the stored state now, so no edit is
+        // outstanding and the repaint below is authoritative again.
+        dirty.clear();
+        paint();
+      } else {
+        verdict = 'Saved — reload to read the stored values back.';
+      }
+      await refreshLiveData();   // sound + volume settings feed the card
+    } catch (e) {
+      // Anything thrown after the POST answered is the READ-BACK failing,
+      // and a failed read-back does not un-write the settings.
+      if (!wrote) verdict = 'Save failed — ' + e.message;
+    } finally {
+      $('saveMsg').textContent = verdict;
+      // A landed write clears its own line; a failure stays up to be read.
+      if (wrote) {
+        setTimeout(() => {
+          if ($('saveMsg').textContent === verdict) $('saveMsg').textContent = '';
+        }, 4000);
+      }
     }
-    const fresh = await afetch('/settings').then((x) => x.json());
-    resolved = fresh.resolved; overrides = fresh.overrides;
-    if (fresh.beneath) beneath = fresh.beneath;
-    paint();
-    await refreshLiveData();   // sound + volume settings feed the card
-    $('saveMsg').textContent = 'Saved — applies to the next caller';
-    setTimeout(() => { $('saveMsg').textContent = ''; }, 4000);
   }
 
   function draft() {
@@ -5478,7 +5647,10 @@
       const o = await afetch('/settings/options?' + q.toString()).then((r) => r.json());
       // Providers too, not just models: a key saved since page load means a
       // provider this dropdown has never heard of (0.10.85).
-      options = o; paintProviderChoices(); syncModels();
+      // keep: the button's whole purpose is to get a model the operator is
+      // about to pick into the dropdown. Putting the stored one back over
+      // their pick, on the press that fetched the list, was the reverse.
+      options = o; paintProviderChoices(); syncModels({ keep: true });
       const liveL = Object.keys(o.modelsDiscovered || {}).filter((p) => o.modelsDiscovered[p]);
       // The key verdict (operator's ask, 0.10.85): a saved key whose model
       // list would not read is almost always a wrong key — say which,
@@ -6471,7 +6643,33 @@
     // The pipeline check reads live.stream and live.secureOrigin, so this has
     // to land before any of it can run.
     try { await refreshLiveData(); } catch (e) { /* the pipeline check will say */ }
-    try { await loadSettings(); $('saveMsg').textContent = ''; resumeStationBar(); }
+    // ONE admin-keyed request before anything knows whether this browser is
+    // signed in. Opening the page used to fire FIVE — the charts' /calls and
+    // /stats/listeners at script load, loadSettings' /settings and
+    // /settings/options, and the night tile's /calls 800ms in — and
+    // api/auth.py counts each wrong key and locks the address out at five
+    // for 300 seconds. A password the operator had changed on another device
+    // therefore spent the whole retry budget before they could type the new
+    // one, and the right one was then refused for five minutes; a reload
+    // after the cooldown burned five more and earned a ban until restart.
+    // tryUnlock guarded its own two requests and these five ran in front of
+    // it. Everything keyed now waits behind this probe: on 401 nothing else
+    // is sent, and on success afterSignIn() releases the rest.
+    try {
+      const probe = await afetch('/settings');
+      if (probe.status === 401) {
+        // A stored key that no longer works is worse than none — it spends
+        // one of the five on every reload. Forget it and ask.
+        localStorage.removeItem('callinAdminKey');
+        showLoginGate(await probe.json().catch(() => ({})));
+        $('saveMsg').textContent = '';
+        return;
+      }
+      await loadSettings();
+      $('saveMsg').textContent = '';
+      resumeStationBar();
+      afterSignIn();
+    }
     catch (e) {
       if (e && e.auth) { showLoginGate(e.body); $('saveMsg').textContent = ''; }
       else $('saveMsg').textContent = 'Could not load settings — ' + e.message;
@@ -6492,7 +6690,10 @@
   $('saveOverlaySave').onclick = () => $('saveBtn').click();
   $('saveOverlayDiscard').onclick = () => {
     // Back to what is stored: paint() refills every control from
-    // overrides/resolved, which IS the discard.
+    // overrides/resolved, which IS the discard — so the edits have to be
+    // forgotten first, or the fields that hold them would be the ones a
+    // plain paint() now protects.
+    dirty.clear();
     paint();
     $('saveMsg').textContent = 'Changes discarded';
     setTimeout(() => { $('saveMsg').textContent = ''; }, 2500);

@@ -64,6 +64,13 @@ ROUTES: dict[str, str] = {
     "history": "subwave_already_played",
 }
 
+#: How many routes have to be reachable before the dispatcher is worth
+#: building. Collapsing one tool into one tool buys nothing and costs the
+#: caller a hop. Named because the REGISTRY has to answer the same question
+#: — the panel lists what a caller can reach, and it was listing the finder
+#: on a line with the gate on and nothing to route to (2026-09-17).
+MIN_ROUTES = 2
+
 #: route_for's own keyword set, for callers that must filter a find_music
 #: argument dict down to the router's fields — the drill's C.5 A/B credits
 #: the routed tool from the model's find_music arguments, and re-listing
@@ -154,9 +161,10 @@ def build_finder_tools(cfg: dict, built: list, actions=None) -> list:
     every never-play filter, every careful sentence about an empty answer is
     the one that was already written and already tested.
 
-    Returns [] when the gate is off or when fewer than two routes are actually
-    available: collapsing one tool into one tool buys nothing and costs the
-    caller a hop.
+    Returns [] when the gate is off or when fewer than MIN_ROUTES routes are
+    actually available: collapsing one tool into one tool buys nothing and
+    costs the caller a hop. `registry.local_tool_names` asks the same two
+    names, so what the panel lists and what this builds cannot disagree.
     """
     if not cfg.get("single_lookup_tool"):
         return []
@@ -166,7 +174,7 @@ def build_finder_tools(cfg: dict, built: list, actions=None) -> list:
     by_name = {t.info.name: t for t in built}
     available = {route: by_name[name]
                  for route, name in ROUTES.items() if name in by_name}
-    if len(available) < 2:
+    if len(available) < MIN_ROUTES:
         return []
 
     offered = ", ".join(sorted(available))

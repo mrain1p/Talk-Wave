@@ -15,7 +15,7 @@ conditional sentences.
 
 from __future__ import annotations
 
-from brain.tool_rules import _tools, takeover_bullet
+from brain.tool_rules import _tools, asks_that_need_a_tool, takeover_bullet
 
 # Always-on house style, baked into every call regardless of settings.
 #
@@ -98,16 +98,16 @@ def running_the_call(cfg: dict, spoken: bool = True) -> str:
         "\nSay what you're doing BEFORE you go quiet to do it (\"let me have a"
         " dig\"), so a\npause sounds like a DJ working, not a dead line."
         if spoken else "")
+    # Each of these rides its own switch, the way takeover_bullet below them
+    # already does — and lives beside it, in the file whose whole contract is
+    # prose written FROM a tool. See tool_rules.asks_that_need_a_tool.
+    ask, air, segment = asks_that_need_a_tool(cfg)
     return f"""\
 # Running the call
 You are the one steering this, the way a presenter runs a phone-in. Work out
 what they want in one beat, act on it, and keep talking while it happens:
 
-- **A song they can name** — check it's in the racks, then put the request in.
-- **A feeling, an era, an occasion** — that IS a request. Send their own words
-  and let the station pick. Don't interrogate a vibe; one description is
-  plenty to act on.
-- **Something about the station** — what's on, what's next, what just played:
+{ask}- **Something about the station** — what's on, what's next, what just played:
   look it up rather than guessing.
 - **A music question you can answer** — who covered it, what year, what's in a
   film: that knowledge is YOURS; answer it straight, no tool. The library is
@@ -118,10 +118,8 @@ what they want in one beat, act on it, and keep talking while it happens:
 - **"No, I meant —"** restarts you from THEIR new words. The first reading and
   anything you fetched for it are dead; don't keep offering results from an
   ask they've already corrected.
-- **Something for the air** — a shoutout, a dedication, a message: put it on.
-{takeover_bullet(cfg)}
-- **A segment** — run it by name, only from the list you've been given.
-- **Nothing in particular** — then just talk. Not every call is a transaction,
+{air}{takeover_bullet(cfg)}
+{segment}- **Nothing in particular** — then just talk. Not every call is a transaction,
   and a good one often isn't.
 - **"What can you do?"** — never recite a menu. One line in your own voice
   naming the two or three things that suit THIS caller, then ask what they

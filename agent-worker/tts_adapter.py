@@ -171,6 +171,7 @@ async def available_voices(
     timeout: float = 6.0,
     adapter_path: str | Path | None = None,
     mode: str = "",
+    allow_stored: bool = True,
 ) -> list[str]:
     """What the TTS backend at `base_url` says it can actually speak in.
 
@@ -206,7 +207,12 @@ async def available_voices(
         # list here means "could not find out" — so the panel would have shown
         # eleven stock OpenAI voice names for a backend that has none of them,
         # and the first call would have failed on a voice that never existed.
-        headers = adapter_headers(adapter, adapter_api_key(adapter, base_url))
+        # …but only to a host the operator has SAVED. `base_url` reaches here
+        # from a ?tts_base_url= the panel is previewing, and this lookup used
+        # to hand that stranger the stored TTS/ElevenLabs key — invariant 4,
+        # the same rule the Test button already obeyed. Caller decides.
+        headers = adapter_headers(
+            adapter, adapter_api_key(adapter, base_url, allow_stored=allow_stored))
     except Exception as e:                                    # noqa: BLE001
         # An unreadable adapter is the caller's problem to report, not a
         # reason to skip the lookup with the default path.

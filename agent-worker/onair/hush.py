@@ -208,10 +208,22 @@ async def engage(cfg: dict, room: str) -> None:
                 fd = os.open(hush, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
             except FileExistsError:
                 return
-            verified = await _write_enabled(client, False)
+            # FILL THE CLAIM IN IMMEDIATELY, before the station is asked for
+            # anything. It used to be written after the POST, so a station
+            # that raised (or timed out) left HUSH a 0-byte file with the fd
+            # leaked into the exception — and an unreadable marker fell back
+            # to "verified", so the janitor had nothing to finish and the
+            # station's own DJ talked over the whole call. Written unverified
+            # and upgraded below: the worst case is now a marker that says
+            # exactly what happened.
+            state = {"at": time.time(), "by": room,
+                     "prior": True, "verified": False}
             with os.fdopen(fd, "w") as f:
-                json.dump({"at": time.time(), "by": room,
-                           "prior": True, "verified": verified}, f)
+                json.dump(state, f)
+            verified = await _write_enabled(client, False)
+            if verified:
+                state["verified"] = True
+                hush.write_text(json.dumps(state))
             _note(bool(verified),
                   "" if verified else "the voice-off write did not stick")
             log.info("station voice quieted for %s (verified=%s)",
@@ -269,7 +281,11 @@ async def janitor_tick(cfg: dict) -> None:
         try:
             state = json.loads(hush.read_text())
         except (OSError, ValueError):
-            state = {"verified": True}
+            # An unreadable marker means the assert never finished writing
+            # itself down (see engage), so the one thing it cannot be is
+            # confirmed. "verified" here was self-fulfilling: nothing
+            # re-asserted, and the station kept its voice through the call.
+            state = {"verified": False}
         client = _client()
         if client is None:
             return                       # creds withdrawn mid-flight; wait.
@@ -290,7 +306,33 @@ async def janitor_tick(cfg: dict) -> None:
             if enabled is False:
                 if not await _write_enabled(client, True):
                     return               # station unreachable; retry next tick
+            # LOOK AGAIN BEFORE LETTING GO. Those two lines are a station
+            # round-trip each, and a call that engaged inside them found HUSH
+            # already on disk and returned early believing somebody else had
+            # quieted the station — so it would have run with the voice we
+            # just handed back, and nothing left to re-quiet it.
+            if _fresh_calls():
+                state["verified"] = await _write_enabled(client, False)
+                hush.write_text(json.dumps(state))
+                log.info("a call arrived mid-restore — the station is quiet "
+                         "again (verified=%s)", state["verified"])
+                return
             hush.unlink(missing_ok=True)
+            if _fresh_calls():
+                # And once more after the unlink, for a marker that landed
+                # in that same instant. O_EXCL: if the new call got to HUSH
+                # first the claim is already its own and we leave it be.
+                # Unverified on purpose — the next tick finishes the assert.
+                try:
+                    fd = os.open(hush, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+                except FileExistsError:
+                    return
+                with os.fdopen(fd, "w") as f:
+                    json.dump({"at": time.time(), "by": "janitor",
+                               "prior": True, "verified": False}, f)
+                log.info("a call claimed the line as the restore finished — "
+                         "re-quieting on the next tick")
+                return
             _note(True)
             log.info("station voice restored (%s)",
                      "was ours" if enabled is False else "operator already had it")

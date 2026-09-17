@@ -59,8 +59,16 @@ def _fld(value, limit: int = 200) -> str:
     hostile field of thousands. It is a guard against junk, never a trim of
     real metadata (0.10.61 gave the caps obvious headroom after the operator,
     reasonably, read "capped per field" as "loses context" — it does not).
+
+    `value or ""` was the wrong falsy test for a NUMBER: a temperature of
+    exactly 0 — freezing C, bitter F — rendered as "" and the caller heard
+    "It's Clear, °C." The station's caller had already fixed the same bug one
+    level up (`temp is not None`, 2026-08-28) and this swallowed it again.
+    Only None, an empty string and a bare `false` are absent; 0 is a reading.
     """
-    return demojibake(str(value or "")).strip()[:limit]
+    if value is None or value is False or value == "":
+        return ""
+    return demojibake(str(value)).strip()[:limit]
 
 
 def _fmt_now_playing(np: dict, speak_clock: bool = True) -> str:

@@ -610,3 +610,248 @@ class TestARefusalIsNotAskedTwice(unittest.TestCase):
         asyncio.run(tool(request="a"))
         asyncio.run(tool(request="b"))
         self.assertEqual(st.asked, 2)
+
+
+class TestAnAnsweredRequestIsNotAQueuedOne(unittest.TestCase):
+    """The station's fourth resolution had no consumer.
+
+    `resolved({ack, track: null, position: null})` — the station's
+    request.ts:380 — is the booth answering a request IN WORDS and queueing
+    nothing. read_receipt has called it 'answered' since the 2026-09-07
+    upstream pass and every reader fell through it: request_song told the
+    caller "It's in the queue, not on air yet", spent one of their actions
+    on a "Song request scheduled" card and set a background poller hunting a
+    match that was never coming; request_status called the same answer
+    "pruned or lost to a restart". Three surfaces, one verdict, and none of
+    them said the true thing.
+    """
+
+    ANSWERED = {"status": "resolved", "track": None,
+                "ack": "Nothing in the crates fits that one, sorry."}
+
+    def _request_tool(self, actions):
+        from unittest import mock
+
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        answered = self.ANSWERED
+        spawned = []
+
+        class _Station:
+            async def submit_request(self, text, requester):
+                return {"requestId": "r1"}
+
+            async def request_status(self, rid):
+                return dict(answered)
+
+        with mock.patch.object(music, "_INLINE_POLL_SECS", 0), \
+                mock.patch.object(music, "library_search_needs_mcp",
+                                  lambda: False), \
+                mock.patch.object(music, "spawn", spawned.append):
+            tools = build_library_tools(
+                {"allow_requests": True}, _Station(), actions)
+            tool = next(t for t in tools
+                        if t.info.name == "subwave_request_song")
+            out = asyncio.run(tool(request="something for a wake"))
+        return out, spawned
+
+    def test_the_request_tool_relays_the_reply_and_promises_nothing(self):
+        from call.actions import CallActions
+
+        out, _spawned = self._request_tool(CallActions(9))
+        self.assertIn("did NOT queue a track", out)
+        self.assertIn("NOTHING is in the queue", out)
+        self.assertIn("Nothing in the crates fits that one", out)
+        self.assertIn("do not promise a title", out)
+        self.assertNotIn("It's in the queue", out)
+
+    def test_it_costs_no_action_and_shows_no_card(self):
+        from call.actions import CallActions
+
+        actions = CallActions(9)
+        self._request_tool(actions)
+        self.assertEqual(actions.count, 0, "a non-event spent an action")
+        self.assertEqual(actions.taken, [])
+
+    def test_no_poller_chases_a_match_that_will_never_land(self):
+        from call.actions import CallActions
+
+        _out, spawned = self._request_tool(CallActions(9))
+        self.assertEqual(spawned, [], "a late-match poller was started")
+
+    def test_the_status_read_does_not_call_it_pruned(self):
+        from unittest import mock
+
+        from call.tools import reads
+
+        answered = self.ANSWERED
+
+        class _Station:
+            async def request_status(self, rid):
+                return dict(answered)
+
+        with mock.patch.object(reads, "library_search_needs_mcp",
+                               lambda: False):
+            built = reads.build_read_tools(
+                {"allow_requests": True}, _Station(), None)
+        tool = {t.info.name: t for t in built}["subwave_request_status"]
+        out = asyncio.run(tool(requestId="r1"))
+        self.assertIn("queued NOTHING", out)
+        self.assertIn("Nothing in the crates fits that one", out)
+        self.assertNotIn("pruned or lost", out)
+
+    def test_the_late_poller_stops_and_files_no_problem(self):
+        from call.tools import late_match
+
+        answered = self.ANSWERED
+
+        class _Station:
+            def __init__(self):
+                self.asked = 0
+
+            async def request_status(self, rid):
+                self.asked += 1
+                return dict(answered)
+
+        class _Record:
+            def __init__(self):
+                self.problems, self.receipts = [], []
+
+            def problem(self, what):
+                self.problems.append(what)
+
+            def tool(self, name, result=""):
+                self.receipts.append((name, result))
+
+        st, rec = _Station(), _Record()
+        asyncio.run(late_match._surface_late_match(
+            st, "r1", get_session=lambda: None, record=rec,
+            delays=(0.01, 0.01, 0.01)))
+        self.assertEqual(st.asked, 1,
+                         "the poller kept asking a request already settled")
+        self.assertEqual(rec.problems, [],
+                         "a station that ANSWERED was filed as never answering")
+
+
+class TestADuplicateIsNotAnAction(unittest.TestCase):
+    """'standing' means the record was already in the running order and
+    NOTHING was added — so noting it spent one of the caller's actions and
+    put a "Song request scheduled" card on their screen for a non-event,
+    against CallActions' own contract that only successful actions count.
+    The prose was already honest; the ledger was not."""
+
+    def _run(self, actions):
+        from unittest import mock
+
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _Station:
+            async def submit_request(self, text, requester):
+                return {"requestId": "r1"}
+
+            async def request_status(self, rid):
+                # resolved, a matched track, NO queue position: the station's
+                # duplicate answer (request.ts:346).
+                return {"status": "resolved", "queuePosition": None,
+                        "ack": "already in the running order",
+                        "track": {"title": "Africa", "artist": "Toto"}}
+
+        with mock.patch.object(music, "_INLINE_POLL_SECS", 0), \
+                mock.patch.object(music, "library_search_needs_mcp",
+                                  lambda: False):
+            tools = build_library_tools(
+                {"allow_requests": True}, _Station(), actions)
+            tool = next(t for t in tools
+                        if t.info.name == "subwave_request_song")
+            return asyncio.run(tool(request="Africa by Toto"))
+
+    def test_the_prose_still_says_it_is_lined_up_already(self):
+        from call.actions import CallActions
+
+        out = self._run(CallActions(9))
+        self.assertIn("did NOT", out)
+        self.assertIn("Say it is lined up already", out)
+        self.assertIn("Africa", out)
+
+    def test_nothing_added_costs_nothing_and_cards_nothing(self):
+        from call.actions import CallActions
+
+        actions = CallActions(9)
+        self._run(actions)
+        self.assertEqual(actions.count, 0)
+        self.assertEqual(actions.taken, [])
+
+
+class TestAnAiredTrackCanBeQueuedAgain(unittest.TestCase):
+    """The per-call ledger was consulted as if it were the queue.
+
+    Nothing ever removed an id from `queued_ids`, so a record this call
+    queued and the station has since PLAYED came back as "still waiting its
+    turn" — to a caller who had just heard it and asked for it again. The
+    live queue settles it whenever it can be read; the ledger only decides
+    when the read failed, which keeps the 2026-08-16 double-slot guard
+    exactly where it was.
+    """
+
+    class _Station:
+        def __init__(self):
+            self.queued = []
+            self.upcoming = []
+
+        async def state(self):
+            return {"upcoming": list(self.upcoming)}
+
+        async def queue_track(self, track):
+            self.queued.append(track.get("id"))
+            return {"ok": True, "queuePosition": 1}
+
+    def _tool(self, station):
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: False
+        try:
+            tools = build_library_tools(
+                {"allow_exact_queue": True}, station, CallActions(9))
+        finally:
+            music.library_search_needs_mcp = orig
+        return next(t for t in tools if t.info.name == "subwave_queue_track")
+
+    def test_a_track_that_has_since_aired_goes_in_again(self):
+        st = self._Station()
+        tool = self._tool(st)
+        asyncio.run(tool(id="t1", title="Africa"))
+        st.upcoming = [{"subsonic_id": "t1", "title": "Africa"}]
+        # …and the station plays it: gone from what's waiting.
+        st.upcoming = []
+        out = asyncio.run(tool(id="t1", title="Africa"))
+        self.assertEqual(st.queued, ["t1", "t1"],
+                         "the second ask was refused against a queue it had left")
+        self.assertNotIn("ALREADY", out)
+
+    def test_a_track_still_waiting_is_still_refused(self):
+        st = self._Station()
+        tool = self._tool(st)
+        asyncio.run(tool(id="t1", title="Africa"))
+        st.upcoming = [{"subsonic_id": "t1", "title": "Africa"}]
+        out = asyncio.run(tool(id="t1", title="Africa"))
+        self.assertEqual(st.queued, ["t1"])
+        self.assertIn("ALREADY in the queue from earlier in this call", out)
+
+    def test_an_unreadable_queue_leaves_the_ledger_in_charge(self):
+        # The double-slot guard's whole point: a model that lost its receipt
+        # must not buy a second slot just because the station went quiet.
+        class _Blind(TestAnAiredTrackCanBeQueuedAgain._Station):
+            async def state(self):
+                raise RuntimeError("station unreachable")
+
+        st = _Blind()
+        tool = self._tool(st)
+        asyncio.run(tool(id="t1", title="Africa"))
+        out = asyncio.run(tool(id="t1", title="Africa"))
+        self.assertEqual(st.queued, ["t1"], "the record took a second slot")
+        self.assertIn("ALREADY in the queue", out)

@@ -85,11 +85,17 @@ def mint(server: str, guest_code: str) -> dict:
         sys.exit(f"/token refused ({e.code}): {detail}")
 
 
-def call_ended(server: str, room: str) -> None:
+def call_ended(server: str, room: str, release: str = "") -> None:
     """What the widget does on hangup, so the finished call stops counting
-    against the concurrency limit immediately instead of aging out."""
+    against the concurrency limit immediately instead of aging out.
+
+    The room id alone stopped being enough on 2026-09-17: it is handed to
+    the caller, so a caller could free their own slot. The mint answers with
+    a per-room `release` and the beacon has to show it, exactly as the
+    widget now does."""
     req = urllib.request.Request(
-        f"{server}/call-ended", data=json.dumps({"room": room}).encode(),
+        f"{server}/call-ended",
+        data=json.dumps({"room": room, "release": release}).encode(),
         method="POST", headers={"Content-Type": "application/json"})
     try:
         urllib.request.urlopen(req, timeout=5).read()
@@ -271,7 +277,7 @@ async def run(args: argparse.Namespace) -> int:
         # a zero frame count in its header.
         if recorder:
             recorder.close()
-        call_ended(args.server, grant["room"])
+        call_ended(args.server, grant["room"], grant.get("release", ""))
         await room.disconnect()
 
 

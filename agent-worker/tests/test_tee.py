@@ -133,6 +133,54 @@ class TestTheDJTeeCutsOnSegments(unittest.TestCase):
         self.assertEqual(fed, [], "a fifth of a sentence is not a clip")
         self.assertEqual(len(handle.tee.pending), 0, "the verdict consumed it")
 
+    def test_a_line_cut_at_the_first_word_does_not_air_either(self):
+        # `played = float(getattr(ev, "playback_position", secs) or secs)`
+        # read a REAL 0.0 as "the SDK didn't say" and fell back to the whole
+        # clip, so a line the caller cut off before it was audible sailed
+        # through the 60% gate and went out on the tape as a sentence nobody
+        # heard. Zero is the most interrupted a turn can be.
+        fed: list = []
+
+        class _R:
+            async def feed(self, wav, kind, secs):
+                fed.append((kind, secs))
+
+        handle = tee.TeeHandle.__new__(tee.TeeHandle)
+        handle.relay = _R()
+        handle._tasks = set()
+        handle.tee = tee.DJTee(_FakeSink())
+        # 3.0s of synthesis, none of it played.
+        handle.tee.pending.append([_Frames.frame(samples=48000)])
+
+        handle._on_playback_finished(
+            SimpleNamespace(playback_position=0.0, interrupted=True))
+        self.assertEqual(fed, [], "a line cut at zero aired as if it had run")
+        self.assertEqual(len(handle.tee.pending), 0, "the verdict consumed it")
+
+    def test_a_turn_the_sdk_said_nothing_about_is_still_a_turn(self):
+        # The other half of the same line: an event with no playback_position
+        # at all is not evidence of an interruption, and reading the missing
+        # field as zero would drop every clip on an SDK that never reports it.
+        drops: list = []
+
+        class _R:
+            async def feed(self, wav, kind, secs):
+                pass
+
+            def dropped(self, kind, why):
+                drops.append((kind, why))
+
+        handle = tee.TeeHandle.__new__(tee.TeeHandle)
+        handle.relay = _R()
+        handle.session = None
+        handle._queue = None
+        handle._worker = None
+        handle.tee = tee.DJTee(_FakeSink())
+        handle.tee.pending.append([_Frames.frame(samples=48000)])
+
+        handle._on_playback_finished(SimpleNamespace(interrupted=True))
+        self.assertEqual(drops, [], "a turn with no stamp is not a cut one")
+
     def test_wav_writer_mixes_down_and_caps(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "clip.wav"

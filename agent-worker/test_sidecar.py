@@ -16,6 +16,7 @@ from __future__ import annotations
 import tests  # noqa: F401
 
 from tests.test_settings import (  # noqa: F401
+    TestTheTierLadderIsOneCopy,
     TestEverySettingIsRealAndEveryKeyIsDeclared,
     TestTheGuestDoorRuleHasOneSpelling,
     TestTheJsonStoreIdiom,
@@ -78,6 +79,9 @@ from tests.test_http import (  # noqa: F401
     TestTheSettingsGearIsForTheOperator,
     TestTheOnAirDoorIsGatedAtTheMint,
     TestTheMintGivesTheWorkerAHeadStart,
+    TestACallerCannotFreeTheirOwnSlot,
+    TestTheWorkersOwnBeaconStillFreesTheSlot,
+    TestTheSettingsApiRegistersThroughTheLock,
 )
 from tests.test_widget import (
     TestTheFacesSitSideBySide,
@@ -130,6 +134,7 @@ from tests.test_widget import (
     TestThePreviewCannotDisagreeWithTheCard,
     TestTheServiceWorkerStaysOutOfTheWay,
     TestTheStationsOwnColoursReachTheCard,
+    TestTheStubAnswersWhatTheWidgetAsksFor,
     TestTheWidgetActuallyParses,
     TestTheStatusChipDescribesTheCallNotTheSDK,
     TestWidgetServerContract,
@@ -152,6 +157,7 @@ from tests.test_caller_tiers import (  # noqa: F401
     TestATierIncludesTheOnesBelowIt,
     TestAnUnknownTierFailsClosed,
     TestTheDoorDecidesTheTier,
+    TestTheTextLineAndThePhoneAgreeOnACaller,
     TestUpgradingKeepsTheStationExactlyAsItWas,
 )
 from tests.test_call_record import (  # noqa: F401
@@ -176,6 +182,11 @@ from tests.test_call_record import (  # noqa: F401
     TestTheDayLogRemembersActionsNotPeople,
 )
 from tests.test_call_flow import (  # noqa: F401
+    TestAHoldThatRanOutHasNothingToComeBackFrom,
+    TestARelayCallStandsTheGuardDown,
+    TestTheComeBackLineIsActuallyCut,
+    TestTheHushBeatStopsBeforeTheMarkerDoes,
+    TestTheOnHoldChipSurvivesThePickupRace,
     TestEveryShutdownCallbackCanBeAwaited,
     TestOneFailingShutdownStepDoesNotTakeTheRestDown,
     TestTheGreetingRacesItsOwnSilence,
@@ -229,6 +240,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheSignOffIsHeardBeforeTheLineCloses,
 )
 from tests.test_tools_surface import (  # noqa: F401
+    TestTheBuildersAndTheRegistryAgreeGateByGate,
     TestABlindCallGetsTheChatsEyes,
     TestARefusalIsACardTheDJCannotSpin,
     TestActionsAllHaveAReceipt,
@@ -301,8 +313,11 @@ from tests.test_withheld import (  # noqa: F401
 )
 from tests.test_music_tools import (  # noqa: F401
     TestARefusalIsNotAskedTwice,
+    TestADuplicateIsNotAnAction,
     TestALateMatchStillReachesTheCaller,
     TestAMoodIsNotASearch,
+    TestAnAiredTrackCanBeQueuedAgain,
+    TestAnAnsweredRequestIsNotAQueuedOne,
     TestAQueuedTrackCanComeBackOut,
     TestCurrentLyricsAreARead,
     TestSearchPagesLikeTheStation,
@@ -370,6 +385,7 @@ from tests.test_prompt_budget import (  # noqa: F401
 )
 from tests.test_discovery import (  # noqa: F401
     TestAFailedReadNeverBecomesAFactAboutTheMusic,
+    TestAResultNeverNamesAToolThisLineHasNot,
     TestACompoundGenreIsAViableOption,
     TestATitleIsNotATrackId,
     TestTheFixedVocabulariesAreResolvedBeforeAnythingIsSent,
@@ -488,6 +504,7 @@ from tests.test_chat import (  # noqa: F401
     TestAChatRecordShowsWhatTheDJActuallyDid,
     TestChatActionCardsFollowTheLine,
     TestChatsEndInsteadOfAccumulating,
+    TestEveryEndedChatLetsGoOfItsClient,
     TestTheFloodBrakeSurvivesAReconnect,
     TestOneAbuserIsSingledOut,
     TestTheTextLineFeelsLikeAConversation,
@@ -538,6 +555,8 @@ from tests.test_onair import (  # noqa: F401
     TestACrashedCallCannotMuteTheStation,
     TestHushMarkersAreScopedAndSafe,
     TestTheLiveVerdictTellsThePanelTheTruth,
+    TestAHushThatNeverLandedIsFinishedNotForgotten,
+    TestARestoreCannotStrandALiveCall,
     TestSessionWiringForHush,
 )
 from tests.test_tee import (  # noqa: F401
@@ -556,6 +575,7 @@ from tests.test_heard import (  # noqa: F401
 )
 from tests.test_open_lines import (  # noqa: F401
     TestAPremiseSpeaksWithoutItsMarkup,
+    TestTheCardCanCountWhatTheLineDid,
     TestOpenLinesIsAdditive,
     TestTheDirectionsDeck,
     TestWhatTheDJIsToldAboutTheTopic,
@@ -573,6 +593,8 @@ from tests.test_open_lines import (  # noqa: F401
     TestTheVoicemailGreetingOnlyGrowsWhileALineIsUp,
     TestTheSignOffOnlySaysWhatItActuallyHeard,
     TestReportingBackToTheRoom,
+    TestALineDiesWithTheBoothThatOpenedIt,
+    TestBookkeepingNeverLandsOnTheNextLine,
     TestOpenLinesReachesThePanel,
     TestTheRecordLandsWhereTheOtherStateDoes,
     TestTheRecordSurvivesBothContainers,
@@ -595,10 +617,16 @@ from tests.test_album_tools import (  # noqa: F401
     TestARunByOneArtistIsOnePress,
     TestAStationPlaylistGoesInWhole,
     TestAQueuedBlockComesOutAsOnePress,
+    TestAskingForTheSameRecordTwiceDoesNotQueueItTwice,
+    TestATruncatedPressClaimsNoMembership,
+    TestAWordIsNotASubstring,
+    TestTwoRecordsOfOneNameAreTwoRecords,
 )
 from tests.test_tools_logic import (  # noqa: F401
+    TestABulkRefusalReadsAsOne,
     TestAHeldSegmentIsNotReportedAsStoodDown,
 )
 from tests.test_brain import (  # noqa: F401
     TestTheDJIsToldWhenTheShowPausesForTalk,
+    TestThePreviewShowsTheSamePromptTheCallGets,
 )

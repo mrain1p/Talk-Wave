@@ -483,3 +483,189 @@ false positives — the AirVerdict mixin's attributes defined on the subclass
 worth a permanent CI step — the signal-to-noise on this codebase's idioms is
 near zero, and a report nobody reads is noise. Re-run by hand if the seam
 grows a new adapter. mypy stays a local dev install, not a requirement.
+
+---
+
+## The whole-app review (2026-09-17)
+
+Not a batch of the maintainability plan — a review of the shipped product at
+0.99.44, asked for as "bug tests, tool calls, things missing or not working as
+intended". Eighteen reading angles over `agent-worker/` and `web-widget/`, every
+candidate argued against the code by a second reader before it was believed
+(twenty-four of those, five by running the code and two by measuring a real
+browser), plus the DJ's tools drilled against the live station. Fixed in five
+batches on `dev`; the per-finding detail is in the commit bodies.
+
+**Two candidates were REFUTED and are recorded so they are not re-found:**
+
+- **The gap-held hand-back vs. `shutdown_process_timeout=60`.** It looked as
+  though a 150s gap wait inside the shutdown callback would be killed at 60s,
+  losing the hand-back, the record's `finally` and the hush release. It is not:
+  on a hang-up the job ends itself, and the SDK runs `_shutdown_callbacks` in a
+  bare `gather` with no timeout — the 60s bounds only a worker-initiated close
+  or a server `JobTermination`. `main.py`'s comment claimed the wider reach and
+  was corrected. The one real residue is a redeploy landing mid-hold, which
+  `stop_grace_period: 2m` already caps.
+- **`.plquote`'s line-clamp as a direct flex item** (trap 3 in the card's design
+  system). Measured in Chromium at both surfaces: the clamp takes, the box is
+  exactly 4 lines (2 on the page card), the ellipsis paints. `-webkit-box` is
+  already block-level so flex blockification does not touch it. Not re-opened
+  without a WebKit measurement.
+
+**Accepted with a reason, not fixed:**
+
+- **`PoolTimeout` as "reached the station"** was fixed anyway (it now reads
+  `ReadTimeout` only), but the exposure was near zero: each call owns its own
+  `StationClient` and pool, and nothing in today's code drives 100 in-flight
+  requests from one. It was cemented by a test asserting the wrong thing, which
+  is why it is worth naming: the test was the reason it survived a prior read.
+- **The `/call-ended` proof crosses a process boundary.** The browser shows the
+  per-room `release` minted with its token; the WORKER can show neither that nor
+  an admin credential, so it signs the room with the LiveKit secret both
+  containers already run on (`room_release.py`, a platform leaf both halves
+  import — one rule, not two spellings). Considered and rejected: a shared file
+  under `data/` (a third state surface), and a LiveKit round trip to prove the
+  room is empty (a network call on the hangup path).
+
+**Deferred — real, argued, and not this pass's work:**
+
+- **The cleanup tier.** ~38 inline copies of the admin-refusal card plus four
+  private helpers (already drifted: the first-run path omits `authRequired`);
+  the station-admin probe ladder written three times; the cloud-TTS key rule
+  re-spelled in the pipeline probe instead of asking `tts_adapter`; the
+  stage-direction regexes written twice, once for the grader and once for the
+  stripper, already disagreeing on newlines and length; the chat persona
+  resolved in three places so "pinned to the DJ who opened it" holds only on the
+  reply path. Each is a drift surface; none is a live fault today.
+- **The efficiency tier, measured not guessed.** `caller_tier()` runs PBKDF2 on
+  the event loop for every request carrying a call key — measured on this box at
+  ~940ms a hash, 3 hashes a plain mint and 5 for an on-air or voicemail one, and
+  once per `/live` poll per idle tab. The fix is a verdict cache keyed on the
+  auth file's mtime plus a per-request stash, with `to_thread` as the follow-up
+  (it makes `caller_tier` async across ~15 sites). Also: `secrets.json` parsed
+  on every `get()` (twice per admin-gated station call), `/live`'s cache-miss
+  path doing seven station reads serially with no single-flight, and
+  `air_verdict` re-reading the push file every second per call.
+- **Guards that no longer guard.** The untested-module check accepts a module
+  whose bare filename stem appears anywhere in the suite's prose, so a new
+  `notes.py` or `topics.py` passes untested; the routing-table orphan check is a
+  substring test, so deleting `/live` still passes while `handle_live_preview`
+  exists; and every local tool builder re-spells its gate as a literal
+  `cfg.get("allow_x")` rather than reading the registry, so changing a registry
+  row's gate leaves the builder handing the tool out under the old switch with a
+  green suite. The size ledger's EXEMPT set now covers the files that change
+  most often, and SPLITTING numbers are raised in place, so for those files the
+  ceiling is a changelog rather than a guard.
+
+**The drill (phase 1 only — the live spot-check and the mic legs need the
+operator).** Three intercepted sweeps inside the deployed worker: every tool the
+coverage set asks for fired with sensible arguments, and with every gate off no
+blocked tool was reached. Six honesty faults, all one shape — the DJ says the
+thing before the tool runs ("Queueing it up now, that's locked in" after a
+search, with no queue call). That is the class the promise guard exists for, and
+the guard was blind to a whole family of refusals (fixed this pass). Eight tools
+were reported "never called" because the coverage set had no ask for them; the
+set now reaches them.
+
+### The two judgement calls, run through (2026-09-17)
+
+The review closed with two items that were judgement rather than fact. Both
+were wrong to leave, and both cost something when chased.
+
+**1. The drill resolved every permission at the admin tier**, so the request
+path — the one an actual deployment leaves an anonymous caller — was never
+walked, and two request tools had never been exercised at all. `TIER=open|
+guest|admin` fixes that; `GATES=shipped TIER=open` is the default deployment
+met by an anonymous caller, and is the only shape that reaches the request
+path, because the exact queue is an admin permission and with it in hand the
+DJ picks for itself instead.
+
+It found a fault on the first run, and the fault is a class, not an instance.
+A tool's own RESULT is an instruction, and it is the one the model reads
+LAST, after the whole prompt. The prompt's action rules have ridden their
+switches since 0.98.51; the strings the tools hand back never did. Six of
+them named a tool the line might not have — the four results lists that end
+"now queue it", the sound search's two dead ends pointing at a request,
+booth_log's pointer at the play log, and the mix tool's aside about single
+tracks. On the shipped defaults the DJ read one, reached for
+`subwave_queue_track`, was refused, and told the caller the record had
+landed: the mimed action `OFF_LIST` exists to prevent, arriving through the
+one channel nothing was watching.
+
+`registry.on_the_surface` is now the single answer to "will this line be
+handed that tool", asked of the registry rather than guessed from a gate
+name — which is the first repayment on the "every builder re-spells its gate
+as a literal" item deferred above. `call/tools/next_move.py` holds the three
+phrases that were written into four tools each, each with a real answer for
+the line that can do neither.
+`TestAResultNeverNamesAToolThisLineHasNot` sweeps the built surface at five
+permission shapes. `ALL_ON` in the discovery tests meant "the two switches
+that build these tools", which is why every test in that file ran on a line
+without the exact queue and not one of them read the sentence.
+
+**2. `TestHiddenActuallyHides` had an escape hatch** — it accepted any
+`[hidden]` rule naming any of the element's classes anywhere in the sheet,
+which is not the question a browser asks, and is why four shipped faults got
+past it: each had a twin, and each twin lost. It reads the cascade now
+(brace-aware, so an @media block is visible at all; panel.css included,
+which it had never opened; and a spot rule counts only when it beats the
+display rule it answers).
+
+Two came back, one measured and one not. `.facebar` had had a spot rule since
+it was written and lost to the landscape rail five classes to two: a face bar
+the script had hidden painted **56x390 down the left edge of a landscape
+phone under 560px tall**, confirmed in the browser and now a witness in
+`tools/widget_check.py` at that viewport. `.plpanelbody` is the scan's
+deliberate over-match being paid — it ignores ancestor context on purpose,
+the four-class quote layout does not actually reach the two bodies that ship
+hidden, and the browser says they hide. The spot rule stands as the
+precaution that trade asks somebody to write once.
+
+**Not re-run end to end.** The drill runs inside the deployed worker against
+the image on the NAS, so the queue fix above is proved by the suite rather
+than by a second sweep; the sweep worth having is the one after the release,
+against an image that carries it.
+
+### Working through what was left (2026-09-17, same day)
+
+**The stub's error paths and the panel sweep** — the two plan items that did
+not need the operator.
+
+Every fixture in `tools/panel_dev_server.py` carried a note saying "flip this
+to see the other branch", so the panel's failure rendering was reachable only
+by editing the stub by hand and nothing had ever driven it.
+`GET /stub/failing?stages=...` turns the branches on at runtime in the real
+handlers' shapes. Seven rows, all passing — the widget was already right
+about every one, so these are witnesses rather than fixes, and each was
+checked against its own negative (drop the withheld-key note and the paste-a-
+key prompt comes back).
+
+The panel sweep was pressing ONE button. The panel is PAGES, not one long
+form, and a control on a page nobody turned to has no client rects: a sweep
+that only opened the landing page reached 21 of the markup's 99 buttons and
+would have called that the panel. Turning each of the twelve pages and
+sweeping it twice — a tab press is how the controls behind it arrive —
+reaches 63. Nothing throws. 49 browser checks to 62, 65s.
+
+**Three of the "guards that no longer guard"**, from the deferred tier above.
+
+- The untested-module check was a substring search over the suite's whole
+  text. It reads names now — identifiers the code uses, plus string constants
+  with no spaces, which is what separates an importlib argument from a
+  sentence. Five modules were passing on prose; two were real
+  (`call/tools/playlists.py`, `caller_tiers.py`) and both now have a test
+  that names them. The tier one earns its place twice over: the ladder is the
+  security half a reviewer audits and nothing said `settings_store.TIERS` and
+  `caller_tiers.TIERS` were the same object.
+- The routing orphan check was a substring test — `handle_live` counted as
+  routed while `handle_live_preview` existed. Verified by deleting the /live
+  route (the suite stayed green), then fixed with a word boundary.
+- The builders and the registry had never been compared. Turning one switch
+  on at a time and assembling the surface the way `call.session._build_tools`
+  does, they agreed everywhere but one: `subwave_find_music` was listed with
+  `single_lookup_tool` on and every search off, and never built. The
+  threshold and the route table now have one definition each in `finding.py`,
+  and the registry applies them to its own answer rather than restating them.
+
+The fourth item in that paragraph — the size ledger's EXEMPT set covering the
+files that change most — is untouched and still stands.

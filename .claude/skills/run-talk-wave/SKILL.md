@@ -45,10 +45,10 @@ cream = you shot too early (see Gotchas).
 ```
 
 Opens the call page, reads the Call button and status line, presses Call, and
-reports the state the widget moved to. With no LiveKit backend the connection
-fails, so a healthy run prints `call button reads: 'CALL THE DJ'` then
-`after Call press, status: 'Could not connect'` — that transition off idle is
-the proof the state machine is reachable, not just painted.
+reports the state the widget moved to. The stub mints a token and stands a
+refusing LiveKit client in for the SDK, so a healthy run prints the Call
+button's label then `after Call press, status: 'Could not connect'` — the
+card walked its real path to the failure and back, not just painted.
 
 ```bash
 .venv/Scripts/python.exe .claude/skills/run-talk-wave/driver.py check
@@ -57,8 +57,9 @@ the proof the state machine is reachable, not just painted.
 Runs `tools/widget_check.py` (the source-and-render smoke test): both pages
 plus the embed's compact frame, checking for load-time JS exceptions, CSS that
 parsed-but-died, and the two-pages script/stylesheet contract as the browser
-resolved it. Prints `widget check: all checks passed (12 ok)`; exits non-zero
-on any failure.
+resolved it. Both pages, the embed's compact frame, the three cards on four surfaces, every
+control pressed, and the offline open — prints `widget check: all checks passed
+(N ok)`; exits non-zero on any failure.
 
 ## Test — the suite
 

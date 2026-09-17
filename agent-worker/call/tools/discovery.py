@@ -34,13 +34,29 @@ import logging
 from station import StationClient
 
 from ..actions import CallActions
-from .registry import library_search_needs_mcp
+from .next_move import (another_way_to_look, queue_this_row,
+                        where_an_id_comes_from)
+from .registry import library_search_needs_mcp, on_the_surface
 from .rows import _drop_blocked, _fmt_track
 from .vocabulary import (_ALL_GENRES, _COUNTS_ARE_YOURS, _ENERGY, _OFFER,
                          _THIN, _VOCAL, _is_filed, _miss_hint, _near_genres,
                          _one_of, _related_genres, _same_genre, _shelves)
 
 log = logging.getLogger("callin.agent")
+
+# booth_log's description, split out of the function so the one sentence
+# pointing at a SIBLING tool can ride that tool's switch.
+# `subwave_already_played` needs allow_library_search and the station's admin
+# credentials; this one is a READ and is built on every line, so the pairing
+# does not hold on every line.
+_BOOTH_LOG = (
+    "What THIS booth has done to the station lately — queued, pulled, "
+    "skipped, taken over — across ALL calls, newest first, with when and "
+    "which door did it. Use when a caller asks about an EARLIER call: \"did "
+    "you cancel my queue?\", \"where's the song I asked for?\", \"who put "
+    "this on?\". Attribution is by door only (a caller, a guest-code caller, "
+    "the operator's line) — never names.")
+_AND_WHAT_AIRED = " For what actually AIRED, use subwave_already_played instead."
 
 # One page, same size as a name search's. Enough for "was it one of these",
 # short enough to read down a phone line, and every row is prompt weight paid
@@ -58,21 +74,23 @@ def build_discovery_tools(cfg: dict, station: StationClient,
     from livekit.agents import llm as lk_llm
 
     tools: list = []
+    # What this line may tell the DJ to do next, worked out once from what it
+    # will actually be handed. See next_move.py for the call that cost.
+    queue_tail = queue_this_row(cfg)
+    second_shot = another_way_to_look(cfg)
+    id_from_a_row = where_an_id_comes_from(cfg)
 
     # The booth's own cross-call ledger — no station read, no credentials,
     # just our day-log file (call/daylog.py). Always built, like every READ:
     # any line's earlier calls can be asked about, and "did you cancel my
     # queue?" once got a per-call truth that was a global evasion
     # (2026-08-26, the Casino night's opening line).
-    @lk_llm.function_tool(name="subwave_booth_log")
+    @lk_llm.function_tool(
+        name="subwave_booth_log",
+        description=_BOOTH_LOG + (
+            _AND_WHAT_AIRED
+            if on_the_surface(cfg, "subwave_already_played") else ""))
     async def booth_log() -> str:
-        """What THIS booth has done to the station lately — queued,
-        pulled, skipped, taken over — across ALL calls, newest first,
-        with when and which door did it. Use when a caller asks about an
-        EARLIER call: "did you cancel my queue?", "where's the song I
-        asked for?", "who put this on?". Attribution is by door only (a
-        caller, a guest-code caller, the operator's line) — never names.
-        For what actually AIRED, use subwave_already_played instead."""
         from .. import daylog
 
         lines = daylog.as_lines(12)
@@ -125,10 +143,9 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                         "This station has never had its music analysed for "
                         "sound, so this tool cannot work here at all — that is "
                         "a fact about the STATION, not about the library or "
-                        "the caller's taste. Do not say there's nothing like "
-                        "that and do not try this tool again this call. DO "
-                        "THIS NOW, in the same turn: call subwave_request_song "
-                        "with the caller's own words."
+                        "the caller's taste. Do not say there's nothing "
+                        "like that and do not try this tool again this call. "
+                        + second_shot
                     )
                 # The station answers 503 when the analyzer is down or nothing
                 # has been audio-analysed yet, and both arrive here as an empty
@@ -140,11 +157,7 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                     "hasn't had its music analysed for sound yet, or the "
                     "analyser is offline — this is NOT evidence that the "
                     "library lacks that kind of music, so don't tell the "
-                    "caller it does. DO THIS NOW, in this same turn: call "
-                    "subwave_request_song with the caller's own words and let "
-                    "the station's picker handle it. Do not answer the caller "
-                    "until you have — a sentence about looking, with no second "
-                    "tool call behind it, leaves them with nothing."
+                    "caller it does. " + second_shot
                 )
             items, withheld = _drop_blocked(items)
             if not items:
@@ -161,11 +174,8 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                 + (f" ({withheld} more matched but are never-play — do not "
                    "offer them)" if withheld else "") + ":\n"
                 + "\n".join(lines)
-                + "\nThese are matched on the audio itself, so trust them over "
-                "the titles. Offer one or two by name; queue the exact one they "
-                "pick with subwave_queue_track. If they left the choice to you, "
-                "don't read the list back — pick ONE, queue it, and say what "
-                "you went with."
+                + "\nThese are matched on the audio itself, so trust them "
+                "over the titles. Offer one or two by name. " + queue_tail
             )
 
         tools.append(search_by_sound)
@@ -216,11 +226,10 @@ def build_discovery_tools(cfg: dict, station: StationClient,
             if track_id and any(c.isspace() for c in track_id):
                 return (
                     f"\"{track_id}\" is a title, not a track id — nothing was "
-                    "looked up. Ids come from a result row and have no spaces "
-                    "in them. Search for it with subwave_search_library, take "
-                    "the id off the row you want, and call this again with "
-                    "that. Do NOT tell the caller the station doesn't know the "
-                    "track: you haven't asked it yet."
+                    "looked up. Ids come from a result row and have no "
+                    "spaces in them. " + id_from_a_row + " Do NOT tell the "
+                    "caller the station doesn't know the track: you haven't "
+                    "asked it yet."
                 )
             if not track_id:
                 now = await station.now_playing()
@@ -269,9 +278,7 @@ def build_discovery_tools(cfg: dict, station: StationClient,
             return (
                 head + ", by how they actually sound:\n"
                 + "\n".join(_fmt_track(t, with_id=True) for t in items[:_PAGE])
-                + "\nQueue whichever they pick with subwave_queue_track. If "
-                "they left the choice to you, don't read the list back — pick "
-                "ONE, queue it, and say what you went with."
+                + "\n" + queue_tail
             )
 
         tools.append(more_like_this)
@@ -424,9 +431,7 @@ def build_discovery_tools(cfg: dict, station: StationClient,
             if withheld:
                 head += (f" ({withheld} more matched but are never-play — do "
                          "not offer them)")
-            tail = ("\nQueue the one they pick with subwave_queue_track. If "
-                    "they left the choice to you, don't read the list back — "
-                    "pick ONE, queue it, and say what you went with.")
+            tail = "\n" + queue_tail
             if swapped:
                 # Never silently: the caller asked for one word and is being
                 # shown another, and a DJ that does not say so is describing
@@ -474,12 +479,10 @@ def build_discovery_tools(cfg: dict, station: StationClient,
             return (
                 "The station's most-liked records:\n"
                 + "\n".join(_fmt_track(t, with_id=True) for t in items[:_PAGE])
-                + "\nThese are the audience's picks, not yours — say so if you "
-                "offer one. Queue whichever they choose with subwave_queue_track. "
-                "But if the caller left the choice to YOU, this list is not a "
-                "menu to read back: pick ONE, queue it now, and tell them what "
-                "you went with and why. One quick taste-check question is fine; "
-                "more than one is handing the decision back."
+                + "\nThese are the audience's picks, not yours — say so if "
+                "you offer one. " + queue_tail
+                + " One quick taste-check question is fine; more than one is "
+                "handing the decision back."
             )
 
         tools.append(station_favourites)

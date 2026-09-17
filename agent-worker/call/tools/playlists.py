@@ -49,12 +49,13 @@ def _nothing_went_in(actions: CallActions, what: str, refused: list,
         return (f"{what} is ALREADY in the queue from earlier in this call — "
                 "nothing further was added, and nothing needs to be. Tell "
                 "them it's still waiting its turn.")
+    # The house refusal idiom (CallActions.station_refused): one card, and
+    # the pinned tail the refusal graders read — this site's own wording
+    # matched none of them, so a refusal with a real reason read as a
+    # success to spoken_rules.reads_as_a_refusal.
     why = refused[0][1] if refused else "the station refused it"
-    if refused:
-        actions.denied("refused", f"{len(refused)} track(s) were refused by "
-                       "the station and not queued")
-    return (f"None of {what} made it into the queue: {why}. Tell the caller "
-            "plainly — do NOT claim it is lined up.")
+    return actions.station_refused({"error": why},
+                                   f"None of {what} made it into the queue")
 
 
 def _shelf(lists: list[dict]) -> str:

@@ -9,11 +9,12 @@ import asyncio
 import json
 import os
 import tempfile
+import types
 import unittest
 from pathlib import Path
 import secrets_store
 import settings as settings_store
-from tests.support import _TempStores
+from tests.support import AGENT_WORKER, _TempStores
 
 
 class TestSecrets(_TempStores):
@@ -72,6 +73,46 @@ class TestStoredKeysStayHome(_TempStores):
 
         may, _ = api_credentials._credentials_travel_to("", "https://api.openai.com")
         self.assertTrue(may)
+
+    def _voice_headers(self, allow_stored):
+        """The headers the voice lookup actually puts on the wire."""
+        import tts_adapter
+        seen, ok = {}, types.SimpleNamespace(
+            status_code=200, raise_for_status=lambda: None, json=lambda: ["D1"])
+
+        class _Client:
+            def __init__(self, **kw): pass
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            async def get(self, url, headers=None):
+                seen.update(headers or {})
+                return ok
+
+        real, tts_adapter.httpx.AsyncClient = tts_adapter.httpx.AsyncClient, _Client
+        try:
+            asyncio.run(tts_adapter.available_voices(
+                "http://typed-into-the-panel.example", allow_stored=allow_stored,
+                adapter_path=tts_adapter.ADAPTER_DIR / "openai-cloud.json"))
+        finally:
+            tts_adapter.httpx.AsyncClient = real
+        return seen
+
+    def test_a_previewed_tts_host_never_sees_the_stored_key(self):
+        # The panel previews a URL before saving it, and ?tts_base_url= rode
+        # all the way into the voice lookup with the stored TTS key attached —
+        # so a requester could name any host and read the key back off it. The
+        # Test button beside that same box had obeyed the rule all along.
+        os.environ["TTS_API_KEY"] = "tts-must-not-travel"
+        self.assertEqual(self._voice_headers(allow_stored=False), {})
+        self.assertIn("tts-must-not-travel", str(self._voice_headers(True)))
+
+    def test_both_voice_lookups_decide_whether_the_key_may_travel(self):
+        # Two call sites, and a third that just takes the default would be
+        # this leak again, silently. Each has to say which it means.
+        for mod in ("settings.py", "diagnostics.py"):
+            src = (AGENT_WORKER / "api" / mod).read_text(encoding="utf-8")
+            self.assertIn("allow_stored=", src.split("tts_voice_list(")[1][:400],
+                          mod)
 
     # Where each SDK ends up keeping the key, so the assertion is about what
     # will actually go out on the wire rather than what we passed in. Every

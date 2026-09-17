@@ -72,6 +72,15 @@ os.environ.setdefault("LOG_TO_FILE", "0")
     # Go-live on, so the dashboard's Live-on-air cluster stands and its
     # door cards can be looked at without first granting the permission.
     "allow_on_air": "guest",
+    # The operator's side of the player and the guide, switched on and
+    # opened to every tier, so /player/abilities (answered through the REAL
+    # truth-table below) lights the skip, the un-heart and operator mode,
+    # and the guide's rows grow their Put-on-air button. Every one of these
+    # is a control the 2026-09-17 press-everything pass could not reach.
+    "player_skip_button": True, "allow_skip_track": "guest",
+    "player_operator_mode": True, "allow_player_commands": "guest",
+    "allow_unfavorite": "guest",
+    "allow_takeover": "guest",
 }), encoding="utf-8")
 
 sys.path.insert(0, str(ROOT / "agent-worker"))
@@ -84,6 +93,8 @@ PORT = int(os.environ.get("PORT", "8123"))
 # lives on the station; here it is one dict so the button, the /guide payload
 # and the hand-back agree with each other.
 _PINNED: dict = {"showId": None}
+# The listener's heart on the record playing, this session — see /player/like.
+_LIKED: dict = {"liked": False, "count": 3}
 
 # The slow half of the panel, answered instantly. Shapes match what
 # handle_settings_options really returns; the values are fixtures.
@@ -172,6 +183,71 @@ HOOK_TEST = {
     "url": "http://192.168.1.40:8100/hooks/station",
     "detail": "the station's push reached http://192.168.1.40:8100/hooks/station",
 }
+
+# --- the same fixtures, failing ------------------------------------------
+#
+# Every fixture above carries a note saying "flip this to see the other
+# branch", which meant the panel's failure rendering was reachable only by
+# editing this file by hand — so nothing ever drove it, and the operator's
+# worst afternoon was the one surface nobody had looked at. FAILING makes
+# those branches reachable at runtime instead:
+#
+#     GET /stub/failing?stages=env,station,llm,tts,stt,hooks,live
+#
+# with an empty `stages` clearing it again. tools/widget_check.py drives it;
+# nothing a human does on the page can reach it.
+#
+# The shapes are the real handlers' failure shapes, not invented ones —
+# api/diagnostics.py answers {"ok": false, "error": ...} with a `note` when a
+# key was withheld from a draft address, and the hearing test says which of
+# the two engines failed in `stage`.
+FAILING: set[str] = set()
+
+ENV_DOWN = {
+    "ok": False,
+    "livekit": {"ok": False, "url": "ws://stub", "detail": "connection refused"},
+    "livekitAuth": {"ok": False, "detail": "no worker has registered"},
+    "admin": {"ok": False, "detail": "401 from the station"},
+    "webhook": {"registered": False, "received": 0,
+                "url": "http://192.168.1.40:8100/hooks/station",
+                "detail": "not registered"},
+    "listeners": {"requestsOpen": False, "detail": "station unreachable"},
+    "keys": {"ok": False, "missing": ["google", "deepgram"]},
+    "stt": {"ok": False, "detail": "deepgram · 401 unauthorized"},
+    "llm": {"ok": False, "detail": "google · no API key stored"},
+    "tts": {"ok": False, "detail": "local · connection refused"},
+}
+
+STATION_DOWN = {"ok": False, "stationUrl": "http://192.168.1.40:4533",
+                "error": "connection refused"}
+
+# With the note, which is the branch that matters: a key only ever travels to
+# the host it was saved for, so testing a typed address gets a 401 that is not
+# the key being wrong. panel.js suppresses its offer-to-paste-a-key prompt
+# when a note is present, and that suppression has never been driven.
+LLM_DOWN = {"ok": False, "error": "401 from the provider",
+            "note": "tested against the address in the box, which is not the "
+                    "one the stored key was saved for — so the key was "
+                    "withheld and this 401 may only mean that."}
+
+TTS_DOWN = {"ok": False, "voice": "-Cliff1",
+            "error": "connection refused reaching the voice server"}
+
+# stage="ear", so the panel has to name WHICH engine failed. stage="voice" is
+# the other half and reads as a voice fault with the ear untouched.
+STT_DOWN = {"ok": False, "stage": "ear", "provider": "deepgram",
+            "model": "nova-2-phonecall", "error": "401 unauthorized"}
+
+HOOK_DOWN = {"ok": False, "fired": False,
+             "url": "http://192.168.1.40:8100/hooks/station",
+             "detail": "the station took the registration and nothing came "
+                       "back — from the panel this looks identical to working "
+                       "until something asks"}
+
+
+def _down(stage: str) -> bool:
+    return stage in FAILING
+
 
 # Enough spread — kinds, tiers, tools, ratings, verdicts, DAYS — that every
 # calls-toolbar filter has at least two answers, stacked filters leave a
@@ -308,6 +384,29 @@ LOG_RECORDS = [
 LIVEKIT_TAG = ('<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.21.0'
                '/dist/livekit-client.umd.min.js"></script>')
 
+# What stands in for the SDK. Not `{}`: with a token fixture the widget goes
+# on to build a Room and wire its events, and an empty object threw at
+# `new LivekitClient.Room` — a page error, which the harness reads as the
+# 0.9.63 class of fault. This one lets every `on()` land and REFUSES to
+# connect, in words that match none of the widget's three diagnoses
+# (mic denied / no media path / plain), so the card reaches its honest
+# "Could not connect" through the real teardown. Property reads on RoomEvent
+# and Track.Source answer their own name, which is all the widget compares.
+LIVEKIT_STUB = (
+    "<script>window.LivekitClient = (() => {"
+    " const names = new Proxy({}, { get: (_, k) => String(k) });"
+    " class Room {"
+    "  constructor() { this.localParticipant = { setMicrophoneEnabled: async () => {} };"
+    "   this.remoteParticipants = new Map(); this.state = 'disconnected'; }"
+    "  on() { return this; } off() { return this; }"
+    "  registerTextStreamHandler() {}"
+    "  async connect() { throw new Error('stub: there is no LiveKit behind this page'); }"
+    "  async disconnect() {}"
+    " }"
+    " return { Room, RoomEvent: names, Track: { Source: names, Kind: names } };"
+    "})();</script>"
+)
+
 _STREAM_WAV: bytes | None = None
 
 
@@ -351,10 +450,61 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
+        # The mint, shaped like api/tokens.handle_token's answer. There is no
+        # LiveKit here so the join cannot go anywhere — the url points at a
+        # port nothing listens on, so a press ends in the card's own
+        # connect-failure reset rather than hanging, and that reset is worth
+        # being able to look at. What this mostly exists for is `release`,
+        # the per-room secret the widget must keep and hand back to
+        # /call-ended: a widget that forgets it leaves the slot held until it
+        # ages out, and nothing on screen says so.
+        if self.path.split("?")[0] == "/token":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                self.rfile.read(n)
+            except Exception:
+                pass
+            return self._json({"token": "stub-token",
+                               "url": "ws://127.0.0.1:1/stub",
+                               "room": "callin-g-stub00000000",
+                               "release": "stub-release"})
+        # Freeing the slot needs that same secret. Answered ok either way,
+        # like the real route, but a widget that forgot it says so on the
+        # console here instead of silently holding a line in production.
+        if self.path.split("?")[0] == "/call-ended":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n) or b"{}")
+            except Exception:
+                body = {}
+            if not isinstance(body, dict) or body.get("release") != "stub-release":
+                print("  [stub] /call-ended without the minted release — "
+                      "the real server would leave the slot held")
+            return self._json({"ok": True})
         # The player's listener actions, from fixtures — enough to drive the
         # heart filling and the SENT beat without a station.
         if self.path.split("?")[0] == "/player/like":
-            return self._json({"ok": True, "liked": True, "count": 4})
+            _LIKED["liked"] = True
+            _LIKED["count"] += 1
+            return self._json({"ok": True, "liked": True, "count": _LIKED["count"]})
+        if self.path.split("?")[0] == "/player/unlike":
+            _LIKED["liked"] = False
+            _LIKED["count"] = max(0, _LIKED["count"] - 1)
+            return self._json({"ok": True, "liked": False, "count": _LIKED["count"]})
+        if self.path.split("?")[0] == "/player/skip":
+            return self._json({"ok": True})
+        # The call's own doors. The mint answers like the real one so the
+        # widget goes on to build its room — and the LiveKit stand-in below
+        # refuses to connect, which is what walks the card through
+        # "connecting" to the honest "Could not connect" and back to idle.
+        # Before this the mint 404'd and the state machine stopped one step
+        # in (2026-09-17). The hang-up and the thumbs answer ok so neither
+        # path ends in a console error the harness would read as a fault.
+        if self.path.split("?")[0] == "/token":
+            return self._json({"token": "stub-token", "url": "ws://127.0.0.1:1",
+                               "room": "stub-room"})
+        if self.path.split("?")[0] in ("/call-ended", "/call-feedback"):
+            return self._json({"ok": True})
         if self.path.split("?")[0] == "/station/override/clear":
             _PINNED["showId"] = None
             return self._json({"ok": True})
@@ -508,6 +658,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = self.path.split("?")[0]
 
+        # The stub's own control surface, and the only route here that is not
+        # pretending to be the worker. See FAILING.
+        if path == "/stub/failing":
+            from urllib.parse import parse_qs, urlparse
+            want = parse_qs(urlparse(self.path).query).get("stages", [""])[0]
+            FAILING.clear()
+            FAILING.update(w.strip() for w in want.split(",") if w.strip())
+            return self._json({"failing": sorted(FAILING)})
+
         if path == "/open-lines":
             return self._json(_open_lines_status())
         # The station-override box, standing: a takeover with ~42 minutes to
@@ -550,7 +709,7 @@ class Handler(BaseHTTPRequestHandler):
             # navigation gets the page, the panel's fetch gets the JSON.
             if "text/html" in (self.headers.get("Accept") or ""):
                 html = (WIDGET / "panel.html").read_text(encoding="utf-8").replace(
-                    LIVEKIT_TAG, "<script>window.LivekitClient = {};</script>")
+                    LIVEKIT_TAG, LIVEKIT_STUB)
                 return self._send(200, html, "text/html")
             return self._json({
                 "schema": settings_store.schema_payload(),
@@ -673,8 +832,10 @@ class Handler(BaseHTTPRequestHandler):
         # slowest surface by far — a real run is a station read, a LiveKit
         # round trip, an LLM call and a TTS call, none of which exist here.
         if path == "/test/env":
-            return self._json(dict(PIPELINE_ENV))
+            return self._json(dict(ENV_DOWN if _down("env") else PIPELINE_ENV))
         if path == "/test/station":
+            if _down("station"):
+                return self._json(dict(STATION_DOWN))
             return self._json({"ok": True, "liveDj": "Francesca", "toolCount": 9})
         # The two stages that were NOT stubbed, so the pipeline check could
         # never be read end to end here — and they are the two whose verdicts
@@ -682,15 +843,15 @@ class Handler(BaseHTTPRequestHandler):
         # each: under desiredMs passes, over it warns, at or over budgetMs
         # fails outright.
         if path == "/test/llm":
-            return self._json(dict(LLM_TEST))
+            return self._json(dict(LLM_DOWN if _down("llm") else LLM_TEST))
         if path == "/test/tts":
-            return self._json(dict(TTS_TEST))
+            return self._json(dict(TTS_DOWN if _down("tts") else TTS_TEST))
         if path == "/test/stt":
-            return self._json(dict(STT_TEST))
+            return self._json(dict(STT_DOWN if _down("stt") else STT_TEST))
         # Registration only ever proved the station accepted a row; this is the
         # station pushing back at us, which is the half that fails in the wild.
         if path == "/hooks/test":
-            return self._json(dict(HOOK_TEST))
+            return self._json(dict(HOOK_DOWN if _down("hooks") else HOOK_TEST))
         # The speed test, shaped like handle_speed_test's answer: stages with
         # counts/estimate flags and the compound turn. The LLM stage is the
         # slow one on purpose — the chokepoint colouring is the thing to see.
@@ -771,6 +932,14 @@ class Handler(BaseHTTPRequestHandler):
                 "episodeAngle": "Tonight, the quiet hum of a valley "
                                 "preparing for rest."}}}))
         if path == "/live":
+            # The caller-facing outage. call.js holds one failed poll for 90
+            # seconds against a card that answered recently, so this only
+            # paints "Station unreachable" on a page LOADED while it is set —
+            # which is the shape a caller who opens the app during an outage
+            # actually meets, and the one nothing had driven.
+            if _down("live"):
+                return self._send(503, json.dumps({"error": "unreachable"}),
+                                  "application/json")
             return self._json({
                 "reachable": True, "onAir": True, "guestRequired": False,
                 # From the stub's own settings, like the real /live — the
@@ -918,10 +1087,22 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/stream":
             return self._send(200, _stream_wav(), "audio/wav")
 
-        # The heart's current state, from a fixture.
+        # The heart's current state. Remembered across the session rather
+        # than a constant: the card's heart and the player's are deliberately
+        # separate states (call.js, "the card must never claim a heart it did
+        # not press"), and the player learns of a like made on the phone face
+        # only from THIS read when it opens — a fixture stuck at False made
+        # that look like a sync bug (2026-09-17).
         if path == "/player/like":
             return self._json({"enabled": True, "songId": "s1",
-                               "liked": False, "count": 3})
+                               "liked": _LIKED["liked"], "count": _LIKED["count"]})
+        # What this caller's key unlocks on the sheet — through the REAL
+        # truth-table, at the tier /live already claims for the stub, so a
+        # switch the operator flips in the panel reaches the buttons the
+        # same way it does on the deployment.
+        if path == "/player/abilities":
+            from api.player import _abilities
+            return self._json(_abilities(settings_store.load(), "admin"))
 
         # Same two extensionless routes token_server serves — /settings is
         # the panel's one address; the old /panel 404s here like it does on
@@ -932,7 +1113,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, "not found", "text/plain")
         if f.suffix == ".html":
             html = f.read_text(encoding="utf-8").replace(
-                LIVEKIT_TAG, "<script>window.LivekitClient = {};</script>")
+                LIVEKIT_TAG, LIVEKIT_STUB)
             return self._send(200, html, "text/html")
         ctype = {"html": "text/html", "js": "text/javascript",
                  "css": "text/css", "png": "image/png", "json": "application/json",

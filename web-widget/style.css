@@ -1401,7 +1401,13 @@
     background: var(--granite); border-top: 1px solid var(--hairline);
     z-index: 70;
   }
-  .facebar[hidden] { display: none; }
+  /* !important, like .player and .guide: the landscape rail below
+     (body:not(.compact):not(.panelpage) .card.faces .facebar) outranks a
+     two-class spot rule five to two, so a hidden face bar painted as a
+     full-height rail on a landscape phone. Found 2026-09-17 when
+     TestHiddenActuallyHides learned to compare specificity instead of
+     accepting any [hidden] rule that named the class. */
+  .facebar[hidden] { display: none !important; }
   /* The rule rides the band's top edge, over the card it belongs to. Width
      and offset are written by the script, in faces. */
   .faceind {
@@ -1750,7 +1756,15 @@
      (operator's screenshots, 2026-09-01, both passes). */
   .plscroll .plpanel:not(.plqueue) .plpanelbody { max-height: 185px;
                                                   min-height: 95px; }
-  .plpanelbody[hidden] { display: none; }
+  /* !important as a precaution, not a fix: the quote panel's own layout
+     (.plscroll > .plpanel:not(.plqueue) .plpanelbody) outranks this
+     one four classes to two, and today it happens not to reach the
+     two bodies that ship hidden — measured in the browser, they hide
+     correctly without this. The scan that raised it ignores ancestor
+     context deliberately (see TestHiddenActuallyHides), so this is the
+     spot rule that trade asks somebody to write once, and it means no
+     later re-nesting of that panel can bring the fault back. */
+  .plpanelbody[hidden] { display: none !important; }
   .plscroll .plpanel:first-of-type { margin-top: 14px; }
   .plpanelhead {
     display: flex; align-items: center; gap: 7px;
@@ -4258,6 +4272,13 @@
     font-size: 13px; flex: none;
   }
   .card .stationrow .nplike.liked { color: var(--coral); }
+  /* Trap 1. This rule names a class and sets a `display`, so it outranks
+     both the UA's `[hidden] { display: none }` and the earlier
+     `.card .nplike[hidden]` twin it sits after. WHICH corner controls a
+     caller gets is the server's answer, and #npHeart hidden still painted a
+     44x44 pressable heart for a caller with no like to give — measured in a
+     real browser, and a press earned a 401 (2026-09-17). */
+  .card .stationrow .nplike[hidden] { display: none; }
   /* THE EMBED KEEPS ITS ONE-LINE TRACK. 348x320 has no 62px band to spend,
      and this is the same line it always was — one step down the DOM, with
      the furniture that needs room switched off. */
@@ -4755,6 +4776,12 @@
     border: 1px solid var(--edge); color: var(--sage);
     display: inline-flex; align-items: center; justify-content: center;
   }
+  /* Trap 1 again, and the same measurement: the dock's three — the heart,
+     the skip and the operator key — are all `.plheart`, all hidden by the
+     script when /player/abilities says this caller cannot reach them, and
+     all three still painted 36x36 bordered squares over that rule. The card
+     was offering controls the server had already refused. */
+  .card .pldock .plheart[hidden] { display: none; }
   /* THE FADER AND THE LEVEL GET THE BUTTONS' BOX. The strip was four
      bordered squares, then a bare rail with a knob on it, then bare bars —
      two rules on one band, which is what the operator called "stupid
@@ -5027,9 +5054,19 @@
   }
   /* The host's circle beside the show's name — the same picture the row's
      own body carries, at the size the hero can afford. */
+  /* `flex-wrap: wrap`, the same as .gdperson: when the face is pressed open
+     to its 260px portrait, the names no longer squeeze into the 70px left
+     beside it ("THE O…" on a phone, 2026-09-17) — they drop under the
+     picture with the whole column, and a wide column keeps them beside. */
   .card .gdheroid {
     display: flex; align-items: center; gap: 12px; margin-top: 12px; flex: none;
+    flex-wrap: wrap;
   }
+  /* Wrapping alone does nothing: `.gdheronames` is `flex: 1`, whose basis is
+     0%, and a zero-basis item always "fits" beside the portrait and then
+     shrinks into the sliver that is left. With the picture open the names
+     take a full line of their own. */
+  .card .gdheroid:has(.gdzoom.big) .gdheronames { flex-basis: 100%; }
   .card .gdherofig {
     position: relative; flex: none; width: 62px; height: 62px;
     display: inline-flex; align-items: center; justify-content: center;
@@ -5366,7 +5403,15 @@
     /* The bands at this box's budget, and it is measured rather than
        estimated: 323px of scroller holds art 100 + progress 38 + well 74 +
        tabs 43 + two queue rows 68, to the pixel. */
-    body:not(.compact) .card .plartblock { padding: 8px 16px; gap: 12px; }
+    /* 5px of vertical padding, not 8: the meta column beside the sleeve is
+       title 21 + album 6+34 + chips 9+20 = 90, and at 8px the column's
+       content box was 84 — so the chip row was drawn with its bottom six
+       pixels cut off, a half-row of pills under the playhead (measured on
+       the stub, 2026-09-17). The block keeps its 100; the column gets 90
+       and a one-line title fits whole. A two-line title still pushes the
+       chips past the clip, and now past it ENTIRELY rather than to a
+       sliver — the give-way the base rule describes, done cleanly. */
+    body:not(.compact) .card .plartblock { padding: 5px 16px; gap: 12px; }
     body:not(.compact) .card .pldock { padding: 8px 16px 6px; gap: 8px; }
     body:not(.compact) .card .pltabs { padding: 7px 16px; }
     body:not(.compact) .card .plscroll > .plpanel:not(.plqueue) {
@@ -5400,6 +5445,21 @@
        card can spare it. */
     body:not(.compact) .card .idleboard .stage { gap: 11px; }
     body:not(.compact) .card .idleboard .stagefoot { padding-top: 10px; }
+    /* WITH AN OPEN LINE UP the middle is a label and a quote (39px) where
+       the one-line hint was 19, and the three steps ran 151px in the 123px
+       board: "ALSO ON THE LINE" showed with the sentence under it cut off
+       (measured on the stub, 2026-09-17 — the live card had open lines off
+       and fit). The valve still scrolls a genuinely long premise; what
+       this fixes is the ordinary one-line case. Gap 7, foot padding 6, and
+       the foot drops its micro-label — the sentence reads on its own, and
+       the label was 14 of the 28 missing px: 34 + 1 + 39 + 24 + 3×7 = 119. */
+    body:not(.compact) .card .idleboard .stage:has(.stagemid .openhead) { gap: 7px; }
+    body:not(.compact) .card .idleboard .stage:has(.stagemid .openhead) .stagefoot {
+      padding-top: 6px;
+    }
+    body:not(.compact) .card .idleboard .stage:has(.stagemid .openhead) .stagefootlab {
+      display: none;
+    }
   }
   /* -- LANDSCAPE: the tab bar becomes a left rail ------------------------
      Rotated, the card is starved of height and given width, and a 46px bar

@@ -455,8 +455,17 @@ async def release_call_slot(room: str) -> None:
     immediately. The widget sends the same beacon, but a crashed tab never
     does — and the worker's shutdown always runs, so with the default limit of
     two concurrent calls, this is what stops dead sessions blocking real
-    callers for the 30-minute age-out."""
+    callers for the 30-minute age-out.
+
+    Since 2026-09-17 the route wants proof, because the room id alone is
+    something the CALLER holds too. The browser shows the release minted
+    with its token; this beacon signs the room with the LiveKit secret both
+    containers already run on (room_release owns that rule). Without it the
+    beacon is quietly ignored the moment the operator sets a panel password
+    — which is every deployment that has been set up properly."""
     import httpx
+
+    import room_release
 
     base = os.environ.get(
         "CALLIN_INTERNAL_URL",
@@ -464,6 +473,8 @@ async def release_call_slot(room: str) -> None:
     )
     try:
         async with httpx.AsyncClient(timeout=4.0) as c:
-            await c.post(f"{base}/call-ended", json={"room": room})
+            await c.post(f"{base}/call-ended",
+                         json={"room": room,
+                               "release": room_release.worker_release(room)})
     except Exception as e:
         log.debug("slot release beacon failed (harmless, will age out): %s", e)

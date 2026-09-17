@@ -78,15 +78,28 @@ _READ_FAILED = (
 
 
 def _group_by_album(rows: list) -> list[dict]:
-    """Rows bucketed by album name, first-seen display casing kept."""
-    groups: dict[str, dict] = {}
+    """Rows bucketed by album name AND artist, first-seen display casing kept.
+
+    The name alone is not an album: "Greatest Hits" by Queen and "Greatest
+    Hits" by ABBA merged into ONE group, so nothing was ever ambiguous
+    enough to ask about, both records' ids were recorded under one name, and
+    "play Greatest Hits" queued whichever rows the search happened to
+    return. Keyed on the ALBUM artist where the row carries one — a
+    compilation whose rows all name "Various Artists" still meets itself —
+    and on the track's own artist otherwise. _candidates already asks when
+    the caller gave no artist and settles by artist when they gave one.
+    """
+    groups: dict[tuple, dict] = {}
     for row in rows or []:
         if not isinstance(row, dict):
             continue
         name = _txt(row.get("album"))
         if not name:
             continue
-        g = groups.setdefault(name.casefold(), {"name": name, "rows": []})
+        artist = (_txt(row.get("albumArtist")) or _txt(row.get("album_artist"))
+                  or _txt(row.get("artist")))
+        g = groups.setdefault((name.casefold(), artist.casefold()),
+                              {"name": name, "rows": []})
         g["rows"].append(row)
     return list(groups.values())
 
@@ -481,13 +494,14 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
                         "earlier in this call — nothing further was added, "
                         "and nothing needs to be. Tell them it's still "
                         "waiting its turn.")
+            # The house refusal idiom, so the tail the promise guard and the
+            # refusal graders read is the pinned one and cannot drift: a
+            # bulk refusal with a real station reason used to read as a
+            # SUCCESS to spoken_rules.reads_as_a_refusal.
             why = refused[0][1] if refused else "the station refused it"
-            if refused:
-                actions.denied("refused", f"{len(refused)} track(s) were "
-                               "refused by the station and not queued")
-            return (f"None of \"{group['name']}\" made it into the queue: "
-                    f"{why}. Tell the caller plainly — do NOT claim the "
-                    "album is lined up.")
+            return actions.station_refused(
+                {"error": why},
+                f"None of \"{group['name']}\" made it into the queue")
 
         actions.note("album",
                      f"\"{group['name']}\" — {len(queued)} tracks")
@@ -523,9 +537,9 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
           space, then its title. 2 to 8 picks; choose a spread yourself
           rather than copying a whole results page.
         `label` is two or three words for the caller's receipt ("90s rock
-        mix"). For a single track use subwave_queue_track; for a complete
-        album use subwave_queue_album. Never pass an id you did not get from
-        a row."""
+        mix"). A single track does not belong here — queue it on its
+        own; for a complete album use subwave_queue_album. Never pass
+        an id you did not get from a row."""
         if actions.at_limit():
             return actions.refusal()
         artist = (artist or "").strip()
@@ -556,12 +570,10 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
                 return ("Every one of those is ALREADY in the queue from "
                         "earlier in this call — nothing was added twice. Tell "
                         "them it's all still waiting its turn.")
+            # Same pinned tail as the album above, same reason.
             why = refused[0][1] if refused else "the station refused them"
-            if refused:
-                actions.denied("refused", f"{len(refused)} track(s) were "
-                               "refused by the station and not queued")
-            return (f"None of those went into the queue: {why}. Tell the "
-                    "caller plainly — do NOT claim the mix is lined up.")
+            return actions.station_refused(
+                {"error": why}, "None of those went into the queue")
         actions.note("mix", label or f"{len(queued)} picks")
         # The label is about to be said to the caller, so it has to remain
         # something they can ask us to undo — see CallActions.batches.

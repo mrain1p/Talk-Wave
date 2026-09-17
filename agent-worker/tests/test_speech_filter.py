@@ -52,6 +52,28 @@ class TestSpeechFilter(unittest.TestCase):
                      "that one's from (one of my favourite albums)"):
             self.assertEqual(speech_filter.strip_stage_directions(text), text)
 
+    def test_a_word_ending_in_s_or_ing_is_not_a_stage_direction(self):
+        # The verb-FIRST half had the same permissive shape the verb-last
+        # half was already fixed for: any word ending in s/ing/ed counted as
+        # a verb, so the caller never heard the DJ agree with them. Five of
+        # these went straight to the TTS with a hole in the sentence.
+        for text in ("(yes)", "(thanks)", "(Kings of Leon)", "(sounds good)",
+                     "(plus a cover)", "(feels like the eighties)",
+                     "(records still selling)"):
+            self.assertEqual(
+                speech_filter.strip_stage_directions(text + " right then"),
+                text + " right then")
+
+    def test_the_real_stage_directions_still_go(self):
+        # The other half of the same claim: closing the list must not open
+        # the door the closed list was there to shut.
+        for direction in ("(laughs)", "(sighs deeply)", "(clears throat)",
+                          "(chuckles)", "(shuffles records)", "(pauses)",
+                          "(whispers into the mic)"):
+            out = speech_filter.strip_stage_directions(direction + " right then")
+            self.assertNotIn("(", out, direction)
+            self.assertIn("right then", out)
+
     def test_strips_the_djs_own_name_used_as_a_script_label(self):
         # Went out on a real call: the model slipped into screenplay format and
         # the voice read the DJ's own name aloud at the top of every turn.
@@ -269,6 +291,55 @@ class TestALineIsGradedByWhatKindOfWrongItIs(unittest.TestCase):
         self.assertEqual([], spoken_rules.check_spoken_line(line))
         self.assertEqual(["claims-it-landed"],
                          spoken_rules.check_after_failure(line))
+
+    def test_the_honest_wait_relay_is_not_graded_as_a_lie(self):
+        """The prompt's own YES example was being nudged against.
+
+        The conduct answers a rate-limit refusal with "requests open back up
+        in a few minutes, so I'll try again then" — a promise about the
+        LINE, not about the record — and CUE_FRAMING read its "in a few
+        minutes" as a claim that the track had landed. So the one shape the
+        prompt asks for after a refusal scored the serious fault, on every
+        drill run, for being right.
+        """
+        import spoken_rules
+
+        for good in (
+            "Requests open back up in a few minutes, so I'll try again then.",
+            "The desk's holding me off for a bit — I'll have another go in a "
+            "few minutes.",
+            "Can't get it in just now; the queue reopens shortly and I'll ask "
+            "again then.",
+        ):
+            self.assertEqual([], spoken_rules.check_after_failure(good), good)
+
+    def test_a_claim_about_the_record_is_still_caught(self):
+        # The exemption is narrow on purpose: without a future try/reopen
+        # clause, a time phrase after a refusal is the failure it always was.
+        import spoken_rules
+
+        for bad in ("It's coming up in a few minutes.",
+                    "That's lined up, should be on in a few minutes."):
+            self.assertEqual(["claims-it-landed"],
+                             spoken_rules.check_after_failure(bad), bad)
+
+    def test_the_bulk_tools_refusals_read_as_refusals(self):
+        # The detector reads the house phrasing, and the bulk tools each had
+        # their own object at the end of it ("do NOT claim the album is
+        # lined up") — so a refusal WITH a station reason read as a success
+        # and the promise guard never armed. See TestABulkRefusalReadsAsOne
+        # for the tools themselves.
+        import spoken_rules
+
+        for line in (
+            'None of "Rumours" made it into the queue: the racks are locked. '
+            "Tell the caller plainly — do not claim it worked.",
+            "None of that went in — do NOT claim the mix is lined up.",
+            "Nothing came out of the queue: time ran out. Tell the caller "
+            "plainly — do NOT claim a clear-out happened.",
+            "3 track(s) were refused by the station and are STILL QUEUED.",
+        ):
+            self.assertTrue(spoken_rules.reads_as_a_refusal(line), line)
 
     def test_the_markup_faults_are_the_ones_the_filter_removes(self):
         # Graded on the RAW line on purpose: clean_for_speech strips these

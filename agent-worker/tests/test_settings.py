@@ -138,6 +138,49 @@ class TestSettings(_TempStores):
         settings_store.save({"station_base_url": "Gordon"})
         self.assertTrue(settings_store.station_base_url().startswith("http"))
 
+    def test_a_broken_stored_url_falls_through_to_the_environment(self):
+        # Invariant 1: an unusable stored value falls to the layer beneath it,
+        # not past it. It jumped straight to the built-in default, so an
+        # operator whose panel held "Gordon" silently lost the
+        # SUBWAVE_BASE_URL their own container was started with — the env said
+        # one station and every call went to another, with nothing on screen
+        # connecting the two.
+        old = os.environ.get("SUBWAVE_BASE_URL")
+        os.environ["SUBWAVE_BASE_URL"] = "http://real-station:7700"
+        try:
+            settings_store.save({"station_base_url": "Gordon"})
+            self.assertEqual(settings_store.station_base_url(),
+                             "http://real-station:7700")
+            self.assertEqual(settings_store.station_mcp_url(),
+                             "http://real-station:7700/mcp")
+        finally:
+            if old is None:
+                os.environ.pop("SUBWAVE_BASE_URL", None)
+            else:
+                os.environ["SUBWAVE_BASE_URL"] = old
+
+    def test_a_url_with_a_note_typed_after_it_is_not_a_url(self):
+        # _URLISH was anchored only at the FRONT, so an address with the
+        # operator's own note after it passed validation and was stored as a
+        # live URL — every station read then failed on it with nothing saying
+        # why. Anchored at both ends now.
+        for bad in ("http://192.168.1.10:7700/api the NAS",
+                    "https://box:7700 # blank derives this",
+                    "http://box:7700/api, or the other one"):
+            with self.subTest(bad=bad):
+                self.assertIsNotNone(
+                    settings_store.complain({"station_base_url": bad}), bad)
+                # And one already saved that way is shrugged off rather than
+                # handed to httpx as a request URL.
+                self.assertEqual(
+                    settings_store._sane_url("station_base_url", bad), "")
+        # And an ordinary address with a path is still perfectly fine.
+        for good in ("http://192.168.1.10:7700/api", "https://box/api?x=1",
+                     "wss://box:7700/ws", "HTTP://BOX:7700"):
+            with self.subTest(good=good):
+                self.assertIsNone(
+                    settings_store.complain({"station_base_url": good}), good)
+
     def test_unknown_keys_are_ignored(self):
         settings_store.save({"allow_sfx": True, "not_a_field": 1})
         stored = json.loads(settings_store.SETTINGS_PATH.read_text())
@@ -179,6 +222,19 @@ class TestSettingsThatAreOnlyWrongTogether(_TempStores):
         # 0 means "no limit" on the caps, so it can never be the smaller one.
         self.assertIsNone(settings_store.complain(
             {"calls_per_hour": 30, "calls_per_day": 0}))
+
+    def test_clearing_one_half_is_judged_on_what_the_save_would_leave(self):
+        # The blank was filtered out of the merged view, so the pair was
+        # judged against the value being DELETED. Clearing a floor of 300
+        # while lowering the ceiling to 200 — a perfectly coherent patch, and
+        # exactly what the panel sends when the operator empties a box — came
+        # back refused for a conflict the save itself would not have left.
+        settings_store.save({"min_call_seconds": 300, "max_call_seconds": 600})
+        self.assertIsNone(settings_store.complain(
+            {"min_call_seconds": "", "max_call_seconds": 200}))
+        # And the stored floor still bites when the patch leaves it alone —
+        # the fall-through must not have quietly turned the pair check off.
+        self.assertIsNotNone(settings_store.complain({"max_call_seconds": 200}))
 
 
 class TestOneSettingReplacingAnotherSaysSo(unittest.TestCase):
@@ -1454,3 +1510,39 @@ class TestThePlayerOperatorSideFollowsTheMatrix(unittest.TestCase):
         self.assertFalse(self._abilities({}, "open")["unlike"])
         self.assertFalse(
             self._abilities({"show_track_like": False}, "admin")["unlike"])
+
+
+class TestTheTierLadderIsOneCopy(unittest.TestCase):
+    """`caller_tiers` was peeled out of settings.py and settings re-exports
+    it, so `settings_store.TIERS` and `caller_tiers.TIERS` must be the same
+    object rather than two that agree today.
+
+    This is the binding rule of the whole codebase — one source of truth
+    beats a split — applied to the module it is most expensive to get wrong:
+    the tier ladder is the security half a reviewer audits for fail-closed
+    behaviour, and 31 call sites read it through `settings_store.<name>`. A
+    second definition here would be a permission ladder that forked without
+    a single test going red.
+
+    It is also how the module gets NAMED in the suite. Every tier test in
+    this file reaches it through settings, so nothing imported it, and
+    TestNewCodeDoesNotArriveUntested was passing it on the word
+    "caller_tiers" in another file's prose until 2026-09-17.
+    """
+
+    def test_settings_re_exports_the_leaf_rather_than_restating_it(self):
+        import caller_tiers
+
+        for name in ("TIERS", "TIER_OFF", "TIERED_PERMISSIONS", "TIER_CHOICES",
+                     "tier_reaches", "normalise_tier", "permission_reaches",
+                     "tier_from_room", "tier_from_vm_room", "on_air_from_room",
+                     "permissions_for", "guest_door_open"):
+            self.assertIs(getattr(settings_store, name),
+                          getattr(caller_tiers, name), name)
+
+    def test_the_leaf_stays_a_leaf(self):
+        # One way, and it has to stay one way: settings imports caller_tiers,
+        # so an import back would be a cycle and the "pure leaf" claim in its
+        # docstring would be false.
+        src = (AGENT_WORKER / "caller_tiers.py").read_text(encoding="utf-8")
+        self.assertNotIn("import settings", src)

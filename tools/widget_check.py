@@ -31,6 +31,10 @@ the incidents were made of:
     — each holding the rules the card's design system states in words
     (added 2026-09-17: five releases of card work had shipped past a
     harness that drove one face at one width)
+  - every control a caller can press, pressed, and the state it should
+    reach read back — route, heart, theme, the call to its honest failure
+    and back, the player's tabs/skip/request/play, the guide's week grid,
+    fold, portrait and takeover (the 2026-09-17 by-hand pass, repeatable)
   - the installed app OPENING with the server gone, which is the service
     worker's one job
 
@@ -310,6 +314,469 @@ def check_faces(browser, rep: Report, base: str) -> None:
         ctx.close()
 
 
+# --- every control, pressed --------------------------------------------------
+# The 2026-09-17 press-everything pass, made repeatable. That pass found two
+# faults by hand that no load-time check could see (a clipped chip row, a
+# hidden foot line); what it could not do was be run again next release.
+# Each row here presses a control and reads the STATE it should reach — not
+# that a handler ran, but what the caller would see: the route lit, the
+# heart filled on both faces, the theme back where it started, the call at
+# its honest failure and the card back to idle, the request posted and the
+# box cleared, the week grid up, the portrait open with the name still
+# readable. A control that answers with a JS exception fails the sweep.
+
+def _wait_for(page, expr: str, secs: float = 6.0) -> bool:
+    deadline = time.time() + secs
+    while time.time() < deadline:
+        if page.evaluate(expr):
+            return True
+        page.wait_for_timeout(150)
+    return False
+
+
+def check_controls(browser, rep: Report, base: str) -> None:
+    ctx = browser.new_context(viewport={"width": 390, "height": 844},
+                              reduced_motion="reduce")
+    page = ctx.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    posted: list[str] = []
+    page.on("request", lambda r: posted.append(
+        f"{r.method} {r.url[len(base):].split('?')[0]}")
+        if r.url.startswith(base) else None)
+    page.goto(f"{base}/", wait_until="networkidle")
+    page.wait_for_timeout(400)
+
+    def row(name: str, ok: bool, why: str = "") -> None:
+        if errors:
+            ok, why = False, ("JS exception: " + errors[0][:120] +
+                              (f" ({why})" if why else ""))
+            errors.clear()
+        rep.add("ok" if ok else "FAIL", f"controls: {name}", "" if ok else why)
+
+    # The route switch lights the on-air side and relabels the call.
+    idle_label = page.evaluate("() => document.getElementById('callBtn').textContent.trim()")
+    page.click("#routeOn")
+    page.wait_for_timeout(250)
+    lit = page.evaluate(
+        "() => document.querySelector('.card').classList.contains('route-on')"
+        " && document.getElementById('routeOn').getAttribute('aria-checked') === 'true'")
+    live_label = page.evaluate("() => document.getElementById('callBtn').textContent.trim()")
+    page.click("#routeOff")
+    page.wait_for_timeout(250)
+    back = page.evaluate("() => !document.querySelector('.card').classList.contains('route-on')")
+    row("route switch goes on air and back", lit and back and live_label != idle_label,
+        f"lit={lit} back={back} labels {idle_label!r}/{live_label!r}")
+
+    # The heart. The card's and the player's are separate states on purpose
+    # (call.js: "the card must never claim a heart it did not press"), so
+    # the row is: the pressed heart lights at once, and the player's heart
+    # reads the like back from the server when the sheet opens — never the
+    # one repainting the other.
+    page.click(".nplike")
+    lit = _wait_for(page, "() => document.querySelector('.nplike').classList.contains('liked')", 3)
+    page.click("#facePlayer")
+    read_back = _wait_for(page, "() => document.querySelector('.plheart').classList.contains('liked')", 3)
+    page.click("#facePhone")
+    page.wait_for_timeout(300)
+    row("the pressed heart lights, and the player reads the like back on opening",
+        lit and read_back, f"lit={lit} readBack={read_back}")
+
+    # The theme cycles and comes home: light, dark, the station's own, auto.
+    page.click("#themeBtn")
+    page.wait_for_timeout(200)
+    stepped = page.evaluate("() => !!document.documentElement.dataset.theme")
+    for _ in range(3):
+        page.click("#themeBtn")
+        page.wait_for_timeout(200)
+    home = page.evaluate(
+        "() => !document.documentElement.dataset.theme"
+        " && !(localStorage.getItem('callinTheme') || '')")
+    row("theme cycles four stops and back to auto", stepped and home,
+        f"stepped={stepped} home={home}")
+
+    # The call: minted, refused by the stand-in, and the card back to idle
+    # with the slot released — the 0.9.117-era teardown, walked.
+    page.click("#callBtn")
+    failed = _wait_for(page, "() => /could not connect/i.test("
+                             "document.getElementById('statusText').textContent)")
+    page.wait_for_timeout(300)
+    idle = page.evaluate(
+        "() => document.querySelector('.card').dataset.mode === 'idle'"
+        " && document.getElementById('hangBtn').hidden"
+        " && !document.getElementById('callBtn').hidden")
+    minted = "POST /token" in posted
+    released = "POST /call-ended" in posted
+    row("call reaches 'Could not connect' and the card comes back",
+        failed and idle and minted and released,
+        f"failed={failed} idle={idle} minted={minted} released={released}")
+
+    # The player: its tabs, the skip, a request, and play.
+    page.click("#facePlayer")
+    page.wait_for_timeout(400)
+    page.click(".pltab:nth-of-type(2)")
+    page.wait_for_timeout(250)
+    tab = page.evaluate("() => (document.querySelector('.pltab.on') || {}).textContent || ''")
+    page.click(".pltab:nth-of-type(1)")
+    row("player tabs switch", "played" in tab.lower(), f"active tab reads {tab!r}")
+    page.click("#plSkipBtn")
+    page.wait_for_timeout(500)
+    # The receipt lands in #plOpFlash (flashOpResult), the row every player
+    # action reports through since 2026-09-02.
+    skipped = "POST /player/skip" in posted and page.evaluate(
+        "() => { const f = document.getElementById('plOpFlash');"
+        " return !!f && !f.hidden && /skipped/i.test(f.textContent); }")
+    row("skip posts and reports itself in the row", skipped)
+    page.fill("#plReqInput", "something slow for the rain")
+    page.click("#plReqSend")
+    page.wait_for_timeout(600)
+    sent = "POST /player/request" in posted and page.evaluate(
+        "() => document.getElementById('plReqInput').value === ''")
+    row("request posts and the box clears", sent)
+    page.click("#plPlayBtn")
+    page.wait_for_timeout(400)
+    playing = page.evaluate("() => /pause/i.test(document.getElementById('plPlayBtn').textContent)")
+    page.click("#plPlayBtn")
+    page.wait_for_timeout(300)
+    paused = page.evaluate("() => /play/i.test(document.getElementById('plPlayBtn').textContent)")
+    row("play toggles to pause and back", playing and paused)
+
+    # The guide: week and day, the span, the fold, the portrait, a takeover.
+    page.click("#faceGuide")
+    page.wait_for_timeout(500)
+    page.click("#guideViewWeek")
+    page.wait_for_timeout(300)
+    grid = page.evaluate("() => !document.getElementById('guideGrid').hidden")
+    page.click("#guideSpan24")
+    page.wait_for_timeout(200)
+    span = page.evaluate(
+        "() => document.getElementById('guideSpan24').getAttribute('aria-pressed') === 'true'")
+    page.click("#guideViewDay")
+    page.wait_for_timeout(300)
+    listed = page.evaluate("() => !document.getElementById('guideList').hidden")
+    row("guide reads as a week grid, takes a span, and comes back to the day",
+        grid and span and listed, f"grid={grid} span={span} day={listed}")
+    before = page.evaluate("() => document.querySelector('.gdherobox').classList.contains('min')")
+    page.click(".gdherofold")
+    page.wait_for_timeout(300)
+    after = page.evaluate("() => document.querySelector('.gdherobox').classList.contains('min')")
+    row("the show on air folds and unfolds", before != after)
+    page.click(".gdherofig.gdzoom")
+    page.wait_for_timeout(300)
+    portrait = page.evaluate(
+        "() => { const f = document.querySelector('.gdherofig.gdzoom');"
+        " const n = document.querySelector('.gdheronames');"
+        " if (!f || !n) return {big: false};"
+        " const fr = f.getBoundingClientRect(), nr = n.getBoundingClientRect();"
+        " return {big: f.classList.contains('big'), under: nr.top >= fr.bottom - 1,"
+        "  clipped: n.querySelector('.gdheroname').scrollWidth"
+        "   > n.querySelector('.gdheroname').clientWidth + 1}; }")
+    page.click(".gdherofig.gdzoom")
+    page.wait_for_timeout(300)
+    shut = page.evaluate(
+        "() => !document.querySelector('.gdherofig.gdzoom').classList.contains('big')")
+    row("the portrait opens under the name, unclipped, and shuts again",
+        portrait.get("big") and portrait.get("under") and not portrait.get("clipped") and shut,
+        f"{portrait} shut={shut}")
+    page.click(".gdtake:not(.back)")
+    page.wait_for_timeout(700)
+    took = "POST /station/override" in posted and page.evaluate(
+        "() => !!document.querySelector('.gdtake.back')")
+    row("put on air posts the takeover and the row offers the hand-back", took)
+
+    row("no JS exception across the sweep", True)
+    ctx.close()
+
+
+# Controls the sweep below must not press, and why each one. A deny list
+# rather than an allow list on purpose: an allow list goes stale silently the
+# day somebody adds a button, which is the failure this whole file exists to
+# stop. Anything not named here gets pressed.
+PANEL_KEEP_OFF = {
+    "logoutBtn": "signs out — everything after it would be pressing a gate",
+    "loginBtn": "the panel is already unlocked here; Unlock with no password "
+                "is the gate's own error path, not a control",
+    "setPwBtn": "opens the change-password flow",
+    "setGuestBtn": "sets a guest code the rest of the sweep would then need",
+    "uploadSoundBtn": "a file picker the harness cannot close",
+    "resetBtn": "resets every setting to defaults, mid-sweep",
+    "clearGuestBtn": "destructive",
+    "ovClear": "destructive — clears the station override",
+    "dumpBtn": "destructive — pulls the show off air",
+    "olEditDelete": "destructive — removes a topic",
+    "olCloseBtn": "closes the open line the rows after it are about",
+    "vmClearBtn": "destructive — clears the voicemail stage",
+    "callsClearBtn": "destructive",
+    "logsClearBtn": "destructive",
+    "saveOverlayDiscard": "throws away the edits the sweep just made",
+    "copyEmbedBtn": "writes the clipboard, which needs a permission grant",
+}
+
+
+def check_panel_controls(browser, rep: Report, base: str) -> None:
+    """Every page turned, every section opened, every safe control pressed.
+
+    ~3,000 lines of panel JS with no unit tests and no runner, and until now
+    this harness pressed ONE of its buttons. The panel's faults are the
+    0.9.63 shape — a guard testing a dict that had changed from null to {},
+    so the page fetched nothing, showed nothing and did not even prompt for a
+    password, and shipped. Nothing in the Python suite could see it; one
+    press can.
+
+    The panel is PAGES (#panelNav chips), not one long form, and a control on
+    a page nobody turned to has no client rects — measured here, 2026-09-17:
+    a sweep that only opened the sections on the landing page reached 21 of
+    the markup's 99 buttons and called that the panel. Each page is turned
+    to, opened out, and swept twice, because pressing a tab on the Players
+    page is how the controls behind it arrive.
+
+    The claim is mechanical on purpose: nothing throws, and the number of
+    controls reached is reported, so a page that silently stops painting
+    shows up as the count collapsing rather than as a green run.
+    """
+    page = browser.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{base}/settings", wait_until="load")
+    try:
+        page.wait_for_selector("#panelNav a[data-page]", state="attached",
+                               timeout=20000)
+    except Exception:
+        rep.add("FAIL", "panel sweep: the page painted at all",
+                "#panelNav never got its chips"
+                + (f"; first error: {errors[0][:120]}" if errors else ""))
+        page.close()
+        return
+
+    pages = page.evaluate(
+        "() => [...document.querySelectorAll('#panelNav a[data-page]')]"
+        " .map((a) => a.dataset.page)")
+    if len(pages) >= 5:
+        rep.add("ok", f"panel sweep: {len(pages)} pages in the nav "
+                      f"({', '.join(pages)})")
+    else:
+        rep.add("FAIL", "panel sweep: the nav has its pages",
+                f"only {pages}")
+
+    pressable = ("(off) => [...document.querySelectorAll('button[id]')]"
+                 " .filter((b) => !off.includes(b.id) && !b.disabled"
+                 "                && !b.hidden && b.getClientRects().length)"
+                 " .map((b) => b.id)")
+    press_one = ("(id) => { const b = document.getElementById(id);"
+                 " if (b && !b.disabled) b.click(); }")
+
+    pressed: set[str] = set()
+    threw: list[str] = []
+    for name in pages:
+        page.evaluate(
+            "(p) => { const a = document.querySelector("
+            "  '#panelNav a[data-page=\\'' + p + '\\']');"
+            " if (a) a.click(); }", name)
+        page.wait_for_timeout(350)
+        # Two rounds: the first presses the tabs and mode switches, the
+        # second reaches what they revealed.
+        for _round in (1, 2):
+            page.evaluate("() => { document.querySelectorAll('details')"
+                          " .forEach((d) => { d.open = true; }); }")
+            page.wait_for_timeout(250)
+            for el_id in page.evaluate(pressable, sorted(PANEL_KEEP_OFF)):
+                if el_id in pressed:
+                    continue
+                pressed.add(el_id)
+                before = len(errors)
+                try:
+                    page.evaluate(press_one, el_id)
+                except Exception as e:
+                    threw.append(f"{el_id}: {str(e)[:80]}")
+                    continue
+                page.wait_for_timeout(110)
+                if len(errors) > before:
+                    threw.append(f"{name}/{el_id}: {errors[before][:100]}")
+
+    # The floor is MEASURED, not chosen: 63 controls on 2026-09-17 across the
+    # twelve pages, against 21 for the same sweep before it learned to turn
+    # them. It is here to catch a page that stops painting, so it sits under
+    # the reading rather than at it.
+    if len(pressed) >= 50:
+        rep.add("ok", f"panel sweep: {len(pressed)} controls pressed across "
+                      f"{len(pages)} pages ({len(PANEL_KEEP_OFF)} held back "
+                      f"by name)")
+    else:
+        rep.add("FAIL", "panel sweep: the sweep reaches the panel's controls",
+                f"only {len(pressed)} pressable buttons across {len(pages)} "
+                f"pages — the panel is painting less than it used to")
+
+    if threw:
+        rep.add("FAIL", "panel sweep: no control throws when pressed",
+                "; ".join(threw[:4]))
+    else:
+        rep.add("ok", "panel sweep: no control throws when pressed")
+
+    # Whatever the presses did, this is still a panel: the section list and
+    # the nav survive and no gate came up. A control that blanks the page
+    # passes every row above and fails this one.
+    alive = page.evaluate(
+        "() => ({ nav: document.querySelectorAll('#panelNav a').length,"
+        " secs: document.querySelectorAll('details.sec').length,"
+        " gate: !!(document.getElementById('loginGate')"
+        "          && !document.getElementById('loginGate').hidden) })")
+    if alive["nav"] >= 5 and alive["secs"] >= 15 and not alive["gate"]:
+        rep.add("ok", "panel sweep: the page is still standing afterwards "
+                      f"({alive['secs']} sections, {alive['nav']} pages, "
+                      "no gate)")
+    else:
+        rep.add("FAIL", "panel sweep: the page survives its own controls",
+                f"{alive}")
+    page.close()
+
+
+def check_error_paths(browser, rep: Report, base: str) -> None:
+    """The afternoon everything is down, which nothing had ever looked at.
+
+    The stub answers every diagnostic ok, and each fixture in it carries a
+    note saying "flip this to see the other branch" — so the panel's failure
+    rendering and the card's outage line were reachable only by editing the
+    stub by hand. They are the surfaces an operator needs most and the ones
+    least often seen. `GET /stub/failing?stages=...` turns them on.
+
+    Four things are worth a row each, and the first two are the reason this
+    is driven rather than read:
+
+      * a failed test PAINTS as a failure — `.result.bad` with the reason in
+        it, not a blank box and not a green one;
+      * the hearing test names WHICH engine failed, because a voice that
+        cannot speak fails it without the ear being touched, and sending the
+        operator to the wrong section is worse than no test;
+      * a 401 that may only mean "the key was withheld from a draft address"
+        does NOT offer to paste a key — panel.js suppresses that prompt when
+        the answer carries a note, and nothing had exercised the suppression;
+      * a caller who opens the app during an outage is told so, and can
+        still reach the settings gear — the one case the operator most needs
+        it, and the corner controls are driven off the /live that just
+        failed.
+    """
+    ctx = browser.new_context(viewport={"width": 1100, "height": 900},
+                              reduced_motion="reduce")
+    ctx.request.get(f"{base}/stub/failing"
+                    "?stages=env,station,llm,tts,stt,hooks,live")
+    try:
+        _panel_down(ctx, rep, base)
+        _card_down(ctx, rep, base)
+    finally:
+        # Whatever happened above, the next check meets a working stub.
+        ctx.request.get(f"{base}/stub/failing?stages=")
+        ctx.close()
+
+
+def _panel_down(ctx, rep: Report, base: str) -> None:
+    page = ctx.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{base}/settings", wait_until="load")
+    try:
+        page.wait_for_selector("#llmResult", state="attached", timeout=20000)
+    except Exception:
+        rep.add("FAIL", "errors: the panel painted at all",
+                "#llmResult never attached"
+                + (f"; first error: {errors[0][:120]}" if errors else ""))
+        page.close()
+        return
+
+    # Clicked through the DOM, not page.click: every section is a closed
+    # <details> and the buttons are attached rather than visible.
+    press = "(id) => { const b = document.getElementById(id); if (b) b.click(); }"
+    read = ("(id) => { const el = document.getElementById(id);"
+            " return el ? { cls: el.className, text: el.textContent } : null; }")
+
+    bad = []
+    for btn, out in (("testStationBtn", "stationResult"),
+                     ("testLlmBtn", "llmResult"),
+                     ("testTtsBtn", "ttsResult"),
+                     ("testSttBtn", "sttResult")):
+        page.evaluate(press, btn)
+    page.wait_for_timeout(1200)
+    for btn, out in (("testStationBtn", "stationResult"),
+                     ("testLlmBtn", "llmResult"),
+                     ("testTtsBtn", "ttsResult"),
+                     ("testSttBtn", "sttResult")):
+        got = page.evaluate(read, out)
+        if not got:
+            bad.append(f"{out} is not in the DOM")
+        elif "bad" not in got["cls"]:
+            bad.append(f"{out} class {got['cls']!r} after a failed {btn}")
+        elif len((got["text"] or "").strip()) < 8:
+            bad.append(f"{out} says nothing: {got['text']!r}")
+    if bad:
+        rep.add("FAIL", "errors: every failed check paints as one", "; ".join(bad))
+    else:
+        rep.add("ok", "errors: station, model, voice and hearing all paint "
+                      "their failure with a reason")
+
+    # WHICH engine. The stub answers stage="ear", so the ear has to be named.
+    heard = (page.evaluate(read, "sttResult") or {}).get("text") or ""
+    if "ear" in heard.lower():
+        rep.add("ok", "errors: the hearing test names the ear rather than "
+                      "the voice")
+    else:
+        rep.add("FAIL", "errors: the hearing test says which engine failed",
+                f"stage was 'ear' and the row reads {heard[:120]!r}")
+
+    # The note, and the prompt it must suppress. maybeOfferKey appends a
+    # paste-a-key control into the result row; with a note there is nothing
+    # to offer, because the key exists and was withheld on purpose.
+    llm = page.evaluate(
+        "() => { const el = document.getElementById('llmResult');"
+        " return el ? { text: el.textContent,"
+        " offers: el.querySelectorAll('input, button').length } : null; }")
+    if llm and "withheld" in (llm["text"] or "") and not llm["offers"]:
+        rep.add("ok", "errors: a 401 from a draft address explains the "
+                      "withheld key instead of asking for one")
+    else:
+        rep.add("FAIL", "errors: the withheld-key note replaces the key prompt",
+                f"{llm}")
+
+    if errors:
+        rep.add("FAIL", "errors: no JS exception with everything down",
+                errors[0][:160])
+    else:
+        rep.add("ok", "errors: no JS exception with everything down")
+    page.close()
+
+
+def _card_down(ctx, rep: Report, base: str) -> None:
+    page = ctx.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    # Loaded WHILE /live is failing: call.js holds one failed poll for 90
+    # seconds against a card that answered recently, so an outage the caller
+    # arrives into is the only shape that paints immediately.
+    page.goto(f"{base}/", wait_until="load")
+    page.wait_for_timeout(1500)
+    got = page.evaluate(
+        "() => ({ status: (document.getElementById('statusText')||{}).textContent,"
+        " dot: (document.querySelector('#status .dot')||{}).className,"
+        " gear: !!(document.getElementById('gearBtn')"
+        "          && !document.getElementById('gearBtn').hidden) })")
+    if "unreachable" in (got["status"] or "").lower():
+        rep.add("ok", f"errors: the card says {got['status']!r} when /live "
+                      "is down at load")
+    else:
+        rep.add("FAIL", "errors: an outage at load reads as one",
+                f"the status line says {got['status']!r}")
+    if got["gear"]:
+        rep.add("ok", "errors: the settings gear survives the failed /live "
+                      "the corner controls are driven off")
+    else:
+        rep.add("FAIL", "errors: the gear survives a failed /live",
+                "no way into settings from an unreachable card")
+    if errors:
+        rep.add("FAIL", "errors: no JS exception on the outage card",
+                errors[0][:160])
+    else:
+        rep.add("ok", "errors: no JS exception on the outage card")
+    page.close()
+
+
 def check_offline(browser, rep: Report, base: str, stub) -> None:
     """The installed app opens with the server gone — sw.js's one job.
 
@@ -382,6 +849,321 @@ def check_offline(browser, rep: Report, base: str, stub) -> None:
     if live:
         rep.add("note", f"offline: {len(live)} live fetch(es) failed as they "
                         "must (never cached)", ", ".join(live[:4]))
+    ctx.close()
+
+
+# --- the panel's own rows ----------------------------------------------------
+# Kept in one function at the end of the file so the panel's checks and the
+# call page's never have to be untangled from each other.
+
+
+def check_panel(browser, rep: Report, base: str) -> None:
+    """The operator's page, driven rather than read.
+
+    paintSecrets relocates the three static station buttons — Test access,
+    Test station + tools, Reload from station — out of their markup row into
+    the station keyblock's bar, and every paint begins by wiping that host.
+    The SECOND paint was looking the three up by id AFTER its own
+    `innerHTML = ''` had removed them from the document, getting null for all
+    three and appending nothing: they disappeared until a page reload. Every
+    Save keys, every Clear and Reset repaints secrets, so saving the station
+    credentials was exactly when 'Test access' went away. Source cannot see
+    this; two paints in a real DOM can.
+    """
+    page = browser.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{base}/settings", wait_until="load")
+    # The panel paints secrets from /settings, which it awaits. `attached`,
+    # not the default `visible`: every section is a closed <details> until
+    # somebody opens it, and this row's subject is what is IN the DOM.
+    try:
+        page.wait_for_selector("#keys_station .testrow button",
+                               state="attached", timeout=20000)
+    except Exception:
+        # Say WHY rather than only that it did not appear: a gate standing, a
+        # load still running and an exception are three different faults.
+        state = page.evaluate(
+            "() => ({ msg: (document.getElementById('saveMsg') || {}).textContent,"
+            " panel: document.getElementById('panel').className,"
+            " gate: !document.getElementById('loginGate').hidden })")
+        rep.add("FAIL", "panel: station keyblock painted",
+                f"no button in #keys_station — {state}"
+                + (f"; first error: {errors[0][:120]}" if errors else ""))
+        page.close()
+        return
+
+    BTNS = ("testAdminBtn", "testStationBtn", "reloadStationBtn")
+    # Inside #keys_station's own bar, not merely present somewhere: the fault
+    # left them in the document as detached nodes on the first paint too.
+    where = ("(ids) => ids.map(id => { const b = document.getElementById(id);"
+             " return b && !b.hidden && !!b.closest('#keys_station') ? 1 : 0; })")
+    before = page.evaluate(where, list(BTNS))
+    if all(before):
+        rep.add("ok", "panel: the three station buttons sit in the key block")
+    else:
+        rep.add("FAIL", "panel: station buttons after the first paint",
+                ", ".join(n for n, ok in zip(BTNS, before) if not ok))
+
+    # Force a second paintSecrets the way the operator does: type a station
+    # credential and press Save keys. The stub has no /settings/secrets route,
+    # so the POST fails — and postSecrets repaints on every branch, which is
+    # the paint this row is here for.
+    page.evaluate(
+        "() => { const el = document.getElementById('sec_subwave_admin_user');"
+        " if (el) { el.value = 'widget-check'; }"
+        " const bar = document.querySelector('#keys_station .testrow');"
+        " if (bar) bar.querySelector('button').click(); }")
+    page.wait_for_timeout(600)
+    after = page.evaluate(where, list(BTNS))
+    if all(after):
+        rep.add("ok", "panel: they survive a second paintSecrets "
+                      "(the Save-keys repaint)")
+    else:
+        rep.add("FAIL", "panel: station buttons after a repaint",
+                "gone until a reload: "
+                + ", ".join(n for n, ok in zip(BTNS, after) if not ok))
+
+    if errors:
+        rep.add("FAIL", "panel: no JS exception while repainting", errors[0][:160])
+    else:
+        rep.add("ok", "panel: no JS exception while repainting")
+    page.close()
+# --- what only a browser can answer ------------------------------------------
+# Four faults the source checks in the Python suite are structurally unable to
+# see: a rule's specificity, a node rebuilt under a reader, a listener that
+# never fires, and a line the next poll wipes. Each is measured here.
+
+_HIDE_PROBE = """(id) => {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const was = el.hidden;
+  el.hidden = false;
+  void el.offsetHeight;
+  const shown = getComputedStyle(el).display;
+  el.hidden = true;
+  void el.offsetHeight;
+  // Read into plain values BEFORE the hidden state goes back: a
+  // CSSStyleDeclaration from getComputedStyle is LIVE, so restoring first
+  // and reading after reports the state the element ended in rather than
+  // the one under test.
+  const display = getComputedStyle(el).display;
+  const r = el.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  el.hidden = was;
+  return { shown: shown, display: display, w: w, h: h };
+}"""
+
+# A real horizontal drag, as DOM touch events — the card's pager listens with
+# plain addEventListener, so synthetic events reach it exactly as a finger
+# would. Playwright's touchscreen can only tap.
+_DRAG = """(sel) => {
+  const el = document.querySelector(sel);
+  if (!el) return 'no ' + sel;
+  const r = el.getBoundingClientRect();
+  if (r.width < 40 || r.height < 10) return sel + ' is not on screen';
+  const y = r.top + Math.min(40, r.height / 2);
+  const fire = (type, x) => {
+    const t = new Touch({ identifier: 1, target: el, clientX: x, clientY: y });
+    const none = type === 'touchend';
+    el.dispatchEvent(new TouchEvent(type, {
+      bubbles: true, cancelable: true,
+      touches: none ? [] : [t], targetTouches: none ? [] : [t],
+      changedTouches: [t] }));
+  };
+  const x0 = r.left + 30;
+  fire('touchstart', x0);
+  for (let i = 1; i <= 6; i += 1) fire('touchmove', x0 + i * 25);
+  fire('touchend', x0 + 150);
+  return '';
+}"""
+
+_FACE = """() => { const vis = (id) => { const el = document.getElementById(id);
+  return !!el && !el.hidden && el.getBoundingClientRect().height > 0; };
+  return vis('guideView') ? 'guide' : vis('playerView') ? 'player' : 'phone'; }"""
+
+
+def check_hidden_controls(browser, rep: Report, base: str) -> None:
+    """A control the SERVER withheld must not paint.
+
+    Trap 1 in the card's design system: the script hides these with
+    `el.hidden = true`, `[hidden] { display: none }` is (0,1,0), and any
+    rule of ours naming a class and setting a display outranks it. Both of
+    these had a `[hidden]` twin — and both twins were out-specified by a
+    later, heavier rule. Measured 2026-09-17: the dock's three painted
+    36x36 bordered pressable squares and #npHeart 44x44, for callers whose
+    press earns a 401 from /player/*.
+
+    TestHiddenActuallyHides reads the sheets and compares specificity itself
+    now, so it is no longer blind to this shape — it found two more the same
+    afternoon. What it still cannot do is measure: it does not know which
+    ancestors a node actually has, what :has() resolves to, or which media
+    query the viewport is in. So these are the witnesses, at the viewport
+    each rule needs, and #faceBar is here because its fault only exists on a
+    landscape phone under 560px tall.
+    """
+
+    def probe(page, el_id: str) -> None:
+        got = page.evaluate(_HIDE_PROBE, el_id)
+        if got is None:
+            rep.add("FAIL", f"hidden: #{el_id} exists", "not in the DOM")
+        elif got["shown"] == "none":
+            # Otherwise the assertion below passes for the wrong reason —
+            # a control nothing could have painted anyway.
+            rep.add("FAIL", f"hidden: #{el_id} is measurable here",
+                    "it does not paint even when shown, so this surface "
+                    "cannot answer the question")
+        elif got["display"] == "none" and got["w"] == 0 and got["h"] == 0:
+            rep.add("ok", f"hidden: #{el_id} really goes away "
+                          f"(shown {got['shown']}, hidden none, 0x0)")
+        else:
+            rep.add("FAIL", f"hidden: #{el_id} still paints when hidden",
+                    f"display {got['display']!r}, {got['w']:.0f}x"
+                    f"{got['h']:.0f} — a rule of ours beats [hidden]")
+
+    ctx = browser.new_context(viewport={"width": 1100, "height": 800},
+                              reduced_motion="reduce")
+    page = ctx.new_page()
+    page.goto(f"{base}/", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    # The station row's heart is on the phone, which is the opening face.
+    probe(page, "npHeart")
+    # The dock's three live on the player, so open it or the measurement is
+    # about an ancestor rather than about the rule under test. #plPastBody
+    # is here to keep an answer on file: the source scan flagged it on
+    # 2026-09-17 and the browser said it hides correctly, which is the
+    # over-match that scan accepts rather than a fault. Worth measuring
+    # from now on, because the rule that would beat it does exist.
+    page.click("#facePlayer")
+    page.wait_for_timeout(350)
+    for el_id in ("plHeartBtn", "plSkipBtn", "plOpBtn", "plPastBody"):
+        probe(page, el_id)
+    ctx.close()
+
+    # The other one, and the reason this function opens a second context: the
+    # face bar's landscape rail is inside @media (orientation: landscape) and
+    # (max-height: 560px), so at 1100x800 there is nothing to catch.
+    ctx = browser.new_context(viewport={"width": 844, "height": 390},
+                              reduced_motion="reduce")
+    page = ctx.new_page()
+    page.goto(f"{base}/", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    probe(page, "faceBar")
+    ctx.close()
+
+
+def check_guide_gestures(browser, rep: Report, base: str) -> None:
+    """The guide's two reader-owned states, on a phone.
+
+    A portrait the reader opened used to be a class on a node paintGuide
+    rebuilds from scratch on every /live poll and every player event, so it
+    collapsed within twenty seconds; leaving the face and coming back is the
+    same rebuild, and is what this drives. And the pager exempted only
+    `.gdtoday` — a strip the sheet hides on every surface — so dragging the
+    week grid sideways paged to the player instead of scrolling the hours.
+    """
+    ctx = browser.new_context(viewport={"width": 390, "height": 844},
+                              reduced_motion="reduce", has_touch=True)
+    page = ctx.new_page()
+    page.goto(f"{base}/", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.click("#faceGuide")
+    page.wait_for_timeout(700)
+
+    face = page.query_selector(".gdzoom")
+    if face is None:
+        rep.add("FAIL", "guide: a portrait to open",
+                "no .gdzoom in the guide — the stub's personas did not paint")
+    else:
+        face.click()
+        page.wait_for_timeout(200)
+        opened = page.evaluate("() => document.querySelectorAll('.gdzoom.big').length")
+        page.click("#facePhone")
+        page.wait_for_timeout(400)
+        page.click("#faceGuide")          # openGuide -> loadGuide -> paintGuide
+        page.wait_for_timeout(700)
+        kept = page.evaluate("() => document.querySelectorAll('.gdzoom.big').length")
+        if opened and kept:
+            rep.add("ok", "guide: an opened portrait survives the repaint "
+                          "that rebuilds every figure node")
+        else:
+            rep.add("FAIL", "guide: the portrait survives a repaint",
+                    f"{opened} open before the rebuild, {kept} after")
+
+    week = page.query_selector("#guideViewWeek")
+    if week is None or not page.evaluate(
+            "() => { const b = document.getElementById('guideViewWeek');"
+            " return !!b && b.getBoundingClientRect().width > 0; }"):
+        rep.add("FAIL", "guide: the week view is reachable",
+                "#guideViewWeek is not on this surface, so the grid's own "
+                "drag cannot be driven")
+        ctx.close()
+        return
+    week.click()
+    page.wait_for_timeout(500)
+    why = page.evaluate(_DRAG, ".gdgrid")
+    if why:
+        rep.add("FAIL", "guide: the week grid is draggable", why)
+    else:
+        page.wait_for_timeout(500)
+        if page.evaluate(_FACE) == "guide":
+            rep.add("ok", "guide: dragging the week grid sideways scrolls "
+                          "the hours instead of paging to the player")
+        else:
+            rep.add("FAIL", "guide: the grid owns its own sideways drag",
+                    "a drag across .gdgrid turned the page — the pager's "
+                    "exemption does not name the real scroller")
+    ctx.close()
+
+
+def check_idle_line(browser, rep: Report, base: str) -> None:
+    """The line under the card on a voicemail-only line.
+
+    `message_only` is a real setting with a schema entry, a panel field, a
+    /live slot and a preview in the panel — and nothing on the card had ever
+    read it, so the operator's own wording for the state landed nowhere. The
+    stub's line is voicemail-only by default, which is the state.
+
+    It also stands in for the other half of that branch: the idle repaint's
+    setStatus('') is now conditional, because it was wiping 'Call ended',
+    'No answer' and the studio's receipt within one /live round trip. A call
+    is the one thing this stub cannot give, so the HOLD itself is pinned in
+    the Python suite; what is driven here is that the branch still paints.
+    """
+    ctx = browser.new_context(viewport={"width": 1100, "height": 800},
+                              reduced_motion="reduce")
+    page = ctx.new_page()
+    page.goto(f"{base}/", wait_until="networkidle")
+    # The stub's own store answers /live, which is how its closed-line states
+    # are driven in a browser at all. Ask for the machine-only line, put the
+    # operator's setting back afterwards.
+    was = page.evaluate(
+        "async () => { const r = await fetch('/live');"
+        " return (await r.json()).voicemailWhen || 'closed'; }")
+    page.evaluate(
+        "async () => { await fetch('/settings', { method: 'POST',"
+        " headers: { 'Content-Type': 'application/json' },"
+        " body: JSON.stringify({ voicemail_when: 'always' }) }); }")
+    page.reload(wait_until="networkidle")
+    page.wait_for_timeout(700)
+    got = page.evaluate(
+        "() => { const s = document.getElementById('statusText'),"
+        " c = document.getElementById('callBtn');"
+        " return { line: (s && s.textContent || '').trim(),"
+        "          callHidden: !!(c && c.hidden) }; }")
+    if got["line"] == "Message only" and got["callHidden"]:
+        rep.add("ok", "idle: a voicemail-only line says so under the card, "
+                      "and the live door is not offered")
+    else:
+        rep.add("FAIL", "idle: the voicemail-only line explains itself",
+                f"status line {got['line']!r}, Call button hidden "
+                f"{got['callHidden']} — the line was set voicemail-only "
+                "(voicemailWhen: always), so the card should read the "
+                "operator's message_only wording and drop the live door")
+    page.evaluate(
+        "async (v) => { await fetch('/settings', { method: 'POST',"
+        " headers: { 'Content-Type': 'application/json' },"
+        " body: JSON.stringify({ voicemail_when: v }) }); }", was)
     ctx.close()
 
 
@@ -475,6 +1257,13 @@ def main() -> None:
                 page.close()
 
                 check_faces(browser, rep, base)
+                check_controls(browser, rep, base)
+                check_hidden_controls(browser, rep, base)
+                check_guide_gestures(browser, rep, base)
+                check_idle_line(browser, rep, base)
+                check_panel(browser, rep, base)
+                check_panel_controls(browser, rep, base)
+                check_error_paths(browser, rep, base)
                 # Last: it takes the server away.
                 check_offline(browser, rep, base, proc)
             finally:

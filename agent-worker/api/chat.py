@@ -20,7 +20,7 @@ import time
 from aiohttp import WSMsgType, web
 
 import settings as settings_store
-from api.auth import _guest_check, caller_tier
+from api.auth import _guest_check
 from api.wire import _auth_key, _caller_key, origin_allowed
 from chat.session import SHELF
 
@@ -96,15 +96,12 @@ def _refusal(cfg: dict, request: web.Request, key: str) -> str | None:
 
 def _tier_for(key: str) -> str:
     """caller_tier reads headers; the WS key arrives in-band, so the same
-    question is asked of the key directly."""
-    import admin_auth
-    from api.auth import _key_valid
+    question is asked of the key directly — through the SAME resolver. This
+    used to be a private copy that skipped the guest_door rule, which made one
+    code-holder 'open' on the phone and 'guest' on the text line."""
+    from api.auth import tier_for_key
 
-    if key and _key_valid(key):
-        return "admin"
-    if key and admin_auth.verify_guest(key):
-        return "guest"
-    return "open"
+    return tier_for_key(key)
 
 
 async def _relay(ws: web.WebSocketResponse, chat, make_coro) -> None:
@@ -306,7 +303,10 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
                 # The id stops resuming, which is what the widget's End does:
                 # a fresh open after this is a new conversation.
                 chat.write_record("the caller ended the chat")
-                SHELF.chats.pop(chat.id, None)
+                # SHELF.close, not a pop: the chat owns an LLM client and its
+                # httpx pool, and popping it left the only path that closes
+                # one (the sweep) holding nothing.
+                SHELF.close(chat.id)
                 log.info("chat %s ended by the caller (%d msgs)", chat.id,
                          chat.messages)
                 await ws.send_json({"type": "ended"})
@@ -352,7 +352,7 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
                 if ((msg_cap and chat.messages >= msg_cap)
                         or (age_cap and time.time() - chat.started > age_cap)):
                     chat.write_record("the chat reached its limit")
-                    SHELF.chats.pop(chat.id, None)
+                    SHELF.close(chat.id)                  # same leak as `bye`
                     log.info("chat %s hit its ceiling (%d msgs) — closing",
                              chat.id, chat.messages)
                     await ws.send_json(

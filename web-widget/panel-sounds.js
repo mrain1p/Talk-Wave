@@ -422,8 +422,11 @@
     rows = rows.slice(shelfPage * SHELF_PAGE_SIZE,
                       (shelfPage + 1) * SHELF_PAGE_SIZE);
     body.innerHTML = '';
+    // Floor, not round: rounding drew 179.6s as "2:60" on the shelf while
+    // the slot card for the same clip said 2:59. A clock has no sixtieth
+    // second — this is call.js's fmt, spelled the same way here.
     const mmss = (secs) => secs == null ? '—'
-      : Math.floor(secs / 60) + ':' + String(Math.round(secs % 60)).padStart(2, '0');
+      : Math.floor(secs / 60) + ':' + String(Math.floor(secs % 60)).padStart(2, '0');
     rows.forEach((e) => {
       const tr = document.createElement('tr');
       const name = document.createElement('td');

@@ -74,10 +74,15 @@ class TestExposedSurface(unittest.TestCase):
         # Gated twice over, which this column is too coarse to say: a real
         # call needs the guest code, a pipeline probe needs the admin one.
         "POST /token": "admin",
-        # Frees a concurrency slot by room id. Unauthenticated on purpose —
-        # the widget calls it on hangup — and safe because the id is 48 bits
-        # of uuid4, so you cannot release a slot you were not already in.
-        "POST /call-ended": "public",          # releases a slot; no secrets
+        # Frees a concurrency slot by room id. Still unauthenticated at the
+        # door — the widget calls it on hangup and has no credential — and
+        # this column's coarseness again: what it actually wants is the
+        # per-room `release` minted with the token, and _write_allowed is the
+        # OTHER way in, for the operator's dump button. Pinned public while
+        # the id alone was enough, which was the hole: the id is handed to the
+        # caller, so a caller could free their OWN slot and walk straight back
+        # past the one-live-phone-in check and the concurrency ceiling.
+        "POST /call-ended": "admin",
         # Public deliberately: the only person with an opinion about a call is
         # the anonymous stranger who was just on it, and there is no
         # credential they could hold. All it can do is set one of two words on
@@ -590,10 +595,15 @@ class TestStationActionResults(unittest.TestCase):
     def test_read_timeout_is_unconfirmed_not_failed(self):
         # Reached the station, answer never came back — the action has run.
         self.assertTrue(self.station._sent_but_unconfirmed(self.httpx.ReadTimeout("x")))
-        self.assertTrue(self.station._sent_but_unconfirmed(self.httpx.PoolTimeout("x")))
-        # Never got there at all — that IS a failure.
+        # Never got there at all — that IS a failure. PoolTimeout is raised
+        # while WAITING FOR A CONNECTION, before one is acquired, and a
+        # WriteTimeout means the body never finished going out; both were read
+        # as "it's gone through" and told the caller their request had landed.
         self.assertFalse(
             self.station._sent_but_unconfirmed(self.httpx.ConnectTimeout("x")))
+        self.assertFalse(self.station._sent_but_unconfirmed(self.httpx.PoolTimeout("x")))
+        self.assertFalse(
+            self.station._sent_but_unconfirmed(self.httpx.WriteTimeout("x")))
         self.assertFalse(self.station._sent_but_unconfirmed(ValueError("x")))
 
     def test_a_5xx_on_a_request_is_retried_once(self):
@@ -930,3 +940,93 @@ class TestABlindCallGetsTheChatsEyes(unittest.TestCase):
         ready = src.index("station_ready")
         self.assertLess(ready, src.index("MCPToolset("))
         self.assertLess(ready, src.index("build_read_tools("))
+
+
+class TestTheBuildersAndTheRegistryAgreeGateByGate(unittest.TestCase):
+    """The registry says which switch unlocks a tool; the builder decides
+    whether to build it. Two spellings of one fact, and nothing compared them.
+
+    Named in the review's deferred tier (2026-09-17): every local builder
+    re-spells its gate as a literal `cfg.get("allow_x")`, so changing a row's
+    gate in the registry leaves the builder handing the tool out under the
+    OLD switch, with a green suite and a panel promising one thing while the
+    call line does another. `test_the_panel_never_claims_a_tool_that_will_
+    not_be_built` already guards that shape for one tool; this is the whole
+    table, one gate at a time.
+
+    The surface is assembled the way `call.session._build_tools` assembles
+    it, because that is what a caller meets. Two deliberate omissions, each
+    of which would otherwise read as a disagreement:
+
+      * the read twins (`subwave_now_playing`, `subwave_station_state`)
+        stand in for the MCP tools only where MCP is absent, so they are not
+        part of the local set;
+      * `build_call_control_tools` takes no settings at all — hanging up is
+        not a permission — so there is nothing here to agree with.
+    """
+
+    @staticmethod
+    def _surface(cfg: dict) -> set:
+        from unittest import mock
+
+        import station_config
+        from call.actions import CallActions
+        from call.tools import broadcast, curation, discovery, finding, music
+
+        actions = CallActions(5)
+        # Credentials present: without them every wrapper is (correctly)
+        # withheld and every gate would agree by building nothing.
+        with mock.patch.object(station_config, "admin_credentials",
+                               return_value=("dj", "s")):
+            local = (music.build_library_tools(cfg, None, actions)
+                     + discovery.build_discovery_tools(cfg, None, actions)
+                     + curation.build_curation_tools(cfg, None, actions)
+                     + broadcast.build_on_air_tools(cfg, None, actions, None))
+            # LAST, exactly as the session does it: the one finder replaces
+            # the tools it routes to, and it is a switch like any other.
+            local = finding.apply_finder_dispatch(cfg, local)
+        return {t.info.name for t in local}
+
+    @staticmethod
+    def _listed(cfg: dict) -> set:
+        from unittest import mock
+
+        import station_config
+        from call.tools import registry
+
+        with mock.patch.object(station_config, "admin_credentials",
+                               return_value=("dj", "s")):
+            return {n for n in registry.local_tool_names(cfg)
+                    if n not in ("subwave_now_playing", "subwave_station_state")}
+
+    def test_one_switch_at_a_time_builds_exactly_what_the_registry_lists(self):
+        from call.tools import registry
+
+        gates = sorted({t.gate for t in registry.TOOLS
+                        if t.gate not in (registry.NEVER, registry.READ)})
+        # A scan that quietly found no gates would pass this forever.
+        self.assertGreater(len(gates), 12)
+
+        disagreed = []
+        for gate in gates:
+            cfg = {gate: "admin"}
+            built, listed = self._surface(cfg), self._listed(cfg)
+            if built != listed:
+                disagreed.append(
+                    f"{gate}: built-not-listed={sorted(built - listed)} "
+                    f"listed-not-built={sorted(listed - built)}")
+        self.assertEqual(
+            disagreed, [],
+            "the registry row and the builder disagree about what this "
+            f"switch unlocks: {disagreed}")
+
+    def test_with_nothing_switched_on_only_the_free_reads_are_built(self):
+        # The floor, named rather than counted: with no permission at all a
+        # caller still gets the booth's own ledger and the lyrics of what is
+        # playing, because neither is an action and neither is the station's
+        # to refuse. A third name arriving here is a decision somebody has
+        # to make on purpose, and a builder that forgot its gate shows up
+        # here first and loudest.
+        free = {"subwave_booth_log", "subwave_current_lyrics"}
+        self.assertEqual(self._surface({}), free)
+        self.assertEqual(self._listed({}), free)

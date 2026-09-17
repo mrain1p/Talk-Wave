@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import unittest
@@ -117,8 +118,13 @@ class TestTheRoutingTableIsInOnePlace(unittest.TestCase):
         self.assertGreater(len(self.handlers), 20)
 
     def test_every_handler_in_the_package_is_routed(self):
-        orphans = sorted(f"{mod}:{name}" for name, mod in self.handlers.items()
-                         if name not in self.server)
+        # WHOLE WORD. A bare substring test passes for `handle_live` as long
+        # as `handle_live_preview` is routed, which is exactly the shape this
+        # codebase keeps producing: delete the /live route and nothing says
+        # so. `_` is a word character, so the boundary does the work.
+        orphans = sorted(
+            f"{mod}:{name}" for name, mod in self.handlers.items()
+            if not re.search(r"\b" + re.escape(name) + r"\b", self.server))
         self.assertEqual(
             orphans, [],
             "these handlers exist and nothing serves them — either register "
@@ -233,7 +239,50 @@ class TestNewCodeDoesNotArriveUntested(unittest.TestCase):
     suite at all. It does not judge how well. It exists so that adding a file
     is a decision to test it rather than an oversight, and it adapts on its own
     — a module added tomorrow is covered by this rule the moment it lands.
+
+    Low is not the same as free, and it was free until 2026-09-17: the check
+    was a substring search over the suite's whole text, so a module whose stem
+    is an ordinary word — `notes.py`, `topics.py`, `record.py` — passed on the
+    prose in somebody else's docstring. It reads NAMES now: identifiers the
+    suite's code actually uses, plus string constants that are whole dotted
+    paths (importlib and mock.patch reach modules that way). A comment can no
+    longer cover a file.
     """
+
+    @staticmethod
+    def _names_the_suite_uses(tests_dir) -> set:
+        """Every module name the suite's CODE mentions, prose excluded."""
+        import ast
+
+        seen: set = set()
+        for path in sorted(tests_dir.glob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for a in node.names:
+                        seen.add(a.name)
+                        seen.add(a.name.split(".")[-1])
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module:
+                        seen.add(node.module)
+                        seen.add(node.module.split(".")[-1])
+                    for a in node.names:
+                        seen.add(a.name)
+                elif isinstance(node, ast.Attribute):
+                    seen.add(node.attr)
+                elif isinstance(node, ast.Name):
+                    seen.add(node.id)
+                elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    # A module can be reached by string too — importlib,
+                    # mock.patch, a path joined onto AGENT_WORKER, a ledger
+                    # key. What they all have in common is NO SPACES; prose
+                    # always has them, which is the whole distinction being
+                    # drawn here. Split into parts so "call/air_verdict.py"
+                    # and "a/b.py::f.g" both name what they name.
+                    if re.fullmatch(r"[\w./\:-]+", node.value):
+                        seen.add(node.value)
+                        seen.update(re.split(r"[./\:-]+", node.value))
+        return seen
 
     def test_every_module_is_reached_by_the_suite(self):
         here = AGENT_WORKER
@@ -241,9 +290,9 @@ class TestNewCodeDoesNotArriveUntested(unittest.TestCase):
         # suite's source" and "this file" were the same string; after the split
         # they are not, and reading only this module would have quietly dropped
         # the check to whatever test_house_rules.py happens to mention.
-        suite_src = "\n".join(
-            p.read_text(encoding="utf-8")
-            for p in sorted((here / "tests").glob("*.py")))
+        named = self._names_the_suite_uses(here / "tests")
+        # A scan that quietly matched nothing would pass this forever.
+        self.assertGreater(len(named), 500)
 
         untested = []
         for path in sorted(here.rglob("*.py")):
@@ -257,7 +306,7 @@ class TestNewCodeDoesNotArriveUntested(unittest.TestCase):
                 continue
             rel = path.relative_to(here)
             dotted = str(rel.with_suffix("")).replace("\\", "/").replace("/", ".")
-            if dotted not in suite_src and path.stem not in suite_src:
+            if dotted not in named and path.stem not in named:
                 untested.append(str(rel).replace("\\", "/"))
 
         self.assertEqual(
@@ -918,6 +967,14 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "receipt card lands. Crossed the ceiling when 0.10.65 added the "
             "card-routing cases; same subject-placement rule as the modules "
             "around it.",
+        "agent-worker/tests/test_secrets_and_auth.py":
+            "one subject, and the file says it in a line: something not "
+            "leaving, or somebody not getting in. It grows a case per place a "
+            "stored secret could travel, and those places are found one at a "
+            "time — crossed the ceiling on the 2026-09-17 review pass, which "
+            "found the panel's voice lookup handing a previewed host the "
+            "stored TTS key. Same subject-placement rule as the modules "
+            "around it.",
         "agent-worker/tests/test_voice.py":
             "one subject: whether a speech backend can say the thing — "
             "discovery, sample rates, pace, and now the shipped adapter "
@@ -1045,7 +1102,15 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # the station's one-press artist run, the picks rule under it now
         # saying which asks still go through rows — and the station's own
         # playlists joined the bulk section, only ever on the caller's ask.
-        "agent-worker/brain/tool_rules.py": (756, "the declarations at the top "
+        # 782: the three triage bullets that name an ACTION moved here from
+        # conduct.running_the_call (2026-09-17), where they rode no switch
+        # and put a rule beside its own negation in one prompt. They belong
+        # on this side of the repo's own line — prose written FROM a tool,
+        # appearing and disappearing with it, exactly like takeover_bullet
+        # they now sit beside — and conduct.py came back under the ceiling
+        # by the same move. The seam recorded below is untouched: they are
+        # rule builders, and they landed with the rule builders.
+        "agent-worker/brain/tool_rules.py": (782, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
         # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —
@@ -1057,7 +1122,13 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # that has ended must not restart) joins on_user_turn_completed, the
         # same insertion point door/stuck/withheld already use — all of it on
         # the CallAgent half this split will carry away together.
-        "agent-worker/call/air.py": (765, "the CallAgent half (the reply "
+        # 798 (2026-09-17, review findings 2/3/4): OnAirGuard.disable() for
+        # the on-air relay call, the primed gate re-published at the top of
+        # watch() now the room is actually connected, and MAX_HOLD giving up
+        # the hand-over promise along with the hold. All three are the GUARD
+        # half — the state machine and what it publishes — so the recorded
+        # seam has not moved and the CallAgent half is untouched.
+        "agent-worker/call/air.py": (798, "the CallAgent half (the reply "
                                           "path) split from the guard half "
                                           "(the air state machine)"),
         # 618: the per-caller door verdicts (0.98.4) joined _for_this_caller —
@@ -1170,7 +1241,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 939 (2026-09-14): the live show is read once for its name AND its
         # id, so the pause-and-talk mirror (SUB/WAVE 1.15, #1645) can ask the
         # cached /settings read whether THIS show holds long segments.
-        "agent-worker/call/session.py": (939, "the ringing half (prepare, "
+        # 948 (2026-09-17, review findings 3/5): the relay call stands the
+        # air guard down through disable() rather than the bare flag, and the
+        # shutdown's hush beat is actually awaited. Both are comment, both in
+        # the LIVE half, and neither moves the seam.
+        "agent-worker/call/session.py": (948, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -1210,7 +1285,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 773: the owes_action flag (set at the promise-grading point,
         # cleared when a tool runs) so the idle nudge never types
         # scenery over an unmet promise.
-        "agent-worker/chat/session.py": (773, "the one-conversation half "
+        # 785 (2026-09-17, review finding 12): ChatShelf.close — the shelf's
+        # one way out, so the caller's `bye` and the message ceiling stop
+        # popping a chat and leaking the LLM client it owns. Twelve lines,
+        # all of them in the COLLECTION half the seam already names.
+        "agent-worker/chat/session.py": (785, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "
@@ -1260,11 +1339,22 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # Not cut in the change that grew it, per the standing rule: the hedge
         # is the thing under test this week and a regression in it should have
         # one candidate cause.
-        "agent-worker/tests/test_music_tools.py": (612, "the late-match class "
+        # 857 (2026-09-17): four classes for the request receipt's own
+        # verdicts — the 'answered' resolution nothing consumed, the
+        # duplicate that was counted as an action, and the per-call ledger
+        # read as if it were the live queue. They land on the
+        # search-and-request side of the seam above, so the split is no
+        # harder than it was; the late-match class has not moved.
+        "agent-worker/tests/test_music_tools.py": (857, "the late-match class "
                                                         "split from the "
                                                         "search-and-request "
                                                         "classes"),
-        "agent-worker/tests/test_onair.py": (1025, "the chunk-store half "
+        # 1122 (2026-09-17, review findings 7/8): two hush classes — a flip
+        # the station never confirmed is finished rather than believed, and a
+        # call that rings in mid-restore is not left with the station talking
+        # over it. Both on the hush side of the three-way split this entry
+        # already describes, which the next pass through here should make.
+        "agent-worker/tests/test_onair.py": (1133, "the chunk-store half "
                                                    "split from the relay "
                                                    "half"),
         # 0.10.121 pushed it over with the ducking timeline. The seam was
@@ -1322,7 +1412,14 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # in a fourth file. 713: two novelty sound packs (Arcade, Starship)
         # and tone()'s type/glide options — the synthesized packs live in the
         # engine both pages share, which is the whole design.
-        "web-widget/shared.js": (713, "the caller-facing copy tables "
+        # 756 (2026-09-17): safeStorage — one probe apiece of localStorage
+        # and sessionStorage, published as `store`/`tabStore`. It belongs
+        # here and nowhere else: reading `window.localStorage` THROWS in a
+        # cross-site embed with third-party storage blocked, and the throw
+        # was killing the Callin global before either page's script could
+        # run. It is runtime foundation, not copy, so the seam named below
+        # has not moved.
+        "web-widget/shared.js": (756, "the caller-facing copy tables "
                                       "(ASK_GROUPS, ASKS, NEVER) split from "
                                       "the runtime foundation; the crossing "
                                       "is zero in both directions"),
@@ -1340,7 +1437,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # seam) plus a docstring paragraph naming the discovery half. Both are
         # on the synthesis/config side; the seam above has not moved and the
         # discovery split is still the one worth making.
-        "agent-worker/tts_adapter.py": (669, "a voice-discovery module split "
+        # 675 on the 2026-09-17 review pass: available_voices takes
+        # allow_stored, so a previewed host is asked without the stored key
+        # (invariant 4) — on the discovery side, which is the split above.
+        "agent-worker/tts_adapter.py": (675, "a voice-discovery module split "
                                              "out from the AdapterTTS class"),
         # 0.10.113 pushed it over while rebuilding the duck: the pads were
         # collapsed into one constant and a measured voice.end was made to
@@ -1920,7 +2020,11 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         "agent-worker/api/voicemail.py::handle_voicemail_stage": (27, "Batch 2 — voicemail stage handler"),
         "agent-worker/api/settings.py::handle_settings_options": (25, "Batch 2 — provider-discovery gather"),
         # Batch 3 — the call core
-        "agent-worker/call/air.py::OnAirGuard.watch": (47, "Batch 3 — the on-air watch loop"),
+        # 47 -> 48 (2026-09-17): one branch at the top of the loop — a gate
+        # the CONSTRUCTOR primed re-publishes here, where the room is
+        # connected, because the constructor's own publish happens before
+        # ctx.connect() and is swallowed, leaving a held caller with no chip.
+        "agent-worker/call/air.py::OnAirGuard.watch": (48, "Batch 3 — the on-air watch loop"),
         "agent-worker/call/providers.py::build_llm": (34, "Batch 3 — multi-provider LLM constructor"),
         # air_verdict._push_verdict was here at 26; Batch 3 folded its three
         # speaking_secs copies into AirVerdict._spoken_secs, dropping it under

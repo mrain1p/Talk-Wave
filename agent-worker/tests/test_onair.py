@@ -208,14 +208,25 @@ class TestTheHoldIsAPromiseNotAnAccident(_RelayCase):
     """
 
     def test_a_turn_with_no_successor_airs_when_the_hold_expires(self):
+        # Waits for the PUSH, not for the wall clock. It slept a flat 0.6s
+        # against a 0.15s cap, which is a race the moment the machine is
+        # busy — it went red once in a pre-commit hook with two other test
+        # runs and a headless browser on the box, and passed alone every
+        # time after (2026-09-17). The claim is "it airs on its own when the
+        # cap expires", not "within 600ms", so the deadline is generous and
+        # the assertion is unchanged. Same shape as the sign-off waiter's
+        # own load fix (see docs/adr/review-ledger.md, 2026-09-01).
         async def run():
             r, got = self._relay()
             r.max_held_secs = 0.15
             self.assertTrue(await r.open())
             await r.feed(self._feed_file("t1.wav"), "caller", 2.0)
-            before = len([g for g in got if b"voice_queue.push" in g])
-            await asyncio.sleep(0.6)
-            after = len([g for g in got if b"voice_queue.push" in g])
+            pushes = lambda: len([g for g in got if b"voice_queue.push" in g])  # noqa: E731
+            before = pushes()
+            deadline = time.monotonic() + 8.0
+            while pushes() == before and time.monotonic() < deadline:
+                await asyncio.sleep(0.02)
+            after = pushes()
             await r.close("done")
             return before, after
 
@@ -970,6 +981,103 @@ class TestTheLiveVerdictTellsThePanelTheTruth(_HushCase):
         self.assertTrue(v["ok"])
         self.assertTrue(v["quieted"])
         self.assertEqual(v["scope"], "on_air")
+
+
+class TestAHushThatNeverLandedIsFinishedNotForgotten(_HushCase):
+    """The claim used to be written AFTER the station answered, so a POST that
+    raised left HUSH as a nought-byte file — with the open fd leaked into the
+    exception — and the janitor's fallback for an unreadable marker said
+    `verified: True`. Nothing was left to finish, nothing re-asserted, and the
+    station's own DJ talked over the entire call while the panel said the line
+    was quiet.
+    """
+
+    def _broken_post(self):
+        async def boom(path, json=None):
+            raise OSError("connection reset by peer")
+
+        return boom
+
+    def test_a_station_that_dies_mid_flip_still_leaves_a_readable_claim(self):
+        import json as _json
+
+        original = self.switch.post
+        self.switch.post = self._broken_post()
+        self._engage()                        # must not raise
+        state = _json.loads(self._hushfile().read_text())
+        self.assertFalse(state["verified"],
+                         "a flip nobody confirmed was recorded as confirmed")
+        self.assertTrue(state["prior"])
+        self.assertEqual(state["by"], "callin-t1",
+                         "the claim must still say whose it is")
+        # And the next tick finishes it, because the call is still up.
+        self.switch.post = original
+        self.switch.posts.clear()
+        self._tick()
+        self.assertEqual(self.switch.posts, [{"tts": {"enabled": False}}])
+        self.assertFalse(self.switch.enabled)
+        self.assertTrue(_json.loads(self._hushfile().read_text())["verified"])
+
+    def test_an_unreadable_marker_is_re_asserted_not_believed(self):
+        # The truncated-file case the leaked fd used to produce. Whatever it
+        # says, an empty marker cannot be evidence that the switch went down.
+        self._engage()
+        self._hushfile().write_text("")
+        self.switch.enabled = True            # as if the flip never happened
+        self.switch.posts.clear()
+        self._tick()                          # the call marker is still fresh
+        self.assertEqual(self.switch.posts, [{"tts": {"enabled": False}}],
+                         "the janitor took an empty marker's word for it")
+
+
+class TestARestoreCannotStrandALiveCall(_HushCase):
+    """The restore is two station round-trips long, and a call that engaged
+    inside them found HUSH already on disk and returned early — believing a
+    sibling call had the station quiet. It did not: the janitor was in the
+    middle of handing the voice back, and nothing was left to re-quiet it. The
+    new call then ran with the station's own DJ talking over it.
+    """
+
+    def test_a_call_that_arrives_mid_restore_keeps_the_station_quiet(self):
+        arrived = []
+
+        async def _a_call_rings_in():
+            # Exactly what the worker does, in the window between the
+            # janitor's read and its unlink.
+            await self.hush.engage({}, "callin-late")
+            arrived.append(True)
+
+        real_get = self.switch.get
+
+        async def get(path):
+            self.switch.get = real_get        # the first read only
+            await _a_call_rings_in()
+            return await real_get(path)
+
+        async def _run():
+            await self.hush.engage({}, "callin-t1")
+            self.hush.call_ended("callin-t1")   # the last call out
+            self.switch.posts.clear()
+            self.switch.get = get
+            await self.hush.janitor_tick({})
+
+        asyncio.run(_run())
+        self.assertTrue(arrived, "the interleave never happened")
+        self.assertFalse(self.switch.enabled,
+                         "the station was left talking over a live call")
+        self.assertTrue(self._hushfile().exists(),
+                        "the claim went with the restore, so nothing would "
+                        "ever put the voice back either")
+        self.assertTrue((chunks.SERVE_DIR / "HUSH-CALL-callin-late").exists())
+
+    def test_with_nobody_on_the_line_the_restore_still_completes(self):
+        # The re-check must not become a janitor that never lets go.
+        self._engage()
+        self.hush.call_ended("callin-t1")
+        self.switch.posts.clear()
+        self._tick()
+        self.assertEqual(self.switch.posts, [{"tts": {"enabled": True}}])
+        self.assertFalse(self._hushfile().exists())
 
 
 class TestSessionWiringForHush(unittest.TestCase):

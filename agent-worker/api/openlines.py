@@ -56,6 +56,12 @@ def status_payload() -> dict:
         "secondsLeft": int(state.seconds_left(record)) if live else 0,
         "remindersSent": int(record.get("reminders_sent") or 0),
         "reminderMax": int(record.get("reminder_max") or 0),
+        # The card has printed "0 answers reported" since the stat was added:
+        # it reads `followupsSent`, which this payload never sent, while the
+        # record has counted `followups_sent` all along (2026-09-17). The row
+        # beside it prints an em dash rather than a zero it cannot back up —
+        # this one was backing a real number with nothing.
+        "followupsSent": int(record.get("followups_sent") or 0),
         "source": str(record.get("source") or ""),
         "openedBy": str(record.get("opened_by") or ""),
         "closedReason": str(record.get("closed_reason") or ""),

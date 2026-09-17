@@ -2029,3 +2029,147 @@ class TestTheSpeechActTreeIsTheLexiconTree(unittest.TestCase):
                 "deliverable")
         finally:
             c.TIMEOUT_SECS = old
+
+
+class TestABulkRefusalReadsAsOne(unittest.TestCase):
+    """The promise guard could not see a refused album, mix, playlist or
+    clear-out.
+
+    `spoken_rules._REFUSED` reads the house phrasing rather than a status
+    field — that sentence IS the contract — but the four BULK tools each
+    ended in their own words about their own object ("do NOT claim the album
+    is lined up", "do NOT claim a clear-out happened") and matched none of
+    its alternatives. So whenever the station gave a REAL reason for turning
+    a batch away, reads_as_a_refusal() was False, `state['refused']` never
+    armed, and the DJ could tell the caller "that's five in the queue" with
+    no nudge and no problem recorded. Every one of these is a refusal WITH a
+    station reason, which is the case that was broken — a bare one already
+    worked.
+    """
+
+    def _tools(self, station, actions=None, **cfg):
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: False
+        try:
+            built = build_library_tools(
+                {"allow_album_queue": True, "allow_cancel_queue": True,
+                 **cfg},
+                station, actions or CallActions(9))
+        finally:
+            music.library_search_needs_mcp = orig
+        return {t.info.name: t for t in built}
+
+    WHY = "requests are closed until the top of the hour"
+
+    class _Station:
+        """Refuses every write, with words, and answers every read."""
+
+        WHY = "requests are closed until the top of the hour"
+
+        def __init__(self):
+            self.rows = [{"id": "id1", "title": "Track 1",
+                          "artist": "Eminem", "album": "Rumours"}]
+
+        async def search_library(self, q, offset=0, limit=100):
+            return list(self.rows) if offset == 0 else []
+
+        async def queue_track(self, track):
+            return {"ok": False, "error": self.WHY}
+
+        async def queue_block(self, kind, track_id="", block_id="",
+                              artist="", limit=None, order=""):
+            return {"ok": False, "error": self.WHY}
+
+        async def cancel_queued_block(self, block_id):
+            return {"ok": False, "reason": "nothing-left", "error": "gone"}
+
+        async def cancel_queued_track(self, tid):
+            return {"ok": False, "error": self.WHY}
+
+        async def state(self):
+            return {"upcoming": [{"subsonic_id": "id1", "title": "Track 1",
+                                  "artist": "Eminem"}]}
+
+        async def playlists(self):
+            return [{"id": "pl1", "name": "Sunday chill", "songCount": 1}]
+
+        async def playlist_tracks(self, playlist_id):
+            return list(self.rows)
+
+    def _refused(self, tool, station=None, **kwargs):
+        names = self._tools(station or self._Station())
+        return asyncio.run(names[tool](**kwargs))
+
+    #: (tool, kwargs, whether the station's own words reach the return). The
+    #: clear-out's per-track failures are collected as NAMES, not reasons —
+    #: it has always said "the station refused them" — so only the refusal
+    #: reading is checkable there.
+    BULK = (
+        ("subwave_queue_album", {"album": "Rumours"}, True),
+        ("subwave_queue_mix", {"artist": "Eminem"}, True),
+        ("subwave_queue_playlist", {"name": "Sunday chill"}, True),
+        ("subwave_clear_from_queue", {"artist": "Eminem"}, False),
+    )
+
+    def test_every_bulk_refusal_with_a_reason_reads_as_a_refusal(self):
+        import spoken_rules
+
+        for tool, kwargs, verbatim in self.BULK:
+            with self.subTest(tool=tool):
+                out = self._refused(tool, **kwargs)
+                if verbatim:
+                    # The station's own words still travel…
+                    self.assertIn(self.WHY, out)
+                # …and the guard can now see that nothing happened.
+                self.assertTrue(
+                    spoken_rules.reads_as_a_refusal(out),
+                    f"{tool} refused with a reason and read as a SUCCESS: {out!r}")
+
+    def test_the_blocks_own_refusals_read_as_refusals_too(self):
+        # The one-press paths, which have their own returns in blocks.py.
+        # A JSON-bodied refusal, not the bodiless 404 that means "this
+        # station has no such route" — the station only flags `unsupported`
+        # for the latter.
+        import spoken_rules
+
+        why = self.WHY
+
+        class _Blocks(TestABulkRefusalReadsAsOne._Station):
+            async def queue_block(self, kind, track_id="", block_id="",
+                                  artist="", limit=None, order=""):
+                return {"ok": False, "error": why}
+
+        for tool, kwargs in (
+            ("subwave_queue_album", {"album": "Rumours"}),
+            ("subwave_queue_mix", {"artist": "Eminem", "count": 3}),
+        ):
+            with self.subTest(tool=tool):
+                out = self._refused(tool, station=_Blocks(), **kwargs)
+                self.assertIn(why, out)
+                self.assertTrue(spoken_rules.reads_as_a_refusal(out), out)
+
+    def test_a_timed_out_clear_out_still_reads_as_one(self):
+        # Not a station refusal — nobody said no — but nothing came out
+        # either, so the guard must still arm on the claim that follows.
+        import spoken_rules
+
+        self.assertTrue(spoken_rules.reads_as_a_refusal(
+            "Nothing came out of the queue: time ran out. Tell the caller "
+            "plainly — do NOT claim a clear-out happened."))
+
+    def test_an_ordinary_success_is_not_read_as_a_refusal(self):
+        # The guard on the guard: a widened pattern that fires on a receipt
+        # would arm the nudge on every landed queue in the call.
+        import spoken_rules
+
+        for line in (
+            'Queued the album "Rumours" by Fleetwood Mac: 11 track(s), in '
+            "the record's own running order. It is NOT playing yet.",
+            '"Africa" is in the queue — that exact recording, no stand-in.',
+            "Pulled 3 track(s) out of the queue. They will not play.",
+        ):
+            self.assertFalse(spoken_rules.reads_as_a_refusal(line), line)

@@ -241,6 +241,80 @@ class TestChatsEndInsteadOfAccumulating(_TempStores):
         self.assertEqual(shelf.chats, {})
 
 
+class TestEveryEndedChatLetsGoOfItsClient(_TempStores):
+    """Each chat owns its own LLM client (0.10.117) and each client owns an
+    httpx connection pool, so a chat that leaves the shelf without being
+    closed leaks one — quietly, for the life of the web process.
+
+    ChatShelf.sweep was the only path that ever closed one. The caller's `bye`
+    and the message/age ceiling both popped SHELF.chats by hand, which are the
+    two ways a BUSY line ends — so the leak grew fastest exactly where there
+    was most traffic.
+    """
+
+    def _shelf_with_a_model(self, closes):
+        from chat.session import ChatShelf
+
+        class _Model:
+            async def aclose(self):
+                closes.append(1)
+
+        shelf = ChatShelf()
+        chat = shelf.get_or_open(None, "open", {})
+        chat._llm = _Model()
+        return shelf, chat
+
+    def test_closing_a_chat_closes_its_client_exactly_once(self):
+        closes: list = []
+        shelf, chat = self._shelf_with_a_model(closes)
+
+        async def _run():
+            shelf.close(chat.id)
+            await asyncio.sleep(0)       # the aclose is spawned, not awaited
+            await asyncio.sleep(0)
+
+        asyncio.run(_run())
+        self.assertEqual(shelf.chats, {})
+        self.assertEqual(len(closes), 1)
+
+    def test_closing_the_same_chat_again_is_a_no_op(self):
+        # Both the ceiling and the socket's own teardown can reach for the
+        # same chat, and a second close must not double-close the client.
+        closes: list = []
+        shelf, chat = self._shelf_with_a_model(closes)
+
+        async def _run():
+            shelf.close(chat.id)
+            shelf.close(chat.id)
+            shelf.close("never-existed")
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+
+        asyncio.run(_run())
+        self.assertEqual(len(closes), 1)
+
+    def test_closing_outside_a_loop_still_drops_the_chat(self):
+        # The tests and any sync caller: with no running loop there is no
+        # client to close either, because nothing was ever built.
+        closes: list = []
+        shelf, chat = self._shelf_with_a_model(closes)
+        shelf.close(chat.id)             # must not raise
+        self.assertEqual(shelf.chats, {})
+
+    def test_the_bye_and_the_ceiling_both_go_through_the_shelf(self):
+        # Source, because reaching either needs a live websocket. The bare
+        # pop is the leak.
+        import inspect
+
+        from api import chat as api_chat
+
+        src = inspect.getsource(api_chat.handle_chat_ws)
+        self.assertNotIn("SHELF.chats.pop", src)
+        self.assertEqual(src.count("SHELF.close(chat.id)"), 2,
+                         "both the caller's End and the ceiling close the "
+                         "chat properly")
+
+
 class TestTheTypedBrainIsTheSameBrainInADifferentRegister(unittest.TestCase):
     """conduct_chat states rules for TYPING; the medium-independent blocks
     (triage, tool etiquette, the stranger rule) are imported from the spoken
@@ -1155,8 +1229,11 @@ class TestAChatIsOneConversationNotAStringOfStrangers(_TempStores):
 
         from chat.session import ChatShelf
 
-        src = inspect.getsource(ChatShelf.sweep)
-        self.assertIn("aclose", src)
+        # The letting-go moved into ChatShelf.close, which is now the only
+        # way a chat leaves the shelf — see TestEveryEndedChatLetsGoOfIts
+        # Client for why the sweep stopped being the only closer.
+        self.assertIn("aclose", inspect.getsource(ChatShelf.close))
+        self.assertIn("self.close(chat_id)", inspect.getsource(ChatShelf.sweep))
 
 
 class TestToolResultsGoBackAsText(_TempStores):

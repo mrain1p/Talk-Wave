@@ -132,6 +132,18 @@ def build_read_tools(cfg: dict, station: StationClient,
                     "It is NOT queued. Say so plainly rather than leaving "
                     "them expecting it."
                 )
+            if verdict == "answered":
+                # The booth replied in words and queued nothing — its own
+                # resolution, not a pruned request. This branch was missing,
+                # so "did my request go in?" was answered "pruned or lost to
+                # a restart" about a request the station had just answered.
+                return (
+                    "The booth answered that request in words and queued "
+                    "NOTHING: there is no track in the queue for it. "
+                    + (f"The station said: {ack}. " if ack else "")
+                    + "Relay the reply; do not promise a title or a time, "
+                    "and do not tell them it was lost."
+                )
             if verdict == "standing":
                 return (
                     "That request matched " + _fmt_track(track) + ", but the "

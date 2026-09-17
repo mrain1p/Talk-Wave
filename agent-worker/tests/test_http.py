@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import types
 import unittest
 from tests.support import REPO, _FakeRequest, _TempStores
@@ -723,6 +724,224 @@ class TestCallerIdentitySurvivesTwoProxies(unittest.TestCase):
         # itself unattributable — the walk stops at the first untrusted entry.
         self.assertEqual(
             self._key("172.19.0.1", "10.0.0.5, 8.8.4.4"), "8.8.4.4")
+
+    def test_every_hop_trusted_falls_back_to_the_socket(self):
+        # "Fails safe either way — if every hop is trusted there is nobody
+        # left to blame but the socket" is what the walk's own comment
+        # promises, and the code did the opposite: it returned hops[0], the
+        # LEFTMOST entry, which is the one the client wrote. So filling the
+        # header with trusted-looking addresses bought exactly the free
+        # rotation through cooldown buckets that taking the rightmost entry
+        # exists to deny.
+        self.assertEqual(
+            self._key("10.0.0.8", "10.0.0.5, 10.0.0.9", trusted="10.0.0.0/8"),
+            "10.0.0.8")
+
+
+class TestTheSettingsApiRegistersThroughTheLock(unittest.TestCase):
+    """Saving a secret retries webhook registration, and it used to do that
+    with a bare `asyncio.create_task(register_station_webhook())` — around
+    _register_once, which holds the lock api/hooks.py documents. That lock
+    exists because two concurrent registrations raced load->mint->store on the
+    shared secret and left the station holding one and disk another. Startup
+    fires two of them already; a save landing in the same second makes three.
+    The task reference is kept for the same reason api/tokens does: a
+    collected task turns registration off with nothing logged."""
+
+    def test_it_goes_through_register_once_and_keeps_the_task(self):
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "api" / "settings.py").read_text(encoding="utf-8")
+        self.assertNotIn("register_station_webhook", src,
+                         "settings.py must go through hooks._register_once")
+        self.assertIn("_register_once()", src)
+        self.assertIn("add_done_callback(_register_tasks.discard)", src)
+
+
+class TestACallerCannotFreeTheirOwnSlot(unittest.TestCase):
+    """/call-ended is public — a hanging-up browser holds no credential — and
+    it used to pop whatever room string it was handed. The room id IS given to
+    the caller, so a caller sitting on the one live phone-in could free their
+    own slot and ring straight back, past the one-live-phone-in check, past
+    max_concurrent_calls, and past the operator's dump button, as often as
+    they liked. What the route wants now is the per-room `release` minted with
+    the token; the admin gate is the other way in, for the panel.
+
+    The answer stays {"ok": true} either way: a caller probing this learns
+    nothing from it, and a stale tab replaying an old room is not an error
+    worth putting on anybody's screen.
+    """
+
+    ROOM = "callin-g-0123456789ab"
+
+    def setUp(self):
+        import tempfile
+        import time
+        from pathlib import Path
+
+        import admin_auth
+        from api import tokens as api_tokens
+
+        self.ts = api_tokens
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self._old_auth_path = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._tmp.name) / "admin-auth.json"
+        admin_auth.set_password("a-real-password")
+        api_tokens._live_calls.clear()
+        api_tokens._call_release.clear()
+        api_tokens._live_calls[self.ROOM] = time.time()
+        api_tokens._call_release[self.ROOM] = "the-minted-one"
+
+    def tearDown(self):
+        import admin_auth
+
+        admin_auth.AUTH_PATH = self._old_auth_path
+        self.ts._live_calls.clear()
+        self.ts._call_release.clear()
+
+    def _still_live(self, body, headers=None):
+        class _Req(types.SimpleNamespace):
+            def __setitem__(self, k, v):
+                setattr(self, k, v)
+
+        async def _json():
+            return body
+
+        resp = asyncio.run(self.ts.handle_call_ended(_Req(
+            headers=headers or {}, remote="203.0.113.7", json=_json)))
+        self.assertEqual(json.loads(resp.body.decode()), {"ok": True})
+        return self.ROOM in self.ts._live_calls
+
+    def test_the_room_id_alone_no_longer_frees_the_slot(self):
+        self.assertTrue(self._still_live({"room": self.ROOM}))
+
+    def test_a_guessed_release_does_not_free_it_either(self):
+        self.assertTrue(
+            self._still_live({"room": self.ROOM, "release": "the-minted-two"}))
+
+    def test_the_minted_release_frees_it(self):
+        self.assertFalse(
+            self._still_live({"room": self.ROOM, "release": "the-minted-one"}))
+
+    def test_the_operators_admin_key_frees_it_without_the_secret(self):
+        # The panel's dump button holds the password, not the caller's secret.
+        self.assertFalse(self._still_live(
+            {"room": self.ROOM}, headers={"X-Admin-Key": "a-real-password"}))
+
+    def test_a_freed_room_takes_its_secret_with_it(self):
+        self._still_live({"room": self.ROOM, "release": "the-minted-one"})
+        self.assertNotIn(self.ROOM, self.ts._call_release)
+
+    def test_the_mint_hands_the_browser_its_release(self):
+        # Without this in the answer the widget has nothing to send back, and
+        # every slot would sit held until the 30-minute age-out.
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "api" / "tokens.py").read_text(encoding="utf-8")
+        self.assertIn('"release": release', src)
+
+
+class TestTheWorkersOwnBeaconStillFreesTheSlot(unittest.TestCase):
+    """The crashed-tab case, which is the whole reason the beacon exists.
+
+    Closing /call-ended to the room id alone shut the WORKER out with it: it
+    runs in the other container, it never saw the mint, and with a panel
+    password set it holds no admin credential either — so the one beacon that
+    always fires would have been ignored and every dead session would have sat
+    on a slot for the full 30-minute age-out (caught reviewing the fix itself,
+    2026-09-17). It signs the room with the LiveKit secret both containers
+    already run on; room_release owns that rule for both halves.
+    """
+
+    ROOM = "callin-g-ba9876543210"
+
+    def setUp(self):
+        import tempfile
+        import time
+        from pathlib import Path
+
+        import admin_auth
+        from api import tokens as api_tokens
+
+        self.ts = api_tokens
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self._old_auth_path = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._tmp.name) / "admin-auth.json"
+        admin_auth.set_password("a-real-password")
+        self._old_secret = os.environ.get("LIVEKIT_API_SECRET")
+        os.environ["LIVEKIT_API_SECRET"] = "the-shared-livekit-secret"
+        api_tokens._live_calls.clear()
+        api_tokens._call_release.clear()
+        api_tokens._live_calls[self.ROOM] = time.time()
+        api_tokens._call_release[self.ROOM] = "the-browsers-one"
+
+    def tearDown(self):
+        import admin_auth
+
+        admin_auth.AUTH_PATH = self._old_auth_path
+        if self._old_secret is None:
+            os.environ.pop("LIVEKIT_API_SECRET", None)
+        else:
+            os.environ["LIVEKIT_API_SECRET"] = self._old_secret
+        self.ts._live_calls.clear()
+        self.ts._call_release.clear()
+
+    def _still_live(self, body):
+        class _Req(types.SimpleNamespace):
+            def __setitem__(self, k, v):
+                setattr(self, k, v)
+
+        async def _json():
+            return body
+
+        resp = asyncio.run(self.ts.handle_call_ended(_Req(
+            headers={}, remote="127.0.0.1", json=_json)))
+        self.assertEqual(json.loads(resp.body.decode()), {"ok": True})
+        return self.ROOM in self.ts._live_calls
+
+    def test_the_workers_signature_frees_the_slot(self):
+        import room_release
+
+        self.assertFalse(self._still_live(
+            {"room": self.ROOM,
+             "release": room_release.worker_release(self.ROOM)}))
+
+    def test_a_signature_for_another_room_does_not(self):
+        import room_release
+
+        self.assertTrue(self._still_live(
+            {"room": self.ROOM,
+             "release": room_release.worker_release("callin-g-someone-else")}))
+
+    def test_a_caller_cannot_forge_it_without_the_secret(self):
+        # The caller is handed a room id and a token, never the secret that
+        # signs them — so the id they hold computes nothing.
+        import hashlib
+
+        self.assertTrue(self._still_live(
+            {"room": self.ROOM,
+             "release": hashlib.sha256(self.ROOM.encode()).hexdigest()}))
+
+    def test_no_secret_in_the_environment_proves_nothing(self):
+        import room_release
+
+        signed = room_release.worker_release(self.ROOM)
+        os.environ.pop("LIVEKIT_API_SECRET", None)
+        self.assertEqual(room_release.worker_release(self.ROOM), "")
+        self.assertFalse(room_release.matches(self.ROOM, ""))
+        self.assertTrue(self._still_live({"room": self.ROOM,
+                                          "release": signed}))
+
+    def test_the_beacon_the_worker_sends_carries_it(self):
+        # The two halves have to agree on the field, and only the source can
+        # say so: lifecycle's beacon runs in the other container.
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "call" / "lifecycle.py").read_text(
+            encoding="utf-8")
+        self.assertIn("room_release.worker_release(room)", src)
 
 
 class TestCallFeedbackRejectsGarbageRoomsCheaply(unittest.TestCase):
