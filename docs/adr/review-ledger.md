@@ -566,3 +566,62 @@ search, with no queue call). That is the class the promise guard exists for, and
 the guard was blind to a whole family of refusals (fixed this pass). Eight tools
 were reported "never called" because the coverage set had no ask for them; the
 set now reaches them.
+
+### The two judgement calls, run through (2026-09-17)
+
+The review closed with two items that were judgement rather than fact. Both
+were wrong to leave, and both cost something when chased.
+
+**1. The drill resolved every permission at the admin tier**, so the request
+path — the one an actual deployment leaves an anonymous caller — was never
+walked, and two request tools had never been exercised at all. `TIER=open|
+guest|admin` fixes that; `GATES=shipped TIER=open` is the default deployment
+met by an anonymous caller, and is the only shape that reaches the request
+path, because the exact queue is an admin permission and with it in hand the
+DJ picks for itself instead.
+
+It found a fault on the first run, and the fault is a class, not an instance.
+A tool's own RESULT is an instruction, and it is the one the model reads
+LAST, after the whole prompt. The prompt's action rules have ridden their
+switches since 0.98.51; the strings the tools hand back never did. Six of
+them named a tool the line might not have — the four results lists that end
+"now queue it", the sound search's two dead ends pointing at a request,
+booth_log's pointer at the play log, and the mix tool's aside about single
+tracks. On the shipped defaults the DJ read one, reached for
+`subwave_queue_track`, was refused, and told the caller the record had
+landed: the mimed action `OFF_LIST` exists to prevent, arriving through the
+one channel nothing was watching.
+
+`registry.on_the_surface` is now the single answer to "will this line be
+handed that tool", asked of the registry rather than guessed from a gate
+name — which is the first repayment on the "every builder re-spells its gate
+as a literal" item deferred above. `call/tools/next_move.py` holds the three
+phrases that were written into four tools each, each with a real answer for
+the line that can do neither.
+`TestAResultNeverNamesAToolThisLineHasNot` sweeps the built surface at five
+permission shapes. `ALL_ON` in the discovery tests meant "the two switches
+that build these tools", which is why every test in that file ran on a line
+without the exact queue and not one of them read the sentence.
+
+**2. `TestHiddenActuallyHides` had an escape hatch** — it accepted any
+`[hidden]` rule naming any of the element's classes anywhere in the sheet,
+which is not the question a browser asks, and is why four shipped faults got
+past it: each had a twin, and each twin lost. It reads the cascade now
+(brace-aware, so an @media block is visible at all; panel.css included,
+which it had never opened; and a spot rule counts only when it beats the
+display rule it answers).
+
+Two came back, one measured and one not. `.facebar` had had a spot rule since
+it was written and lost to the landscape rail five classes to two: a face bar
+the script had hidden painted **56x390 down the left edge of a landscape
+phone under 560px tall**, confirmed in the browser and now a witness in
+`tools/widget_check.py` at that viewport. `.plpanelbody` is the scan's
+deliberate over-match being paid — it ignores ancestor context on purpose,
+the four-class quote layout does not actually reach the two bodies that ship
+hidden, and the browser says they hide. The spot rule stands as the
+precaution that trade asks somebody to write once.
+
+**Not re-run end to end.** The drill runs inside the deployed worker against
+the image on the NAS, so the queue fix above is proved by the suite rather
+than by a second sweep; the sweep worth having is the one after the release,
+against an image that carries it.
