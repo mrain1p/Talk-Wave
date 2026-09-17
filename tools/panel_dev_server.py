@@ -351,6 +351,33 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
+        # A mint, so the call page's own token path can be driven here.
+        # There is no LiveKit behind this stub, so a press ends in the
+        # card's connect-failure reset rather than on a call — which is the
+        # honest local answer, and that reset is worth being able to look
+        # at.
+        #
+        # `release` is the ROOM'S OWN SECRET: the server hands it out with
+        # the token and requires it back on /call-ended, so only the browser
+        # that was given the room can hang it up. The fixture carries one so
+        # the widget's half of that contract is drivable without a station.
+        if self.path.split("?")[0] == "/token":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                self.rfile.read(n)
+            except Exception:
+                pass
+            return self._json({"token": "stub-token", "room": "stub-room",
+                               "url": "ws://127.0.0.1:1/stub",
+                               "release": "stub-release"})
+        # The other half, so a released room does not 404 in the console.
+        if self.path.split("?")[0] == "/call-ended":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                self.rfile.read(n)
+            except Exception:
+                pass
+            return self._json({"ok": True})
         # The player's listener actions, from fixtures — enough to drive the
         # heart filling and the SENT beat without a station.
         if self.path.split("?")[0] == "/player/like":

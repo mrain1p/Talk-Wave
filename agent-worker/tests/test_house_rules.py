@@ -1322,7 +1322,14 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # in a fourth file. 713: two novelty sound packs (Arcade, Starship)
         # and tone()'s type/glide options — the synthesized packs live in the
         # engine both pages share, which is the whole design.
-        "web-widget/shared.js": (713, "the caller-facing copy tables "
+        # 756 (2026-09-17): safeStorage — one probe apiece of localStorage
+        # and sessionStorage, published as `store`/`tabStore`. It belongs
+        # here and nowhere else: reading `window.localStorage` THROWS in a
+        # cross-site embed with third-party storage blocked, and the throw
+        # was killing the Callin global before either page's script could
+        # run. It is runtime foundation, not copy, so the seam named below
+        # has not moved.
+        "web-widget/shared.js": (756, "the caller-facing copy tables "
                                       "(ASK_GROUPS, ASKS, NEVER) split from "
                                       "the runtime foundation; the crossing "
                                       "is zero in both directions"),

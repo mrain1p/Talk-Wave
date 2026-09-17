@@ -8,7 +8,7 @@
 (function () {
   const {
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
-    applySkin, skinForced, LINK_ICONS,
+    applySkin, skinForced, LINK_ICONS, store,
     ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
     ctx, resetCtx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume, THEME_ICONS,
@@ -225,7 +225,7 @@
     const btn = $('themeBtn');
     if (!btn) return;
     const opts = themeOptions();
-    const cur = localStorage.getItem('callinTheme') || '';
+    const cur = store.getItem('callinTheme') || '';
     const here = opts.includes(cur) ? cur : '';
     const next = opts[(opts.indexOf(here) + 1) % opts.length];
     // Drawn, not typed (shared.js THEME_ICONS): the sun glyph read as a
@@ -253,10 +253,10 @@
     if (!btn || themeForcedByHost) return;
     btn.onclick = () => {
       const opts = themeOptions();
-      const cur = localStorage.getItem('callinTheme') || '';
+      const cur = store.getItem('callinTheme') || '';
       const next = opts[(opts.indexOf(opts.includes(cur) ? cur : '') + 1) % opts.length];
-      if (next) localStorage.setItem('callinTheme', next);
-      else localStorage.removeItem('callinTheme');
+      if (next) store.setItem('callinTheme', next);
+      else store.removeItem('callinTheme');
       applyThemeChoice(next);
     };
     [$('plThemeBtn'), $('gdThemeBtn')].forEach((b) => {
@@ -281,7 +281,7 @@
     const key = tokens ? JSON.stringify(tokens) : '';
     if (!tokens || key === lastPalette) { if (key) lastPalette = key; return; }
     lastPalette = key;
-    const stored = localStorage.getItem('callinTheme') || '';
+    const stored = store.getItem('callinTheme') || '';
     if (stored === 'station') {
       applyThemeChoice('station');           // reads the fresh `live`
     } else if (!stored && d.theme === 'station' && !themeForcedByHost) {
@@ -295,7 +295,7 @@
     const root = document.documentElement;
     // A viewer's stored choice — including 'station', which the old
     // light/dark bootstrap cannot apply — beats the operator's default.
-    const stored = localStorage.getItem('callinTheme') || '';
+    const stored = store.getItem('callinTheme') || '';
     if (stored) {
       applyThemeChoice(stored);
       return;
@@ -317,12 +317,12 @@
       // operator's default look; the toggle is the viewer's explicit choice,
       // and it clears these tokens to make itself visible (shared.js) — so a
       // poll re-applying them would undo the click within twenty seconds.
-      if (localStorage.getItem('callinTheme')) return;
+      if (store.getItem('callinTheme')) return;
       root.setAttribute('data-theme', palette.mode === 'light' ? 'light' : 'dark');
       applyTokens(palette.tokens);
       return;
     }
-    if (!localStorage.getItem('callinTheme')) {
+    if (!store.getItem('callinTheme')) {
       // The host's soft default fills the gap nothing stronger claimed —
       // removing the attribute here used to wipe it on the first /live.
       if (themeDefault === 'light' || themeDefault === 'dark') {
@@ -350,7 +350,7 @@
     // /live or the host's swtv:theme lands (radio.drearburh.uk, embedded on a
     // SUB/WAVE page that posts its palette after the frame paints — the coral →
     // purple flash reported 2026-08-10). shared.js reads this at boot.
-    try { localStorage.setItem('callinPalette', JSON.stringify(tokens)); } catch (e) { /* private mode */ }
+    try { store.setItem('callinPalette', JSON.stringify(tokens)); } catch (e) { /* private mode */ }
   }
 
   // Station mode (HOST-STYLE-GUIDE §2). The host dresses itself in the on-air
@@ -423,7 +423,7 @@
     // An optional mode rides with the tokens, at themeDefault strength: it
     // fills the light/dark answer only while the viewer has not chosen.
     if ((msg.mode === 'light' || msg.mode === 'dark')
-        && !localStorage.getItem('callinTheme')) {
+        && !store.getItem('callinTheme')) {
       document.documentElement.setAttribute('data-theme', msg.mode);
     }
     applyTokens(msg.tokens);
@@ -1476,7 +1476,19 @@
   // whatever was on screen when the operator clicked into the field.
   let lineboxHeld = null;
 
-  function setStatus(text, state) {
+  // A line the next /live poll must NOT sweep. endCall writes 'Call ended'
+  // and then calls refreshLive() and burstLive() itself, and the idle
+  // repaint runs setStatus('') because the card is idle again — so the one
+  // sentence the caller was meant to read lived about as long as a round
+  // trip, and the four-second burst repeated the erasure for forty. Same
+  // for 'No answer', 'Message received' and the studio's 'On its way to
+  // air'. Whoever writes the next line owns the flag, so an ordinary
+  // setStatus clears it; the door code's gate clears it by hand, because it
+  // is the one action that opens without writing a line of its own.
+  let statusHeld = false;
+
+  function setStatus(text, state, hold) {
+    statusHeld = !!hold;
     if (lineboxHeld) {
       lineboxHeld.text = text;
       lineboxHeld.dot = 'dot' + (state ? ' ' + state : '');
@@ -1955,6 +1967,10 @@
   // paintIdleButtons and by the idle status line, so the button and the
   // sentence under it cannot tell two different stories.
   let lineClosedNow = false;
+  // …and whether the machine is the ONLY door. Same arrangement and the
+  // same reason: the button and the sentence under it are painted in two
+  // places and must not be able to tell two different stories.
+  let vmOnlyNow = false;
 
   function paintIdleButtons(d) {
     if (room) return;
@@ -1984,6 +2000,7 @@
     // switched off) makes the line voicemail-only.
     const vmOnly = machineOn && !lineClosedNow
       && (vmPolicy() === 'always' || d.liveCalls === false);
+    vmOnlyNow = vmOnly;
     const vmHere = vmOnly
       || (machineOn && !lineClosedNow && vmPolicy() === 'closed' && !d.onAir);
     // The phone-in switch: only when the server says the door is open AND
@@ -2112,8 +2129,16 @@
         ? { headers: { 'X-Call-Key': callKey() } } : undefined);
       if (!r.ok) throw new Error('unreachable');
       const d = await r.json();
+      // Asked BEFORE the stamp, and of the stamp rather than of `live`.
+      // `!live` was the old question, and the catch below sets `live = {}`
+      // on a real outage — so ONE failed first poll answered it false for
+      // ever, and the whole first-paint block (the skin, the door order,
+      // the operator's theme, the theme glyph, the music handoff, the
+      // abilities read, the player's auto-open) never ran again for the
+      // life of that page. lastLiveAt is only ever written by a GOOD poll,
+      // which is the question that was meant all along.
+      const first = !lastLiveAt;
       lastLiveAt = Date.now();
-      const first = !live;
       live = d;
       // The kiosk clock: a stored code past the operator's ceiling is
       // forgotten before anything else reads it, and the door re-locks.
@@ -2446,8 +2471,17 @@
           // button — "Line closed" alone left callers wondering whose fault
           // it was. Deliberate state, quiet colour, never 'error'.
           setStatus("The booth isn't taking calls at the moment", '');
-        } else {
-          setStatus('');
+        } else if (!statusHeld) {
+          // A voicemail-only line SAYS so under the card. `message_only` has
+          // a schema entry, a panel field, a /live slot and a preview in the
+          // panel, and nothing on the card had ever read it — the operator
+          // could write their wording for the state and watch it land
+          // nowhere (2026-09-17).
+          //
+          // The !statusHeld guard is the other half of the same line: this
+          // is the setStatus('') that used to wipe 'Call ended' one poll
+          // after it was written.
+          setStatus(vmOnlyNow ? word('message_only', 'Message only') : '');
         }
         paintBoard(d);
       }
@@ -2596,7 +2630,14 @@
     }
   }
 
-  function gateSubmit() { return signinMode ? submitSignin() : submitGuestCode(); }
+  function gateSubmit() {
+    // Every other action writes its own status line, which clears the hold
+    // on the way past; the gate writes into its own message row instead, so
+    // a held 'Call ended' would have stood over the code the caller is
+    // typing. Typing a code is starting something new.
+    statusHeld = false;
+    return signinMode ? submitSignin() : submitGuestCode();
+  }
 
   if ($('signinBtn')) $('signinBtn').onclick = openSignin;
   // The ask list lives on the CARD (and an embed's host has to make room
@@ -3564,6 +3605,21 @@
       && !!(live && live.onAirCalls && live.onAirCalls.calls);
     vmBeepHeard = false;
 
+    // FIRST, before a thing is taken away. Browsers only allow microphone
+    // capture on HTTPS or localhost, so on a plain http:// LAN address
+    // there is no call to be had — say why up front. This used to sit three
+    // steps in, AFTER the station player had been parked and the card had
+    // flipped to mode 'call': a listener who pressed Call on a LAN address
+    // lost the music to a call that never started and was left on a card
+    // with no way back to idle but a reload. Nothing has been touched yet
+    // here, so the return costs the caller nothing but the sentence.
+    if (!window.isSecureContext || !navigator.mediaDevices
+        || !navigator.mediaDevices.getUserMedia) {
+      setStatus('This page can\'t use the microphone — see the note below', 'error');
+      updateMicHelp();
+      return;
+    }
+
     // A call or a voicemail is a different mode from the text line — you are
     // on the phone now, not typing. If a chat was open, close it and clear
     // its input row, or the card shows a text box AND a call at once (the
@@ -3589,15 +3645,6 @@
     // voicemail caller has no use for.
     setCardMode(asVoicemail ? 'voicemail' : 'call');
 
-    // Browsers only allow microphone capture on HTTPS or localhost. On a
-    // plain http:// LAN address the call would connect and then immediately
-    // hang up when mic capture fails — say why up front instead.
-    if (!window.isSecureContext || !navigator.mediaDevices
-        || !navigator.mediaDevices.getUserMedia) {
-      setStatus('This page can\'t use the microphone — see the note below', 'error');
-      updateMicHelp();
-      return;
-    }
     // The end control is on the card from the instant of the press — no
     // button phasing through Ringing -> Answering -> On the line while the
     // caller waits, which the operator asked to be rid of. Hang up (or End
@@ -3677,7 +3724,11 @@
         stopRinging(); tuneOut();
         playSound('failed');
         if (res.status === 401) {
-          localStorage.removeItem(CALL_KEY);
+          // Through the shared writer, not the jar. rememberCallKey also
+          // clears CALL_KEY_AT — the stamp the shared-machine expiry reads
+          // — so dropping the code by hand left its clock standing and the
+          // next code typed on this browser inherited the old one's age.
+          rememberCallKey('');
           paintGuestGate();
         } else if (res.status === 403 && live && live.signinAvailable) {
           // A door this tier doesn't open, from a caller a code could still
@@ -3704,6 +3755,12 @@
         document.querySelector('.card').classList.remove('oncall');
         hangBtn.hidden = true;
         setCardMode('idle');
+        // …and the station with it. The press PARKS the player, because a
+        // live mic cannot share a room with it — and a refused mint has no
+        // mic. Without this a listener who pressed Call on a busy line lost
+        // the music until some later call happened to end and resume it for
+        // them.
+        resumePlayer();
         // Repaint BOTH buttons from the live state — restoring Call by hand
         // here forgot the message button, and one refused call left the
         // card without its one working door until a reload.
@@ -3731,7 +3788,11 @@
         return;
       }
       if (!res.ok) throw new Error('token mint failed');
-      const { token, url, room: roomName } = await res.json();
+      // `release` is the room's own secret, minted beside the token: the
+      // server requires it on /call-ended so only the browser it was handed
+      // to can hang that room up. A server that does not send one is not
+      // asking for one either — see endedBody.
+      const { token, url, room: roomName, release } = await res.json();
       // The caller pressed Hang up while the mint was in flight: endCall
       // already reset the card to idle, so connecting now would be a live
       // call behind an idle face. Release the slot the server just minted
@@ -3739,11 +3800,12 @@
       if (myGen !== callGen) {
         fetch('/call-ended', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ room: roomName }), keepalive: true,
+          body: endedBody(roomName, release), keepalive: true,
         }).catch(() => {});
         return;
       }
       currentRoom = roomName;
+      currentRelease = release || '';
 
       // Echo cancellation, noise suppression and auto-gain set EXPLICITLY, not
       // left to whatever the client library defaults to this version: they are
@@ -3870,7 +3932,18 @@
         scheduleRecoveryChecks();
         setStatus('Connected — go ahead, talk', 'connected');
       });
-      room.on(LivekitClient.RoomEvent.Disconnected, () => endCall(true));
+      // GENERATION-GATED. This event is also how LiveKit reports a connect
+      // that never succeeded (its own handleDisconnect on a timeout), and
+      // the catch below disconnects the room itself — so either way the
+      // echo used to fire endCall(true) FIRST and give a call that never
+      // happened the full end-of-call treatment: the hangup tone over the
+      // failed tone, a "How was it?" prompt for a call nobody had, and a
+      // refreshLive that then blanked the error line. The catch claims the
+      // teardown by bumping callGen before it disconnects, which makes this
+      // a no-op and leaves the reset to the one path that knows what failed.
+      room.on(LivekitClient.RoomEvent.Disconnected, () => {
+        if (myGen === callGen) endCall(true);
+      });
       room.on(LivekitClient.RoomEvent.Reconnecting, () => {
         setAgentState('reconnecting');
         setStatus('Connection hiccup - reconnecting...', 'connecting');
@@ -3938,6 +4011,11 @@
       if (!rafId) tick();
       setStatus(word('waiting', 'Connected — waiting for the DJ…'), 'connected');
     } catch (err) {
+      // A deliberate Hang up during connect lands in here too: endCall has
+      // already bumped callGen, set callEnded and reset the card to idle,
+      // and this used to paint 'Could not connect' straight over the
+      // caller's own 'Call ended'.
+      if (myGen !== callGen || callEnded) return;
       console.error(err);
       stopRinging();
       clearNoAnswerTimer();
@@ -3952,6 +4030,13 @@
       // blocked mic instead of shrugging at three candidates. Best-effort —
       // a room that never joined has nowhere to send it.
       if (denied) sendSetupNote('denied:' + ((err && err.name) || 'mic'));
+      // Claim the teardown BEFORE the room goes: the disconnect below fires
+      // RoomEvent.Disconnected, and the bump is what makes that echo a
+      // no-op so this reset is the only one that runs. callEnded goes with
+      // it, so a later endCall for a call that never happened is a no-op
+      // too — startCall clears both for the next attempt.
+      callGen += 1;
+      callEnded = true;
       if (room) { try { await room.disconnect(); } catch (e) {} }
       // Three failures wore the same "Could not connect" label, and the most
       // common one is the least obvious: the room is joined and signalling is
@@ -4000,6 +4085,14 @@
       callBtn.hidden = false;
       hangBtn.hidden = true;
       setCardMode('idle');
+      // What this path used to get for free from the Disconnected echo, now
+      // that the echo is gated: the station comes back out of the park the
+      // press put it in, the chip stops describing an attempt that is over,
+      // and the ticker's reserved two lines go with it.
+      resumePlayer();
+      setAgentState('idle');
+      const tkr = $('ticker');
+      if (tkr) { tkr.classList.remove('show'); tkr.hidden = true; }
       room = null;
       // The route badge outlived the attempt it described: OFF AIR stood in
       // the rail beside the failure line until the next poll swept it
@@ -4020,16 +4113,33 @@
   function releaseRoom() {
     if (!currentRoom) return null;
     const ended = currentRoom;
+    const secret = currentRelease;
     currentRoom = null;
+    currentRelease = '';
     // Release the concurrency slot now instead of waiting for it to age out.
     fetch('/call-ended', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room: ended }), keepalive: true,
+      body: endedBody(ended, secret), keepalive: true,
     }).catch(() => {});
     return ended;
   }
 
+  // What /call-ended carries. The server mints a per-room `release` secret
+  // alongside the token and will not close a room without it, so a room
+  // name overheard anywhere else cannot hang up a stranger's call. An older
+  // box sends no release and asks for none, and the field is simply left
+  // off — the widget and the server behind it are not upgraded in the same
+  // breath, and a widget that always sent the key would be the one deciding
+  // that for both of them.
+  function endedBody(roomName, release) {
+    const body = { room: roomName };
+    if (release) body.release = release;
+    return JSON.stringify(body);
+  }
+
   let currentRoom = null;
+  // The room's release secret, held exactly as long as its name is.
+  let currentRelease = '';
   let callStarted = 0, timerId = null;
 
   // How long the caller rings before we admit nobody is coming. Long enough
@@ -4051,7 +4161,7 @@
       endCall(false);
       playSound('failed');
       setStatus('No answer — the booth didn’t pick up. Try again in a moment.',
-                'error');
+                'error', true);
     }, NO_ANSWER_SECS * 1000);
   }
 
@@ -4171,7 +4281,7 @@
     // showVmReceipt) and this is the fallback for a message that left no
     // transcribable words.
     setStatus(wasVm ? 'Message received — the DJ will review your request shortly.'
-                    : word('ended', 'Call ended'));
+                    : word('ended', 'Call ended'), '', true);
     // The card's idle truth — including the second button — comes back from
     // the next /live read rather than being reconstructed by hand here. The
     // burst catches a takeover this call may have set in motion, which airs at
@@ -4490,13 +4600,13 @@
     chatWs = new WebSocket(scheme + location.host + '/chat/ws');
     chatWs.onopen = () => chatWs.send(JSON.stringify({
       type: 'hello',
-      chat: localStorage.getItem('callinChat') || '',
+      chat: store.getItem('callinChat') || '',
       key: callKey() || '',
     }));
     chatWs.onmessage = (e) => {
       let msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
       if (msg.type === 'ready') {
-        localStorage.setItem('callinChat', msg.chat || '');
+        store.setItem('callinChat', msg.chat || '');
         (msg.turns || []).forEach((t) => chatSay(t.who === 'dj' ? 'dj' : 'you', t.text));
         // A RESUMED thread goes behind the drawer rather than filling the box.
         // The chat id lives in localStorage so a browser can pick a
@@ -4518,7 +4628,7 @@
         // A refused RESUME usually means the old chat aged out server-side:
         // drop the id and let the next attempt start fresh.
         setStatus(msg.error || 'The text line is closed', 'error');
-        if (localStorage.getItem('callinChat')) localStorage.removeItem('callinChat');
+        if (store.getItem('callinChat')) store.removeItem('callinChat');
       } else if (msg.type === 'typing') {
         // The booth is composing: a moving dot by the DJ's name, so a typed
         // reply that takes a second doesn't read as nothing happening (the
@@ -4559,7 +4669,7 @@
         // The server confirmed the close (record written, chat dropped) — so
         // the id is dead. Forget it, exactly as a deliberate End does, or the
         // next open sends a stale id the server can only refuse (0.10.57).
-        localStorage.removeItem('callinChat');
+        store.removeItem('callinChat');
         // Fold the card back to idle; the transcript stays in the drawer.
         resetChatUI(word('ended', 'Chat ended'));
       }
@@ -4581,12 +4691,12 @@
     // Captured before the id is forgotten: the chat's record is filed under
     // the id's own tail (chat/session.py write_record), and /call-feedback
     // matches on that same tail — so the id IS the room for rating purposes.
-    const endedChat = localStorage.getItem('callinChat') || '';
+    const endedChat = store.getItem('callinChat') || '';
     const typed = !!capBox.querySelector('.cap.you');
     if (chatWs && chatWs.readyState === 1) {
       try { chatWs.send(JSON.stringify({ type: 'bye' })); } catch (e) { /* closing anyway */ }
     }
-    localStorage.removeItem('callinChat');
+    store.removeItem('callinChat');
     resetChatUI(word('ended', 'Chat ended'));
     // After the reset, which folds the card to idle — the bar sits under the
     // idle card exactly as it does after a call. Only a chat the caller
@@ -4836,10 +4946,23 @@
     if (vmGreet) { vmGreet.pause(); vmGreet = null; }
     vmClearBox();
     let stream;
+    // Pinned before the await, exactly as vmDial pins it: a permission
+    // prompt can outlive the studio it was opened from.
+    const session = vmSession;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (e) {
       setStatus('Microphone blocked — allow it and try again', 'error');
+      return;
+    }
+    // Close the studio while the prompt is up, then press Allow, and this
+    // used to resume against an IDLE card: the mic hot with no bar to show
+    // it, and at the ceiling the take uploading itself to /voicemail/draft
+    // and painting review buttons into a studio nobody can see. The guard
+    // vmDial already takes after its own await, plus the hardware this one
+    // is holding — a refused take stops the tracks rather than leaking them.
+    if (session !== vmSession || cardMode() !== 'vmstudio' || vmRec) {
+      stream.getTracks().forEach((t) => t.stop());
       return;
     }
     const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -5133,7 +5256,7 @@
     vmClearBox();
     capBox.classList.remove('on');
     $('lineBox').classList.remove('open');
-    setStatus(sent ? word('vm_sent', 'On its way to air') : '');
+    setStatus(sent ? word('vm_sent', 'On its way to air') : '', '', sent);
     refreshLive();
     notifyHeight();
   }
@@ -6884,8 +7007,12 @@
   // difference between "TA" and an unlabelled block in a two-hour cell on a
   // 390px phone: 2.34 characters of room read as 1. The 14 is the block's
   // own 6px padding each side plus its border.
-  function fitsChars(span) {
-    return Math.floor((span * guideHourPx() - 14) / 6.1);
+  // The hour's width is threaded in rather than measured here: the grid is
+  // about to be emptied and measuring it then is what cost the reader their
+  // scroll position (see paintGuideGrid). Falling back to a fresh measure
+  // keeps every other caller honest.
+  function fitsChars(span, hourPx) {
+    return Math.floor((span * (hourPx || guideHourPx()) - 14) / 6.1);
   }
   // …and what to write in a block the full name does not fit. It used to be
   // NOTHING — "U…" tells a reader less than clean colour plus the key does
@@ -6897,8 +7024,8 @@
   // leading article, then the significant word, then the initials. The
   // block keeps its full name on hover and a press still opens the show.
   const GUIDE_STOPWORDS = ['the', 'a', 'an', 'and', 'of'];
-  function blockLabel(name, span) {
-    const room = fitsChars(span);
+  function blockLabel(name, span, hourPx) {
+    const room = fitsChars(span, hourPx);
     if (room < 2) return '';
     const full = String(name || '').trim();
     if (!full) return '';
@@ -6933,6 +7060,20 @@
     if (!grid) return;
     guideGridArgs = [byId, runs, now];
     applyGuideSpan();
+    // MEASURED BEFORE IT IS EMPTIED, and carried down from here. Everything
+    // below reads the grid's width through guideHourPx, and the old order
+    // emptied the grid first — so the first blockLabel forced a layout with
+    // the scroller's only content gone, #guideScroll clamped its scrollTop
+    // to 0, and a reader who had scrolled down to Sunday was thrown back up
+    // to the ruler on every twenty-second poll. The width is taken while
+    // there is still something to measure; the top goes back once the rows
+    // are in again, at each of this function's two ends.
+    const hourPx = guideHourPx();
+    const scroller = $('guideScroll');
+    const keptTop = scroller ? scroller.scrollTop : 0;
+    const restoreTop = () => {
+      if (scroller && keptTop) scroller.scrollTop = keptTop;
+    };
     grid.textContent = '';
     const ruler = document.createElement('div'); ruler.className = 'gdruler';
     ruler.appendChild(document.createElement('span')).className = 'gddaycol';
@@ -6976,7 +7117,7 @@
           // already say when, and the second line was eating the room the
           // name needed. What goes in is the longest form of the name that
           // fits the block — see blockLabel.
-          const shortened = blockLabel(label, span);
+          const shortened = blockLabel(label, span, hourPx);
           if (shortened) {
             const n = document.createElement('span'); n.className = 'gdcellname';
             n.textContent = shortened;
@@ -7004,7 +7145,7 @@
     runs.filter((r) => r.start >= 0 && r.start < WEEK_H && byId[r.id])
       .sort((a, b) => a.start - b.start)
       .forEach((r) => { if (!seen.includes(r.id)) seen.push(r.id); });
-    if (!seen.length) return;
+    if (!seen.length) { restoreTop(); return; }
     const key = document.createElement('div'); key.className = 'gdkey';
     const cap = document.createElement('div'); cap.className = 'gdcap';
     cap.textContent = 'On the air this week'; key.appendChild(cap);
@@ -7022,6 +7163,7 @@
     });
     key.appendChild(list);
     grid.appendChild(key);
+    restoreTop();
   }
 
   function paintGuide() {
@@ -7250,14 +7392,24 @@
   // fails swaps the <img> for initials, and a binding on the img went with
   // it — the fallback was a dead circle (found on the real station,
   // 2026-09-03).
+  // Which portraits the reader has opened, keyed by persona. NOT a class
+  // on the node: paintGuide rebuilds every figure from scratch on every
+  // /live poll and on every player pause, play or cast event, so a face
+  // opened on the hero or in a row collapsed under the reader inside twenty
+  // seconds. guideOpenRows and guideHeroOpen survive the same repaint for
+  // the same reason — this is the third thing the reader did that has to.
+  const guideZoomed = new Set();
   function bindFaceZoom(el, person) {
     el.classList.add('gdzoom');
     el.setAttribute('role', 'button');
     el.tabIndex = 0;
     el.title = person.name || '';
+    const id = person.id || person.name || '';
+    if (guideZoomed.has(id)) el.classList.add('big');
     const toggle = (e) => {
       e.stopPropagation();          // never the row's own open/close
-      el.classList.toggle('big');
+      if (el.classList.toggle('big')) guideZoomed.add(id);
+      else guideZoomed.delete(id);
     };
     el.addEventListener('click', toggle);
     el.addEventListener('keydown', (e) => {
@@ -7696,7 +7848,12 @@
       // And a strip that scrolls sideways owns its own horizontal drag —
       // the day's hours were unreachable because every swipe across them
       // turned the page instead (operator, 2026-09-03).
-      if (e.target.closest('.gdtoday')) return;
+      // .gdgrid is the one that matters: the week grid IS the sideways
+      // scroller on every surface, and the sheet hides .gdtoday on all four
+      // — so the exemption named only the strip nobody can reach, and
+      // dragging the week rightward paged to the player instead of
+      // scrolling the hours back.
+      if (e.target.closest('.gdtoday, .gdgrid')) return;
       if (faceList().length < 2) return;
       fromId = currentFace();
       if (fromId === 'phone' && cardMode() !== 'idle') return;
@@ -7920,7 +8077,7 @@
     if (!a.command && plOpMode) setOpMode(false);
     // The remembered face comes back the moment the key still clears it.
     let kept = '';
-    try { kept = localStorage.getItem('twOpMode') || ''; } catch (e) {}
+    try { kept = store.getItem('twOpMode') || ''; } catch (e) {}
     if (a.command && kept && !plOpMode) setOpMode(true);
     paintQueueTabs();
   }
@@ -7952,7 +8109,7 @@
     plOpMode = !!on;
     // The face survives the visit (operator, 2026-09-01): an operator who
     // lives in Do-it mode should not re-arm it every open.
-    try { localStorage.setItem('twOpMode', plOpMode ? '1' : ''); }
+    try { store.setItem('twOpMode', plOpMode ? '1' : ''); }
     catch (e) { /* private windows */ }
     const op = $('plOpBtn'), input = $('plReqInput'), send = $('plReqSend');
     if (op) {
@@ -8014,8 +8171,12 @@
       // and both reach the Requests tab, so they may fade. Only a refusal
       // has nowhere else to live, and it stays.
       if (acts) flashOpResult('✓  ' + acts);
-      else flashOpResult('✗  ' + (d.note || 'the booth would not take that'),
-                         true);
+      // `note` OR `said`: the server's timeout branch used to answer in
+      // `said` and now answers in `note`, and the widget is not upgraded in
+      // the same breath as the box behind it. Reading both means neither
+      // deployment hands the operator a refusal with no reason in it.
+      else flashOpResult('✗  ' + (d.note || d.said
+                                  || 'the booth would not take that'), true);
       if (plTab === 'booth') refreshBoothLog();
     } catch (e) {
       flashOpResult('✗  ' + String(e.message || e), true);

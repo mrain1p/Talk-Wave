@@ -29,7 +29,14 @@
 // up without the sheet that carries the operator's skin. The list is now
 // pinned to what index.html actually loads (TestTheServiceWorkerStaysOutOf
 // TheWay in the suite); a bump is still what makes an installed copy follow.
-const CACHE = 'talkwave-v3';
+// v4: the navigate branch below cached ANY same-origin page under the '/'
+// key. /panel.html and /embed-test.html are served by the same add_static
+// and are not in NEVER, so opening either once in the browser profile that
+// carries the installed app replaced the app's offline shell with the wrong
+// page — the home-screen icon came up on the settings form with no signal
+// (2026-09-17). The rule is the home page alone now, and the bump is what
+// throws away the '/' entry a worker wrote under the old one.
+const CACHE = 'talkwave-v4';
 
 // The page, and the two scripts and two stylesheets it cannot start without.
 // Unversioned URLs on purpose: at install time we do not know the ?v= tags,
@@ -93,13 +100,21 @@ self.addEventListener('fetch', (e) => {
   // The page. Network first, so a caller always gets the current card when
   // they have signal; the cache is only what makes the app open without it.
   if (req.mode === 'navigate') {
+    // THE HOME PAGE ONLY, both ways. '/' is the one navigation this worker
+    // has an opinion about: it is the installed app. Every other page on
+    // this origin — the operator's /panel.html, /embed-test.html — is
+    // somebody else's errand in the same profile, and neither writing it to
+    // the '/' key nor answering for it out of that key is this worker's
+    // business.
+    const home = url.pathname === '/';
     e.respondWith((async () => {
       try {
         const res = await fetch(req);
-        if (res.ok) (await caches.open(CACHE)).put('/', res.clone());
+        if (res.ok && home) (await caches.open(CACHE)).put('/', res.clone());
         return res;
       } catch (err) {
-        return (await caches.match('/')) || Response.error();
+        const hit = home ? await caches.match('/') : null;
+        return hit || Response.error();
       }
     })());
     return;

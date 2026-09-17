@@ -4258,6 +4258,13 @@
     font-size: 13px; flex: none;
   }
   .card .stationrow .nplike.liked { color: var(--coral); }
+  /* Trap 1. This rule names a class and sets a `display`, so it outranks
+     both the UA's `[hidden] { display: none }` and the earlier
+     `.card .nplike[hidden]` twin it sits after. WHICH corner controls a
+     caller gets is the server's answer, and #npHeart hidden still painted a
+     44x44 pressable heart for a caller with no like to give — measured in a
+     real browser, and a press earned a 401 (2026-09-17). */
+  .card .stationrow .nplike[hidden] { display: none; }
   /* THE EMBED KEEPS ITS ONE-LINE TRACK. 348x320 has no 62px band to spend,
      and this is the same line it always was — one step down the DOM, with
      the furniture that needs room switched off. */
@@ -4755,6 +4762,12 @@
     border: 1px solid var(--edge); color: var(--sage);
     display: inline-flex; align-items: center; justify-content: center;
   }
+  /* Trap 1 again, and the same measurement: the dock's three — the heart,
+     the skip and the operator key — are all `.plheart`, all hidden by the
+     script when /player/abilities says this caller cannot reach them, and
+     all three still painted 36x36 bordered squares over that rule. The card
+     was offering controls the server had already refused. */
+  .card .pldock .plheart[hidden] { display: none; }
   /* THE FADER AND THE LEVEL GET THE BUTTONS' BOX. The strip was four
      bordered squares, then a bare rail with a knob on it, then bare bars —
      two rules on one band, which is what the operator called "stupid
