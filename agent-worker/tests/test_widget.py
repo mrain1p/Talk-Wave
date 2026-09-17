@@ -379,6 +379,189 @@ class TestPanelLoadsOnOpen(unittest.TestCase):
         strays = sorted(f for f in settings_store.SCHEMA if f not in settings_store.FIELDS)
         self.assertFalse(strays, f"settings that cannot be saved: {strays}")
 
+    # --- arriving must not spend the operator's lockout ----------------------
+    # api/auth.py counts wrong admin keys per address and locks out at five
+    # (_AUTH_MAX_FAILS) for 300 seconds. Opening the panel used to fire FIVE
+    # admin-keyed requests before anything asked whether this browser was
+    # signed in: panel-charts.js's /calls and /stats/listeners at script load,
+    # loadSettings' /settings and /settings/options, and the night tile's
+    # /calls 800ms in. A password the operator had changed on another device
+    # therefore spent the whole retry budget before they could type the new
+    # one, and the correct password was then refused for five minutes; a
+    # reload after the cooldown burned five more and earned a ban until
+    # restart. tryUnlock had guarded its own two requests since it was
+    # written — these five ran in front of it.
+
+    def _body(self, decl: str) -> str:
+        start = self.js.index(decl)
+        return self.js[start : self.js.index("\n  }", start)]
+
+    def test_one_probe_stands_in_front_of_every_keyed_request(self):
+        opener = self._open_handler()
+        probe = opener.index("await afetch('/settings')")
+        self.assertLess(
+            probe, opener.index("await loadSettings()"),
+            "open_() must probe /settings ONCE before loadSettings fires its "
+            "pair — that is the whole point of the gate")
+        self.assertIn(
+            "probe.status === 401", opener,
+            "the probe's answer has to be read, or it is just a sixth request")
+        self.assertIn(
+            "return;", opener[opener.index("probe.status === 401"):],
+            "a 401 must stop open_() dead — anything after it spends another "
+            "try against the five-wrong-keys lockout")
+
+    def test_a_stored_key_the_server_refuses_is_forgotten(self):
+        gate = self._open_handler()
+        gate = gate[gate.index("probe.status === 401"):]
+        self.assertIn(
+            "localStorage.removeItem('callinAdminKey')", gate,
+            "a stale stored key is worse than none — left in place it spends "
+            "one of the five on every reload")
+        self.assertIn("showLoginGate(", gate)
+
+    def test_the_charts_and_the_tile_wait_to_be_asked(self):
+        charts = (REPO / "web-widget" / "panel-charts.js").read_text(
+            encoding="utf-8")
+        self.assertIn(
+            "window.Panel.loadCharts", charts,
+            "panel-charts.js must publish its data read rather than firing it "
+            "at script load, where it runs before any password is checked")
+        # The strip's two reads may only appear inside that published loader.
+        after = charts[charts.index("window.Panel.loadCharts"):]
+        for url in ("/calls", "/stats/listeners"):
+            self.assertEqual(
+                charts.count("afetch('%s')" % url), after.count("afetch('%s')" % url),
+                "panel-charts.js reads %s outside the published loader" % url)
+        # The night tile's /calls is deferred by a timer, so the only guard
+        # that means anything is where the timer is started from.
+        self.assertEqual(
+            self.js.count("paintNightTileOnce();"), 1,
+            "paintNightTileOnce() is called from somewhere other than "
+            "afterSignIn — it used to fire at load, 800ms in, keyed")
+        after_sign_in = self._body("function afterSignIn()")
+        self.assertIn("paintNightTileOnce()", after_sign_in)
+        self.assertIn("window.Panel.loadCharts", after_sign_in)
+
+    def test_signing_in_releases_the_same_reads_arriving_does(self):
+        # Both ways in call afterSignIn(). Only the load path used to reach
+        # these at all, so after a successful unlock the ACTIVITY strip kept
+        # its em-dash frames and said "no records to read" for the whole rest
+        # of the session, however far in the operator got.
+        self.assertIn("afterSignIn();", self._body("async function tryUnlock()"))
+        self.assertIn("afterSignIn();", self._open_handler())
+
+    # --- a repaint must not overwrite what the operator is doing -------------
+
+    def test_the_slow_provider_lists_keep_what_was_typed(self):
+        # loadSettings drops the curtain and sets `loaded` BEFORE awaiting
+        # /settings/options (~5s against a station, a TTS server and Ollama),
+        # so the panel is deliberately usable across that window. The second
+        # paint() then refilled every field from overrides/resolved and called
+        # markClean(), discarding anything typed into it without a word. The
+        # comment above it was true of fill(), which keeps its selection, and
+        # not of paint(), which runs three lines later.
+        import re
+
+        self.assertIn("function paint({ keep = false } = {})", self.js,
+                      "paint() must be able to run without overwriting values")
+        body = self._body("async function loadSettings()")
+        self.assertIn("paint({ keep: true })", body)
+        self.assertEqual(
+            len(re.findall(r"(?<![A-Za-z])paint\(\);", body)), 1,
+            "only the FIRST paint in loadSettings is authoritative; the one "
+            "after the options land runs while the operator may be typing")
+
+    def test_a_key_save_and_a_model_reload_keep_the_model_just_picked(self):
+        # "pick provider, pick model, Save keys" is the order this section's
+        # layout invites, and both postSecrets and "Test keys + reload models"
+        # land in syncModels at the end of it — each one used to put the
+        # stored model back over the pick, so the next Save posted the
+        # provider alone.
+        for caller in ("async function postSecrets(", "refreshModelsBtn"):
+            with self.subTest(caller=caller):
+                near = self.js[self.js.index(caller):][:2400]
+                self.assertIn("syncModels({ keep: true })", near)
+
+    def test_a_stored_choice_the_list_cannot_offer_is_not_an_edit(self):
+        # The TTS server is down so the voice list falls back to OpenAI's and
+        # the stored Kokoro voice is not in it; the roster is empty so the
+        # chosen DJ has no option. Assigning a value no option carries yields
+        # '', and '' is an instruction to CLEAR the setting, not an absence:
+        # Save read "1 change" on an untouched panel, and the next save of any
+        # unrelated field posted tts_voice:'' — which the server pops.
+        fill = self._body("function fill(sel, values")
+        self.assertIn("overrides[sel]", fill,
+                      "fill() must carry a stored value the list does not "
+                      "offer as its own option, or the assignment yields ''")
+        patch = self._body("function pendingPatch()")
+        self.assertIn("!dirty.has(f)", patch,
+                      "a select reading '' against a real override is only a "
+                      "change if a human made it one")
+
+    def test_discarding_still_discards(self):
+        # paint() refilling every control IS the discard, so the edits have to
+        # be forgotten first or the fields holding them are the ones a plain
+        # paint() now protects.
+        import re
+
+        near = self.js[self.js.index("saveOverlayDiscard"):][:900]
+        self.assertRegex(near, r"dirty\.clear\(\);\s*\n\s*paint\(\);")
+
+    def test_a_save_always_reaches_a_verdict(self):
+        # The read-back after a successful write is a second authenticated
+        # request and can fail on its own. A 401 there — this address just hit
+        # the lockout from another tab, or the password changed elsewhere —
+        # used to land in `resolved` and `overrides` as undefined with no
+        # status check: paint() threw, "Saving…" sat on screen although the
+        # write HAD landed, and every keystroke after that threw inside
+        # pendingPatch, so Save and Discard were dead until a reload.
+        body = self._body("async function saveSettings(patch)")
+        self.assertIn("rf.status === 401", body,
+                      "the read-back's status has to be checked before its "
+                      "body is believed")
+        self.assertIn("typeof fresh.resolved === 'object'", body)
+        self.assertIn("typeof fresh.overrides === 'object'", body)
+        self.assertIn("} finally {", body,
+                      "'Saving…' must always resolve to a verdict")
+        self.assertIn("$('saveMsg').textContent = verdict;", body)
+
+    def test_the_station_buttons_survive_a_second_paint(self):
+        # paintSecrets relocates #testAdminBtn, #testStationBtn and
+        # #reloadStationBtn into the station keyblock's bar and hides their
+        # markup row. The paint begins by wiping that host, so the NEXT
+        # paintSecrets was looking up three ids its own innerHTML = '' had
+        # just removed, getting null for all three and appending nothing: the
+        # buttons vanished until a reload. Every Save keys, every Clear and
+        # Reset repaint secrets, so saving the station credentials was exactly
+        # when 'Test access' went away.
+        self.assertIn("const STATION_BTNS = ", self.js,
+                      "the three static buttons must be held from load, not "
+                      "looked up after the host has been wiped")
+        body = self._body("function paintSecrets()")
+        self.assertIn("STATION_BTNS.forEach", body)
+        for btn in ("testAdminBtn", "testStationBtn", "reloadStationBtn"):
+            self.assertNotIn(
+                "$('%s')" % btn, body,
+                "%s is looked up inside paintSecrets, after the wipe that "
+                "removed it from the document" % btn)
+
+    def test_the_panel_stores_the_guest_code_with_its_clock(self):
+        # rememberCallKey is the one writer that also stamps CALL_KEY_AT, the
+        # expiry clock call.js reads. Writing the raw key here left a code set
+        # from the panel with no clock at all, so on a shared machine call.js
+        # started the timer at the first visit to the call page instead of
+        # when the operator stored it.
+        self.assertNotIn(
+            "localStorage.setItem(CALL_KEY", self.js,
+            "the panel must store the shared call key through shared.js's "
+            "rememberCallKey, which also stamps its clock")
+        self.assertNotIn(
+            "localStorage.removeItem(CALL_KEY", self.js,
+            "clearing the key by hand leaves the stale CALL_KEY_AT behind")
+        self.assertIn("rememberCallKey(code || '')", self.js)
+        self.assertIn("rememberCallKey('')", self.js)
+
 
 class TestWidgetServerContract(unittest.TestCase):
     """The widget is plain browser JS with no toolchain and no test harness of
@@ -502,6 +685,20 @@ class TestWidgetServerContract(unittest.TestCase):
                     f"{'/'.join(scripts)} reads element ids that {page} does not "
                     f"declare and never creates — those controls are dead: "
                     f"{missing}")
+
+    def test_no_clock_rounds_its_seconds(self):
+        import re
+
+        # A clock has no sixtieth second. panel-sounds.js's shelf formatter
+        # rounded — String(Math.round(secs % 60)) — so a 179.6s clip read
+        # "2:60" on the shelf while the slot card for the same clip said
+        # 2:59. Every mm:ss in these files floors, and this is cheap to keep
+        # true across all three of them.
+        for name, src in self.sources.items():
+            with self.subTest(name):
+                self.assertFalse(
+                    re.findall(r"Math\.round\([^()]*% 60", src),
+                    "a seconds formatter that rounds renders :60")
 
     def test_the_widget_is_still_dependency_free(self):
         # No build step, no bundler, no node_modules. The moment the widget

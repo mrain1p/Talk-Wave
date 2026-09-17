@@ -494,16 +494,27 @@
   // ------------------------------------------------------------- data
   paintControls();
   render();                          // em-dash frames until the data lands
-  Promise.allSettled([
-    afetch('/calls').then((r) => r.json()),
-    afetch('/stats/listeners').then((r) => r.json()),
-  ]).then(([c, l]) => {
-    if (c.status === 'fulfilled' && !c.value.error && c.value.calls) {
-      calls = c.value.calls;
-    }
-    if (l.status === 'fulfilled' && !l.value.error && l.value.samples) {
-      samples = l.value.samples;
-    }
-    render();
-  });
+  // The two reads are PUBLISHED rather than fired at load. Both carry the
+  // admin key, and they used to be the first two of five keyed requests the
+  // page sent before anything had checked the stored password — five is
+  // exactly the number of wrong keys that locks the address out for 300
+  // seconds, so a password changed on another device spent the operator's
+  // whole retry budget on furniture. panel.js probes once, then asks; it
+  // also asks after a successful unlock, which is what the strip never got
+  // before — it kept its em-dash frames and said "no records to read" for
+  // the rest of the session, however far in the operator signed.
+  window.Panel.loadCharts = function loadCharts() {
+    return Promise.allSettled([
+      afetch('/calls').then((r) => r.json()),
+      afetch('/stats/listeners').then((r) => r.json()),
+    ]).then(([c, l]) => {
+      if (c.status === 'fulfilled' && !c.value.error && c.value.calls) {
+        calls = c.value.calls;
+      }
+      if (l.status === 'fulfilled' && !l.value.error && l.value.samples) {
+        samples = l.value.samples;
+      }
+      render();
+    });
+  };
 })();
