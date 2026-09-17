@@ -2881,79 +2881,201 @@ class TestTheStylesheetParsesToTheEnd(unittest.TestCase):
             self.assertFalse(depth, f"{name} ends inside an unclosed comment")
 
 
+# --- reading a stylesheet well enough to answer "which rule wins" ---------
+#
+# Written for TestHiddenActuallyHides below, which used to ask a much weaker
+# question — does a `[hidden]` rule naming any of this element's classes
+# exist ANYWHERE in the sheet — and passed four shipped faults because of it.
+# Answering "does it WIN" needs three things a regex over the text cannot
+# give: source order, specificity, and rules that are inside an @media block.
+
+
+def _css_rules(*sheets: str) -> list[tuple[int, str, str, str]]:
+    """(order, selector, body, enclosing at-rule) for every rule.
+
+    Order runs across the sheets in the order the page loads them, because
+    that is what decides a tie. Brace-aware rather than a split on "}": the
+    split folds an @media opener into the selector of the rule inside it, so
+    every display rule in a media query was invisible to the check below.
+    """
+    rules: list[tuple[int, str, str, str]] = []
+    for sheet in sheets:
+        text = re.sub(r"/\*.*?\*/", "", sheet, flags=re.S)
+        buf, stack = "", []
+        for ch in text:
+            if ch == "{":
+                stack.append(buf.strip())
+                buf = ""
+            elif ch == "}":
+                sel = stack.pop() if stack else ""
+                if sel and not sel.startswith("@"):
+                    at = next((o for o in reversed(stack)
+                               if o.startswith("@")), "")
+                    rules.append((len(rules), sel, buf, at))
+                buf = ""
+            else:
+                buf += ch
+    return rules
+
+
+def _specificity(sel: str) -> tuple[int, int, int]:
+    """(ids, classes, elements) for one selector — close, not exact.
+
+    Both sides of every comparison it is used for are class-based rules in
+    the same stylesheet, so the approximation costs nothing that matters. The
+    point is that a comparison HAPPENS.
+    """
+    ids = len(re.findall(r"#[\w-]+", sel))
+    attrs = len(re.findall(r"\[[^\]]*\]", sel))
+    rest = re.sub(r"\[[^\]]*\]", " ", sel)
+    pseudo_els = len(re.findall(r"::[\w-]+", rest))
+    rest = re.sub(r"::[\w-]+", " ", rest)
+    # :not()/:is()/:has() take the specificity of what is inside them;
+    # :where() takes none. Drop the wrappers, keep the contents.
+    rest = re.sub(r":where\([^)]*\)", " ", rest)
+    rest = re.sub(r":(?:not|is|has)\(", " ", rest).replace(")", " ")
+    classes = len(re.findall(r"\.[\w-]+", rest))
+    pseudo_cls = len(re.findall(r":[\w-]+", rest))
+    tags = len(re.findall(r"(?:^|[\s>+~])[a-zA-Z][\w-]*", rest))
+    return (ids, classes + attrs + pseudo_cls, tags + pseudo_els)
+
+
+def _subjects(rules, declares, *, on_hidden: bool):
+    """The rules whose SUBJECT could match a shipped-hidden element.
+
+    Ancestor context is dropped from the match on both sides — over-matching
+    is a spot rule somebody writes once, under-matching is another shipped
+    ghost — but it still counts towards specificity, which is how the real
+    cascade reads it.
+
+    Each one comes back with the key that decides the cascade: `!important`
+    first, then specificity, then source order.
+    """
+    out = []
+    for order, sel, body, at in rules:
+        decl = declares.search(body)
+        if not decl:
+            continue
+        important = int("!important" in body[decl.end():decl.end() + 40])
+        for one in sel.split(","):
+            one = one.strip()
+            if not one:
+                continue
+            compound = one.split()[-1].split(">")[-1]
+            # A [hidden] rule answers only where it fires; any other rule
+            # carrying [hidden] or a state pseudo-class is conditional on
+            # something this check cannot see, so it proves nothing either
+            # way.
+            if ("[hidden]" in compound) != on_hidden:
+                continue
+            if not on_hidden and ":" in compound:
+                continue
+            tag = (re.match(r"([a-z][\w-]*)", compound) or [None, ""])[1]
+            ident = (re.search(r"#([\w-]+)", compound) or [None, ""])[1]
+            classes = frozenset(re.findall(r"\.([A-Za-z][\w-]*)", compound))
+            # Nothing weaker than the UA's own `[hidden] {display:none}` can
+            # un-hide anything, so a bare tag rule is not a show.
+            if not on_hidden and not (classes or ident):
+                continue
+            key = (important,) + _specificity(one) + (order,)
+            out.append((key, tag, ident, classes, one.strip(), at))
+    return out
+
+
+def _matching(subjects, tag, ident, classes):
+    for key, sub_tag, sub_id, sub_classes, sel, at in subjects:
+        if sub_tag and sub_tag != tag:
+            continue
+        if sub_id and sub_id != ident:
+            continue
+        if not sub_classes <= classes:
+            continue
+        yield key, sel, at
+
+
+def _ships_hidden(html: str):
+    """(tag, id, classes, the class attribute as written) per hidden element."""
+    for m in re.finditer(r"<(\w+)([^>]*)>", html):
+        tag, attrs = m.group(1), m.group(2)
+        cls = re.search(r'class="([^"]+)"', attrs)
+        # The ATTRIBUTE, not the word: class="avatar hidden" names a CSS
+        # class that hides by rule, not the browser attribute.
+        bare = attrs.replace(cls.group(0), "") if cls else attrs
+        # NOT \b: a word boundary treats the dash in aria-hidden as one, so
+        # every decorative element carrying aria-hidden="true" read as
+        # shipping hidden and was reported unhideable. Latent until the first
+        # one with a class rule behind it (.skinart, 0.10.139).
+        if not re.search(r"(?<![-\w])hidden\b", bare):
+            continue
+        ident = re.search(r'id="([\w-]+)"', attrs)
+        yield (tag, ident.group(1) if ident else "",
+               frozenset(cls.group(1).split()) if cls else frozenset(),
+               cls.group(1) if cls else "")
+
+
 class TestHiddenActuallyHides(unittest.TestCase):
     """An author `display` beats the UA's [hidden] rule, and this codebase
-    has now paid for that four separate times: .guestgate (spot-fixed long
+    has now paid for that five separate times: .guestgate (spot-fixed long
     ago), the six URL rows sitting fully visible under the slot cards, the
-    empty picker menu floating as a ghost box, and the calls toolbar's
-    latent copy of the same fault. Every element the markup ships hidden
-    whose class also sets a display must carry a `.cls[hidden]` spot rule —
-    found mechanically, so the fifth one cannot ship."""
+    empty picker menu floating as a ghost box, the calls toolbar's latent
+    copy of the same fault, and .facebar — which had a spot rule the whole
+    time and lost to the landscape rail five classes to two, so a hidden
+    face bar painted 56x390 down the side of a landscape phone (measured in
+    the browser, 2026-09-17). Every element the markup ships hidden whose
+    class also sets a display must carry a `.cls[hidden]` spot rule that
+    WINS — found mechanically, so the sixth one cannot ship.
+
+    All four got past the first version of this test, which asked whether a
+    `[hidden]` rule naming any of the element's classes existed ANYWHERE in
+    the sheet. That is not the question a browser asks. A spot rule only
+    answers a display rule it actually BEATS — same subject, and then
+    !important, specificity and source order in that order — and a rule
+    inside an @media block, which the old text split could not even see,
+    answers only inside that block. This version asks it that way.
+    """
+
+    # A display that is not `none`: a rule that would UN-hide.
+    SHOWS = re.compile(r"display\s*:(?!\s*none\b)")
+    # What answers one. `visibility: hidden` counts: .pill reserves its space
+    # on purpose, and that is the accepted fix there.
+    CLEARS = re.compile(r"display\s*:\s*none|visibility\s*:\s*hidden")
 
     def test_every_shipped_hidden_element_can_actually_hide(self):
-        import re
-
-        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
-
-        # Every selector whose SUBJECT (last compound) is class-based and
-        # whose body sets a display other than none. Ancestor context is
-        # ignored on purpose — over-matching there is a spot rule someone
-        # writes once, under-matching is the fifth shipped ghost.
-        subjects = []              # (tag or "", frozenset(classes))
-        for rule in css.split("}"):
-            if "{" not in rule:
-                continue
-            sel, body = rule.split("{", 1)
-            # (?!\s*none): without the inner \s* the outer \s* backtracks a
-            # space and the lookahead inspects " none", which passes.
-            if not re.search(r"display\s*:(?!\s*none\b)", body):
-                continue
-            for one in sel.split(","):
-                compound = one.strip().split()[-1] if one.strip() else ""
-                if "[hidden]" in compound or ":" in compound:
-                    continue
-                tag = (re.match(r"([a-z][\w-]*)", compound) or [None, ""])[1]
-                classes = frozenset(re.findall(r"\.([A-Za-z][\w-]*)", compound))
-                if classes:
-                    subjects.append((tag, classes))
+        style = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        # panel.html loads panel.css AFTER style.css, so a display rule in
+        # there wins every tie against one here — and the old check never
+        # opened the file.
+        panel = (REPO / "web-widget" / "panel.css").read_text(encoding="utf-8")
 
         unhideable = []
-        for page in ("index.html", "panel.html"):
+        for page, sheets in (("index.html", (style,)),
+                             ("panel.html", (style, panel))):
+            rules = _css_rules(*sheets)
+            shows = _subjects(rules, self.SHOWS, on_hidden=False)
+            hides = _subjects(rules, self.CLEARS, on_hidden=True)
             html = (REPO / "web-widget" / page).read_text(encoding="utf-8")
-            for m in re.finditer(r"<(\w+)([^>]*)>", html):
-                tag, attrs = m.group(1), m.group(2)
-                cls = re.search(r'class="([^"]+)"', attrs)
-                # The ATTRIBUTE, not the word: class="avatar hidden" names a
-                # CSS class that hides by rule, not the browser attribute.
-                bare = attrs.replace(cls.group(0), "") if cls else attrs
-                # NOT \b: a word boundary treats the dash in aria-hidden as one,
-                # so every decorative element carrying aria-hidden="true" read
-                # as shipping hidden and was reported unhideable. Latent until
-                # the first one with a class rule behind it (.skinart, 0.10.139).
-                if not re.search(r"(?<![-\w])hidden\b", bare):
-                    continue
-                if not cls:
-                    continue
-                el_classes = set(cls.group(1).split())
-                for sub_tag, sub_classes in subjects:
-                    if sub_tag and sub_tag != tag:
+            for tag, ident, classes, written in _ships_hidden(html):
+                for key, sel, at in _matching(shows, tag, ident, classes):
+                    answered = [
+                        h for h, _s, h_at in _matching(hides, tag, ident,
+                                                       classes)
+                        # A spot rule inside a media query answers a display
+                        # rule inside the same one, and nothing else.
+                        if h > key and (not h_at or h_at == at)
+                    ]
+                    if answered:
                         continue
-                    if not sub_classes <= el_classes:
-                        continue
-                    # A spot rule re-hiding any of the element's classes is
-                    # the accepted fix; .pill's visibility reserve counts.
-                    if any(re.search(r"\." + re.escape(c) + r"[^,{]*\[hidden\]",
-                                     css) for c in el_classes):
-                        continue
+                    where = f" (in {at})" if at else ""
                     unhideable.append(
-                        f"{page}: <{tag} class=\"{cls.group(1)}\">")
-                    break
+                        f'{page}: <{tag} class="{written}"> is shown by '
+                        f'`{sel}`{where}')
 
         self.assertEqual(
             [], sorted(set(unhideable)),
-            "these ship hidden but a display rule targets them, which beats "
-            "the UA's [hidden] rule — add a `.cls[hidden]` spot rule: "
-            f"{sorted(set(unhideable))}")
+            "these ship hidden but a display rule beats the UA's [hidden] "
+            "rule for them — add a `.cls[hidden]` spot rule that outranks the "
+            f"rule named: {sorted(set(unhideable))}")
+
 
 class TestTheCallerIsNotRescuedMidAnnouncement(_TempStores):
     """MAX_HOLD_MS was 20s, set when the worker's own ceiling was 90s. Both

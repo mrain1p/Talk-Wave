@@ -701,19 +701,20 @@ def check_hidden_controls(browser, rep: Report, base: str) -> None:
     `el.hidden = true`, `[hidden] { display: none }` is (0,1,0), and any
     rule of ours naming a class and setting a display outranks it. Both of
     these had a `[hidden]` twin — and both twins were out-specified by a
-    later, heavier rule, which is the one shape the source scanner
-    (TestHiddenActuallyHides) cannot see, because specificity is a browser
-    question. Measured 2026-09-17: the dock's three painted 36x36 bordered
-    pressable squares and #npHeart 44x44, for callers whose press earns a
-    401 from /player/*.
-    """
-    ctx = browser.new_context(viewport={"width": 1100, "height": 800},
-                              reduced_motion="reduce")
-    page = ctx.new_page()
-    page.goto(f"{base}/", wait_until="networkidle")
-    page.wait_for_timeout(400)
+    later, heavier rule. Measured 2026-09-17: the dock's three painted
+    36x36 bordered pressable squares and #npHeart 44x44, for callers whose
+    press earns a 401 from /player/*.
 
-    def probe(el_id: str) -> None:
+    TestHiddenActuallyHides reads the sheets and compares specificity itself
+    now, so it is no longer blind to this shape — it found two more the same
+    afternoon. What it still cannot do is measure: it does not know which
+    ancestors a node actually has, what :has() resolves to, or which media
+    query the viewport is in. So these are the witnesses, at the viewport
+    each rule needs, and #faceBar is here because its fault only exists on a
+    landscape phone under 560px tall.
+    """
+
+    def probe(page, el_id: str) -> None:
         got = page.evaluate(_HIDE_PROBE, el_id)
         if got is None:
             rep.add("FAIL", f"hidden: #{el_id} exists", "not in the DOM")
@@ -731,14 +732,34 @@ def check_hidden_controls(browser, rep: Report, base: str) -> None:
                     f"display {got['display']!r}, {got['w']:.0f}x"
                     f"{got['h']:.0f} — a rule of ours beats [hidden]")
 
+    ctx = browser.new_context(viewport={"width": 1100, "height": 800},
+                              reduced_motion="reduce")
+    page = ctx.new_page()
+    page.goto(f"{base}/", wait_until="networkidle")
+    page.wait_for_timeout(400)
     # The station row's heart is on the phone, which is the opening face.
-    probe("npHeart")
+    probe(page, "npHeart")
     # The dock's three live on the player, so open it or the measurement is
-    # about an ancestor rather than about the rule under test.
+    # about an ancestor rather than about the rule under test. #plPastBody
+    # is here to keep an answer on file: the source scan flagged it on
+    # 2026-09-17 and the browser said it hides correctly, which is the
+    # over-match that scan accepts rather than a fault. Worth measuring
+    # from now on, because the rule that would beat it does exist.
     page.click("#facePlayer")
     page.wait_for_timeout(350)
-    for el_id in ("plHeartBtn", "plSkipBtn", "plOpBtn"):
-        probe(el_id)
+    for el_id in ("plHeartBtn", "plSkipBtn", "plOpBtn", "plPastBody"):
+        probe(page, el_id)
+    ctx.close()
+
+    # The other one, and the reason this function opens a second context: the
+    # face bar's landscape rail is inside @media (orientation: landscape) and
+    # (max-height: 560px), so at 1100x800 there is nothing to catch.
+    ctx = browser.new_context(viewport={"width": 844, "height": 390},
+                              reduced_motion="reduce")
+    page = ctx.new_page()
+    page.goto(f"{base}/", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    probe(page, "faceBar")
     ctx.close()
 
 

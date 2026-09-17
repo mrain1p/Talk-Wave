@@ -1401,7 +1401,13 @@
     background: var(--granite); border-top: 1px solid var(--hairline);
     z-index: 70;
   }
-  .facebar[hidden] { display: none; }
+  /* !important, like .player and .guide: the landscape rail below
+     (body:not(.compact):not(.panelpage) .card.faces .facebar) outranks a
+     two-class spot rule five to two, so a hidden face bar painted as a
+     full-height rail on a landscape phone. Found 2026-09-17 when
+     TestHiddenActuallyHides learned to compare specificity instead of
+     accepting any [hidden] rule that named the class. */
+  .facebar[hidden] { display: none !important; }
   /* The rule rides the band's top edge, over the card it belongs to. Width
      and offset are written by the script, in faces. */
   .faceind {
@@ -1750,7 +1756,15 @@
      (operator's screenshots, 2026-09-01, both passes). */
   .plscroll .plpanel:not(.plqueue) .plpanelbody { max-height: 185px;
                                                   min-height: 95px; }
-  .plpanelbody[hidden] { display: none; }
+  /* !important as a precaution, not a fix: the quote panel's own layout
+     (.plscroll > .plpanel:not(.plqueue) .plpanelbody) outranks this
+     one four classes to two, and today it happens not to reach the
+     two bodies that ship hidden — measured in the browser, they hide
+     correctly without this. The scan that raised it ignores ancestor
+     context deliberately (see TestHiddenActuallyHides), so this is the
+     spot rule that trade asks somebody to write once, and it means no
+     later re-nesting of that panel can bring the fault back. */
+  .plpanelbody[hidden] { display: none !important; }
   .plscroll .plpanel:first-of-type { margin-top: 14px; }
   .plpanelhead {
     display: flex; align-items: center; gap: 7px;
