@@ -753,6 +753,57 @@ class TestTheCardCacheHasOneHome(unittest.TestCase):
 
         self.assertLess(live_cache._LIVE_BUST_FLOOR, live_cache._LIVE_TTL)
 
+    def test_a_cache_miss_rebuilds_once_however_many_tabs_arrive(self):
+        """The miss is single-flighted, or the cache's own arithmetic is wrong.
+
+        Measured on the deployed box (2026-09-17): warm /live answers in
+        1.4ms, cold in 374ms, because the miss fans out into four to six
+        station reads run one after another. Nothing serialised those, so
+        every tab polling during that 374ms window started its own full sweep
+        and the station took the fan-out once per tab. The cache exists to
+        stop exactly that multiplication.
+        """
+        import asyncio
+        import time
+        from unittest import mock
+
+        from api import live as api_live
+        from api import live_cache
+        from tests.support import _FakeRequest
+
+        builds = []
+
+        async def _slow_build(request):
+            builds.append(1)
+            await asyncio.sleep(0.05)      # the 374ms sweep, in miniature
+            live_cache._live_cache["data"] = {"card": "built"}
+            live_cache._live_cache["at"] = time.time()
+            return "the winner's answer"
+
+        async def run():
+            live_cache._live_cache["data"] = None
+            live_cache._live_cache["at"] = 0.0
+            with mock.patch.object(api_live, "_build_live", _slow_build),                     mock.patch.object(api_live, "_cors",
+                                      lambda _req, res: res),                     mock.patch.object(api_live, "_for_this_caller",
+                                      lambda _req, data: data),                     mock.patch.object(api_live, "web",
+                                      mock.Mock(json_response=lambda d: d)):
+                return await asyncio.gather(
+                    *[api_live.handle_live(_FakeRequest()) for _ in range(8)])
+
+        try:
+            out = asyncio.run(run())
+        finally:
+            live_cache._live_cache["data"] = None
+            live_cache._live_cache["at"] = 0.0
+
+        self.assertEqual(len(builds), 1,
+                         f"eight tabs missed together and the station was "
+                         f"swept {len(builds)} times")
+        # And every one of them was answered — a single-flight that leaves
+        # the losers with nothing is worse than no single-flight.
+        self.assertEqual(len(out), 8)
+        self.assertEqual(out[1:], [{"card": "built"}] * 7)
+
 
 class TestAFailedReadSaysWhyItFailed(unittest.TestCase):
     """`str(httpx.ReadTimeout())` is the empty string, and httpx raises its
