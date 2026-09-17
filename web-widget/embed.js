@@ -150,11 +150,35 @@
     }
 
     var iframe = null, frameHeight = 480, overlaid = false;
+    // What the widget last asked for, kept so a resize can re-answer it.
+    var overlayWant = 0;
     var maxHeight = function () { return Math.max(240, window.innerHeight - (isModal ? 120 : 110)); };
 
     function applyHeight() {
       if (!iframe) return;
       iframe.style.height = Math.min(frameHeight, maxHeight()) + "px";
+    }
+
+    function postOverlay(px) {
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage(
+          { type: "swtv:overlay", px: px, up: false }, origin);
+      }
+    }
+
+    // Grow the frame for the ask list, and TELL THE WIDGET THE TRUTH about
+    // it. The grant used to be floored at 120 while the height it produced
+    // was clamped by maxHeight(), so near the cap the widget placed its
+    // popup against room the frame had not actually been given and the list
+    // was clipped. The height is now the card's own height plus exactly the
+    // number that goes back over the wire — the same shape the inline card
+    // uses (baseHeight + granted).
+    function grantOverlay() {
+      if (!iframe) return;
+      var shown = Math.min(frameHeight, maxHeight());
+      var granted = Math.max(120, Math.min(overlayWant, maxHeight() - shown));
+      iframe.style.height = (shown + granted) + "px";
+      postOverlay(granted);
     }
 
     function makeAndWire() {
@@ -183,17 +207,13 @@
         // The panel is anchored (bottom, or centred), so granting the ask list
         // its room is just growing in place — no direction to negotiate.
         if (msg.type === "subwave-callin:overlay") {
-          var wanted = Number(msg.px) || 0;
-          overlaid = wanted > 0;
+          overlayWant = Number(msg.px) || 0;
+          overlaid = overlayWant > 0;
           if (overlaid) {
-            var granted = Math.max(120, Math.min(wanted, maxHeight() - frameHeight));
-            iframe.style.height = Math.min(frameHeight + granted, maxHeight()) + "px";
-            iframe.contentWindow.postMessage(
-              { type: "swtv:overlay", px: granted, up: false }, origin);
+            grantOverlay();
           } else {
             applyHeight();
-            iframe.contentWindow.postMessage(
-              { type: "swtv:overlay", px: 0, up: false }, origin);
+            postOverlay(0);
           }
           return;
         }
@@ -254,7 +274,15 @@
     }
     paintTrigger();
     setInterval(paintTrigger, 60000);
-    window.addEventListener("resize", applyHeight);
+    // A rotation, or a mobile URL bar collapsing, moves maxHeight() under a
+    // list that is ALREADY open — and this used to be bound straight to
+    // applyHeight, which shrank the frame back to the card's own height
+    // under the popup and told the widget nothing. The list stayed clipped
+    // until it was closed and opened again. Re-grant instead, against the
+    // viewport as it is now, and re-post so the widget re-places itself.
+    window.addEventListener("resize", function () {
+      if (overlaid) grantOverlay(); else applyHeight();
+    });
 
     el.appendChild(trigger);
     // Fixed shapes ignore their parent, but a modal backdrop must escape any

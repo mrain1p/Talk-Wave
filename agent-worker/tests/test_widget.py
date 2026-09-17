@@ -615,6 +615,43 @@ class TestWidgetServerContract(unittest.TestCase):
         return set(re.findall(r"\$\('([A-Za-z0-9_-]+)'\)", src)) | set(
             re.findall(r"getElementById\('([A-Za-z0-9_-]+)'\)", src))
 
+    def test_neither_caller_facing_script_touches_a_jar_by_hand(self):
+        # In a cross-site embed with third-party storage blocked — Chrome
+        # Incognito's default — reading `window.localStorage` does not come
+        # back null, it THROWS. The throw landed inside shared.js's IIFE, so
+        # `window.Callin` was never assigned; call.js destructures that
+        # global on the first line of its own and threw in turn, and the
+        # embed sat on "Checking…" behind a disabled Call button with no way
+        # out but a different browser (2026-09-17).
+        #
+        # shared.js probes each jar ONCE inside a try and publishes either
+        # the real object or a Map-backed stand-in (`store`, `tabStore`) —
+        # and that only holds for as long as nothing reaches past it. The
+        # panel's own scripts are deliberately not checked: /settings is the
+        # operator's first-party page, where the jar is never blocked.
+        shared = self.sources["shared.js"]
+        self.assertIn("function safeStorage(kind)", shared,
+                      "shared.js has lost the storage probe")
+        # Reached through window[kind], so the read that throws is inside
+        # the try on every engine.
+        self.assertIn("window[kind]", shared)
+        published = shared.split("  return {")[-1]
+        for name in ("store", "tabStore"):
+            with self.subTest(published=name):
+                self.assertIn(name, published,
+                              f"safeStorage's {name} is not published on the "
+                              "Callin global, so call.js cannot use it")
+        for name in ("shared.js", "call.js"):
+            src = re.sub(r"//[^\n]*", "", self.sources[name])
+            for jar in ("localStorage.", "sessionStorage."):
+                with self.subTest(file=name, jar=jar):
+                    self.assertNotIn(
+                        jar, src,
+                        f"{name} reaches for {jar} directly. In a "
+                        "blocked-storage embed that throws where it is "
+                        "written and takes the whole widget down with it — "
+                        "go through Callin's store / tabStore instead.")
+
     def test_the_scan_found_something_to_check(self):
         # A silently-empty scan would make every assertion below pass forever.
         self.assertGreater(len(self.routes), 10)
@@ -1046,6 +1083,32 @@ class TestTheServiceWorkerStaysOutOfTheWay(unittest.TestCase):
                     f"{path} is not in the worker's never-touch list — it "
                     "would be answered from a cache")
 
+    def test_only_the_home_page_becomes_the_offline_shell(self):
+        # /panel.html and /embed-test.html are served by the same add_static
+        # and are not in NEVER, so the navigate branch used to write
+        # whichever same-origin page was opened LAST under the '/' key. Open
+        # the operator's page once in the profile that carries the installed
+        # app, and the app came up wearing the settings form with no signal
+        # (2026-09-17).
+        nav = self.sw.split("req.mode === 'navigate'")[1].split("\n    return;")[0]
+        self.assertIn("url.pathname === '/'", nav,
+                      "the navigate branch caches any same-origin page "
+                      "under the '/' key again")
+        self.assertIn("res.ok && home", nav,
+                      "the put is not gated on the home page")
+        self.assertIn("home ?", nav,
+                      "the offline fallback still answers '/' for every "
+                      "navigation — a page an older worker cached would go "
+                      "on being served as the app")
+
+    def test_the_cache_name_moved_with_the_rule(self):
+        # Changing WHAT is cached without changing the cache name leaves
+        # every installed copy answering out of the old entries — here, the
+        # wrong page still sitting under '/'.
+        self.assertIn("const CACHE = 'talkwave-v4';", self.sw,
+                      "the offline-shell rule changed and the cache name "
+                      "did not, so an installed app keeps the old '/'")
+
     def test_the_worker_only_installs_on_the_real_page(self):
         # An embed on somebody else's site installing a worker for this origin
         # is a surprise nobody asked for, and it outlives the frame.
@@ -1422,6 +1485,27 @@ class TestTheStationsOwnColoursReachTheCard(unittest.TestCase):
         self.assertEqual(tokens["--sage"], "#8a6f55")
         self.assertEqual(tokens["--coral"], "oklch(0.62 0.16 70)")
 
+    def test_a_failed_first_poll_does_not_cost_the_page_its_first_paint(self):
+        # The operator's configured theme is applied by the FIRST /live read
+        # and by nothing else — along with the skin, the door order, the
+        # theme glyph, the music handoff, the abilities read and the
+        # player's auto-open, which all hang off the same flag. `first` used
+        # to be `!live`, and refreshLive's own catch sets `live = {}` on a
+        # real outage: a page whose first poll failed could never answer it
+        # true again, so every one of those ran NEVER, and the card wore the
+        # default theme and door order until a reload (2026-09-17).
+        call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertNotIn("const first = !live;", call_js)
+        self.assertIn("const first = !lastLiveAt;", call_js)
+        # And the order is the whole of it: lastLiveAt is written only by a
+        # GOOD poll, so reading it after the write answers false on the very
+        # first one.
+        body = call_js.split("async function refreshLive")[1]
+        self.assertLess(body.index("const first = !lastLiveAt;"),
+                        body.index("lastLiveAt = Date.now();"),
+                        "the stamp is written before `first` reads it, so "
+                        "the first good poll is not the first paint")
+
     def test_nothing_the_widget_does_not_name_comes_through(self):
         # The station's set includes fonts. This widget ships no font files
         # and makes no third-party request for one, so a --display-font
@@ -1489,7 +1573,7 @@ class TestTheStationsOwnColoursReachTheCard(unittest.TestCase):
         # viewer option since the cycle) is applied first and returns.
         call_js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
         fn = call_js.split("function applyConfiguredTheme")[1][:700]
-        self.assertIn("localStorage.getItem('callinTheme')", fn)
+        self.assertIn("store.getItem('callinTheme')", fn)
         self.assertIn("applyThemeChoice(stored)", fn)
 
 
@@ -2629,7 +2713,13 @@ class TestThePanelReadsAtAGlance(unittest.TestCase):
         for surface in (self.js,
                         (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")):
             self.assertIn("THEME_ICONS.station", surface)
-            self.assertIn("localStorage.getItem('callinTheme')", surface)
+            # The same stored KEY — that is what makes the two cycles one
+            # mental model. HOW each surface reaches it differs by design
+            # since 2026-09-17: the call page goes through Callin's storage
+            # shim, because a blocked jar in a cross-site embed throws and
+            # takes the whole widget down with it, while /settings is the
+            # operator's own first-party page and reads the jar directly.
+            self.assertIn("getItem('callinTheme')", surface)
         self.assertIn("panelThemeOptions", self.js)
 
 
@@ -3323,7 +3413,7 @@ class TestTheStationPlayerKnowsItsPlace(unittest.TestCase):
         # pauses and KEEPS it, which silences the mic path just as well, and
         # closePlayer(true) then takes the sheet without touching the audio.
         # What is pinned is the silence, not how it is reached.
-        call = self.js.split("async function startCall")[1][:2400]
+        call = self.js.split("async function startCall")[1][:3200]
         self.assertIn("parkPlayer()", call)
         self.assertIn("closePlayer(true)", call)
         park = self.js.split("function parkPlayer")[1][:300]
@@ -3938,8 +4028,12 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
     def test_the_strip_keeps_its_own_sideways_drag(self):
         # Every swipe across the day's hours turned the page instead of
         # scrolling them (operator, 2026-09-03).
-        swipe = self.js.split("function bindFaceSwipe")[1][:1400]
-        self.assertIn("closest('.gdtoday')", swipe)
+        swipe = self.js.split("function bindFaceSwipe")[1][:1800]
+        # BOTH strips. .gdtoday was the only one named, and the sheet hides
+        # it on all four surfaces — so the real sideways scroller, the week
+        # grid, had no exemption at all and dragging it rightward paged to
+        # the player instead of scrolling the hours back (2026-09-17).
+        self.assertIn("closest('.gdtoday, .gdgrid')", swipe)
         strip = self.css.split("  .gdtoday {")[1].split("}")[0]
         self.assertIn("touch-action: pan-x", strip)
         self.assertIn("overflow-x: auto", strip)
@@ -4074,7 +4168,7 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
             self.assertIn(el, self.html)
         self.assertIn("function paintGuideGrid", self.js)
         self.assertIn("function setGuideView", self.js)
-        grid = self.js.split("function paintGuideGrid")[1][:4200]
+        grid = self.js.split("function paintGuideGrid")[1][:5200]
         # Every run that TOUCHES a day is drawn on it, clipped — a show
         # from last night fills this morning instead of leaving it blank.
         self.assertIn("r.start < end && r.end > start", grid)
@@ -4123,7 +4217,11 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         # a name — never a cut-off stub. The ladder is what this pins.
         self.assertIn("function fitsChars", self.js)
         self.assertIn("function blockLabel", self.js)
-        self.assertIn("const shortened = blockLabel(label, span);", self.js)
+        # The hour's width is passed IN: paintGuideGrid measures it before
+        # it empties the grid, because measuring afterwards cost the reader
+        # their scroll position on every poll.
+        self.assertIn("const shortened = blockLabel(label, span, hourPx);",
+                      self.js)
         ladder = self.js.split("function blockLabel")[1][:900]
         # 1. the whole name, 2. the name without the tagline the station
         # hangs off it after a middle dot, 3. the significant words,

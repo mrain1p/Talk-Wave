@@ -386,12 +386,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         # The mint, shaped like api/tokens.handle_token's answer. There is no
-        # LiveKit here so the join cannot go anywhere — what this exists for is
-        # `release`, the per-room secret the widget must keep and hand back to
-        # /call-ended, because a widget that forgets it leaves the slot held
-        # until it ages out and nothing on screen says so.
+        # LiveKit here so the join cannot go anywhere — the url points at a
+        # port nothing listens on, so a press ends in the card's own
+        # connect-failure reset rather than hanging, and that reset is worth
+        # being able to look at. What this mostly exists for is `release`,
+        # the per-room secret the widget must keep and hand back to
+        # /call-ended: a widget that forgets it leaves the slot held until it
+        # ages out, and nothing on screen says so.
         if self.path.split("?")[0] == "/token":
-            return self._json({"token": "stub-token", "url": "ws://stub",
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                self.rfile.read(n)
+            except Exception:
+                pass
+            return self._json({"token": "stub-token",
+                               "url": "ws://127.0.0.1:1/stub",
                                "room": "callin-g-stub00000000",
                                "release": "stub-release"})
         # Freeing the slot needs that same secret. Answered ok either way,

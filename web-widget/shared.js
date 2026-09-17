@@ -86,9 +86,52 @@ window.Callin = (function () {
     bulb: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 17.5a6 6 0 1 1 6 0v1.5H9z"/><path d="M9.8 21.5h4.4"/></svg>',
   };
 
+  // ------------------------------------------------------------- storage
+  // A cross-site embed with third-party storage blocked (Chrome Incognito's
+  // default) does not merely refuse to read localStorage — touching
+  // `window.localStorage` AT ALL throws SecurityError. That throw landed in
+  // the middle of this IIFE, so `window.Callin` was never assigned, call.js
+  // threw on the destructure at the top of its own, and the embed sat on
+  // "Checking…" behind a disabled Call button for ever. A forgotten theme
+  // is a small thing; a phone that cannot be called from is not.
+  //
+  // So the object is probed ONCE, inside a try, and a browser that says no
+  // gets a Map-backed stand-in wearing the same three methods. Everything
+  // this widget keeps — the theme, the cached palette, the door code, the
+  // chat id, the player handoff — is a convenience that can be re-earned;
+  // none of it is worth a dead card.
+  //
+  // Nothing in shared.js or call.js may reach for `localStorage.` or
+  // `sessionStorage.` by hand again: TestNothingTouchesStorageBareHanded
+  // greps both files for exactly that.
+  function safeStorage(kind) {
+    try {
+      const real = window[kind];
+      // Reading the property is what throws in Incognito, but a Safari
+      // private window hands back a real object whose setItem throws
+      // instead — so the probe writes.
+      const probe = '__callin__';
+      real.setItem(probe, '1');
+      real.removeItem(probe);
+      return real;
+    } catch (e) {
+      const mem = new Map();
+      return {
+        getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+        setItem: (k, v) => { mem.set(k, String(v)); },
+        removeItem: (k) => { mem.delete(k); },
+      };
+    }
+  }
+  // `store` is the browser's memory, `tabStore` is this tab's — the same
+  // split the two real objects draw, kept in the names so a call site still
+  // says which one it meant.
+  const store = safeStorage('localStorage');
+  const tabStore = safeStorage('sessionStorage');
+
   (function theme() {
     const forced = params.get('theme');
-    const saved = forced || localStorage.getItem('callinTheme') || themeDefault;
+    const saved = forced || store.getItem('callinTheme') || themeDefault;
     if (saved === 'light' || saved === 'dark') {
       document.documentElement.setAttribute('data-theme', saved);
     }
@@ -100,10 +143,10 @@ window.Callin = (function () {
     // VIEWER has toggled a manual theme — that toggle deliberately clears these
     // tokens, so restoring them would undo their choice. A themeDefault or a
     // host-forced light/dark does NOT skip it: those pick the mode, not the hue.
-    const manual = localStorage.getItem('callinTheme');
+    const manual = store.getItem('callinTheme');
     if (manual !== 'light' && manual !== 'dark') {
       try {
-        const cached = JSON.parse(localStorage.getItem('callinPalette') || 'null');
+        const cached = JSON.parse(store.getItem('callinPalette') || 'null');
         if (cached && typeof cached === 'object') {
           const root = document.documentElement;
           Object.keys(cached).forEach((k) => {
@@ -141,11 +184,11 @@ window.Callin = (function () {
       [...root.style].filter((p) => p.startsWith('--'))
         .forEach((p) => root.style.removeProperty(p));
       root.setAttribute('data-theme', next);
-      localStorage.setItem('callinTheme', next);
+      store.setItem('callinTheme', next);
       // The viewer chose a manual theme, so a cached station palette must not
       // paint over it on the next load — drop it. It re-caches the moment the
       // station palette is applied again (if they toggle back to it).
-      try { localStorage.removeItem('callinPalette'); } catch (e) { /* private mode */ }
+      try { store.removeItem('callinPalette'); } catch (e) { /* a full quota */ }
       glyph();
     };
   })();
@@ -200,22 +243,22 @@ window.Callin = (function () {
   // When the code was stored, for the shared-machine expiry: a typed code
   // should not outlive its typist on a kiosk. Written wherever the code is.
   const CALL_KEY_AT = 'callinCallKeyAt';
-  const callKey = () => localStorage.getItem(CALL_KEY) || '';
+  const callKey = () => store.getItem(CALL_KEY) || '';
   function rememberCallKey(code) {
     if (code) {
-      localStorage.setItem(CALL_KEY, code);
-      localStorage.setItem(CALL_KEY_AT, String(Date.now()));
+      store.setItem(CALL_KEY, code);
+      store.setItem(CALL_KEY_AT, String(Date.now()));
     } else {
-      localStorage.removeItem(CALL_KEY);
-      localStorage.removeItem(CALL_KEY_AT);
+      store.removeItem(CALL_KEY);
+      store.removeItem(CALL_KEY_AT);
     }
   }
   function callKeyExpired(minutes) {
     if (!minutes || !callKey()) return false;
-    const at = Number(localStorage.getItem(CALL_KEY_AT) || 0);
+    const at = Number(store.getItem(CALL_KEY_AT) || 0);
     if (!at) {
       // A code stored before the clock existed starts its clock now.
-      localStorage.setItem(CALL_KEY_AT, String(Date.now()));
+      store.setItem(CALL_KEY_AT, String(Date.now()));
       return false;
     }
     return (Date.now() - at) > minutes * 60 * 1000;
@@ -684,10 +727,10 @@ window.Callin = (function () {
 
   function readPlayerHandoff() {
     try {
-      const h = JSON.parse(sessionStorage.getItem(PLAYER_HANDOFF) || 'null');
+      const h = JSON.parse(tabStore.getItem(PLAYER_HANDOFF) || 'null');
       if (!h || !h.wanted) return null;
       if (Date.now() - (h.at || 0) >= HANDOFF_FRESH_MS) {
-        sessionStorage.removeItem(PLAYER_HANDOFF);
+        tabStore.removeItem(PLAYER_HANDOFF);
         return null;
       }
       return { volume: typeof h.volume === 'number' ? h.volume : null };
@@ -696,14 +739,14 @@ window.Callin = (function () {
 
   function writePlayerHandoff(wanted, volume) {
     try {
-      sessionStorage.setItem(PLAYER_HANDOFF, JSON.stringify(
+      tabStore.setItem(PLAYER_HANDOFF, JSON.stringify(
         { wanted: !!wanted, volume: volume, at: Date.now() }));
     } catch (e) { /* private mode or a full quota: the music just stops here */ }
   }
 
   return {
     $, params, compact, captionsMode, framed, themeForcedByHost, themeDefault,
-    applySkin, skinForced,
+    applySkin, skinForced, safeStorage, store, tabStore,
     ASKS, ASK_GROUPS, NEVER, CALL_KEY, callKey, rememberCallKey, callKeyExpired,
     ctx, resetCtx, pack, playSound, startRinging, stopRinging,
     setSounds, setVolume, getVolume, THEME_ICONS, LINK_ICONS,

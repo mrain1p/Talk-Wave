@@ -640,6 +640,221 @@ def check_panel(browser, rep: Report, base: str) -> None:
     else:
         rep.add("ok", "panel: no JS exception while repainting")
     page.close()
+# --- what only a browser can answer ------------------------------------------
+# Four faults the source checks in the Python suite are structurally unable to
+# see: a rule's specificity, a node rebuilt under a reader, a listener that
+# never fires, and a line the next poll wipes. Each is measured here.
+
+_HIDE_PROBE = """(id) => {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const was = el.hidden;
+  el.hidden = false;
+  void el.offsetHeight;
+  const shown = getComputedStyle(el).display;
+  el.hidden = true;
+  void el.offsetHeight;
+  // Read into plain values BEFORE the hidden state goes back: a
+  // CSSStyleDeclaration from getComputedStyle is LIVE, so restoring first
+  // and reading after reports the state the element ended in rather than
+  // the one under test.
+  const display = getComputedStyle(el).display;
+  const r = el.getBoundingClientRect();
+  const w = r.width, h = r.height;
+  el.hidden = was;
+  return { shown: shown, display: display, w: w, h: h };
+}"""
+
+# A real horizontal drag, as DOM touch events — the card's pager listens with
+# plain addEventListener, so synthetic events reach it exactly as a finger
+# would. Playwright's touchscreen can only tap.
+_DRAG = """(sel) => {
+  const el = document.querySelector(sel);
+  if (!el) return 'no ' + sel;
+  const r = el.getBoundingClientRect();
+  if (r.width < 40 || r.height < 10) return sel + ' is not on screen';
+  const y = r.top + Math.min(40, r.height / 2);
+  const fire = (type, x) => {
+    const t = new Touch({ identifier: 1, target: el, clientX: x, clientY: y });
+    const none = type === 'touchend';
+    el.dispatchEvent(new TouchEvent(type, {
+      bubbles: true, cancelable: true,
+      touches: none ? [] : [t], targetTouches: none ? [] : [t],
+      changedTouches: [t] }));
+  };
+  const x0 = r.left + 30;
+  fire('touchstart', x0);
+  for (let i = 1; i <= 6; i += 1) fire('touchmove', x0 + i * 25);
+  fire('touchend', x0 + 150);
+  return '';
+}"""
+
+_FACE = """() => { const vis = (id) => { const el = document.getElementById(id);
+  return !!el && !el.hidden && el.getBoundingClientRect().height > 0; };
+  return vis('guideView') ? 'guide' : vis('playerView') ? 'player' : 'phone'; }"""
+
+
+def check_hidden_controls(browser, rep: Report, base: str) -> None:
+    """A control the SERVER withheld must not paint.
+
+    Trap 1 in the card's design system: the script hides these with
+    `el.hidden = true`, `[hidden] { display: none }` is (0,1,0), and any
+    rule of ours naming a class and setting a display outranks it. Both of
+    these had a `[hidden]` twin — and both twins were out-specified by a
+    later, heavier rule, which is the one shape the source scanner
+    (TestHiddenActuallyHides) cannot see, because specificity is a browser
+    question. Measured 2026-09-17: the dock's three painted 36x36 bordered
+    pressable squares and #npHeart 44x44, for callers whose press earns a
+    401 from /player/*.
+    """
+    ctx = browser.new_context(viewport={"width": 1100, "height": 800},
+                              reduced_motion="reduce")
+    page = ctx.new_page()
+    page.goto(f"{base}/", wait_until="networkidle")
+    page.wait_for_timeout(400)
+
+    def probe(el_id: str) -> None:
+        got = page.evaluate(_HIDE_PROBE, el_id)
+        if got is None:
+            rep.add("FAIL", f"hidden: #{el_id} exists", "not in the DOM")
+        elif got["shown"] == "none":
+            # Otherwise the assertion below passes for the wrong reason —
+            # a control nothing could have painted anyway.
+            rep.add("FAIL", f"hidden: #{el_id} is measurable here",
+                    "it does not paint even when shown, so this surface "
+                    "cannot answer the question")
+        elif got["display"] == "none" and got["w"] == 0 and got["h"] == 0:
+            rep.add("ok", f"hidden: #{el_id} really goes away "
+                          f"(shown {got['shown']}, hidden none, 0x0)")
+        else:
+            rep.add("FAIL", f"hidden: #{el_id} still paints when hidden",
+                    f"display {got['display']!r}, {got['w']:.0f}x"
+                    f"{got['h']:.0f} — a rule of ours beats [hidden]")
+
+    # The station row's heart is on the phone, which is the opening face.
+    probe("npHeart")
+    # The dock's three live on the player, so open it or the measurement is
+    # about an ancestor rather than about the rule under test.
+    page.click("#facePlayer")
+    page.wait_for_timeout(350)
+    for el_id in ("plHeartBtn", "plSkipBtn", "plOpBtn"):
+        probe(el_id)
+    ctx.close()
+
+
+def check_guide_gestures(browser, rep: Report, base: str) -> None:
+    """The guide's two reader-owned states, on a phone.
+
+    A portrait the reader opened used to be a class on a node paintGuide
+    rebuilds from scratch on every /live poll and every player event, so it
+    collapsed within twenty seconds; leaving the face and coming back is the
+    same rebuild, and is what this drives. And the pager exempted only
+    `.gdtoday` — a strip the sheet hides on every surface — so dragging the
+    week grid sideways paged to the player instead of scrolling the hours.
+    """
+    ctx = browser.new_context(viewport={"width": 390, "height": 844},
+                              reduced_motion="reduce", has_touch=True)
+    page = ctx.new_page()
+    page.goto(f"{base}/", wait_until="networkidle")
+    page.wait_for_timeout(400)
+    page.click("#faceGuide")
+    page.wait_for_timeout(700)
+
+    face = page.query_selector(".gdzoom")
+    if face is None:
+        rep.add("FAIL", "guide: a portrait to open",
+                "no .gdzoom in the guide — the stub's personas did not paint")
+    else:
+        face.click()
+        page.wait_for_timeout(200)
+        opened = page.evaluate("() => document.querySelectorAll('.gdzoom.big').length")
+        page.click("#facePhone")
+        page.wait_for_timeout(400)
+        page.click("#faceGuide")          # openGuide -> loadGuide -> paintGuide
+        page.wait_for_timeout(700)
+        kept = page.evaluate("() => document.querySelectorAll('.gdzoom.big').length")
+        if opened and kept:
+            rep.add("ok", "guide: an opened portrait survives the repaint "
+                          "that rebuilds every figure node")
+        else:
+            rep.add("FAIL", "guide: the portrait survives a repaint",
+                    f"{opened} open before the rebuild, {kept} after")
+
+    week = page.query_selector("#guideViewWeek")
+    if week is None or not page.evaluate(
+            "() => { const b = document.getElementById('guideViewWeek');"
+            " return !!b && b.getBoundingClientRect().width > 0; }"):
+        rep.add("FAIL", "guide: the week view is reachable",
+                "#guideViewWeek is not on this surface, so the grid's own "
+                "drag cannot be driven")
+        ctx.close()
+        return
+    week.click()
+    page.wait_for_timeout(500)
+    why = page.evaluate(_DRAG, ".gdgrid")
+    if why:
+        rep.add("FAIL", "guide: the week grid is draggable", why)
+    else:
+        page.wait_for_timeout(500)
+        if page.evaluate(_FACE) == "guide":
+            rep.add("ok", "guide: dragging the week grid sideways scrolls "
+                          "the hours instead of paging to the player")
+        else:
+            rep.add("FAIL", "guide: the grid owns its own sideways drag",
+                    "a drag across .gdgrid turned the page — the pager's "
+                    "exemption does not name the real scroller")
+    ctx.close()
+
+
+def check_idle_line(browser, rep: Report, base: str) -> None:
+    """The line under the card on a voicemail-only line.
+
+    `message_only` is a real setting with a schema entry, a panel field, a
+    /live slot and a preview in the panel — and nothing on the card had ever
+    read it, so the operator's own wording for the state landed nowhere. The
+    stub's line is voicemail-only by default, which is the state.
+
+    It also stands in for the other half of that branch: the idle repaint's
+    setStatus('') is now conditional, because it was wiping 'Call ended',
+    'No answer' and the studio's receipt within one /live round trip. A call
+    is the one thing this stub cannot give, so the HOLD itself is pinned in
+    the Python suite; what is driven here is that the branch still paints.
+    """
+    ctx = browser.new_context(viewport={"width": 1100, "height": 800},
+                              reduced_motion="reduce")
+    page = ctx.new_page()
+    page.goto(f"{base}/", wait_until="networkidle")
+    # The stub's own store answers /live, which is how its closed-line states
+    # are driven in a browser at all. Ask for the machine-only line, put the
+    # operator's setting back afterwards.
+    was = page.evaluate(
+        "async () => { const r = await fetch('/live');"
+        " return (await r.json()).voicemailWhen || 'closed'; }")
+    page.evaluate(
+        "async () => { await fetch('/settings', { method: 'POST',"
+        " headers: { 'Content-Type': 'application/json' },"
+        " body: JSON.stringify({ voicemail_when: 'always' }) }); }")
+    page.reload(wait_until="networkidle")
+    page.wait_for_timeout(700)
+    got = page.evaluate(
+        "() => { const s = document.getElementById('statusText'),"
+        " c = document.getElementById('callBtn');"
+        " return { line: (s && s.textContent || '').trim(),"
+        "          callHidden: !!(c && c.hidden) }; }")
+    if got["line"] == "Message only" and got["callHidden"]:
+        rep.add("ok", "idle: a voicemail-only line says so under the card, "
+                      "and the live door is not offered")
+    else:
+        rep.add("FAIL", "idle: the voicemail-only line explains itself",
+                f"status line {got['line']!r}, Call button hidden "
+                f"{got['callHidden']} — the line was set voicemail-only "
+                "(voicemailWhen: always), so the card should read the "
+                "operator's message_only wording and drop the live door")
+    page.evaluate(
+        "async (v) => { await fetch('/settings', { method: 'POST',"
+        " headers: { 'Content-Type': 'application/json' },"
+        " body: JSON.stringify({ voicemail_when: v }) }); }", was)
+    ctx.close()
 
 
 def main() -> None:
@@ -733,6 +948,9 @@ def main() -> None:
 
                 check_faces(browser, rep, base)
                 check_controls(browser, rep, base)
+                check_hidden_controls(browser, rep, base)
+                check_guide_gestures(browser, rep, base)
+                check_idle_line(browser, rep, base)
                 check_panel(browser, rep, base)
                 # Last: it takes the server away.
                 check_offline(browser, rep, base, proc)
