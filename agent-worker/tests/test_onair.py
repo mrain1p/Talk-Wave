@@ -208,14 +208,25 @@ class TestTheHoldIsAPromiseNotAnAccident(_RelayCase):
     """
 
     def test_a_turn_with_no_successor_airs_when_the_hold_expires(self):
+        # Waits for the PUSH, not for the wall clock. It slept a flat 0.6s
+        # against a 0.15s cap, which is a race the moment the machine is
+        # busy — it went red once in a pre-commit hook with two other test
+        # runs and a headless browser on the box, and passed alone every
+        # time after (2026-09-17). The claim is "it airs on its own when the
+        # cap expires", not "within 600ms", so the deadline is generous and
+        # the assertion is unchanged. Same shape as the sign-off waiter's
+        # own load fix (see docs/adr/review-ledger.md, 2026-09-01).
         async def run():
             r, got = self._relay()
             r.max_held_secs = 0.15
             self.assertTrue(await r.open())
             await r.feed(self._feed_file("t1.wav"), "caller", 2.0)
-            before = len([g for g in got if b"voice_queue.push" in g])
-            await asyncio.sleep(0.6)
-            after = len([g for g in got if b"voice_queue.push" in g])
+            pushes = lambda: len([g for g in got if b"voice_queue.push" in g])  # noqa: E731
+            before = pushes()
+            deadline = time.monotonic() + 8.0
+            while pushes() == before and time.monotonic() < deadline:
+                await asyncio.sleep(0.02)
+            after = pushes()
             await r.close("done")
             return before, after
 

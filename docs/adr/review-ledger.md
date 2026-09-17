@@ -483,3 +483,86 @@ false positives — the AirVerdict mixin's attributes defined on the subclass
 worth a permanent CI step — the signal-to-noise on this codebase's idioms is
 near zero, and a report nobody reads is noise. Re-run by hand if the seam
 grows a new adapter. mypy stays a local dev install, not a requirement.
+
+---
+
+## The whole-app review (2026-09-17)
+
+Not a batch of the maintainability plan — a review of the shipped product at
+0.99.44, asked for as "bug tests, tool calls, things missing or not working as
+intended". Eighteen reading angles over `agent-worker/` and `web-widget/`, every
+candidate argued against the code by a second reader before it was believed
+(twenty-four of those, five by running the code and two by measuring a real
+browser), plus the DJ's tools drilled against the live station. Fixed in five
+batches on `dev`; the per-finding detail is in the commit bodies.
+
+**Two candidates were REFUTED and are recorded so they are not re-found:**
+
+- **The gap-held hand-back vs. `shutdown_process_timeout=60`.** It looked as
+  though a 150s gap wait inside the shutdown callback would be killed at 60s,
+  losing the hand-back, the record's `finally` and the hush release. It is not:
+  on a hang-up the job ends itself, and the SDK runs `_shutdown_callbacks` in a
+  bare `gather` with no timeout — the 60s bounds only a worker-initiated close
+  or a server `JobTermination`. `main.py`'s comment claimed the wider reach and
+  was corrected. The one real residue is a redeploy landing mid-hold, which
+  `stop_grace_period: 2m` already caps.
+- **`.plquote`'s line-clamp as a direct flex item** (trap 3 in the card's design
+  system). Measured in Chromium at both surfaces: the clamp takes, the box is
+  exactly 4 lines (2 on the page card), the ellipsis paints. `-webkit-box` is
+  already block-level so flex blockification does not touch it. Not re-opened
+  without a WebKit measurement.
+
+**Accepted with a reason, not fixed:**
+
+- **`PoolTimeout` as "reached the station"** was fixed anyway (it now reads
+  `ReadTimeout` only), but the exposure was near zero: each call owns its own
+  `StationClient` and pool, and nothing in today's code drives 100 in-flight
+  requests from one. It was cemented by a test asserting the wrong thing, which
+  is why it is worth naming: the test was the reason it survived a prior read.
+- **The `/call-ended` proof crosses a process boundary.** The browser shows the
+  per-room `release` minted with its token; the WORKER can show neither that nor
+  an admin credential, so it signs the room with the LiveKit secret both
+  containers already run on (`room_release.py`, a platform leaf both halves
+  import — one rule, not two spellings). Considered and rejected: a shared file
+  under `data/` (a third state surface), and a LiveKit round trip to prove the
+  room is empty (a network call on the hangup path).
+
+**Deferred — real, argued, and not this pass's work:**
+
+- **The cleanup tier.** ~38 inline copies of the admin-refusal card plus four
+  private helpers (already drifted: the first-run path omits `authRequired`);
+  the station-admin probe ladder written three times; the cloud-TTS key rule
+  re-spelled in the pipeline probe instead of asking `tts_adapter`; the
+  stage-direction regexes written twice, once for the grader and once for the
+  stripper, already disagreeing on newlines and length; the chat persona
+  resolved in three places so "pinned to the DJ who opened it" holds only on the
+  reply path. Each is a drift surface; none is a live fault today.
+- **The efficiency tier, measured not guessed.** `caller_tier()` runs PBKDF2 on
+  the event loop for every request carrying a call key — measured on this box at
+  ~940ms a hash, 3 hashes a plain mint and 5 for an on-air or voicemail one, and
+  once per `/live` poll per idle tab. The fix is a verdict cache keyed on the
+  auth file's mtime plus a per-request stash, with `to_thread` as the follow-up
+  (it makes `caller_tier` async across ~15 sites). Also: `secrets.json` parsed
+  on every `get()` (twice per admin-gated station call), `/live`'s cache-miss
+  path doing seven station reads serially with no single-flight, and
+  `air_verdict` re-reading the push file every second per call.
+- **Guards that no longer guard.** The untested-module check accepts a module
+  whose bare filename stem appears anywhere in the suite's prose, so a new
+  `notes.py` or `topics.py` passes untested; the routing-table orphan check is a
+  substring test, so deleting `/live` still passes while `handle_live_preview`
+  exists; and every local tool builder re-spells its gate as a literal
+  `cfg.get("allow_x")` rather than reading the registry, so changing a registry
+  row's gate leaves the builder handing the tool out under the old switch with a
+  green suite. The size ledger's EXEMPT set now covers the files that change
+  most often, and SPLITTING numbers are raised in place, so for those files the
+  ceiling is a changelog rather than a guard.
+
+**The drill (phase 1 only — the live spot-check and the mic legs need the
+operator).** Three intercepted sweeps inside the deployed worker: every tool the
+coverage set asks for fired with sensible arguments, and with every gate off no
+blocked tool was reached. Six honesty faults, all one shape — the DJ says the
+thing before the tool runs ("Queueing it up now, that's locked in" after a
+search, with no queue call). That is the class the promise guard exists for, and
+the guard was blind to a whole family of refusals (fixed this pass). Eight tools
+were reported "never called" because the coverage set had no ask for them; the
+set now reaches them.
