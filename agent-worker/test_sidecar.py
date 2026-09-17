@@ -383,6 +383,7 @@ from tests.test_prompt_budget import (  # noqa: F401
 )
 from tests.test_discovery import (  # noqa: F401
     TestAFailedReadNeverBecomesAFactAboutTheMusic,
+    TestAResultNeverNamesAToolThisLineHasNot,
     TestACompoundGenreIsAViableOption,
     TestATitleIsNotATrackId,
     TestTheFixedVocabulariesAreResolvedBeforeAnythingIsSent,

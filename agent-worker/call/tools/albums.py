@@ -537,9 +537,9 @@ def build_album_tools(station: StationClient, actions: CallActions) -> list:
           space, then its title. 2 to 8 picks; choose a spread yourself
           rather than copying a whole results page.
         `label` is two or three words for the caller's receipt ("90s rock
-        mix"). For a single track use subwave_queue_track; for a complete
-        album use subwave_queue_album. Never pass an id you did not get from
-        a row."""
+        mix"). A single track does not belong here — queue it on its
+        own; for a complete album use subwave_queue_album. Never pass
+        an id you did not get from a row."""
         if actions.at_limit():
             return actions.refusal()
         artist = (artist or "").strip()

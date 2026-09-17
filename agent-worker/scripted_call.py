@@ -28,9 +28,13 @@ Env:
     GATES=all|none|shipped force every gate on / off / to its SHIPPED
                            default, IN MEMORY ONLY — "none" is the refusal
                            sweep, "shipped" is the shape an operator runs
-                           (and the only one that reaches the request path:
-                           "all" hands the DJ the exact queue and it picks
-                           for itself instead)
+    TIER=open|guest|admin  who is on the line (default admin: every tiered
+                           permission granted). GATES=shipped TIER=open is
+                           the default deployment met by an anonymous
+                           caller — the only shape that reaches the request
+                           path, because the exact queue is an admin
+                           permission and with it in hand the DJ picks for
+                           itself instead
     MCP=1                  attach the station's real MCP tools (call mode
                            only; safe — all reads, see MCP_READS)
     SCENARIO_SET=triage    which TOOL each ask is routed to, graded per
@@ -2538,7 +2542,7 @@ def grade_scenario(name, expect, fired, said, log, exposed=None,
 
 # ------------------------------------------------------------------------ main
 
-def _apply_gate_profile(cfg: dict, gates: str) -> dict:
+def _apply_gate_profile(cfg: dict, gates: str, tier: str = "admin") -> dict:
     """GATES, in memory only — the file on disk is never touched, so the
     deployed line keeps whatever the operator set.
 
@@ -2562,7 +2566,7 @@ def _apply_gate_profile(cfg: dict, gates: str) -> dict:
         for name, spec in settings_store.FIELDS.items():
             if name.startswith("allow_") or name.endswith("_button"):
                 cfg[name] = spec[1]
-        return settings_store.permissions_for(cfg, "admin")
+        return settings_store.permissions_for(cfg, tier)
     if gates not in ("all", "none"):
         return cfg
     from call.tools import registry as tool_registry
@@ -2625,7 +2629,17 @@ async def main() -> None:
         print(f"[using injected {', '.join(injected)} — not the image's]")
 
     secrets_store.apply_to_env()
-    cfg = settings_store.permissions_for(settings_store.load(), "admin")
+    # TIER=open|guest|admin — WHO is on the line. It defaults to admin, which
+    # is every tiered permission granted, and that is the right default for a
+    # coverage sweep but the wrong shape for a real one: a permission set to
+    # `admin` (the exact queue among them) is a permission an anonymous caller
+    # does NOT have, so an admin sweep measures a line nobody rings. Pair it
+    # with GATES=shipped for the line as it actually ships, met by the caller
+    # who actually rings it.
+    tier = os.environ.get("TIER", "").strip().lower()
+    if tier not in settings_store.TIERS:
+        tier = "admin"
+    cfg = settings_store.permissions_for(settings_store.load(), tier)
     # SINGLE_LOOKUP=on/off — the C.5 A/B (the finder dispatcher against the
     # six-tool table), in memory only like GATES below: the file on disk is
     # never touched, so the deployed line keeps whatever the operator set.
@@ -2634,7 +2648,7 @@ async def main() -> None:
         cfg["single_lookup_tool"] = single == "on"
     chat = os.environ.get("MODE") == "chat"
     gates = os.environ.get("GATES", "")
-    cfg = _apply_gate_profile(cfg, gates)
+    cfg = _apply_gate_profile(cfg, gates, tier)
     # ABLATE=CLOSING,say_the_true_thing — build the prompt WITHOUT those
     # sections and run the set against it, so "does this paragraph change
     # behaviour" stops being a matter of taste. Names come from

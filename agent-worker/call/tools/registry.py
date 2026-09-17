@@ -448,6 +448,30 @@ def local_tool_names(cfg: dict, *, local_search_available: bool | None = None) -
     return names
 
 
+def on_the_surface(cfg: dict, name: str) -> bool:
+    """Will this call line actually be handed `name`?
+
+    The same answer the MCP server and the panel already get, asked by the
+    tools themselves — because a tool's own RESULT is an instruction, and it
+    is the one the model reads LAST. The drill at the shipped defaults
+    (2026-09-17, GATES=shipped TIER=open) watched the sound search answer
+    "queue the exact one they pick with subwave_queue_track" on a line where
+    `allow_exact_queue` is off, watched the DJ do exactly that, watched the
+    surface refuse a tool it had never been given — and then heard the DJ
+    tell the caller the record had landed. The prompt's rules ride their
+    switches; these strings did not, and they arrive after the prompt.
+
+    So any string that names a tool asks here first. Answering from the
+    registry rather than from the gate name is the point: `allow_exact_queue`
+    on its own is not the condition — the exact queue also needs the station
+    credentials its ids come from — and a second copy of that rule is exactly
+    how the two would drift apart again.
+    """
+    local_ok = not library_search_needs_mcp()
+    return (name in local_tool_names(cfg, local_search_available=local_ok)
+            or name in mcp_allowlist(cfg, local_search_available=local_ok))
+
+
 def blocked_names() -> list[str]:
     """Tools never exposed on a call line, whatever the settings say."""
     return [t.name for t in TOOLS if t.gate == NEVER]

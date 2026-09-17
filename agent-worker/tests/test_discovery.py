@@ -79,24 +79,45 @@ class _Station:
         return self._history
 
 
-def _build(cfg, station):
-    """Build the discovery tools with credentials present.
+def _with_credentials():
+    """The station credentials every tool here needs, faked in ONE place.
 
-    library_search_needs_mcp() reads the real station credentials, and without
-    them every tool here is (correctly) withheld — so a test that forgot to
-    fake it would pass by building nothing at all.
+    Two modules ask: `discovery` guards its whole surface on
+    library_search_needs_mcp(), and `registry.on_the_surface` — which the
+    results strings now consult — asks the same question again for each tool
+    name they mention. This used to patch discovery's own import, so the
+    tools were built in a world with credentials and then described a world
+    without them.
     """
     from unittest import mock
 
+    import station_config
+
+    return mock.patch.object(station_config, "admin_credentials",
+                             return_value=("dj", "s"))
+
+
+def _build(cfg, station):
+    """Build the discovery tools with credentials present.
+
+    Without them every tool here is (correctly) withheld — so a test that
+    forgot to fake it would pass by building nothing at all.
+    """
     from call.tools import discovery
 
-    with mock.patch.object(discovery, "library_search_needs_mcp",
-                           return_value=False):
+    with _with_credentials():
         built = discovery.build_discovery_tools(cfg, station, CallActions(5))
     return {t.info.name: t for t in built}
 
 
-ALL_ON = {"allow_sound_search": "open", "allow_library_search": "open"}
+# Everything a discovery result can point the DJ AT, not just the two
+# switches that build these tools. It said the narrow thing for a year, which
+# is how four results strings came to name the exact queue on lines that have
+# never had it — every test here ran on such a line and none of them read the
+# sentence. TestAResultNeverNamesAToolThisLineHasNot is the other half: it
+# runs the shapes this one deliberately isn't.
+ALL_ON = {"allow_sound_search": "open", "allow_library_search": "open",
+          "allow_requests": "open", "allow_exact_queue": "open"}
 
 
 class TestFindingMusicByHowItSounds(unittest.TestCase):
@@ -870,3 +891,119 @@ class TestAFailedReadNeverBecomesAFactAboutTheMusic(unittest.TestCase):
         out = asyncio.run(self._tools(station)["subwave_search_by_sound"]("dreamy"))
         self.assertIn("fact about the STATION", out)
         self.assertIn("Do not say there's nothing like that", out)
+
+
+class TestAResultNeverNamesAToolThisLineHasNot(unittest.TestCase):
+    """A tool's own RESULT is an instruction, and it has to ride the switches.
+
+    The drill at the shipped defaults (GATES=shipped TIER=open, 2026-09-17)
+    caught the sound search answering with "queue the exact one they pick with
+    subwave_queue_track" on a line where `allow_exact_queue` is off. The DJ
+    did exactly as it was told, the call surface refused a tool it had never
+    been given, and the DJ then told the caller the record had landed anyway.
+
+    That is the mimed action `OFF_LIST` exists to prevent, arriving through
+    the one channel nothing was watching. The prompt's rules already ride
+    their switches (TestActionRulesRideTheirSwitches); the strings a tool
+    hands back did not, and they arrive LAST, so they win.
+
+    The claim is deliberately general rather than a list of the four sites
+    that were wrong: any future results string naming a tool is checked the
+    day it lands.
+    """
+
+    ROW = {"id": "t1", "title": "On the Nature of Daylight",
+           "artist": "Max Richter", "year": 2004}
+
+    # What an anonymous caller meets on a default deployment, and the two
+    # shapes either side of it. `allow_exact_queue` is off in the first two
+    # on purpose: that is the shipped default, and every test above this one
+    # runs there without ever reading what the results say.
+    SHAPES = {
+        "shipped defaults, anonymous caller": {
+            "allow_sound_search": True, "allow_library_search": True,
+            "allow_requests": True},
+        "a line that cannot queue at all": {
+            "allow_sound_search": True, "allow_library_search": True},
+        "a vibe search with no name search behind it": {
+            "allow_sound_search": True, "allow_requests": True},
+        "nothing switched on at all": {},
+        "everything the operator can grant": {
+            "allow_sound_search": True, "allow_library_search": True,
+            "allow_requests": True, "allow_exact_queue": True,
+            "allow_album_queue": True, "allow_cancel_queue": True},
+    }
+
+    def _surface(self, cfg: dict) -> set:
+        """Every tool name this call line actually offers.
+
+        The registry's own answer, not a guess: it is what the MCP server is
+        handed and what the panel prints, and a separate test already pins it
+        against what the worker builds.
+        """
+        from call.tools import registry
+
+        with _with_credentials():
+            return (set(registry.local_tool_names(cfg))
+                    | set(registry.mcp_allowlist(cfg)))
+
+    def _loaded(self):
+        return _Station(sound=[self.ROW], neighbours=[self.ROW],
+                        browse={"rows": [self.ROW], "total": 1,
+                                "moodVocab": ["calm"]},
+                        now={"id": "t1", "title": "On the Nature of Daylight",
+                             "artist": "Max Richter"},
+                        liked=[self.ROW], history=[self.ROW],
+                        genres=["Ambient"])
+
+    def _everything_said(self, cfg: dict, station) -> list:
+        """(tool name, where, text) for every string a call line can meet."""
+        import inspect
+
+        said = []
+        for name, tool in _build(cfg, station).items():
+            said.append((name, "its description", tool.info.description or ""))
+            kwargs = {}
+            for arg, p in inspect.signature(tool).parameters.items():
+                if p.default is inspect.Parameter.empty:
+                    kwargs[arg] = 0 if p.annotation is int else "dreamy"
+            said.append((name, "a result", asyncio.run(tool(**kwargs))))
+        return said
+
+    def test_a_line_with_nothing_is_still_told_what_to_do(self):
+        """The third answer, which a fallback usually forgets.
+
+        A results string that simply goes quiet when the line cannot queue
+        leaves the DJ to improvise, which is the same failure by a longer
+        route. Each of these has to say the honest thing out loud.
+        """
+        from call.tools import next_move
+
+        with _with_credentials():
+            self.assertIn("Nothing on this line can put a record in the queue",
+                          next_move.queue_this_row({}))
+            self.assertIn("no other way to look by feel",
+                          next_move.another_way_to_look({}))
+            # This one always has somewhere to send the model: the tool that
+            # needs an id only exists on a line with the sound search.
+            self.assertIn("subwave_search_by_sound",
+                          next_move.where_an_id_comes_from({}))
+
+    def test_no_result_or_description_names_a_tool_that_is_not_there(self):
+        import re
+
+        offences = []
+        for shape, cfg in self.SHAPES.items():
+            surface = self._surface(cfg)
+            # Both halves of every tool: the answer when the station has
+            # something (where a list ends "now queue it") and the answer
+            # when it has nothing (where a miss ends "put a request in").
+            for station in (self._loaded(), _Station()):
+                for name, where, text in self._everything_said(cfg, station):
+                    for named in set(re.findall(r"subwave_[a-z_]+", text)):
+                        if named in surface or named == name:
+                            continue
+                        offences.append(f"{shape}: {name} names {named} "
+                                        f"in {where}")
+        self.assertEqual(sorted(set(offences)), [],
+                         "\n  " + "\n  ".join(sorted(set(offences))))
