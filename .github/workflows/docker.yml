@@ -80,8 +80,31 @@ jobs:
         # coverage guard pins against, but this is 2-3x faster on CI's cores.
         run: python run_tests.py
 
+  # The browser half has no unit harness by design (web-widget/CLAUDE.md), so
+  # the Python suite reads its source and the only executable check is
+  # tools/widget_check.py: both pages in a real headless browser, the three
+  # cards on four surfaces, every control pressed, and the installed app
+  # opening with the server gone. It ran on the dev box alone until
+  # 2026-09-17, and five releases of card work shipped past it that month
+  # — 0.9.128 had already shipped every embed frozen at "Checking…" with the
+  # suite green. Playwright lives in this job only; the image needs nothing.
+  widget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r agent-worker/requirements.txt playwright
+      - run: python -m playwright install --with-deps chromium
+      - name: Widget check (headless browser)
+        env:
+          LOG_TO_FILE: "0"
+        run: python tools/widget_check.py
+
   build-and-push:
-    needs: test
+    needs: [test, widget]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
