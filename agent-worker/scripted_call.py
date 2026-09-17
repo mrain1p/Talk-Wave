@@ -864,6 +864,23 @@ COVERAGE = [
         "find the track Africa by Toto and queue that exact copy — the precise "
         "one you find, not a re-match",
     ]),
+    # The bulk queue had no asks at all until 2026-09-17, so the drill
+    # reported queue_album, the one-artist run, the playlist and the
+    # clear-out "never called" BY CONSTRUCTION and could not grade one of
+    # them. Worded as a caller would ask, like the discovery three below.
+    ("a whole album, then a run by one artist", [
+        "play the whole of Rumours by Fleetwood Mac, start to finish",
+        "and after that a few Eminem tracks, whatever you'd pick",
+    ]),
+    ("one of the station's own playlists", [
+        "put the station's Sunday chill playlist on",
+    ]),
+    # Ordered so the thing being cleared exists first — the same reason the
+    # request comes before its status check above.
+    ("clearing a run back out", [
+        "line up a few Eminem tracks for me",
+        "actually, clear those Eminem tracks back out before they play",
+    ]),
     # The discovery three, added with the tools at 0.10.104. Worded as a
     # caller would, not as the tool name: the sweep is also the only place
     # that would notice a tool nobody can reach by ASKING for it.
@@ -883,6 +900,21 @@ COVERAGE = [
     ("a heart on, a heart off", [
         "oh I love this one — stick a heart on it from me",
         "actually no, take that heart back off",
+    ]),
+    # The two POWERS and the two reads that had no ask either. Both halves
+    # of each, in one scenario: a ban nobody lifts and a lock nobody clears
+    # outlive the call, and the sweep must exercise the way back out.
+    ("never play that again, then relent", [
+        "this one, never play it again — I can't stand it",
+        "actually that was harsh, put it back in rotation",
+    ]),
+    ("locking the genre for a bit", [
+        "keep it all soul for a while, nothing else",
+        "alright, that's enough — open it back up to anything",
+    ]),
+    ("what's been played, and the favourites", [
+        "what have you played so far tonight?",
+        "and what are the station's favourites — the ones people love?",
     ]),
     ("an announcement on air", [
         "can you give a shoutout on air to my sister Ana? she's listening at work",

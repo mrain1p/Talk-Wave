@@ -72,6 +72,32 @@ OFF_LIST_EXEMPT: dict[str, str] = {
 }
 
 
+def asks_that_need_a_tool(cfg: dict) -> tuple[str, str, str]:
+    """The three triage bullets that name an ACTION, each on its own switch.
+
+    They live in conduct's "Running the call" list and rode no switch at all
+    until 2026-09-17, which on the shipped default tiers put a rule and its
+    negation in one prompt: an open caller's DJ was told "put it on" and "run
+    it by name" while the off-list below, twelve thousand characters later,
+    said "Not on this line tonight: put shoutouts…; run segments" — and no
+    tool existed to catch the mime. They belong HERE for the reason the
+    module docstring gives: every rule written from a tool appears and
+    disappears with it. The off-list says the negative once; these say the
+    positive only where the tool is.
+    """
+    ask = ("""\
+- **A song they can name** — check it's in the racks, then put the request in.
+- **A feeling, an era, an occasion** — that IS a request. Send their own words
+  and let the station pick. Don't interrogate a vibe; one description is
+  plenty to act on.
+""" if cfg.get("allow_requests") else "")
+    air = ("- **Something for the air** — a shoutout, a dedication, a "
+           "message: put it on.\n" if cfg.get("allow_announcements") else "")
+    segment = ("- **A segment** — run it by name, only from the list you've "
+               "been given.\n" if cfg.get("allow_skills") else "")
+    return ask, air, segment
+
+
 def takeover_bullet(cfg: dict) -> str:
     """The show-change ask, told the truth about the current settings.
 

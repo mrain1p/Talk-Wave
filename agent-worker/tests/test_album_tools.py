@@ -261,7 +261,10 @@ class TestQueueingAWholeAlbum(unittest.TestCase):
         tool = _tools(st, actions)["subwave_queue_album"]
         out = asyncio.run(tool(album="Rumours"))
         self.assertIn("None of", out)
-        self.assertIn("do NOT claim", out)
+        # The PINNED tail (CallActions.station_refused), not a per-site one:
+        # every bulk refusal used to end in its own words about its own
+        # object, so spoken_rules.reads_as_a_refusal saw none of them.
+        self.assertIn("do not claim it worked", out)
         # 2026-08-27 review: the refusal card existed only on the PARTIAL
         # path — a station refusing the WHOLE album left the caller's screen
         # blank, and the truth lived in the model's sentence alone.
@@ -939,7 +942,10 @@ class TestTheStationQueuesTheRecordItself(unittest.TestCase):
         actions = CallActions(5)
         out = asyncio.run(_tools(st, actions)["subwave_queue_album"](album="Rumours"))
         self.assertIn("None of", out)
-        self.assertIn("do NOT claim", out)
+        # The PINNED tail (CallActions.station_refused), not a per-site one:
+        # every bulk refusal used to end in its own words about its own
+        # object, so spoken_rules.reads_as_a_refusal saw none of them.
+        self.assertIn("do not claim it worked", out)
         self.assertIn("never-play", out)
         self.assertEqual(actions.count, 0)
         self.assertEqual(st.queued, [])
@@ -1065,7 +1071,10 @@ class TestARunByOneArtistIsOnePress(unittest.TestCase):
             {"ok": False, "error": 'nothing by "Eminem" in the library'},
             artist="Eminem")
         self.assertIn("Nothing by Eminem made it into the queue", out)
-        self.assertIn("do NOT claim", out)
+        # The PINNED tail (CallActions.station_refused), not a per-site one:
+        # every bulk refusal used to end in its own words about its own
+        # object, so spoken_rules.reads_as_a_refusal saw none of them.
+        self.assertIn("do not claim it worked", out)
         self.assertEqual(actions.count, 0, "a refusal costs the caller nothing")
         self.assertEqual(actions.taken, [])
 
@@ -1205,7 +1214,10 @@ class TestAStationPlaylistGoesInWhole(unittest.TestCase):
         st.refuse["id4"] = "on the never-play list"
         actions, out = self._run(st, name="Late set")
         self.assertIn('None of "Late set" made it into the queue', out)
-        self.assertIn("do NOT claim", out)
+        # The PINNED tail (CallActions.station_refused), not a per-site one:
+        # every bulk refusal used to end in its own words about its own
+        # object, so spoken_rules.reads_as_a_refusal saw none of them.
+        self.assertIn("do not claim it worked", out)
         self.assertEqual(actions.count, 0)
 
 
@@ -1261,3 +1273,260 @@ class TestAQueuedBlockComesOutAsOnePress(unittest.TestCase):
         self.assertEqual(st.block_cancels, ["blk1"])
         self.assertIn("did go into the queue on this call", out)
         self.assertEqual(actions.count, 1)
+
+    def test_a_broken_station_never_lets_the_matcher_sweep_the_queue(self):
+        """The fall-through was ANY non-ok answer, not the documented 404.
+
+        A 5xx, a timeout or missing credentials read exactly like
+        "nothing of it is left", so the per-track NAME matcher ran against a
+        queue this line shares with the whole station — and could pull
+        another caller's tracks off the back of a failure that had nothing
+        to do with them. The station's own reason was lost on the way, too.
+        """
+        st, actions, clear = self._after_queue(
+            {"ok": False, "error": "500 — the queue service is down"})
+        mine = [{"title": "Track 1", "subsonic_id": "id1"}]
+        theirs = [{"title": "Rumours Of War", "subsonic_id": "zz"}]
+        st.upcoming = mine + theirs
+        out = asyncio.run(clear(album="Rumours"))
+        self.assertEqual(st.block_cancels, ["blk1"])
+        self.assertIn("Could not pull", out)
+        self.assertIn("500", out)
+        self.assertIn("Nothing was pulled", out)
+        self.assertIn("do NOT claim a clear-out", out)
+        # Nothing swept, nothing spent, and the caller sees the reason.
+        self.assertEqual(st.upcoming, mine + theirs)
+        self.assertEqual(actions.count, 1)
+        self.assertTrue(any(k == "refused" for k, _ in actions._denied))
+
+    def test_the_failure_still_reads_as_a_refusal_to_the_guard(self):
+        import spoken_rules
+
+        _st, _actions, clear = self._after_queue(
+            {"ok": False, "error": "500 — the queue service is down"})
+        out = asyncio.run(clear(album="Rumours"))
+        self.assertTrue(spoken_rules.reads_as_a_refusal(out))
+
+
+class TestTwoRecordsOfOneNameAreTwoRecords(unittest.TestCase):
+    """"Greatest Hits" is not an album — it is a shelf of them.
+
+    Grouping on the album NAME alone merged Queen's and ABBA's into one
+    group, so nothing was ever ambiguous enough to ask about: the caller got
+    whichever rows the search happened to return, both records' ids were
+    recorded under one name for the undo, and `_main_artist` called the
+    merged pile "various artists". The key is the pair now."""
+
+    def _rows(self):
+        return ([_row(i, album="Greatest Hits", artist="Queen")
+                 for i in (1, 2)]
+                + [_row(i, album="Greatest Hits", artist="ABBA")
+                   for i in (3, 4)])
+
+    def test_no_artist_asks_which_and_queues_nothing(self):
+        from call.actions import CallActions
+
+        st = _Station(self._rows())
+        actions = CallActions(5)
+        out = asyncio.run(
+            _tools(st, actions)["subwave_queue_album"](album="Greatest Hits"))
+        self.assertIn("More than one album", out)
+        self.assertIn("NOTHING queued", out)
+        self.assertIn("Queen", out)
+        self.assertIn("ABBA", out)
+        self.assertEqual(st.queued, [])
+        self.assertEqual(actions.count, 0)
+
+    def test_the_artist_settles_it_and_only_that_record_goes_in(self):
+        st = _Station(self._rows())
+        asyncio.run(_tools(st)["subwave_queue_album"](
+            album="Greatest Hits", artist="Queen"))
+        self.assertEqual([t["id"] for t in st.queued], ["id1", "id2"])
+
+    def test_a_compilation_still_meets_itself_under_its_album_artist(self):
+        # The other direction: rows by different performers that the library
+        # files under one albumArtist are ONE record, not four.
+        rows = [_row(i, album="Now 42", artist=f"Artist {i}",
+                     albumArtist="Various Artists") for i in (1, 2, 3)]
+        st = _Station(rows)
+        out = asyncio.run(_tools(st)["subwave_queue_album"](album="Now 42"))
+        self.assertIn("3 track(s)", out)
+        self.assertEqual(len(st.queued), 3)
+
+
+class TestATruncatedPressClaimsNoMembership(unittest.TestCase):
+    """The station queued 30 of the 45 it found, in ITS own order, and says
+    only the count — so WHICH 30 is unknowable from here. Marking all 45 as
+    this call's meant a later exact pick of one of the 15 that never went in
+    was refused as "already in the queue from earlier in this call", and the
+    undo's id list named fifteen records that were never queued."""
+
+    def _run(self, **block):
+        from call.actions import CallActions
+
+        st = _Station([_row(i) for i in (1, 2, 3)])
+        st.block = {**TestTheStationQueuesTheRecordItself.BLOCK, **block}
+        actions = CallActions(5)
+        out = asyncio.run(
+            _tools(st, actions)["subwave_queue_album"](album="Rumours"))
+        return actions, out
+
+    def test_a_truncated_answer_claims_none_of_them(self):
+        actions, out = self._run(queued=2, truncated=1)
+        self.assertEqual(actions.queued_ids, set())
+        self.assertEqual(actions.batch_ids("Rumours"), [])
+        # The cap is still SAID, and the exact undo handle still kept.
+        self.assertIn("capped", out)
+        self.assertEqual(actions.block_id("Rumours"), "blk1")
+
+    def test_a_whole_answer_claims_all_of_them(self):
+        actions, _out = self._run(queued=3, truncated=0)
+        self.assertEqual(actions.queued_ids, {"id1", "id2", "id3"})
+        self.assertEqual(set(actions.batch_ids("Rumours")),
+                         {"id1", "id2", "id3"})
+
+    def test_a_later_exact_pick_is_not_refused_as_already_queued(self):
+        from call.actions import CallActions
+
+        st = _Station([_row(i) for i in (1, 2, 3)])
+        st.block = {**TestTheStationQueuesTheRecordItself.BLOCK,
+                    "queued": 2, "truncated": 1}
+        actions = CallActions(5)
+        tools = _tools(st, actions, cfg={"allow_exact_queue": True})
+        asyncio.run(tools["subwave_queue_album"](album="Rumours"))
+        out = asyncio.run(tools["subwave_queue_track"](id="id3",
+                                                       title="Track 3"))
+        self.assertNotIn("ALREADY", out)
+        self.assertEqual([t["id"] for t in st.queued], ["id3"])
+
+
+class TestAskingForTheSameRecordTwiceDoesNotQueueItTwice(unittest.TestCase):
+    """The repeat press fell THROUGH to the per-track loop.
+
+    `queued_ids` was the only repeat guard, and a truncated press no longer
+    fills it — but even before that, a press the station capped left ids
+    unmarked, so "put Rumours on" a second time queued the record again a
+    track at a time. The block id under the record's name is the exact
+    answer: this call already pressed it."""
+
+    def test_a_second_ask_by_name_presses_nothing_and_says_why(self):
+        from call.actions import CallActions
+
+        st = _Station([_row(i) for i in (1, 2, 3)])
+        st.block = {**TestTheStationQueuesTheRecordItself.BLOCK,
+                    "queued": 2, "truncated": 1}
+        actions = CallActions(5)
+        tool = _tools(st, actions)["subwave_queue_album"]
+        asyncio.run(tool(album="Rumours"))
+        again = asyncio.run(tool(album="Rumours"))
+        self.assertEqual(len(st.blocks_asked), 1, "a second POST went out")
+        self.assertEqual(st.queued, [], "the per-track loop queued duplicates")
+        self.assertIn("ALREADY in the queue from earlier in this call", again)
+        self.assertEqual(actions.count, 1)
+
+    def test_a_different_record_is_not_refused_by_a_loose_name(self):
+        """The guard compares labels EXACTLY, unlike the undo's lookup.
+
+        `actions.block_id` matches either side inside the other, because a
+        caller paraphrases the name they were given — right for an undo and
+        wrong here: a run queued under "Eminem" would answer to "The Eminem
+        Show" and refuse a record nobody had pressed.
+        """
+        from call.actions import CallActions
+
+        st = _Station([_row(1, album="The Eminem Show", artist="Eminem")])
+        st.block = dict(TestTheStationQueuesTheRecordItself.BLOCK)
+        actions = CallActions(5)
+        actions.note_block("Eminem", "blk9")       # an earlier artist run
+        out = asyncio.run(
+            _tools(st, actions)["subwave_queue_album"](album="The Eminem Show"))
+        self.assertEqual(len(st.blocks_asked), 1, "the album never got pressed")
+        self.assertNotIn("ALREADY", out)
+
+
+class TestAWordIsNotASubstring(unittest.TestCase):
+    """"Pull Yesterday" also pulled "Yes".
+
+    Both removal tools matched titles, artists and albums by bare substring,
+    in BOTH directions — and the queue is shared with the whole station, so
+    the cost of a loose match is another caller's record. "Hello" took
+    "Hello Goodbye" off the top of the queue because it happened to be
+    first. Whole words now, on the squashed names (rows._has_words), and the
+    single cancel prefers an exact title and then a row THIS call queued."""
+
+    def _tools_over(self, upcoming, actions=None):
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _St:
+            def __init__(self):
+                self.cancelled = []
+
+            async def state(self):
+                return {"upcoming": list(upcoming)}
+
+            async def cancel_queued_track(self, tid):
+                self.cancelled.append(tid)
+                return {"ok": True}
+
+        st = _St()
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: False
+        try:
+            built = build_library_tools({"allow_cancel_queue": True}, st,
+                                        actions or CallActions(5))
+        finally:
+            music.library_search_needs_mcp = orig
+        return st, {t.info.name: t for t in built}
+
+    YES = [{"subsonic_id": "a1", "title": "Yes", "artist": "Fink"},
+           {"subsonic_id": "a2", "title": "Yesterday", "artist": "The Beatles"}]
+    HELLO = [{"subsonic_id": "b1", "title": "Hello Goodbye",
+              "artist": "The Beatles"},
+             {"subsonic_id": "b2", "title": "Hello", "artist": "Adele"}]
+
+    def test_clearing_a_short_title_leaves_the_longer_one_alone(self):
+        st, names = self._tools_over(self.YES)
+        out = asyncio.run(names["subwave_clear_from_queue"](titles="Yes"))
+        self.assertEqual(st.cancelled, ["a1"])
+        self.assertIn('"Yes"', out)
+        self.assertNotIn("Yesterday", out)
+
+    def test_clearing_the_longer_title_leaves_the_shorter_one_alone(self):
+        st, names = self._tools_over(self.YES)
+        asyncio.run(names["subwave_clear_from_queue"](titles="Yesterday"))
+        self.assertEqual(st.cancelled, ["a2"])
+
+    def test_the_single_cancel_takes_the_exact_row_not_the_first_hit(self):
+        # "Hello Goodbye" sits FIRST in the queue and was another caller's.
+        st, names = self._tools_over(self.HELLO)
+        out = asyncio.run(names["subwave_cancel_queued_track"](title="Hello"))
+        self.assertEqual(st.cancelled, ["b2"])
+        self.assertIn('"Hello"', out)
+
+    def test_this_calls_own_row_wins_a_tie(self):
+        from call.actions import CallActions
+
+        actions = CallActions(5)
+        actions.queued_ids.add("c2")
+        twice = [{"subsonic_id": "c1", "title": "Africa", "artist": "Toto"},
+                 {"subsonic_id": "c2", "title": "Africa", "artist": "Toto"}]
+        st, names = self._tools_over(twice, actions)
+        asyncio.run(names["subwave_cancel_queued_track"](title="Africa"))
+        self.assertEqual(st.cancelled, ["c2"])
+
+    def test_a_partial_name_still_finds_the_record_it_names(self):
+        # The loosening is still there — it just stops at word boundaries.
+        rows = [{"subsonic_id": "d1", "title": "Yesterday (2019 Remaster)",
+                 "artist": "The Beatles"}]
+        st, names = self._tools_over(rows)
+        asyncio.run(names["subwave_cancel_queued_track"](title="Yesterday"))
+        self.assertEqual(st.cancelled, ["d1"])
+
+    def test_an_artist_whose_name_is_a_word_in_a_title_is_not_a_sweep(self):
+        rows = [{"subsonic_id": "e1", "title": "Air", "artist": "Fink"},
+                {"subsonic_id": "e2", "title": "Airbag", "artist": "Radiohead"}]
+        st, names = self._tools_over(rows)
+        asyncio.run(names["subwave_clear_from_queue"](artist="Air"))
+        self.assertEqual(st.cancelled, ["e1"])

@@ -310,8 +310,11 @@ from tests.test_withheld import (  # noqa: F401
 )
 from tests.test_music_tools import (  # noqa: F401
     TestARefusalIsNotAskedTwice,
+    TestADuplicateIsNotAnAction,
     TestALateMatchStillReachesTheCaller,
     TestAMoodIsNotASearch,
+    TestAnAiredTrackCanBeQueuedAgain,
+    TestAnAnsweredRequestIsNotAQueuedOne,
     TestAQueuedTrackCanComeBackOut,
     TestCurrentLyricsAreARead,
     TestSearchPagesLikeTheStation,
@@ -610,8 +613,13 @@ from tests.test_album_tools import (  # noqa: F401
     TestARunByOneArtistIsOnePress,
     TestAStationPlaylistGoesInWhole,
     TestAQueuedBlockComesOutAsOnePress,
+    TestAskingForTheSameRecordTwiceDoesNotQueueItTwice,
+    TestATruncatedPressClaimsNoMembership,
+    TestAWordIsNotASubstring,
+    TestTwoRecordsOfOneNameAreTwoRecords,
 )
 from tests.test_tools_logic import (  # noqa: F401
+    TestABulkRefusalReadsAsOne,
     TestAHeldSegmentIsNotReportedAsStoodDown,
 )
 from tests.test_brain import (  # noqa: F401

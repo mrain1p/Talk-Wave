@@ -26,13 +26,38 @@ from station import StationClient
 
 from ..actions import CallActions
 from .blocks import clear_as_block
-from .rows import _BATCH_BUDGET_SECS, _squash, _txt
+from .rows import _BATCH_BUDGET_SECS, _has_words, _squash, _txt
 
 log = logging.getLogger("callin.agent")
 
 # One clear-out, at most. The same ceiling as an album going in: the two are
 # mirror images and should cost alike.
 CLEAR_MAX_TRACKS = 30
+
+
+def _pick_to_cancel(upcoming: list, title: str, mine: set) -> dict:
+    """Which ONE waiting row "pull Hello" means, or {}.
+
+    The old rule took the first upcoming row whose title merely CONTAINED
+    the word, so "Hello" pulled "Hello Goodbye" — queued by another caller,
+    off a queue this line shares with the whole station. The name as given
+    wins first; within either pass a row THIS call queued is preferred,
+    because that is the one the caller is changing their mind about; only
+    then does word-boundary containment run, which still finds "Yesterday"
+    for "yesterday" without "Yes" catching it.
+    """
+    want = _squash(title)
+    if not want:
+        return {}
+    exact = [t for t in upcoming if _squash(t.get("title")) == want]
+    loose = [t for t in upcoming if _has_words(t.get("title"), want)]
+    for rows in (exact, loose):
+        for t in rows:
+            if str(t.get("subsonic_id") or t.get("id") or "") in mine:
+                return t
+        if rows:
+            return rows[0]
+    return {}
 
 
 def build_removal_tools(cfg: dict, station: StationClient,
@@ -59,20 +84,21 @@ def build_removal_tools(cfg: dict, station: StationClient,
             # — it just said the name out loud. Resolve it against the
             # real queue rather than making the model produce an id it
             # never saw.
-            needle = (title or "").strip().casefold()
-            if not needle:
+            if not (title or "").strip():
                 return ("You need to say WHICH track to pull — a title or "
                         "an id. Ask the caller which one they mean.")
             state = await station.state()
-            for item in (state.get("upcoming") or []):
-                t = item if isinstance(item, dict) else {}
-                if needle in str(t.get("title") or "").casefold():
-                    # /state names it subsonic_id; /dj/search calls the
-                    # same value id. Take either rather than depending on
-                    # which read the DJ happened to come through.
-                    track_id = str(t.get("subsonic_id") or t.get("id") or "")
-                    named = t.get("title") or title
-                    break
+            upcoming = [t for t in ((state or {}).get("upcoming") or [])
+                        if isinstance(t, dict)]
+            # Exact first, this call's own rows preferred — see
+            # _pick_to_cancel for the shared-queue reason.
+            row = _pick_to_cancel(upcoming, title, actions.queued_ids)
+            if row:
+                # /state names it subsonic_id; /dj/search calls the same
+                # value id. Take either rather than depending on which read
+                # the DJ happened to come through.
+                track_id = str(row.get("subsonic_id") or row.get("id") or "")
+                named = row.get("title") or title
             if not track_id:
                 return (
                     f"Nothing called \"{title}\" is in the queue — it may have "
@@ -145,7 +171,11 @@ def build_removal_tools(cfg: dict, station: StationClient,
 
         # A block the station queued as one press comes out as one press:
         # exact membership, no title matching, and the station itself says
-        # what was already too late. Falls through when nothing is left.
+        # what was already too late. Falls through ONLY when no name
+        # resolves to a block or the station's own `nothing-left` 404 says
+        # none of it is still waiting — any other failure is refused there
+        # rather than handed to the name matcher below, which would sweep
+        # the shared queue on the back of a 5xx.
         as_block = await clear_as_block(station, actions, label, album, artist)
         if as_block is not None:
             return as_block
@@ -166,12 +196,19 @@ def build_removal_tools(cfg: dict, station: StationClient,
             # title string with the artist field empty, and on 2026-08-27
             # "clear the Nils Frahm" matched nothing while two rows titled
             # "Nils Frahm - Says" sat in plain sight.
+            #
+            # WHOLE WORDS in every direction (rows._has_words): bare
+            # substring meant "pull Yesterday" also pulled "Yes" off a
+            # queue this line shares with every other caller. The title's
+            # old backwards direction (the ROW inside the asked-for name)
+            # is gone with it — it could only ever widen the sweep.
             hit = ((tid and tid in want_ids)
-                   or (want_artist and (want_artist in t_artist
-                                        or want_artist in t_title))
+                   or (want_artist and (_has_words(t_artist, want_artist)
+                                        or _has_words(t_title, want_artist)))
                    or (want_album and t_album
-                       and (want_album in t_album or t_album in want_album))
-                   or (t_title and any(w in t_title or t_title in w
+                       and (_has_words(t_album, want_album)
+                            or _has_words(want_album, t_album)))
+                   or (t_title and any(_has_words(t_title, w)
                                        for w in want_titles)))
             if not hit:
                 continue
@@ -236,12 +273,15 @@ def build_removal_tools(cfg: dict, station: StationClient,
                         "up next, and nothing else matched. They CANNOT be "
                         "pulled now; only a skip ends the one playing, and "
                         "that cuts it off for everyone listening.")
-            why = "the station refused them" if failed else "time ran out"
+            # The house refusal idiom for the half that IS a station refusal,
+            # so the tail the refusal graders read is the pinned one. A clock
+            # that ran out is nobody's refusal and keeps its own words.
             if failed:
-                actions.denied("refused", f"{len(failed)} track(s) stayed "
-                               "queued — the station refused to pull them")
-            return (f"Nothing came out of the queue: {why}. Tell the caller "
-                    "plainly — do NOT claim a clear-out happened.")
+                return actions.station_refused(
+                    {"error": "the station refused them"},
+                    "Nothing came out of the queue")
+            return ("Nothing came out of the queue: time ran out. Tell the "
+                    "caller plainly — do NOT claim a clear-out happened.")
 
         what = named_batch or artist or album
         actions.note("clear", f"{len(pulled)} tracks"
