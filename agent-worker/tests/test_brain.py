@@ -409,6 +409,27 @@ class TestOneBadTrackCannotSwallowThePrompt(unittest.TestCase):
         self.assertIn('"Roads" by Portishead', line)
         self.assertIn("Dummy", line)
 
+    def test_freezing_is_a_reading_not_a_missing_field(self):
+        """Zero degrees rendered as "It's Clear, °C."
+
+        The caller's own `temp is not None` guard was fixed for this on
+        2026-08-28 and then `_fld` swallowed it one line later with
+        `str(value or "")` — the same falsy-number bug, two layers apart, on
+        the one reading a caller is most likely to ask about. Only None, an
+        empty string and a bare false are absent.
+        """
+        from brain.briefing import _fld, _fmt_now_playing
+
+        np = {"nowPlaying": {"title": "Roads"},
+              "context": {"weather": {"condition": "Clear", "temp": 0,
+                                      "tempUnit": "°C"}}}
+        self.assertIn("It's Clear, 0°C.", _fmt_now_playing(np))
+        self.assertEqual("0", _fld(0))
+        self.assertEqual("0.0", _fld(0.0))
+        # …and genuinely absent is still absent.
+        for absent in (None, "", False):
+            self.assertEqual("", _fld(absent), repr(absent))
+
     def test_a_clockless_station_keeps_its_call_dj_clockless_too(self):
         # The djSpeakClock mirror (SUB/WAVE 1.8): with the station's clock
         # off air, the wall time stays out of the briefing — otherwise the

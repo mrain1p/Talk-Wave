@@ -32,6 +32,23 @@ def _squash(value) -> str:
     return " ".join(re.sub(r"[\W_]+", " ", text).split())
 
 
+def _has_words(hay, needle) -> bool:
+    """Does `hay` contain `needle` as WHOLE WORDS?
+
+    Bare substring matching on names is how "pull Yesterday" also pulled
+    "Yes", and how cancelling "Hello" took "Hello Goodbye" — another
+    caller's request — off a shared queue. Both sides go through _squash
+    first (so "Sgt. Pepper's" still meets "sgt peppers"), then the padded
+    compare puts a boundary at each end: " yes " is not inside
+    " yesterday ", while " yesterday " is still inside " yesterday
+    remastered ".
+    """
+    h, n = _squash(hay), _squash(needle)
+    if not h or not n:
+        return False
+    return f" {n} " in f" {h} "
+
+
 
 
 def query_variants(q: str) -> list[str]:

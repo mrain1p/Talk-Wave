@@ -62,6 +62,20 @@ CUE_FRAMING = re.compile(
     r")\b",
     re.IGNORECASE)
 
+# The ONE shape that carries a time phrase and claims nothing: the honest
+# wait relay after a rate-limit refusal. "Requests open back up in a few
+# minutes, so I'll try again then" is the conduct's own worked YES example
+# for exactly this situation, and CUE_FRAMING's "in a few minutes" graded it
+# as claiming the record had landed — the guard nudging the DJ away from the
+# sentence the prompt asks it for. A future try/reopen clause beside the time
+# phrase is a promise about the LINE reopening, not about the music airing.
+_WAIT_RELAY = re.compile(
+    r"\b(?:try (?:again|it again|that again|them again)|trying again|"
+    r"another (?:go|try|crack|shot)|"
+    r"(?:open|opens|opening|back) back up|re-?open(?:s|ing)?|"
+    r"opens? (?:up )?again|ask(?:ing)? again|check back)\b",
+    re.IGNORECASE)
+
 # Stage directions and markup the TTS would read out loud. `speech_filter`
 # strips these before speaking; flagging them here is how a sweep can see that
 # the model produced them at all, which the stripped output cannot show.
@@ -145,9 +159,20 @@ def check_spoken_line(text: str, *, max_sentences: int = 6,
 # subtly different things about the same obligation. This repo has already paid
 # that bill once — the phone and the text line each carried their own promise
 # regex and by 0.10.137 they had drifted four phrasings apart.
+#
+# WIDENED 2026-09-17 to the whole family. The tail is pinned on
+# `station_refused`, but the bulk tools each ended with their own object —
+# "do NOT claim the album is lined up", "do NOT claim a clear-out happened",
+# "N track(s) were refused" — and matched none of these alternatives. So
+# whenever the station supplied a REAL reason for turning an album, a mix, a
+# playlist or a clear-out away, this read False, the promise guard never
+# armed `state['refused']`, and the DJ could say "that's five in the queue"
+# with no nudge and no problem recorded. `do(?:n'?t| not) claim\b` and
+# `w(?:as|ere) refused` catch the object whatever it is, which is what a
+# concept-shaped pattern is for — the same lesson as CUE_FRAMING above.
 _REFUSED = re.compile(
-    r"do not claim it worked|didn'?t go (?:out|through|into)|"
-    r"couldn'?t take|the station refused|was refused|<tool raised",
+    r"do(?:n'?t| not) claim\b|didn'?t go (?:out|through|into)|"
+    r"couldn'?t take|the station refused|w(?:as|ere) refused|<tool raised",
     re.IGNORECASE)
 
 
@@ -166,9 +191,13 @@ def check_after_failure(text: str) -> list[str]:
     which check applies, from the tool result it already holds.
     """
     line = str(text or "").strip()
-    if not line:
+    if not line or not CUE_FRAMING.search(line):
         return []
-    return ["claims-it-landed"] if CUE_FRAMING.search(line) else []
+    # …except the wait relay, which is the honest answer to this exact
+    # situation and says so about the LINE, not the record. See _WAIT_RELAY.
+    if _WAIT_RELAY.search(line):
+        return []
+    return ["claims-it-landed"]
 
 
 def _first_words(text: str, n: int) -> str:

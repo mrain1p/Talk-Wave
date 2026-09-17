@@ -220,6 +220,15 @@ class TestActionBulletsRideTheirOwnSwitch(unittest.TestCase):
                 ({"allow_requests": True}, "**Requests.**"),
                 ({"allow_library_search": True}, "**Search the library**"),
                 ({"allow_announcements": True}, "**Put things on air**"),
+                # The TRIAGE bullets, which rode no switch at all until
+                # 2026-09-17 — so with the shipped default tiers the prompt
+                # said "put it on" and "run it by name" in one breath and
+                # "Not on this line tonight: put shoutouts…; run segments"
+                # in the next, with no tool present to catch the mime.
+                ({"allow_requests": True}, "**A song they can name**"),
+                ({"allow_requests": True}, "that IS a request"),
+                ({"allow_announcements": True}, "**Something for the air**"),
+                ({"allow_skills": True}, "**A segment**"),
             ]:
                 self.assertIn(marker, rules(cfg))
                 self.assertNotIn(marker, rules({}))
@@ -543,16 +552,16 @@ class TestNoToolIsBuiltWithoutThePromptKnowingIt(unittest.TestCase):
         "subwave_allow_track_again": "Ban a record for good",
         "subwave_genre_lock": "Hold the station to a genre",
         "subwave_clear_genre_lock": "Hold the station to a genre",
+        # MOVED from SCHEMA 2026-09-17. The claim used to be that the segment
+        # line in running_the_call is always on, so there is no switch-riding
+        # bullet to find — which was true and was the bug: with allow_skills
+        # off the prompt still said "run it by name" while the off-list said
+        # "Not on this line tonight: …run segments". The bullet rides its
+        # switch now, so the exemption is the checkable kind.
+        "subwave_list_skills": "A segment",
+        "subwave_run_skill": "A segment",
     }
     SCHEMA = {
-        # Segments are named by the ALWAYS-ON line in running_the_call ("A
-        # segment — run it by name, only from the list you've been given"), and
-        # the catalogue of real segment names rides allow_skills in the
-        # BRIEFING rather than in the conduct. So there is no switch-riding
-        # bullet to find here and there should not be one: the rule holds
-        # whether or not this station has segments, and the list is a fact.
-        "subwave_list_skills": "named by the always-on segment line",
-        "subwave_run_skill": "named by the always-on segment line",
         # The five station reads are covered by "Check what's playing /
         # coming up rather than guessing" and the briefing's own facts. They
         # are also always on, so there is no switch to be out of step with.

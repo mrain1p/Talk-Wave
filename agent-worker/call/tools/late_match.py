@@ -73,6 +73,10 @@ async def _surface_late_match(
 
     track: dict = {}
     position = None
+    # Did the station SETTLE this request, or merely never answer? Both end
+    # with no track to announce and they are not the same fact: a settled
+    # request is not a problem line for the operator to go hunting.
+    settled = False
     for delay in (_LATE_MATCH_DELAYS if delays is None else delays):
         # The caller is waiting on THIS, so hold the 'DJ is working' flag across
         # the whole poll — otherwise the idle watcher reads the quiet as the
@@ -85,8 +89,12 @@ async def _surface_late_match(
         except Exception:
             continue
         verdict, t, _ack, pos = read_receipt(st)
-        if verdict == "failed":
-            break                      # nothing was queued; say nothing late
+        if verdict in ("failed", "answered"):
+            # Nothing was queued, and the station SAID so — 'answered' is the
+            # booth replying in words with a null track. Stop asking and say
+            # nothing late; the request tool has already relayed the reply.
+            settled = True
+            break
         if verdict in ("queued", "standing"):
             # 'standing' is already in the running order rather than newly
             # added — _when_it_plays declines to guess on a null position and
@@ -95,7 +103,7 @@ async def _surface_late_match(
             break
 
     if not track:
-        if record:
+        if record and not settled:
             record.problem(
                 "A request went in but the station never said what it matched, "
                 "so the caller was never told the track. Either the station's "

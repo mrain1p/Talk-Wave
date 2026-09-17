@@ -1045,7 +1045,15 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # the station's one-press artist run, the picks rule under it now
         # saying which asks still go through rows — and the station's own
         # playlists joined the bulk section, only ever on the caller's ask.
-        "agent-worker/brain/tool_rules.py": (756, "the declarations at the top "
+        # 782: the three triage bullets that name an ACTION moved here from
+        # conduct.running_the_call (2026-09-17), where they rode no switch
+        # and put a rule beside its own negation in one prompt. They belong
+        # on this side of the repo's own line — prose written FROM a tool,
+        # appearing and disappearing with it, exactly like takeover_bullet
+        # they now sit beside — and conduct.py came back under the ceiling
+        # by the same move. The seam recorded below is untouched: they are
+        # rule builders, and they landed with the rule builders.
+        "agent-worker/brain/tool_rules.py": (782, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
         # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —
@@ -1260,7 +1268,13 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # Not cut in the change that grew it, per the standing rule: the hedge
         # is the thing under test this week and a regression in it should have
         # one candidate cause.
-        "agent-worker/tests/test_music_tools.py": (612, "the late-match class "
+        # 857 (2026-09-17): four classes for the request receipt's own
+        # verdicts — the 'answered' resolution nothing consumed, the
+        # duplicate that was counted as an action, and the per-call ledger
+        # read as if it were the live queue. They land on the
+        # search-and-request side of the seam above, so the split is no
+        # harder than it was; the late-match class has not moved.
+        "agent-worker/tests/test_music_tools.py": (857, "the late-match class "
                                                         "split from the "
                                                         "search-and-request "
                                                         "classes"),

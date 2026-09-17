@@ -468,6 +468,33 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                     "Tell the caller that in your own words and offer the "
                     "full-length version or something else of theirs."
                 )
+            # WHAT IS ACTUALLY WAITING, read first. The ledger below only
+            # knows this call, and a line with no queue read cannot see the
+            # rest — on the 2026-08-27 text exchange the DJ picked a track the
+            # caller could SEE was already waiting, queued by someone else.
+            # The station allows duplicates on purpose (its own operator
+            # bypass), so a second copy is offered, never silently added —
+            # and an unreadable queue is treated as unknown, not as a no.
+            try:
+                waiting = await station.state()
+            except Exception:                                  # noqa: BLE001
+                waiting = {}
+            # A dict carrying 'upcoming' is a read that ANSWERED; anything
+            # else is a read that failed, and the two must not look alike.
+            readable = isinstance(waiting, dict) and isinstance(
+                waiting.get("upcoming"), list)
+            upcoming_ids = {str(t.get("subsonic_id") or t.get("id") or "")
+                            for t in ((waiting or {}).get("upcoming") or [])
+                            if isinstance(t, dict)}
+            # THE LEDGER IS NOT A MEMORY OF THE QUEUE. Nothing ever removed an
+            # id from it, so a record this call queued and the station has
+            # since AIRED came back as "still waiting its turn" — the caller
+            # heard it play, asked for it again, and was told it was already
+            # in. The live queue settles it whenever it can be read; the
+            # ledger only decides when it could not, which keeps the
+            # double-slot guard on a failed read exactly as it was.
+            if readable and str(id) not in upcoming_ids:
+                actions.queued_ids.discard(str(id))
             # ALREADY IN, FROM THIS CALL? Then say so instead of adding it
             # twice. On 2026-08-16 a caller got four queue slots for two
             # records: both went in at 84s as one parallel group, the model
@@ -489,20 +516,6 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                     "in: if they are asking, tell them it is still waiting its "
                     "turn."
                 )
-            # ALREADY IN, FROM ANYWHERE ELSE? The ledger above only knows
-            # this call, and a line with no queue read cannot see the rest —
-            # on the 2026-08-27 text exchange the DJ picked a track the
-            # caller could SEE was already waiting, queued by someone else.
-            # The station allows duplicates on purpose (its own operator
-            # bypass), so a second copy is offered, never silently added —
-            # and an unreadable queue is treated as unknown, not as a no.
-            try:
-                waiting = await station.state()
-            except Exception:                                  # noqa: BLE001
-                waiting = {}
-            upcoming_ids = {str(t.get("subsonic_id") or t.get("id") or "")
-                            for t in ((waiting or {}).get("upcoming") or [])
-                            if isinstance(t, dict)}
             if str(id) in upcoming_ids:
                 return (
                     f"\"{title}\" is ALREADY WAITING in the station's queue — "
@@ -645,8 +658,23 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                         "coming, and do not promise a title. Offer to look "
                         "for something else in their own words."
                     )
+                if verdict == "answered":
+                    # The booth replied in WORDS and queued nothing
+                    # (request.ts:380 — resolved, an ack, a null track).
+                    # Nothing consumed this verdict: it fell through to "It's
+                    # in the queue…", spent an action on a non-event and set
+                    # a poller hunting a match that was never coming.
+                    return (
+                        "The booth answered in words and did NOT queue a "
+                        "track: NOTHING is in the queue for this. Station "
+                        f"says: {ack}. Relay the reply; do not promise a "
+                        "title or a play time."
+                    )
                 if verdict == "standing":
-                    actions.note("request", _fmt_track(track))
+                    # NO note: nothing was ADDED. The record was already in
+                    # the running order, and CallActions counts successful
+                    # actions only — noting it spent one of the caller's and
+                    # put a "Song request scheduled" card up for a non-event.
                     return (
                         f"The station matched {_fmt_track(track)} but did NOT "
                         "add a new queue entry — it is either already in the "

@@ -27,7 +27,7 @@ from ..actions import CallActions
 from .albums import (
     _batch_report, _first_position, _main_artist, _programme_length,
 )
-from .rows import _txt
+from .rows import _squash, _txt
 
 log = logging.getLogger("callin.agent")
 
@@ -53,6 +53,22 @@ def _runs_past(res: dict) -> str:
             "tracks. Mention that only if the caller would care.")
 
 
+def _skips(res: dict) -> tuple[list, int]:
+    """What the station turned away, split into the two kinds a report says
+    differently: (unplayable rows with their reason, never-play count).
+
+    Its own function because it is three walks of one field and its caller
+    sits on the complexity ceiling — the station's `skipped` entries carry
+    `reason: 'blocked'` for the never-play list (a count is all the report
+    wants) and anything else is a row with no playable file, which is named.
+    """
+    skipped = [s for s in (res.get("skipped") or []) if isinstance(s, dict)]
+    blocked = sum(1 for s in skipped if s.get("reason") == "blocked")
+    unplayable = [({"title": s.get("title")}, "no playable file")
+                  for s in skipped if s.get("reason") != "blocked"]
+    return unplayable, blocked
+
+
 async def queue_as_block(station: StationClient, actions: CallActions,
                           group: dict, keep: list) -> str | None:
     """The album as ONE station press — POST /dj/queue-block (SUB/WAVE
@@ -68,32 +84,51 @@ async def queue_as_block(station: StationClient, actions: CallActions,
     one track of thirty.
     """
     ids = [str(r.get("id") or "") for r in keep if r.get("id")]
-    if not ids or any(i in actions.queued_ids for i in ids):
+    if not ids:
+        return None
+    name = group["name"]
+    # PRESSED ALREADY, THIS CALL? A second ask by the same name used to fall
+    # through to the per-track loop below, which does not skip a block it
+    # never queued track-by-track — so "put Rumours on" twice queued the
+    # record and then thirty duplicates of it.
+    #
+    # An EXACT label compare, not actions.block_id's loose one: that match
+    # is deliberately generous because the caller paraphrases a name they
+    # were given, which is right for an undo and wrong for a "have I done
+    # this" guard — a run queued under "Eminem" would answer to "The Eminem
+    # Show" and refuse a record nobody had pressed. `name` is the library's
+    # own filed album name on both sides here, so exact is what it means.
+    if any(_squash(label) == _squash(name) for label, _id in actions.blocks):
+        return (f"\"{name}\" is ALREADY in the queue from earlier in this "
+                "call — nothing further has been added, and nothing needs to "
+                "be. Don't press it again or tell them it has just gone in: "
+                "if they are asking, tell them it is still waiting its turn.")
+    if any(i in actions.queued_ids for i in ids):
         return None
     actions.mark_working(6.0)
     res = await station.queue_block("album", track_id=ids[0])
     if res.get("unsupported"):
         return None
-    name = group["name"]
     if not res.get("ok"):
-        actions.denied("refused", f"\"{name}\" was refused by the station "
-                       "and not queued")
         why = _txt(res.get("error"), 140) or "the station refused it"
-        return (f"None of \"{name}\" made it into the queue: {why}. Tell the "
-                "caller plainly — do NOT claim the album is lined up.")
-    skipped = [s for s in (res.get("skipped") or []) if isinstance(s, dict)]
-    blocked = [s for s in skipped if s.get("reason") == "blocked"]
-    unplayable = [({"title": s.get("title")}, "no playable file")
-                  for s in skipped if s.get("reason") != "blocked"]
+        return actions.station_refused(
+            {"error": why}, f"None of \"{name}\" made it into the queue")
+    unplayable, blocked = _skips(res)
     # A slow station's "sent but unconfirmed" carries no count; the rows we
     # sent are the honest best guess, and the report says it was slow.
     queued = len(ids) if res.get("unconfirmed") else int(res.get("queued") or 0)
     truncated = int(res.get("truncated") or 0)
-    actions.queued_ids.update(ids)
+    # A TRUNCATED PRESS HAS NO KNOWABLE MEMBERSHIP. The station queued 30 of
+    # the 45 it found, in ITS own order, and reports only the count — so
+    # marking all 45 as this call's claimed fifteen records that never went
+    # in, and a later exact pick of one of them was refused as already
+    # queued. Both id-shaped handles wait for a press that was not capped.
+    if not truncated:
+        actions.queued_ids.update(ids)
+        actions.note_batch(name, ids)
     actions.note("album", f"\"{name}\" — {queued} tracks")
-    # Both handles for taking it out again: the ids for the per-track clear
-    # on an older station, the station's block id for the one-press cancel.
-    actions.note_batch(name, ids)
+    # The other handle, and the exact one whatever the station dropped: its
+    # own block id for the one-press cancel.
     if res.get("blockId"):
         actions.note_block(name, str(res["blockId"]))
     if unplayable:
@@ -111,7 +146,7 @@ async def queue_as_block(station: StationClient, actions: CallActions,
     head += ". It is NOT playing yet: it lines up behind what's already queued. "
     head += _first_position([(None, res.get("queuePosition"))])
     tail = _batch_report([None] * queued, unplayable, 0, 0,
-                         withheld=len(blocked), dropped=truncated)
+                         withheld=blocked, dropped=truncated)
     return " ".join(b for b in (head, tail, _runs_past(res)) if b).strip()
 
 
@@ -137,16 +172,13 @@ async def queue_artist_run(station: StationClient, actions: CallActions,
     if res.get("unsupported"):
         return None
     if not res.get("ok"):
-        actions.denied("refused", f"a run by {artist} was refused by the "
-                       "station and not queued")
         why = _txt(res.get("error"), 140) or "the station refused it"
-        return (f"Nothing by {artist} made it into the queue: {why}. Tell "
-                "the caller plainly — do NOT claim the run is lined up.")
+        return actions.station_refused(
+            {"error": why}, f"Nothing by {artist} made it into the queue")
     queued = int(res.get("queued") or 0)
     if res.get("unconfirmed") and not queued:
         queued = count
-    blocked = len([s for s in (res.get("skipped") or [])
-                   if isinstance(s, dict) and s.get("reason") == "blocked"])
+    _unplayable, blocked = _skips(res)
     actions.note("mix", f"{queued} by {artist}")
     # The handle for "clear those Eminem tracks": the station's block id
     # under the name the caller used, and under the station's own label
@@ -170,24 +202,38 @@ async def queue_artist_run(station: StationClient, actions: CallActions,
 async def clear_as_block(station: StationClient, actions: CallActions,
                           *names: str) -> str | None:
     """A block this call queued, taken out with the station's own one press
-    — DELETE /dj/queue/block/:id (SUB/WAVE 1.14, #1632) — or None when no
-    name given resolves to one, or nothing of it is still waiting (the
-    per-track matcher then says so honestly).
+    — DELETE /dj/queue/block/:id (SUB/WAVE 1.14, #1632) — or None for the two
+    fall-throughs the per-track matcher owns: no name given resolves to a
+    block, or the station's documented `nothing-left` 404 (none of it is
+    still waiting, and the matcher then says so honestly).
+
+    ANY OTHER non-ok answer is refused here and NOT fallen through. Until
+    2026-09-17 a 5xx, a timeout or missing credentials read as "nothing
+    left": the per-track name matcher then swept a SHARED queue and could
+    pull another caller's tracks, and the station's own reason was lost on
+    the way.
 
     Tried on each free-text field in turn for the same reason batch_ids is:
     the model puts the album's name wherever it has a field, and the name
     is the one handle the caller was actually given.
     """
-    block = ""
+    block = asked = ""
     for guess in names:
         block = actions.block_id(guess)
         if block:
+            asked = str(guess or "").strip()
             break
     if not block:
         return None
     res = await station.cancel_queued_block(block)
     if not res.get("ok"):
-        return None
+        if res.get("reason") == "nothing-left":
+            return None
+        label = _txt(res.get("label"), 80) or asked or "that block"
+        why = _txt(res.get("error"), 140) or "the station refused it"
+        actions.denied("refused", f"\"{label}\" stayed queued — {why}")
+        return (f"Could not pull \"{label}\": {why}. Nothing was pulled — do "
+                "NOT claim a clear-out.")
     removed, kept = int(res.get("removed") or 0), int(res.get("kept") or 0)
     label = _txt(res.get("label"), 80) or "that block"
     if not removed:
