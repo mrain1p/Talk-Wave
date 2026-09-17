@@ -25,8 +25,12 @@ Env:
     SCENARIO_SET=coverage  every tool once, blocked ones as refusals — the
                            talkwave-drill sweep
     MODE=chat              chat-mode prompt and surface (no end_call, no MCP)
-    GATES=all|none         force every gate on / off, IN MEMORY ONLY — "none"
-                           is the refusal sweep
+    GATES=all|none|shipped force every gate on / off / to its SHIPPED
+                           default, IN MEMORY ONLY — "none" is the refusal
+                           sweep, "shipped" is the shape an operator runs
+                           (and the only one that reaches the request path:
+                           "all" hands the DJ the exact queue and it picks
+                           for itself instead)
     MCP=1                  attach the station's real MCP tools (call mode
                            only; safe — all reads, see MCP_READS)
     SCENARIO_SET=triage    which TOOL each ask is routed to, graded per
@@ -859,6 +863,18 @@ COVERAGE = [
     ("a request by name, then its status", [
         "play Dreams by Fleetwood Mac for me",
         "did that actually make it into the queue?",
+    ]),
+    # THE VIBE, which the prompt says IS a request: "send their own words and
+    # let the station pick". Named after a sweep (2026-09-17) where
+    # request_song and request_status were the only two tools nothing reached
+    # — every ask above is a track the DJ can find itself, so with the exact
+    # queue switched on it always took that path, and the receipt reader (the
+    # station answering in words, the duplicate that added nothing) was drilled
+    # by nothing at all. This one gives it nothing to search for.
+    ("a vibe with no track in it, then its status", [
+        "I'm not after anything in particular — just put on whatever suits a "
+        "wet Tuesday night, you pick",
+        "any word back from the booth on that one?",
     ]),
     ("the exact copy, queued by id", [
         "find the track Africa by Toto and queue that exact copy — the precise "
@@ -2522,6 +2538,50 @@ def grade_scenario(name, expect, fired, said, log, exposed=None,
 
 # ------------------------------------------------------------------------ main
 
+def _apply_gate_profile(cfg: dict, gates: str) -> dict:
+    """GATES, in memory only — the file on disk is never touched, so the
+    deployed line keeps whatever the operator set.
+
+    "all" is the coverage sweep (every tool at once, which no real toggles
+    allow); "none" is the refusal sweep — how the DJ declines what the line
+    doesn't carry, where the 2026-08-12 calls laundered a show change into a
+    song request.
+
+    "shipped" is the shape an operator actually runs, and the one "all"
+    hides. A 2026-09-17 sweep found subwave_request_song and
+    subwave_request_status the only two tools nothing reached: "all" hands
+    the DJ the exact queue — OFF by default, because it skips the station's
+    own rate limit — and with that in hand the DJ picks the track itself
+    every time, even for a pure vibe the prompt tells it to send the station
+    in the caller's own words. On the default line there is no exact queue,
+    so the request path IS the path, and its receipt reader (the booth
+    answering in words, the duplicate that added nothing) was drilled by
+    nothing at all.
+    """
+    if gates == "shipped":
+        for name, spec in settings_store.FIELDS.items():
+            if name.startswith("allow_") or name.endswith("_button"):
+                cfg[name] = spec[1]
+        return settings_store.permissions_for(cfg, "admin")
+    if gates not in ("all", "none"):
+        return cfg
+    from call.tools import registry as tool_registry
+
+    for t in tool_registry.TOOLS:
+        if t.gate in (tool_registry.READ, tool_registry.NEVER):
+            continue
+        # single_lookup_tool is an ARRANGEMENT flag, not a capability gate —
+        # find_music merely re-fronts tools other gates own. Blanketed here it
+        # silently clobbered the SINGLE_LOOKUP override and ran the C.5 A/B's
+        # "off" arm with the dispatcher on (caught 2026-08-31).
+        if t.gate == "single_lookup_tool":
+            continue
+        cfg[t.gate] = gates == "all"
+    if gates == "all":
+        cfg["max_actions_per_call"] = 99
+    return cfg
+
+
 async def main() -> None:
     # If a newer conduct.py was prepended to this script, load it over the
     # module the image shipped. conduct is pure text and pure functions, so
@@ -2574,25 +2634,7 @@ async def main() -> None:
         cfg["single_lookup_tool"] = single == "on"
     chat = os.environ.get("MODE") == "chat"
     gates = os.environ.get("GATES", "")
-    if gates in ("all", "none"):
-        # In memory only — the file on disk is never touched. "all" is the
-        # coverage sweep (every tool at once, which no real toggles allow);
-        # "none" is the refusal sweep — how the DJ declines what the line
-        # doesn't carry, where the 2026-08-12 calls laundered a show change.
-        from call.tools import registry as tool_registry
-
-        for t in tool_registry.TOOLS:
-            if t.gate not in (tool_registry.READ, tool_registry.NEVER):
-                # single_lookup_tool is an ARRANGEMENT flag, not a capability
-                # gate — find_music merely re-fronts tools other gates own.
-                # Blanketed here it silently clobbered the SINGLE_LOOKUP
-                # override above and ran the C.5 A/B's "off" arm with the
-                # dispatcher on (caught 2026-08-31, first measuring evening).
-                if t.gate == "single_lookup_tool":
-                    continue
-                cfg[t.gate] = gates == "all"
-        if gates == "all":
-            cfg["max_actions_per_call"] = 99
+    cfg = _apply_gate_profile(cfg, gates)
     # ABLATE=CLOSING,say_the_true_thing — build the prompt WITHOUT those
     # sections and run the set against it, so "does this paragraph change
     # behaviour" stops being a matter of taste. Names come from
