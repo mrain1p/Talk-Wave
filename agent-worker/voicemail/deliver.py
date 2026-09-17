@@ -200,7 +200,18 @@ async def deliver(station, cfg: dict, text: str, persona_name: str,
 
     if mode == "request":
         try:
-            result = await station.submit_request(text)
+            result = await station.submit_request(text) or {}
+            # The station REFUSES BY RETURNING, not by raising — submit_request
+            # hands back {'error': ...} and nothing else happens (the contract
+            # test_tools_surface pins). Only the exception was handled here, so
+            # a refusal was filed as delivered='request': the day-log said
+            # queued, the caller's card said sent, and the operator was never
+            # told there was anything left to do. Raised into the except below,
+            # which already knows how to hold it.
+            why = result.get("error") or (
+                "" if result.get("ok", True) else "refused")
+            if why:
+                raise RuntimeError(str(why))
             note = str(result.get("message") or result.get("status") or "sent")
             hold(text, persona_name, delivered="request", note=note)
             # The cross-call ledger the live line writes for the same action.

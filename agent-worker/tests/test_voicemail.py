@@ -131,8 +131,13 @@ class _FakeStation:
         self.requests = []
 
     async def submit_request(self, text, name=""):
+        # A refusal RETURNS, it does not raise — station.submit_request answers
+        # {'error': ...} and that is the whole signal (the contract lives in
+        # test_tools_surface.py). This fake used to raise, which is why the
+        # delivery path's exception-only handling looked correct: a refused
+        # voicemail request was filed as delivered.
         if self.fail:
-            raise RuntimeError("station said no")
+            return {"error": "station said no"}
         self.requests.append(text)
         return {"message": "queued third"}
 
@@ -171,6 +176,33 @@ class TestAMessageIsNeverLost(_VmDirs):
         msgs = self.deliver.held_messages()
         self.assertEqual("hold", msgs[0]["delivered"])
         self.assertIn("failed", msgs[0]["note"])
+        # The station's own words, not just "failed": the operator is the one
+        # who has to act on this, and "the station refused" without saying
+        # what it said is a note nobody can do anything with.
+        self.assertIn("station said no", msgs[0]["note"])
+
+    def test_a_refusal_the_station_returned_is_still_a_refusal(self):
+        # The delivery path only ever handled an EXCEPTION, and
+        # submit_request refuses by returning {'error': ...} — so a refused
+        # request was filed delivered='request', the day-log said queued and
+        # the caller's card said sent. Three surfaces agreeing on a track
+        # that was never queued.
+        self._deliver({"voicemail_destination": "request"},
+                      _FakeStation(fail=True))
+        msg = self.deliver.held_messages()[0]
+        self.assertNotEqual("request", msg["delivered"],
+                            "a refusal was recorded as a delivery")
+
+    def test_an_ok_false_answer_is_a_refusal_too(self):
+        # The other shape the station's refusals come in.
+        class _Refuses(_FakeStation):
+            async def submit_request(self, text, name=""):
+                return {"ok": False}
+
+        receipt = self._deliver({"voicemail_destination": "request"},
+                                _Refuses())
+        self.assertIn("held", receipt)
+        self.assertEqual("hold", self.deliver.held_messages()[0]["delivered"])
 
     def test_the_message_store_is_owner_only(self):
         # Security sitting, 2026-08-28: a voicemail is a stranger's spoken

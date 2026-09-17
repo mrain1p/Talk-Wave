@@ -326,7 +326,13 @@ class TeeHandle:
         if secs < MIN_CLIP_SECS:
             self._dropped("dj", f"too short to be a turn ({secs:.2f}s)")
             return
-        played = float(getattr(ev, "playback_position", secs) or secs)
+        # `or secs` read a REAL 0.0 as "the SDK didn't say", so a line the
+        # caller cut off at the very first word counted as fully played and
+        # went out on the tape as a sentence nobody heard. getattr's default
+        # is for the field being absent; the value 0.0 is evidence, not a
+        # gap — heard.py reads the same field the same way.
+        pos = getattr(ev, "playback_position", None)
+        played = float(pos) if pos is not None else secs
         if getattr(ev, "interrupted", False) and played < secs * PLAYED_ENOUGH:
             # The caller talked over it. Airing a sentence they cut off would
             # broadcast a conversation that never happened.

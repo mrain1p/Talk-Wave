@@ -21,6 +21,7 @@ from pathlib import Path
 
 from aiohttp import web
 
+import jsonstore
 from api.auth import _write_allowed
 from api.live_cache import _LIVE_BUST_FLOOR, _live_cache
 from api.wire import _cors
@@ -70,9 +71,7 @@ def _load_hook_secret() -> str:
 
 def _store_hook_secret(value: str) -> None:
     try:
-        path = _secret_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"authHeader": value}))
+        jsonstore.write_atomic(_secret_path(), {"authHeader": value})
     except Exception as e:                                    # noqa: BLE001
         # The receiver checks against this file, so an unwritable file means
         # verification quietly stays OFF — the old, open behaviour — while the
@@ -331,7 +330,13 @@ def _keep(entry: dict, prev: dict, path: Path, demote: bool = False) -> None:
     out = dict(prev if demote else entry)
     out.pop("recent", None)
     out["recent"] = recent[-AIR_HISTORY:]
-    path.write_text(json.dumps(out))
+    # write_atomic, not write_text: the worker's guard polls this same file
+    # every PUSH_TICK, and a truncating write hands whoever reads mid-flight
+    # a torn document — one tick of "no evidence", which is one tick in which
+    # the DJ may answer over the station's voice. The house idiom writes a
+    # neighbouring temp and replaces, so a reader sees the old file or the
+    # new one and never half of either.
+    jsonstore.write_atomic(path, out)
 
 
 async def handle_station_hook(request: web.Request) -> web.Response:

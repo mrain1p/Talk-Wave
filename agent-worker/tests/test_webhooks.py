@@ -1023,6 +1023,37 @@ class TestTheAirFileRemembersWhatHappened(_TempStores):
             self._write("voice.end", voiceId=f"v{i}")
         self.assertEqual(len(self._read()["recent"]), AIR_HISTORY)
 
+    def test_a_push_is_never_seen_half_written(self):
+        # The worker's guard polls this same file every PUSH_TICK while the
+        # web process rewrites it on every push. A truncating write_text hands
+        # a reader that lands mid-flight a torn document, which reads as "no
+        # evidence" for a tick — and a tick of no evidence is a tick in which
+        # the DJ may answer straight over the station's voice. Source, because
+        # a torn read is precisely what a test cannot reliably schedule; the
+        # house idiom (jsonstore.write_atomic, TestTheJsonStoreIdiom) writes a
+        # neighbour and replaces, so a reader sees one whole file or the other.
+        import inspect
+
+        from api import hook_receiver
+
+        src = inspect.getsource(hook_receiver)
+        self.assertNotIn("write_text(", src,
+                         "a store this file's readers poll must be replaced, "
+                         "not truncated in place")
+        self.assertIn("jsonstore.write_atomic(", src)
+
+    def test_the_stored_secret_is_replaced_rather_than_truncated(self):
+        # Same store, same reason, one file over: the receiver reads this on
+        # every push to decide whether to believe one, and a torn read there
+        # turns verification off for however long the write takes.
+        from api import hook_receiver
+
+        hook_receiver._store_hook_secret("Bearer abc123")
+        self.assertEqual(hook_receiver._load_hook_secret(), "Bearer abc123")
+        self.assertFalse(hook_receiver._secret_path().with_name(
+            hook_receiver._secret_path().name + ".tmp").exists(),
+            "the temp file must not survive the replace")
+
 
 class TestTheHandoffEventDoesNotOutrankTheLifecycle(_TempStores):
     """Measured on air 2026-08-13: voice.queued arrives carrying durMs=17827
