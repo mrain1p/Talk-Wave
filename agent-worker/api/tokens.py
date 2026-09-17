@@ -18,6 +18,7 @@ import uuid
 from aiohttp import web
 from livekit import api
 
+import room_release
 import settings as settings_store
 import station_prefetch
 from api.auth import _guest_ok, _write_allowed, caller_tier
@@ -239,7 +240,14 @@ async def handle_call_ended(request: web.Request) -> web.Response:
     wanted = _call_release.get(room, "")
     shown = str(body.get("release", ""))
     if not (wanted and shown and hmac.compare_digest(wanted, shown)):
-        if not _write_allowed(request):
+        # The WORKER's beacon is the other honest one, and it can show
+        # neither of the two above: it never saw the mint, and with a panel
+        # password set it holds no admin credential. It signs the room with
+        # the LiveKit secret both containers must already have — see
+        # room_release, which owns that rule for both halves.
+        if room_release.matches(room, shown):
+            pass
+        elif not _write_allowed(request):
             # Quiet and shaped like success: a caller probing this learns
             # nothing, and a stale tab replaying an old room is not an error
             # worth showing anybody. The slot simply ages out as it always did.

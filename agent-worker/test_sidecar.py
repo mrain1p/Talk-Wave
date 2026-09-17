@@ -79,6 +79,7 @@ from tests.test_http import (  # noqa: F401
     TestTheOnAirDoorIsGatedAtTheMint,
     TestTheMintGivesTheWorkerAHeadStart,
     TestACallerCannotFreeTheirOwnSlot,
+    TestTheWorkersOwnBeaconStillFreesTheSlot,
     TestTheSettingsApiRegistersThroughTheLock,
 )
 from tests.test_widget import (

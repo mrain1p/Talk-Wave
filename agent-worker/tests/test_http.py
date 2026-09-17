@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import types
 import unittest
 from tests.support import REPO, _FakeRequest, _TempStores
@@ -839,6 +840,108 @@ class TestACallerCannotFreeTheirOwnSlot(unittest.TestCase):
 
         src = (AGENT_WORKER / "api" / "tokens.py").read_text(encoding="utf-8")
         self.assertIn('"release": release', src)
+
+
+class TestTheWorkersOwnBeaconStillFreesTheSlot(unittest.TestCase):
+    """The crashed-tab case, which is the whole reason the beacon exists.
+
+    Closing /call-ended to the room id alone shut the WORKER out with it: it
+    runs in the other container, it never saw the mint, and with a panel
+    password set it holds no admin credential either — so the one beacon that
+    always fires would have been ignored and every dead session would have sat
+    on a slot for the full 30-minute age-out (caught reviewing the fix itself,
+    2026-09-17). It signs the room with the LiveKit secret both containers
+    already run on; room_release owns that rule for both halves.
+    """
+
+    ROOM = "callin-g-ba9876543210"
+
+    def setUp(self):
+        import tempfile
+        import time
+        from pathlib import Path
+
+        import admin_auth
+        from api import tokens as api_tokens
+
+        self.ts = api_tokens
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self._old_auth_path = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._tmp.name) / "admin-auth.json"
+        admin_auth.set_password("a-real-password")
+        self._old_secret = os.environ.get("LIVEKIT_API_SECRET")
+        os.environ["LIVEKIT_API_SECRET"] = "the-shared-livekit-secret"
+        api_tokens._live_calls.clear()
+        api_tokens._call_release.clear()
+        api_tokens._live_calls[self.ROOM] = time.time()
+        api_tokens._call_release[self.ROOM] = "the-browsers-one"
+
+    def tearDown(self):
+        import admin_auth
+
+        admin_auth.AUTH_PATH = self._old_auth_path
+        if self._old_secret is None:
+            os.environ.pop("LIVEKIT_API_SECRET", None)
+        else:
+            os.environ["LIVEKIT_API_SECRET"] = self._old_secret
+        self.ts._live_calls.clear()
+        self.ts._call_release.clear()
+
+    def _still_live(self, body):
+        class _Req(types.SimpleNamespace):
+            def __setitem__(self, k, v):
+                setattr(self, k, v)
+
+        async def _json():
+            return body
+
+        resp = asyncio.run(self.ts.handle_call_ended(_Req(
+            headers={}, remote="127.0.0.1", json=_json)))
+        self.assertEqual(json.loads(resp.body.decode()), {"ok": True})
+        return self.ROOM in self.ts._live_calls
+
+    def test_the_workers_signature_frees_the_slot(self):
+        import room_release
+
+        self.assertFalse(self._still_live(
+            {"room": self.ROOM,
+             "release": room_release.worker_release(self.ROOM)}))
+
+    def test_a_signature_for_another_room_does_not(self):
+        import room_release
+
+        self.assertTrue(self._still_live(
+            {"room": self.ROOM,
+             "release": room_release.worker_release("callin-g-someone-else")}))
+
+    def test_a_caller_cannot_forge_it_without_the_secret(self):
+        # The caller is handed a room id and a token, never the secret that
+        # signs them — so the id they hold computes nothing.
+        import hashlib
+
+        self.assertTrue(self._still_live(
+            {"room": self.ROOM,
+             "release": hashlib.sha256(self.ROOM.encode()).hexdigest()}))
+
+    def test_no_secret_in_the_environment_proves_nothing(self):
+        import room_release
+
+        signed = room_release.worker_release(self.ROOM)
+        os.environ.pop("LIVEKIT_API_SECRET", None)
+        self.assertEqual(room_release.worker_release(self.ROOM), "")
+        self.assertFalse(room_release.matches(self.ROOM, ""))
+        self.assertTrue(self._still_live({"room": self.ROOM,
+                                          "release": signed}))
+
+    def test_the_beacon_the_worker_sends_carries_it(self):
+        # The two halves have to agree on the field, and only the source can
+        # say so: lifecycle's beacon runs in the other container.
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "call" / "lifecycle.py").read_text(
+            encoding="utf-8")
+        self.assertIn("room_release.worker_release(room)", src)
 
 
 class TestCallFeedbackRejectsGarbageRoomsCheaply(unittest.TestCase):
