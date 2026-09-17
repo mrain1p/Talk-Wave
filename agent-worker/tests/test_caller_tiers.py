@@ -292,6 +292,56 @@ class TestTheDoorDecidesTheTier(_TempStores):
         self.assertEqual(self._tier(**{"X-Call-Key": "letmein"}), "open")
 
 
+class TestTheTextLineAndThePhoneAgreeOnACaller(TestTheDoorDecidesTheTier):
+    """One code, two doors, and they must not answer differently.
+
+    Browsers cannot set headers on a WebSocket, so the text line's credential
+    arrives in-band and `api/chat._tier_for` asks the question of the key
+    rather than of the request. It asked it with its own private ladder, which
+    handed 'guest' to any valid code and knew nothing of `guest_door_open` — so
+    with the guest tier switched off the same person was an 'open' caller on
+    the phone and a 'guest' in a text, and the permission matrix meant two
+    different things depending which line they used (invariants 7 and 10,
+    docs/architecture.md).
+
+    Inherits the phone's fixture deliberately: every case above now has to
+    hold on both doors.
+    """
+
+    def _tier(self, **headers) -> str:
+        """Both doors, asserted equal, then answered once."""
+        from api import chat as api_chat
+
+        phone = self.api_auth.caller_tier(_Req(**headers))
+        key = headers.get("X-Call-Key") or headers.get("X-Admin-Key") or ""
+        text = api_chat._tier_for(key)
+        self.assertEqual(
+            phone, text,
+            f"the phone said {phone!r} and the text line said {text!r} for "
+            "the same caller")
+        return phone
+
+    def test_an_inert_code_is_inert_on_both_lines(self):
+        # The case that was actually wrong: an open line with the guest tier
+        # switched off and a code still stored.
+        settings_store.save({"front_access": "open", "guest_tier": False})
+        self.assertEqual(self._tier(**{"X-Call-Key": "letmein"}), "open")
+
+    def test_a_live_code_elevates_on_both_lines(self):
+        settings_store.save({"front_access": "open", "guest_tier": True})
+        self.assertEqual(self._tier(**{"X-Call-Key": "letmein"}), "guest")
+
+    def test_the_resolution_lives_in_one_place(self):
+        # A copy is how the two drifted apart in the first place.
+        import inspect
+
+        from api import chat as api_chat
+
+        src = inspect.getsource(api_chat._tier_for)
+        self.assertIn("tier_for_key", src)
+        self.assertNotIn("verify_guest", src)
+
+
 if __name__ == "__main__":
     unittest.main()
 

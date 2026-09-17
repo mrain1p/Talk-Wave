@@ -152,6 +152,7 @@ from tests.test_caller_tiers import (  # noqa: F401
     TestATierIncludesTheOnesBelowIt,
     TestAnUnknownTierFailsClosed,
     TestTheDoorDecidesTheTier,
+    TestTheTextLineAndThePhoneAgreeOnACaller,
     TestUpgradingKeepsTheStationExactlyAsItWas,
 )
 from tests.test_call_record import (  # noqa: F401
@@ -176,6 +177,11 @@ from tests.test_call_record import (  # noqa: F401
     TestTheDayLogRemembersActionsNotPeople,
 )
 from tests.test_call_flow import (  # noqa: F401
+    TestAHoldThatRanOutHasNothingToComeBackFrom,
+    TestARelayCallStandsTheGuardDown,
+    TestTheComeBackLineIsActuallyCut,
+    TestTheHushBeatStopsBeforeTheMarkerDoes,
+    TestTheOnHoldChipSurvivesThePickupRace,
     TestEveryShutdownCallbackCanBeAwaited,
     TestOneFailingShutdownStepDoesNotTakeTheRestDown,
     TestTheGreetingRacesItsOwnSilence,
@@ -488,6 +494,7 @@ from tests.test_chat import (  # noqa: F401
     TestAChatRecordShowsWhatTheDJActuallyDid,
     TestChatActionCardsFollowTheLine,
     TestChatsEndInsteadOfAccumulating,
+    TestEveryEndedChatLetsGoOfItsClient,
     TestTheFloodBrakeSurvivesAReconnect,
     TestOneAbuserIsSingledOut,
     TestTheTextLineFeelsLikeAConversation,
@@ -538,6 +545,8 @@ from tests.test_onair import (  # noqa: F401
     TestACrashedCallCannotMuteTheStation,
     TestHushMarkersAreScopedAndSafe,
     TestTheLiveVerdictTellsThePanelTheTruth,
+    TestAHushThatNeverLandedIsFinishedNotForgotten,
+    TestARestoreCannotStrandALiveCall,
     TestSessionWiringForHush,
 )
 from tests.test_tee import (  # noqa: F401
@@ -573,6 +582,8 @@ from tests.test_open_lines import (  # noqa: F401
     TestTheVoicemailGreetingOnlyGrowsWhileALineIsUp,
     TestTheSignOffOnlySaysWhatItActuallyHeard,
     TestReportingBackToTheRoom,
+    TestALineDiesWithTheBoothThatOpenedIt,
+    TestBookkeepingNeverLandsOnTheNextLine,
     TestOpenLinesReachesThePanel,
     TestTheRecordLandsWhereTheOtherStateDoes,
     TestTheRecordSurvivesBothContainers,

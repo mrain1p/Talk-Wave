@@ -5072,3 +5072,285 @@ class TestTheGreetingRacesItsOwnSilence(unittest.TestCase):
         self.assertTrue(handle.awaited)
         self.assertFalse(handle.interrupted)
         self.assertEqual(s.said, [], "no second voice barges in")
+
+
+class TestTheComeBackLineIsActuallyCut(unittest.TestCase):
+    """Cancelling the return stopped the WAIT, not the voice.
+
+    `session.generate_reply` hands back a SpeechHandle whose `__await__` is a
+    shielded wait on playout, so cancelling the task that awaits it leaves the
+    audio running — and the busy edge that cancels it takes the `resumed`
+    branch, which deliberately skips `session.interrupt()`. Both halves of the
+    cut were therefore missing, and the come-back line played straight over
+    the station's next utterance: the doubling the whole guard exists to stop.
+    """
+
+    class _Handle:
+        """A SpeechHandle that never finishes on its own and remembers being
+        cut — the shape the SDK's own handle has."""
+
+        def __init__(self):
+            self.cuts = []
+
+        def interrupt(self, force=False):
+            self.cuts.append(force)
+            return self
+
+        def __await__(self):
+            async def _wait():
+                # Shielded in the real thing; here it simply never returns,
+                # which is the same thing from the canceller's side.
+                await asyncio.Event().wait()
+
+            return _wait().__await__()
+
+    def _guard(self):
+        from call.air import OnAirGuard
+
+        return OnAirGuard(types.SimpleNamespace(), {}, room=None)
+
+    def test_cancelling_the_return_interrupts_the_line_it_started(self):
+        from call import comeback
+
+        handle = self._Handle()
+
+        class _Session:
+            def generate_reply(self, **kw):
+                return handle
+
+        async def _run():
+            task = asyncio.create_task(
+                comeback.come_back(self._guard(), _Session()))
+            await asyncio.sleep(0)          # let it reach the await
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(_run())
+        self.assertEqual(handle.cuts, [True],
+                         "the come-back line kept playing after the cancel")
+
+    def test_a_handle_with_nothing_to_cut_still_cancels_cleanly(self):
+        # Every fake in this suite — and any SDK that hands back a bare
+        # coroutine — has no interrupt to call. The cancel must still be a
+        # cancel, not a TypeError logged as "could not come back".
+        from call import comeback
+
+        class _Session:
+            async def generate_reply(self, **kw):
+                await asyncio.Event().wait()
+
+        async def _run():
+            task = asyncio.create_task(
+                comeback.come_back(self._guard(), _Session()))
+            await asyncio.sleep(0)
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        asyncio.run(_run())
+
+
+class TestAHoldThatRanOutHasNothingToComeBackFrom(unittest.TestCase):
+    """MAX_HOLD gives up on a stale log and lets the call carry on — and at
+    that moment the caller has been released, so the hand-over promise is
+    spent.
+
+    It was not being spent: `stepped_away` and the words that aired stayed
+    set, so whenever the gate finally did open — a minute and a whole
+    conversation later — the clear edge spawned an "I'm back" nodding at
+    something that went out long before, into a call that had resumed without
+    it.
+    """
+
+    def _guard(self):
+        from call.air import OnAirGuard
+
+        guard = OnAirGuard(types.SimpleNamespace(),
+                           {"avoid_on_air_overlap": True,
+                            "on_air_quiet_secs": 30})
+        guard.mark_on_air(600, spoken="Big shout to Dave.")
+        return guard
+
+    def test_giving_up_on_the_hold_gives_up_the_return_with_it(self):
+        guard = self._guard()
+        self.assertTrue(guard.stepped_away)
+        asyncio.run(guard.wait_until_clear(timeout=0.05))
+        self.assertTrue(guard._clear.is_set())
+        self.assertFalse(guard.stepped_away,
+                         "the next clear edge would have said 'I'm back' to a "
+                         "caller who had been talking for a minute")
+        self.assertEqual(guard.aired_text, "")
+
+    def test_the_evidence_that_the_air_is_busy_is_not_thrown_away(self):
+        # on_air stays. The timeout proves nothing about the station, only
+        # that we will not hold the caller any longer, and the watch loop is
+        # still the one thing that says the air went quiet.
+        guard = self._guard()
+        asyncio.run(guard.wait_until_clear(timeout=0.05))
+        self.assertTrue(guard.on_air)
+
+
+class _RecordingRoom:
+    """A room that records what the guard published. `set_attributes` is a
+    coroutine in the SDK and is spawned rather than awaited, so this notes the
+    value the moment it is called."""
+
+    def __init__(self):
+        self.onair_values = []
+        self.local_participant = self
+
+    def set_attributes(self, attrs):
+        self.onair_values.append(attrs.get("talkwave.onair"))
+
+        async def _done():
+            return None
+
+        return _done()
+
+
+class _PrimedGuard(unittest.TestCase):
+    """A guard built while the push file shows a link mid-air — the state the
+    constructor primes itself into."""
+
+    def _primed_guard(self, room=None):
+        import json
+        import os
+        import tempfile
+        import time
+
+        from call.air import OnAirGuard
+
+        class _Station:
+            async def on_air_speech(self):
+                return None
+
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        p = os.path.join(td.name, "hook-air.json")
+        # Restore the suite-wide redirect, never pop it away — see the
+        # save/restore note in TestTheGateDoesNotChatter.
+        prev = os.environ.get("CALLIN_HOOK_AIR_PATH")
+        os.environ["CALLIN_HOOK_AIR_PATH"] = p
+        try:
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump({"at": time.time() - 25, "v": 2, "phase": "speaking",
+                           "durMs": 26700, "bufSecs": 22.0,
+                           "text": "Mid-link."}, f)
+            return OnAirGuard(_Station(), {"avoid_on_air_overlap": True},
+                              room=room)
+        finally:
+            if prev is None:
+                os.environ.pop("CALLIN_HOOK_AIR_PATH", None)
+            else:
+                os.environ["CALLIN_HOOK_AIR_PATH"] = prev
+
+
+class TestARelayCallStandsTheGuardDown(_PrimedGuard):
+    """On an on-air relay call the broadcast IS the call, so the guard is
+    switched off — but the constructor may already have primed `on_air` from
+    the push file, and watch() returns early when disabled, so nothing was
+    ever going to clear it. The flag then sat True for the whole call: the
+    idle clock reset every tick (clocks.py), the working line silenced the
+    caller, and every reply gap was written off as booth work.
+    """
+
+    def test_disabling_lets_go_of_a_gate_it_had_already_closed(self):
+        guard = self._primed_guard()
+        self.assertTrue(guard.on_air, "the fixture never primed the gate")
+        guard.disable()
+        self.assertFalse(guard.enabled)
+        self.assertFalse(guard.on_air, "nothing left alive would ever clear it")
+        self.assertTrue(guard._clear.is_set(),
+                        "the reply path would wait on an event nobody sets")
+
+    def test_the_card_is_told_the_hold_is_over(self):
+        room = _RecordingRoom()
+        guard = self._primed_guard(room=room)
+        guard.disable()
+        self.assertIn("0", room.onair_values,
+                      "the caller's card stayed on 'working the booth'")
+
+    def test_the_relay_call_disables_rather_than_flipping_the_flag(self):
+        # Source, because reaching this line needs a room, a station and a
+        # live relay. The bare `enabled = False` is what left the flag stuck.
+        import inspect
+
+        from call.session import CallSession
+
+        src = inspect.getsource(CallSession.start)
+        self.assertIn("self.air.disable()", src)
+        self.assertNotIn("self.air.enabled = False", src)
+
+
+class TestTheOnHoldChipSurvivesThePickupRace(unittest.TestCase):
+    """A caller who dialled in mid-link is held through the greeting, and
+    their card said nothing at all.
+
+    The primed gate (see the greeting-race fix) publishes from the guard's
+    CONSTRUCTOR — which runs before ctx.connect(), and rtc.Room's
+    local_participant raises until the room is up, so that publish went
+    nowhere. The watch loop then found the gate already closed, so there was
+    no EDGE to publish on either, and the caller sat through a silent DJ with
+    nothing on screen to explain it.
+    """
+
+    def _watch_once(self, on_air):
+        from call.air import OnAirGuard
+
+        room = _RecordingRoom()
+        guard = OnAirGuard.__new__(OnAirGuard)
+        guard.enabled = True
+        guard.on_air = on_air
+        guard.room = room
+
+        async def _run():
+            task = asyncio.create_task(guard.watch(types.SimpleNamespace()))
+            await asyncio.sleep(0)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception:               # noqa: BLE001
+                pass            # the bare fixture dies further into the loop
+
+        asyncio.run(_run())
+        return room
+
+    def test_the_watch_loop_republishes_the_state_it_inherited(self):
+        room = self._watch_once(True)
+        self.assertEqual(room.onair_values[:1], ["1"],
+                         "the caller was held with no chip to explain it")
+
+    def test_a_guard_that_starts_clear_publishes_nothing(self):
+        # Only the INHERITED state is re-asserted. A caller who dialled into
+        # quiet air must not be shown a hold that is not happening.
+        self.assertEqual(self._watch_once(False).onair_values, [])
+
+
+class TestTheHushBeatStopsBeforeTheMarkerDoes(unittest.TestCase):
+    """The shutdown carries its own hush heartbeat so the janitor cannot
+    un-quiet the station mid-reel, and it has to STOP before the marker is
+    unlinked — a beat racing the unlink puts the marker back as an orphan the
+    janitor then waits CALL_FRESH_SECS (three minutes) to expire, with the
+    station mute and the caller long gone.
+
+    `lifecycle.cancel` is a coroutine. Called without `await` it builds a
+    coroutine object, warns into a log nobody reads, and cancels nothing.
+    """
+
+    def test_the_beat_is_awaited_not_merely_called(self):
+        import inspect
+
+        from call import lifecycle
+        from call.session import CallSession
+
+        self.assertTrue(inspect.iscoroutinefunction(lifecycle.cancel),
+                        "if this ever became sync, the await below is the "
+                        "thing to revisit")
+        src = inspect.getsource(CallSession._on_shutdown)
+        self.assertIn("await lifecycle.cancel(beat)", src)
+        self.assertNotIn("\n            lifecycle.cancel(beat)", src)

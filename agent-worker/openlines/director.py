@@ -119,6 +119,30 @@ async def _live_context(station):
     return persona, now_playing, show or {}, week or {}
 
 
+async def _live_ids() -> tuple[str, str]:
+    """Who is in the booth right now, and under what show — the two facts a
+    record has to be measured against to know it is still its own.
+
+    ("", "") when the station cannot answer. An outage must never be read as a
+    changeover: closing a live line because a box was slow would take the
+    premise off the air and nothing would put it back.
+    """
+    from station import StationClient
+
+    import secrets_store
+
+    secrets_store.apply_to_env()
+    station = StationClient()
+    try:
+        persona, _now, show, _week = await _live_context(station)
+        return str(persona.get("id") or ""), str(show.get("name") or "")
+    except Exception as e:                                     # noqa: BLE001
+        log.debug("open lines: could not read who is live (%s)", e)
+        return "", ""
+    finally:
+        await station.aclose()
+
+
 async def _resolve_bit(cfg, station, persona, show, bit: str) -> dict:
     """Turn a recurring BIT into tonight's specific instance.
 
@@ -314,6 +338,9 @@ async def _sign_off(cfg: dict, record: dict) -> None:
         # line: a redeploy makes this the normal case for a few seconds.
         return
     record = claimed
+    # Which line this sign-off belongs to. opened_at is the only thing that
+    # identifies a record across the TTS wait below — see the re-read.
+    opened = str(record.get("opened_at") or "")
 
     secrets_store.apply_to_env()
     station = StationClient()
@@ -323,10 +350,15 @@ async def _sign_off(cfg: dict, record: dict) -> None:
             str(record.get("premise") or ""), took,
             record.get("followup_lines")))
         # Re-read: the claim was written a moment ago, and the panel may have
-        # touched the record since. Only the words are ours to add now.
+        # touched the record since. Only the words are ours to add now — and
+        # only if it is still the SAME line. The station's speech is seconds
+        # long, which is room enough for open_now to have put a fresh record
+        # on disk, and this write then stamped a closing line onto a line
+        # that had only just opened.
         fresh = state.read_raw() or record
-        fresh["sign_off_spoken"] = spoken
-        state.write(fresh)
+        if str(fresh.get("opened_at") or "") == opened:
+            fresh["sign_off_spoken"] = spoken
+            state.write(fresh)
         log.info("open lines: closed (%s arrivals while it stood)", took)
     finally:
         await station.aclose()
@@ -373,6 +405,10 @@ async def _follow_up(cfg: dict, record: dict) -> bool:
 
     if int(record.get("followups_sent") or 0) >= followup.MAX_PER_LINE:
         return False
+    # Which line this follow-up belongs to, held for the two writes below:
+    # both land AFTER a station read and a model call, and the record on
+    # disk by then may be a different line altogether.
+    opened = str(record.get("opened_at") or "")
     waiting = followup.candidates(
         record, record.get("opened_at"), record.get("followed_up"))
     if not waiting:
@@ -396,7 +432,16 @@ async def _follow_up(cfg: dict, record: dict) -> bool:
         # otherwise both report it, and the room would hear the DJ discover one
         # person's answer twice. If the line below turns out to be worth
         # airing, note_followup upgrades this to a counted follow-up.
-        state.write(state.note_seen(state.read_raw(), item.get("id")))
+        #
+        # Against the record that is on disk NOW, and only if it is still
+        # ours: a line that turned over during the reads above would have
+        # inherited this claim, and an empty read wrote the bookkeeping into
+        # a record with no premise at all — a phantom line the panel then
+        # showed.
+        fresh = state.read_raw()
+        if str((fresh or {}).get("opened_at") or "") != opened:
+            return False
+        state.write(state.note_seen(fresh, item.get("id")))
         premise = str(record.get("premise") or "")
         line = await followup.line_for(cfg, station, persona, premise, item)
         if not line:
@@ -413,11 +458,15 @@ async def _follow_up(cfg: dict, record: dict) -> bool:
 
         spoken, aired = await air.say(
             station, air.followup_direction(premise, line, cfg))
-        fresh = state.read_raw()
         if not aired:
             # The booth refused. It stays marked seen from the claim: retrying
             # a station that is saying no, once a minute, is how one failure
             # becomes sixty.
+            return False
+        # Same test as the claim, and for the same reason — the TTS above is
+        # the longest wait in the pass.
+        fresh = state.read_raw()
+        if str((fresh or {}).get("opened_at") or "") != opened:
             return False
         state.write(state.note_followup(fresh, item.get("id"), spoken))
         log.info("open lines: reported a contribution on air — %s", line)
@@ -436,6 +485,27 @@ async def tick(cfg: dict | None = None) -> None:
     if record and not state.is_live(record) and not record.get("signed_off"):
         await _sign_off(cfg, record)
         return
+
+    # A line dies when the persona or the show changes under it
+    # (docs/open-lines.md) — and state.is_live only knows that if it is ASKED
+    # with who is live now. Nothing in this loop was asking: the caller-facing
+    # block (api/openlines.py) hid the line the moment the booth changed
+    # hands, while the reminder and the sign-off below compared nothing and
+    # went on airing the OLD DJ's line through the NEW one's mouth. Resolved
+    # once per tick, here, because both of those paths are downstream of it;
+    # a station that cannot be reached answers ("", "") and the tick behaves
+    # exactly as it did before.
+    if record and state.is_live(record):
+        live_id, live_show = await _live_ids()
+        if live_id and not state.is_live(record, live_id, live_show):
+            closed = state.close("show_changed") or record
+            # Signed off as well as closed: there IS no sign-off to air. The
+            # only voice in the booth now is one that never opened this line.
+            closed["signed_off"] = True
+            state.write(closed)
+            log.info("open lines: the booth changed hands — the line closed "
+                     "with the show that opened it")
+            return
 
     # Follow-ups before reminders. Something that actually came back is worth
     # more to the room than asking again, and airing "still no takers" a

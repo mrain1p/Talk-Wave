@@ -584,8 +584,13 @@ class CallSession:
                 # The overlap guard holds the call DJ while "the broadcast
                 # talks" — but on this call the broadcast IS the call, and
                 # the relay's own intro/outro must not gag the conversation
-                # they bracket.
-                self.air.enabled = False
+                # they bracket. disable() rather than the bare flag: the
+                # guard may already have PRIMED itself on-air from the push
+                # file back in __init__, and the watch loop that would clear
+                # it returns early from here on — so the flag stayed True for
+                # the whole relay call and froze the idle clock, the working
+                # line and every reply gap with it.
+                self.air.disable()
                 if self.record:
                     self.record.data["config"]["onAir"] = True
                 # The window is NAMED, not just enforced. A DJ that does not
@@ -848,8 +853,12 @@ class CallSession:
             # must finish airing first. Local disk, so it cannot fail the
             # record the way a network call could. The beat stops first —
             # a heartbeat racing the unlink would resurrect the marker as
-            # an orphan the janitor then has to wait out.
-            lifecycle.cancel(beat)
+            # an orphan the janitor then has to wait out. AWAITED: cancel()
+            # is a coroutine, and the bare call never ran, so the beat was
+            # never actually stopped and did exactly what the ordering above
+            # exists to prevent — the station stayed mute for up to
+            # CALL_FRESH_SECS after the caller was gone.
+            await lifecycle.cancel(beat)
             hush.call_ended(self.room_name)
 
     async def _shutdown_work(self) -> None:

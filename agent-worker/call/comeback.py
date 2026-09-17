@@ -122,12 +122,28 @@ async def _say_it(guard, session: AgentSession, nod: str) -> None:
             "you left it, in your own voice. Don't apologise at length, "
             "don't recap, and don't start a new topic." + nod
         )
+    handle = None
     try:
-        await session.generate_reply(instructions=instructions)
+        # KEEP THE HANDLE, don't just await the call. generate_reply returns a
+        # SpeechHandle whose __await__ is a SHIELDED wait, so cancelling this
+        # task ends our WAIT and not the playback — the come-back line carried
+        # on out of the caller's speaker straight over the station's next
+        # utterance, which is the one thing the cancel exists to prevent.
+        handle = session.generate_reply(instructions=instructions)
+        await handle
     except asyncio.CancelledError:
         # The station started talking again while we were coming back. The
         # caller is still on hold and still knows it, so this simply stops —
         # no second hand-over line, no apology for a return that never landed.
+        # force=True: the line is not the caller's to interrupt, so the handle
+        # would refuse a polite one. getattr, because the test fakes (and any
+        # older SDK) hand back a bare coroutine with nothing to cut.
+        cut = getattr(handle, "interrupt", None)
+        if cut is not None:
+            try:
+                cut(force=True)
+            except Exception:                                  # noqa: BLE001
+                pass
         raise
     except Exception as e:                                     # noqa: BLE001
         log.debug("could not generate the back-from-air line: %s", e)

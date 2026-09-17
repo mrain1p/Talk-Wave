@@ -733,6 +733,27 @@ class ChatShelf:
         self.chats[fresh.id] = fresh
         return fresh
 
+    def close(self, chat_id: str) -> None:
+        """Drop one chat AND let go of what it owns.
+
+        The conversation has owned its own LLM client since 0.10.117 and each
+        one owns an httpx pool, so a chat lifted straight out of `chats` leaks
+        it — which is what the caller's `bye` and the message/age ceiling both
+        did, leaving sweep() the only path that ever closed one. Every close
+        comes through here now.
+
+        Spawned rather than awaited, for the same reason sweep does it: this
+        is called from sync code and from the tests, and ending a chat must
+        not become a place that can block or raise.
+        """
+        chat = self.chats.pop(chat_id, None)
+        if chat is None:
+            return
+        try:
+            asyncio.get_running_loop().create_task(chat.aclose())
+        except RuntimeError:
+            pass              # no loop (a test) — nothing was built either
+
     def sweep(self, cfg: dict) -> None:
         """Close what the clocks say is over: the idle timeout, the message
         ceiling, and the hard age limit. Each closed chat writes its record."""
@@ -756,16 +777,7 @@ class ChatShelf:
                           if msg_cap and chat.messages >= msg_cap
                           else "the chat went quiet")
                 chat.write_record(reason)
-                # The conversation owned an LLM client from 0.10.117; ending
-                # the chat has to let go of it or every closed chat leaks one.
-                # Spawned rather than awaited: sweep() is sync and called from
-                # both an async hook and the tests, and a chat ending must not
-                # become a place that can block or raise.
-                try:
-                    asyncio.get_running_loop().create_task(chat.aclose())
-                except RuntimeError:
-                    pass          # no loop (a test) — nothing was built either
-                del self.chats[chat_id]
+                self.close(chat_id)
                 log.info("chat %s closed: %s (%d msgs)", chat_id, reason,
                          chat.messages)
 

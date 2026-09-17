@@ -358,6 +358,24 @@ class OnAirGuard(AirVerdict):
         log.info("our action was sent but not confirmed — holding until the "
                  "station's log shows it (up to %.0fs)", self.PENDING_CEILING)
 
+    def disable(self) -> None:
+        """Stand the guard down: this call IS the broadcast (the on-air relay),
+        so there is no second voice to keep off.
+
+        Clearing `enabled` alone was not enough, and the flag it left behind
+        was stuck for the WHOLE call: the constructor primes `on_air` from the
+        last verified push (see the primed gate above), and watch() — the one
+        thing that ever clears it — returns early when disabled. Everything
+        downstream then read a booth that never stopped working: the idle
+        clock reset every tick (clocks.py), the working line silenced the
+        caller, and every reply gap was written off as ours.
+        """
+        self.enabled = False
+        if self.on_air:
+            self.on_air = False
+            self._clear.set()
+            self._publish(False)
+
     def _publish(self, on_air: bool) -> None:
         """Tell the widget, so the caller sees "DJ is on air" rather than a
         DJ that has mysteriously gone quiet."""
@@ -395,6 +413,15 @@ class OnAirGuard(AirVerdict):
             log.warning("air still busy after %.0fs — letting the call continue",
                         timeout or self.MAX_HOLD)
             self._clear.set()
+            # And the hold is over as far as the CALLER is concerned, so
+            # there is nothing left to come back from: leaving these set
+            # meant the eventual clear edge spawned an "I'm back" into a
+            # conversation that had already carried on without it, nodding
+            # at words that aired a minute earlier. `on_air` stays — it is
+            # the evidence the air is still busy, which this does not
+            # disprove; only our promise to the caller is cancelled.
+            self.stepped_away = False
+            self.aired_text = ""
         return time.time() - started
 
     def _assess(self, speech: tuple[float, str] | None,
@@ -528,6 +555,15 @@ class OnAirGuard(AirVerdict):
         call."""
         if not self.enabled:
             return
+        # SAY THE PRIMED GATE OUT LOUD. The constructor's own _publish(True)
+        # runs before ctx.connect(), and rtc.Room.local_participant raises
+        # until the room is up — so that publish was swallowed, and the
+        # loop's first pass sees a gate that is already closed and therefore
+        # no EDGE to publish on. The caller sat through the greeting hold
+        # with no on-hold chip and a DJ that had simply gone quiet. Here the
+        # room is connected and the state is the same state.
+        if self.on_air:
+            self._publish(True)
         # The first pass runs immediately and silently: someone who dials in
         # mid-link should have the gate already closed (so their first reply
         # waits) without the greeting being cut off by a hand-over line for a

@@ -200,8 +200,6 @@ def caller_tier(request: web.Request) -> str:
     a different name, and an operator ringing their own booth from the panel's
     preview should not come through as a stranger.
     """
-    import settings as settings_store
-
     # THE DOOR AND THE TIER ARE TWO QUESTIONS. `front_access` answers who may
     # ring at all; the guest code answers who this caller IS once they are in.
     # 0.10.66 fused them — on an open line the code stopped elevating — and the
@@ -218,7 +216,37 @@ def caller_tier(request: web.Request) -> str:
     # door would be a tier the door does not admit.
     #
     # The guest pathway is switched off by not having a code, which is the rule
-    # this had before 0.10.66 and the one the panel now states.
+    # this had before 0.10.66 and the one the panel now states. The rule itself
+    # lives one function down, in tier_for_key, because the text line has to
+    # ask the same question of a key that arrives in a WebSocket frame instead
+    # of a header — and a second copy of it is how the two drifted apart.
+    for header in ("X-Call-Key", "X-Admin-Key"):
+        key = request.headers.get(header, "")
+        if not key:
+            continue
+        tier = tier_for_key(key)
+        if tier != "open":
+            return tier
+    return "open"
+
+
+def tier_for_key(key: str) -> str:
+    """Which caller one typed code makes its holder: open, guest or admin.
+
+    The resolution lives HERE, on its own, because two doors ask it and they
+    must not answer differently. The text line had grown its own copy
+    (api/chat._tier_for — the WS key arrives in-band, not in a header) that
+    handed 'guest' to any valid code with none of the guest_door rule on it,
+    so the same code-holder was 'open' on the phone and 'guest' in a text and
+    the permission matrix meant two things at once (invariants 7 and 10,
+    docs/architecture.md).
+    """
+    import settings as settings_store
+
+    if not key:
+        return "open"
+    if _key_valid(key):
+        return "admin"
     cfg = settings_store.load()
     # Whether the guest tier is reachable is ONE rule, and it lives in
     # settings_store.guest_door_open — consolidated at Batch 2 from the two
@@ -226,14 +254,8 @@ def caller_tier(request: web.Request) -> str:
     guest_door = settings_store.guest_door_open(
         cfg.get("front_access"), admin_auth.guest_is_set(),
         bool(cfg.get("guest_tier", True)))
-    for header in ("X-Call-Key", "X-Admin-Key"):
-        key = request.headers.get(header, "")
-        if not key:
-            continue
-        if _key_valid(key):
-            return "admin"
-        if guest_door and admin_auth.verify_guest(key):
-            return "guest"
+    if guest_door and admin_auth.verify_guest(key):
+        return "guest"
     return "open"
 
 

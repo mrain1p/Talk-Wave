@@ -1215,6 +1215,200 @@ class TestReportingBackToTheRoom(_OnDisk):
         self.assertIs(settings_store.FIELDS["open_lines_followup"][1], False)
 
 
+class TestALineDiesWithTheBoothThatOpenedIt(_OnDisk):
+    """docs/open-lines.md: the line dies when the persona or the show changes.
+
+    `state.is_live` has always known how to check that, and the director never
+    asked it — it called `is_live(record)` with nothing to compare against. So
+    after a changeover the caller-facing block (api/openlines.py, which DOES
+    pass the live pair) hid the line, while the reminder and the sign-off went
+    on airing the old DJ's premise and the old DJ's closing words through
+    whoever was in the booth now.
+    """
+
+    def _tick(self, live, record, **cfg):
+        """One pass with a known booth. Returns what would have aired."""
+        state.write(record)
+        aired = []
+        saved = (director._live_ids, director._remind, director._sign_off)
+
+        async def _ids():
+            return live
+
+        async def _remind(_cfg, _rec):
+            aired.append("reminder")
+
+        async def _sign_off(_cfg, _rec):
+            aired.append("sign-off")
+
+        director._live_ids = _ids
+        director._remind = _remind
+        director._sign_off = _sign_off
+        try:
+            asyncio.run(director.tick({"open_lines_enabled": True,
+                                       "open_lines_every_minutes": 0, **cfg}))
+        finally:
+            (director._live_ids, director._remind,
+             director._sign_off) = saved
+        return aired
+
+    def _due(self, **over):
+        # A line with a reminder already due, so anything that airs, airs.
+        now = datetime.now(timezone.utc)
+        return _record(next_reminder_at=_iso(now - timedelta(minutes=1)),
+                       **over)
+
+    def test_a_changeover_closes_the_line_and_airs_nothing(self):
+        aired = self._tick(("p2", "Late Shift"), self._due())
+        self.assertEqual(aired, [],
+                         "the new DJ aired the old line's reminder")
+        rec = state.read_raw()
+        self.assertTrue(rec["closed"])
+        self.assertEqual(rec["closed_reason"], "show_changed")
+        self.assertTrue(rec["signed_off"],
+                        "a sign-off for this line would come out of a mouth "
+                        "that never opened it")
+
+    def test_a_new_show_under_the_same_dj_closes_it_too(self):
+        aired = self._tick(("p1", "Breakfast"), self._due())
+        self.assertEqual(aired, [])
+        self.assertEqual(state.read_raw()["closed_reason"], "show_changed")
+
+    def test_the_same_booth_is_left_to_get_on_with_it(self):
+        aired = self._tick(("p1", "Late Shift"), self._due())
+        self.assertEqual(aired, ["reminder"])
+        self.assertFalse(state.read_raw()["closed"])
+
+    def test_a_station_that_cannot_answer_changes_nothing(self):
+        # An outage is not a changeover. Closing a live line because a box
+        # was slow would take the premise off the air with nothing to put it
+        # back — so a station that cannot say who is live falls through to
+        # exactly the behaviour this loop had before.
+        aired = self._tick(("", ""), self._due())
+        self.assertEqual(aired, ["reminder"])
+        self.assertFalse(state.read_raw()["closed"])
+
+    def test_an_expired_line_still_gets_its_sign_off(self):
+        # The changeover check must not stand in front of the ordinary close.
+        aired = self._tick(("p2", "Breakfast"), _record(closed=True))
+        self.assertEqual(aired, ["sign-off"])
+
+
+class TestBookkeepingNeverLandsOnTheNextLine(_OnDisk):
+    """A follow-up and a sign-off both read the record, wait on a model or the
+    station, and then write to whatever is on disk when they get back. That is
+    long enough for the operator to have pressed Open again — and the writes
+    landed on the NEW line: it inherited a follow-up it never asked for, and
+    an empty read wrote a premise-less phantom the panel then displayed.
+
+    `opened_at` is the identity. Captured before the wait, checked before the
+    write, and a record that is not the one we started with is left alone.
+    """
+
+    def _conversation(self, cid, when, turns=6):
+        return {"id": cid, "startedAt": _iso(when),
+                "turns": [{"who": "caller" if i % 2 == 0 else "dj",
+                           "text": "line %d" % i} for i in range(turns)]}
+
+    def _follow_up(self, record, during_model=None, during_read=None):
+        """Run one follow-up pass. `during_read` fires while the station is
+        being read (before the conversation is claimed); `during_model` fires
+        while the model is writing the line (after it)."""
+        saved = (director._live_context, followup.line_for, air.say)
+
+        async def _live_context(_station):
+            if during_read is not None:
+                during_read()
+            return PERSONA, {}, {}, {}
+
+        async def _line_for(*a, **kw):
+            if during_model is not None:
+                during_model()
+            return "they argued the original is better"
+
+        async def _say(_station, _direction):
+            return "and someone came back on that", True
+
+        director._live_context = _live_context
+        followup.line_for = _line_for
+        air.say = _say
+        try:
+            return asyncio.run(director._follow_up({}, record))
+        finally:
+            (director._live_context, followup.line_for, air.say) = saved
+
+    def _item(self):
+        return self._conversation(
+            "c1", datetime.now(timezone.utc) - timedelta(minutes=1))
+
+    def test_a_line_opened_mid_followup_inherits_nothing(self):
+        now = datetime.now(timezone.utc)
+        old = _record(opened_at=_iso(now - timedelta(minutes=10)))
+        state.write(old)
+        fresh = _record(opened_at=_iso(now), premise="a completely new subject")
+
+        with _fake_recent([self._item()]):
+            aired = self._follow_up(old, during_model=lambda: state.write(fresh))
+
+        self.assertFalse(aired, "the report landed on a line that never heard it")
+        on_disk = state.read_raw()
+        self.assertEqual(on_disk["premise"], "a completely new subject")
+        self.assertEqual(on_disk.get("followups_sent") or 0, 0)
+        self.assertEqual(on_disk.get("followed_up") or [], [])
+
+    def test_a_record_that_vanished_is_not_re_invented(self):
+        # read_raw() returning {} used to be written straight back through
+        # note_seen — a record with a followed_up list, no premise and no
+        # opened_at, which the panel then showed as an open line.
+        now = datetime.now(timezone.utc)
+        old = _record(opened_at=_iso(now - timedelta(minutes=10)))
+        state.write(old)
+
+        with _fake_recent([self._item()]):
+            aired = self._follow_up(old, during_read=lambda: state.write(None))
+
+        self.assertFalse(aired)
+        self.assertEqual(state.read_raw(), {},
+                         "a phantom line was written where one had been closed")
+
+    def test_the_same_line_is_still_reported_on(self):
+        now = datetime.now(timezone.utc)
+        rec = _record(opened_at=_iso(now - timedelta(minutes=10)))
+        state.write(rec)
+
+        with _fake_recent([self._item()]):
+            aired = self._follow_up(rec)
+
+        self.assertTrue(aired, "nothing reports back any more")
+        on_disk = state.read_raw()
+        self.assertEqual(on_disk["followups_sent"], 1)
+        self.assertIn("c1", on_disk["followed_up"])
+
+    def test_a_signoff_does_not_close_a_line_that_just_opened(self):
+        now = datetime.now(timezone.utc)
+        old = _record(closed=True, opened_at=_iso(now - timedelta(minutes=70)))
+        state.write(old)
+        fresh = _record(opened_at=_iso(now), premise="a completely new subject")
+        saved = air.say
+
+        async def _say(_station, _direction):
+            # The station is speaking; the operator presses Open.
+            state.write(fresh)
+            return "that's the line closed", True
+
+        air.say = _say
+        try:
+            asyncio.run(director._sign_off({}, state.read_raw()))
+        finally:
+            air.say = saved
+
+        on_disk = state.read_raw()
+        self.assertEqual(on_disk["premise"], "a completely new subject")
+        self.assertNotIn("sign_off_spoken", on_disk,
+                         "the new line was stamped with the old one's goodbye")
+        self.assertFalse(on_disk.get("closed"))
+
+
 class TestOpenLinesReachesThePanel(unittest.TestCase):
     """Five places, and the panel silently skips a field missing any one."""
 

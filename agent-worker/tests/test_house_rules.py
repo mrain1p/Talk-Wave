@@ -1057,7 +1057,13 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # that has ended must not restart) joins on_user_turn_completed, the
         # same insertion point door/stuck/withheld already use — all of it on
         # the CallAgent half this split will carry away together.
-        "agent-worker/call/air.py": (765, "the CallAgent half (the reply "
+        # 798 (2026-09-17, review findings 2/3/4): OnAirGuard.disable() for
+        # the on-air relay call, the primed gate re-published at the top of
+        # watch() now the room is actually connected, and MAX_HOLD giving up
+        # the hand-over promise along with the hold. All three are the GUARD
+        # half — the state machine and what it publishes — so the recorded
+        # seam has not moved and the CallAgent half is untouched.
+        "agent-worker/call/air.py": (798, "the CallAgent half (the reply "
                                           "path) split from the guard half "
                                           "(the air state machine)"),
         # 618: the per-caller door verdicts (0.98.4) joined _for_this_caller —
@@ -1170,7 +1176,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 939 (2026-09-14): the live show is read once for its name AND its
         # id, so the pause-and-talk mirror (SUB/WAVE 1.15, #1645) can ask the
         # cached /settings read whether THIS show holds long segments.
-        "agent-worker/call/session.py": (939, "the ringing half (prepare, "
+        # 948 (2026-09-17, review findings 3/5): the relay call stands the
+        # air guard down through disable() rather than the bare flag, and the
+        # shutdown's hush beat is actually awaited. Both are comment, both in
+        # the LIVE half, and neither moves the seam.
+        "agent-worker/call/session.py": (948, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -1210,7 +1220,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 773: the owes_action flag (set at the promise-grading point,
         # cleared when a tool runs) so the idle nudge never types
         # scenery over an unmet promise.
-        "agent-worker/chat/session.py": (773, "the one-conversation half "
+        # 785 (2026-09-17, review finding 12): ChatShelf.close — the shelf's
+        # one way out, so the caller's `bye` and the message ceiling stop
+        # popping a chat and leaking the LLM client it owns. Twelve lines,
+        # all of them in the COLLECTION half the seam already names.
+        "agent-worker/chat/session.py": (785, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "
@@ -1264,7 +1278,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
                                                         "split from the "
                                                         "search-and-request "
                                                         "classes"),
-        "agent-worker/tests/test_onair.py": (1025, "the chunk-store half "
+        # 1122 (2026-09-17, review findings 7/8): two hush classes — a flip
+        # the station never confirmed is finished rather than believed, and a
+        # call that rings in mid-restore is not left with the station talking
+        # over it. Both on the hush side of the three-way split this entry
+        # already describes, which the next pass through here should make.
+        "agent-worker/tests/test_onair.py": (1122, "the chunk-store half "
                                                    "split from the relay "
                                                    "half"),
         # 0.10.121 pushed it over with the ducking timeline. The seam was
@@ -1920,7 +1939,11 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         "agent-worker/api/voicemail.py::handle_voicemail_stage": (27, "Batch 2 — voicemail stage handler"),
         "agent-worker/api/settings.py::handle_settings_options": (25, "Batch 2 — provider-discovery gather"),
         # Batch 3 — the call core
-        "agent-worker/call/air.py::OnAirGuard.watch": (47, "Batch 3 — the on-air watch loop"),
+        # 47 -> 48 (2026-09-17): one branch at the top of the loop — a gate
+        # the CONSTRUCTOR primed re-publishes here, where the room is
+        # connected, because the constructor's own publish happens before
+        # ctx.connect() and is swallowed, leaving a held caller with no chip.
+        "agent-worker/call/air.py::OnAirGuard.watch": (48, "Batch 3 — the on-air watch loop"),
         "agent-worker/call/providers.py::build_llm": (34, "Batch 3 — multi-provider LLM constructor"),
         # air_verdict._push_verdict was here at 26; Batch 3 folded its three
         # speaking_secs copies into AirVerdict._spoken_secs, dropping it under
