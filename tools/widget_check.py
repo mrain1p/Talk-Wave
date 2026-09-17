@@ -31,6 +31,10 @@ the incidents were made of:
     — each holding the rules the card's design system states in words
     (added 2026-09-17: five releases of card work had shipped past a
     harness that drove one face at one width)
+  - every control a caller can press, pressed, and the state it should
+    reach read back — route, heart, theme, the call to its honest failure
+    and back, the player's tabs/skip/request/play, the guide's week grid,
+    fold, portrait and takeover (the 2026-09-17 by-hand pass, repeatable)
   - the installed app OPENING with the server gone, which is the service
     worker's one job
 
@@ -310,6 +314,180 @@ def check_faces(browser, rep: Report, base: str) -> None:
         ctx.close()
 
 
+# --- every control, pressed --------------------------------------------------
+# The 2026-09-17 press-everything pass, made repeatable. That pass found two
+# faults by hand that no load-time check could see (a clipped chip row, a
+# hidden foot line); what it could not do was be run again next release.
+# Each row here presses a control and reads the STATE it should reach — not
+# that a handler ran, but what the caller would see: the route lit, the
+# heart filled on both faces, the theme back where it started, the call at
+# its honest failure and the card back to idle, the request posted and the
+# box cleared, the week grid up, the portrait open with the name still
+# readable. A control that answers with a JS exception fails the sweep.
+
+def _wait_for(page, expr: str, secs: float = 6.0) -> bool:
+    deadline = time.time() + secs
+    while time.time() < deadline:
+        if page.evaluate(expr):
+            return True
+        page.wait_for_timeout(150)
+    return False
+
+
+def check_controls(browser, rep: Report, base: str) -> None:
+    ctx = browser.new_context(viewport={"width": 390, "height": 844},
+                              reduced_motion="reduce")
+    page = ctx.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    posted: list[str] = []
+    page.on("request", lambda r: posted.append(
+        f"{r.method} {r.url[len(base):].split('?')[0]}")
+        if r.url.startswith(base) else None)
+    page.goto(f"{base}/", wait_until="networkidle")
+    page.wait_for_timeout(400)
+
+    def row(name: str, ok: bool, why: str = "") -> None:
+        if errors:
+            ok, why = False, ("JS exception: " + errors[0][:120] +
+                              (f" ({why})" if why else ""))
+            errors.clear()
+        rep.add("ok" if ok else "FAIL", f"controls: {name}", "" if ok else why)
+
+    # The route switch lights the on-air side and relabels the call.
+    idle_label = page.evaluate("() => document.getElementById('callBtn').textContent.trim()")
+    page.click("#routeOn")
+    page.wait_for_timeout(250)
+    lit = page.evaluate(
+        "() => document.querySelector('.card').classList.contains('route-on')"
+        " && document.getElementById('routeOn').getAttribute('aria-checked') === 'true'")
+    live_label = page.evaluate("() => document.getElementById('callBtn').textContent.trim()")
+    page.click("#routeOff")
+    page.wait_for_timeout(250)
+    back = page.evaluate("() => !document.querySelector('.card').classList.contains('route-on')")
+    row("route switch goes on air and back", lit and back and live_label != idle_label,
+        f"lit={lit} back={back} labels {idle_label!r}/{live_label!r}")
+
+    # The heart. The card's and the player's are separate states on purpose
+    # (call.js: "the card must never claim a heart it did not press"), so
+    # the row is: the pressed heart lights at once, and the player's heart
+    # reads the like back from the server when the sheet opens — never the
+    # one repainting the other.
+    page.click(".nplike")
+    lit = _wait_for(page, "() => document.querySelector('.nplike').classList.contains('liked')", 3)
+    page.click("#facePlayer")
+    read_back = _wait_for(page, "() => document.querySelector('.plheart').classList.contains('liked')", 3)
+    page.click("#facePhone")
+    page.wait_for_timeout(300)
+    row("the pressed heart lights, and the player reads the like back on opening",
+        lit and read_back, f"lit={lit} readBack={read_back}")
+
+    # The theme cycles and comes home: light, dark, the station's own, auto.
+    page.click("#themeBtn")
+    page.wait_for_timeout(200)
+    stepped = page.evaluate("() => !!document.documentElement.dataset.theme")
+    for _ in range(3):
+        page.click("#themeBtn")
+        page.wait_for_timeout(200)
+    home = page.evaluate(
+        "() => !document.documentElement.dataset.theme"
+        " && !(localStorage.getItem('callinTheme') || '')")
+    row("theme cycles four stops and back to auto", stepped and home,
+        f"stepped={stepped} home={home}")
+
+    # The call: minted, refused by the stand-in, and the card back to idle
+    # with the slot released — the 0.9.117-era teardown, walked.
+    page.click("#callBtn")
+    failed = _wait_for(page, "() => /could not connect/i.test("
+                             "document.getElementById('statusText').textContent)")
+    page.wait_for_timeout(300)
+    idle = page.evaluate(
+        "() => document.querySelector('.card').dataset.mode === 'idle'"
+        " && document.getElementById('hangBtn').hidden"
+        " && !document.getElementById('callBtn').hidden")
+    minted = "POST /token" in posted
+    released = "POST /call-ended" in posted
+    row("call reaches 'Could not connect' and the card comes back",
+        failed and idle and minted and released,
+        f"failed={failed} idle={idle} minted={minted} released={released}")
+
+    # The player: its tabs, the skip, a request, and play.
+    page.click("#facePlayer")
+    page.wait_for_timeout(400)
+    page.click(".pltab:nth-of-type(2)")
+    page.wait_for_timeout(250)
+    tab = page.evaluate("() => (document.querySelector('.pltab.on') || {}).textContent || ''")
+    page.click(".pltab:nth-of-type(1)")
+    row("player tabs switch", "played" in tab.lower(), f"active tab reads {tab!r}")
+    page.click("#plSkipBtn")
+    page.wait_for_timeout(500)
+    # The receipt lands in #plOpFlash (flashOpResult), the row every player
+    # action reports through since 2026-09-02.
+    skipped = "POST /player/skip" in posted and page.evaluate(
+        "() => { const f = document.getElementById('plOpFlash');"
+        " return !!f && !f.hidden && /skipped/i.test(f.textContent); }")
+    row("skip posts and reports itself in the row", skipped)
+    page.fill("#plReqInput", "something slow for the rain")
+    page.click("#plReqSend")
+    page.wait_for_timeout(600)
+    sent = "POST /player/request" in posted and page.evaluate(
+        "() => document.getElementById('plReqInput').value === ''")
+    row("request posts and the box clears", sent)
+    page.click("#plPlayBtn")
+    page.wait_for_timeout(400)
+    playing = page.evaluate("() => /pause/i.test(document.getElementById('plPlayBtn').textContent)")
+    page.click("#plPlayBtn")
+    page.wait_for_timeout(300)
+    paused = page.evaluate("() => /play/i.test(document.getElementById('plPlayBtn').textContent)")
+    row("play toggles to pause and back", playing and paused)
+
+    # The guide: week and day, the span, the fold, the portrait, a takeover.
+    page.click("#faceGuide")
+    page.wait_for_timeout(500)
+    page.click("#guideViewWeek")
+    page.wait_for_timeout(300)
+    grid = page.evaluate("() => !document.getElementById('guideGrid').hidden")
+    page.click("#guideSpan24")
+    page.wait_for_timeout(200)
+    span = page.evaluate(
+        "() => document.getElementById('guideSpan24').getAttribute('aria-pressed') === 'true'")
+    page.click("#guideViewDay")
+    page.wait_for_timeout(300)
+    listed = page.evaluate("() => !document.getElementById('guideList').hidden")
+    row("guide reads as a week grid, takes a span, and comes back to the day",
+        grid and span and listed, f"grid={grid} span={span} day={listed}")
+    before = page.evaluate("() => document.querySelector('.gdherobox').classList.contains('min')")
+    page.click(".gdherofold")
+    page.wait_for_timeout(300)
+    after = page.evaluate("() => document.querySelector('.gdherobox').classList.contains('min')")
+    row("the show on air folds and unfolds", before != after)
+    page.click(".gdherofig.gdzoom")
+    page.wait_for_timeout(300)
+    portrait = page.evaluate(
+        "() => { const f = document.querySelector('.gdherofig.gdzoom');"
+        " const n = document.querySelector('.gdheronames');"
+        " if (!f || !n) return {big: false};"
+        " const fr = f.getBoundingClientRect(), nr = n.getBoundingClientRect();"
+        " return {big: f.classList.contains('big'), under: nr.top >= fr.bottom - 1,"
+        "  clipped: n.querySelector('.gdheroname').scrollWidth"
+        "   > n.querySelector('.gdheroname').clientWidth + 1}; }")
+    page.click(".gdherofig.gdzoom")
+    page.wait_for_timeout(300)
+    shut = page.evaluate(
+        "() => !document.querySelector('.gdherofig.gdzoom').classList.contains('big')")
+    row("the portrait opens under the name, unclipped, and shuts again",
+        portrait.get("big") and portrait.get("under") and not portrait.get("clipped") and shut,
+        f"{portrait} shut={shut}")
+    page.click(".gdtake:not(.back)")
+    page.wait_for_timeout(700)
+    took = "POST /station/override" in posted and page.evaluate(
+        "() => !!document.querySelector('.gdtake.back')")
+    row("put on air posts the takeover and the row offers the hand-back", took)
+
+    row("no JS exception across the sweep", True)
+    ctx.close()
+
+
 def check_offline(browser, rep: Report, base: str, stub) -> None:
     """The installed app opens with the server gone — sw.js's one job.
 
@@ -475,6 +653,7 @@ def main() -> None:
                 page.close()
 
                 check_faces(browser, rep, base)
+                check_controls(browser, rep, base)
                 # Last: it takes the server away.
                 check_offline(browser, rep, base, proc)
             finally:
