@@ -280,9 +280,15 @@ async def handle_player_command(request: web.Request) -> web.Response:
         timeout = float(cfg.get("chat_reply_timeout_secs") or 0) or 90.0
         await asyncio.wait_for(chat.ask(text, events.append), timeout)
     except asyncio.TimeoutError:
+        # `note`, not `said`: the strip reads one key for the server's own
+        # one-line status, and this branch was the only place that answered
+        # in the other one — so a command that merely ran long was flashed as
+        # the generic sticky refusal, "the booth would not take that"
+        # (2026-09-17). The wording below is the receipt's, not the DJ's,
+        # which is the same rule the block under this one states.
         return _cors(request, web.json_response(
-            {"chat": chat.id, "said": "Still digging — give it another go "
-             "in a moment?", "actions": []}))
+            {"chat": chat.id, "note": "Still digging — give it another go "
+             "in a moment?", "fallback": "timeout", "actions": []}))
     actions = [{"icon": e.get("icon"), "label": e.get("label"),
                 "detail": e.get("detail")}
                for e in events if e.get("type") == "action"]

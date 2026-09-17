@@ -1215,6 +1215,30 @@ class TestReportingBackToTheRoom(_OnDisk):
         self.assertIs(settings_store.FIELDS["open_lines_followup"][1], False)
 
 
+class TestTheCardCanCountWhatTheLineDid(_OnDisk):
+    """Every number the card prints has to be on the payload it reads.
+
+    "0 answers reported" stood under every line, live or past, because the
+    card reads `followupsSent` and this payload sent `remindersSent` and
+    nothing else — while the record had been counting `followups_sent` all
+    along (found reading the panel against the server, 2026-09-17). The
+    stat sat under a rule that says a number it cannot back up prints as an
+    em dash; this one printed a zero it could not back up.
+    """
+
+    def test_the_answers_the_line_drew_reach_the_payload(self):
+        from api import openlines as api_openlines
+
+        state.write(_record(followups_sent=3))
+        self.assertEqual(api_openlines.status_payload()["followupsSent"], 3)
+
+    def test_a_line_that_drew_none_still_carries_the_key(self):
+        from api import openlines as api_openlines
+
+        state.write(_record())
+        self.assertEqual(api_openlines.status_payload()["followupsSent"], 0)
+
+
 class TestOpenLinesReachesThePanel(unittest.TestCase):
     """Five places, and the panel silently skips a field missing any one."""
 
