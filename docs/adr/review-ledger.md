@@ -625,3 +625,47 @@ precaution that trade asks somebody to write once.
 the image on the NAS, so the queue fix above is proved by the suite rather
 than by a second sweep; the sweep worth having is the one after the release,
 against an image that carries it.
+
+### Working through what was left (2026-09-17, same day)
+
+**The stub's error paths and the panel sweep** — the two plan items that did
+not need the operator.
+
+Every fixture in `tools/panel_dev_server.py` carried a note saying "flip this
+to see the other branch", so the panel's failure rendering was reachable only
+by editing the stub by hand and nothing had ever driven it.
+`GET /stub/failing?stages=...` turns the branches on at runtime in the real
+handlers' shapes. Seven rows, all passing — the widget was already right
+about every one, so these are witnesses rather than fixes, and each was
+checked against its own negative (drop the withheld-key note and the paste-a-
+key prompt comes back).
+
+The panel sweep was pressing ONE button. The panel is PAGES, not one long
+form, and a control on a page nobody turned to has no client rects: a sweep
+that only opened the landing page reached 21 of the markup's 99 buttons and
+would have called that the panel. Turning each of the twelve pages and
+sweeping it twice — a tab press is how the controls behind it arrive —
+reaches 63. Nothing throws. 49 browser checks to 62, 65s.
+
+**Three of the "guards that no longer guard"**, from the deferred tier above.
+
+- The untested-module check was a substring search over the suite's whole
+  text. It reads names now — identifiers the code uses, plus string constants
+  with no spaces, which is what separates an importlib argument from a
+  sentence. Five modules were passing on prose; two were real
+  (`call/tools/playlists.py`, `caller_tiers.py`) and both now have a test
+  that names them. The tier one earns its place twice over: the ladder is the
+  security half a reviewer audits and nothing said `settings_store.TIERS` and
+  `caller_tiers.TIERS` were the same object.
+- The routing orphan check was a substring test — `handle_live` counted as
+  routed while `handle_live_preview` existed. Verified by deleting the /live
+  route (the suite stayed green), then fixed with a word boundary.
+- The builders and the registry had never been compared. Turning one switch
+  on at a time and assembling the surface the way `call.session._build_tools`
+  does, they agreed everywhere but one: `subwave_find_music` was listed with
+  `single_lookup_tool` on and every search off, and never built. The
+  threshold and the route table now have one definition each in `finding.py`,
+  and the registry applies them to its own answer rather than restating them.
+
+The fourth item in that paragraph — the size ledger's EXEMPT set covering the
+files that change most — is untouched and still stands.
