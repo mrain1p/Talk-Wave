@@ -669,3 +669,77 @@ reaches 63. Nothing throws. 49 browser checks to 62, 65s.
 
 The fourth item in that paragraph — the size ledger's EXEMPT set covering the
 files that change most — is untouched and still stands.
+
+### The deferred tiers, worked through (2026-09-17, same day)
+
+All three were taken off the deferred list. The efficiency tier is mostly a
+RETRACTION, and it is the important entry here.
+
+**The efficiency tier: three of four refuted on the box that runs them.** The
+entry above says `caller_tier()`'s PBKDF2 costs "~940ms a hash, 3 hashes a
+plain mint". Measured inside the deployed container, 240,000 iterations,
+best of ten: **21.1ms**. The number was out by a factor of 45, and a plain
+mint spends 63ms in PBKDF2, not 2.8 seconds. No cache was built; there is
+nothing here a caller could feel, and the verdict cache that entry proposed
+would have added a key-shaped cache and an invalidation rule to save nothing.
+`secrets.json` on every `get()` measured 0.006ms, and `air_verdict`'s
+push-file read 0.008ms — that one's code comment ("the push file is local and
+cheap — read it every second") was simply correct.
+
+The lesson is the ledger's own: a number written down without saying which
+box it came from is not a measurement. These were re-taken over SSH against
+the live container, which is the only box whose answer matters.
+
+**The one that was real: /live's cache miss.** Warm 1.4ms, cold 374ms,
+because the miss fans out into four to six station reads run one after
+another — and nothing serialised the misses, so every tab polling inside that
+374ms window started its own full sweep. Fixed with a build lock and a
+double-check, which is the cache's own argument one level down. The lock
+remembers which loop made it, because the suite makes a fresh one per test.
+
+**The guards.** The size ledger's EXEMPT set was justified but unmeasured, on
+the argument that a declaration table gaining a few lines a week should not
+have to come and edit a number. Thirty days of drift were measured and the
+argument did not survive: `call.js` 5,576 -> 8,598 (five ceilings of growth,
+nothing said), `test_album_tools.py` more than doubled, four more files over
++40% — while the clear case the rule was written for, `settings.py`, SHRANK
+by half because somebody split it. Exempt entries carry their size now with a
+loose allowance (+40%, or +400 lines, whichever is larger). A file that
+shrinks costs nothing, deliberately.
+
+**The cleanup tier, and what it was hiding.** Every item turned out to have a
+live fault behind it, which is the argument against calling this tier
+cosmetic:
+
+- The stage-direction regexes did not merely disagree — the STRIPPER was the
+  narrower one, so four shapes (an asterisk or bracket block spanning a line
+  break, and either over 120 characters) were graded as faults by the drill
+  and then spoken to the caller with the marks still in them. One definition
+  now, in `speech_filter`, and the grader imports it.
+- The admin refusal card: thirty-six inline copies plus four byte-identical
+  private helpers, five of which had dropped `authRequired` — and
+  `authRequired` is read by nothing in the repo, checked across the widget,
+  the panel, the tests and the widget's history. Consolidated into
+  `wire.refused` and kept (removing a response field is the operator's call),
+  so it is one line to delete rather than thirty-six to find. 184 lines out.
+- The chat persona pin held on the reply path alone; `greet` and `nudge` each
+  resolved the live persona for themselves. So a takeover between hello and
+  the first answer changed who replied, and a NUDGE — unprompted, into a
+  silence — could arrive from a DJ the caller had never spoken to. That is
+  the exact fault `ask()`'s docstring records as fixed on 2026-08-14. The two
+  tests defending it were re-implementing the rule inline and checking their
+  own copy, which is how the other two paths went without it.
+- The cloud-TTS key rule was wrong in BOTH directions: an ElevenLabs adapter
+  with its key stored was reported missing one, and a non-OpenAI host with
+  only an OpenAI key was reported fine when that key is never sent there.
+- The station-admin probe ladder was two copies, not three, and they worded
+  the same 429 differently.
+
+**The drill, re-run against the released image.** `GATES=shipped TIER=open`
+inside the deployed worker on 0.99.45: zero honesty faults, where the same
+sweep on the previous image produced two (the DJ reaching for
+`subwave_queue_track` and then telling the caller it had landed). The prose
+fix held end to end — the DJ read the new sentence and put a request in
+instead. What remains is conduct, already known: 5x stage-direction
+asterisks, 2x over-length, one opener repeat, and a reply-length p90 of 90
+words against the archive's 50.
