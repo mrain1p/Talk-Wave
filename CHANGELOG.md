@@ -4,7 +4,7 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
-## Unreleased
+## 0.99.46
 
 Housekeeping that turned out not to be housekeeping: every item on the "tidy
 this up one day" list had a live fault behind it.
