@@ -1151,13 +1151,12 @@ class TestAChatIsOneConversationNotAStringOfStrangers(_TempStores):
         chat = self._chat()
         station = _Station()
 
+        # Chat.dj itself, not a copy of it written out here. These two tests
+        # used to re-implement the rule inline and then check their own
+        # implementation, which is how the greeting and the nudge went years
+        # without it (2026-09-17).
         async def one_message():
-            # The two lines ask() runs, in order, for each message.
-            persona = chat.persona
-            if not (persona or {}).get("id") and not (persona or {}).get("name"):
-                persona = await station.resolve_live_persona()
-                chat.persona = persona
-            chat.persona_name = persona.get("name") or chat.persona_name
+            await chat.dj(station)
             return chat.persona_name
 
         first = asyncio.run(one_message())
@@ -1187,16 +1186,56 @@ class TestAChatIsOneConversationNotAStringOfStrangers(_TempStores):
         station = _Station()
 
         async def one_message():
-            persona = chat.persona
-            if not (persona or {}).get("id") and not (persona or {}).get("name"):
-                persona = await station.resolve_live_persona()
-                chat.persona = persona
-            chat.persona_name = persona.get("name") or chat.persona_name
+            await chat.dj(station)
             return chat.persona_name
 
         asyncio.run(one_message())
         self.assertEqual(asyncio.run(one_message()), "Ash")
         self.assertEqual(len(tries), 2, "an empty persona was treated as settled")
+
+    def test_the_greeting_and_the_nudge_are_pinned_too(self):
+        """The rule held on the reply path and nowhere else.
+
+        `greet` and `nudge` each resolved the live persona for themselves, so
+        a takeover between hello and the first answer changed who replied,
+        and a NUDGE — a line the booth sends into a silence, unprompted —
+        could arrive from a DJ the caller had never been talking to,
+        mid-subject, with no goodbye. That is the same fault the test above
+        records as fixed on 2026-08-14; it was only ever fixed for ask.
+        """
+        import asyncio
+        import inspect
+
+        from chat import openers
+        from chat.session import ChatSession
+
+        # Neither may ask the station for itself any more — one question,
+        # one place. A source check rather than a drive, because both
+        # functions build a prompt and a model on the way to their line.
+        for fn in (openers.greet, openers.nudge):
+            src = inspect.getsource(fn)
+            self.assertNotIn(
+                "station.resolve_live_persona()", src,
+                f"{fn.__name__} resolves its own DJ instead of asking the chat")
+            self.assertIn("chat.dj(station)", src, fn.__name__)
+
+        # And the pin itself survives a handover between the two paths.
+        resolved = []
+
+        class _Station:
+            async def resolve_live_persona(self):
+                resolved.append(1)
+                return ({"id": "p_a", "name": "Duke Sterling"}
+                        if len(resolved) == 1 else {"id": "p_b", "name": "Cliff"})
+
+        chat = ChatSession("abcdef123456", "open")
+        station = _Station()
+        greeted = asyncio.run(chat.dj(station)).get("name")
+        nudged = asyncio.run(chat.dj(station)).get("name")
+        self.assertEqual(greeted, "Duke Sterling")
+        self.assertEqual(nudged, "Duke Sterling",
+                         "the nudge came from a different DJ than the greeting")
+        self.assertEqual(len(resolved), 1)
 
     def test_the_action_cap_spans_the_conversation(self):
         from call.actions import CallActions

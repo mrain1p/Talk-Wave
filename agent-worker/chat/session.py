@@ -251,6 +251,36 @@ class ChatSession:
         """The booth speaks first when a chat opens. See chat/openers.py."""
         await openers.greet(self, cfg, on_event)
 
+    async def dj(self, station) -> dict:
+        """Who this conversation is talking to — resolved once, then held.
+
+        THE PIN, and it belongs here because three paths need it: the
+        greeting, the nudge, and every reply. It used to live in ask() alone
+        and the other two resolved the live persona for themselves, so the
+        rule held on the reply path and nowhere else. Two ways that reached a
+        caller: a takeover between the greeting and the first answer changed
+        who replied to them, and a nudge — a line the BOOTH sends into a
+        silence — could arrive from a different DJ entirely, mid-subject,
+        with no goodbye. That last one is the exact fault ask()'s own
+        docstring records as fixed on 2026-08-14; it was only ever fixed for
+        ask.
+
+        Re-resolved only if the first attempt came back with nothing to hold
+        on to: a station that was down for the opening message must not pin
+        the chat to "The DJ" for the next ten minutes.
+
+        The station keeps changing underneath either way — the record, the
+        schedule and the palette all still follow it. Only who you are
+        talking to is held.
+        """
+        held = self.persona or {}
+        if not (held.get("id") or held.get("name")):
+            self.persona = await station.resolve_live_persona()
+        persona = self.persona or {}
+        self.persona_name = persona.get("name") or self.persona_name
+        self.persona_id = persona.get("id") or self.persona_id
+        return persona
+
     async def nudge(self, cfg: dict, on_event) -> None:
         """One line to keep a quiet line breathing. See chat/openers.py."""
         await openers.nudge(self, cfg, on_event)
@@ -303,16 +333,7 @@ class ChatSession:
             str(cfg.get("action_cards") or "after"), on_event)
         station = StationClient()
         try:
-            # Once per conversation. Re-resolved only if the first attempt
-            # came back with nothing to hold on to — a station that was down
-            # for the opening message must not pin the chat to "The DJ" for
-            # the next ten minutes.
-            persona = self.persona
-            if not (persona or {}).get("id") and not (persona or {}).get("name"):
-                persona = await station.resolve_live_persona()
-                self.persona = persona
-            self.persona_name = persona.get("name") or self.persona_name
-            self.persona_id = persona.get("id") or self.persona_id
+            persona = await self.dj(station)
             prompt = await build_system_prompt(station, persona, cfg=cfg,
                                                mode="chat")
 

@@ -1399,7 +1399,7 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # one way out, so the caller's `bye` and the message ceiling stop
         # popping a chat and leaking the LLM client it owns. Twelve lines,
         # all of them in the COLLECTION half the seam already names.
-        "agent-worker/chat/session.py": (785, "the one-conversation half "
+        "agent-worker/chat/session.py": (806, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "
@@ -1410,6 +1410,15 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
                                               "— the wiring shrank the "
                                               "consultation but the holder + "
                                               "its comment grew the file; the "
+                                              "806 (2026-09-17): Chat.dj, "
+                                              "the persona PIN, moved here "
+                                              "from inside ask() because the "
+                                              "greeting and the nudge were "
+                                              "resolving their own and the rule "
+                                              "held on the reply path alone. "
+                                              "It is one-conversation state, so "
+                                              "it lands squarely on this side of "
+                                              "the seam; the split is still owed. "
                                               "recorded split is unaffected"),
         # Over the ceiling at 631 at 0.99.6 (top-down review, 2026-08-28),
         # from 597. The three fixes all land on the REGISTRATION side: the
