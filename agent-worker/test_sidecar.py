@@ -464,6 +464,7 @@ from tests.test_webhooks import (  # noqa: F401
     TestWeOnlyAskForEventsTheStationKnows,
 )
 from tests.test_voice import (  # noqa: F401
+    TestTheKeyCheckAsksTheBackendRatherThanGuessing,
     TestABackendTooSlowToBeOnAPhoneCallSaysSo,
     TestADeclaredSampleRateIsMeasuredNotTrusted,
     TestAPersonaCanWearItsOwnEffect,
