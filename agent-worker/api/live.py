@@ -34,7 +34,7 @@ from api.look import (  # noqa: F401
 )
 from api.sounds import _resolved_sound
 from api.stats import _listener_count
-from api.wire import _cors
+from api.wire import _cors, refused
 from brain.briefing import demojibake
 from log_setup import describe
 from onair import hush
@@ -182,11 +182,7 @@ async def handle_live_preview(request: web.Request) -> web.Response:
     — the values are merged over the stored config in memory and thrown away.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     try:
         patch = await request.json()
     except Exception:

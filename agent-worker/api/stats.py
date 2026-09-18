@@ -28,7 +28,7 @@ from pathlib import Path
 from aiohttp import web
 
 from api.auth import _write_allowed
-from api.wire import _cors
+from api.wire import _cors, refused
 from station import StationClient, describe
 
 log = logging.getLogger("callin.stats")
@@ -148,11 +148,7 @@ async def handle_stats_listeners(request: web.Request) -> web.Response:
     the caller-facing surface.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     _load()
     _prune(time.time())
     return _cors(request, web.json_response({

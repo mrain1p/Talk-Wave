@@ -24,7 +24,7 @@ from aiohttp import web
 import jsonstore
 from api.auth import _write_allowed
 from api.live_cache import _LIVE_BUST_FLOOR, _live_cache
-from api.wire import _cors
+from api.wire import _cors, refused
 
 log = logging.getLogger("callin.token")
 
@@ -415,18 +415,10 @@ async def handle_station_hook(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
-def _unauthorised(request: web.Request) -> web.Response:
-    return _cors(request, web.json_response(
-        {"error": request.get("auth_error") or "not allowed",
-         "authRequired": bool(request.get("auth_required"))},
-        status=401,
-    ))
-
-
 async def handle_hooks_recent(request: web.Request) -> web.Response:
     # Operator debugging surface — same gate as the rest of the panel.
     if not _write_allowed(request):
-        return _unauthorised(request)
+        return refused(request)
     return _cors(request, web.json_response(
         {"registered": _hook_state, "events": list(_hook_events)[-15:]}
     ))

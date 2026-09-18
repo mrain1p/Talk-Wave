@@ -25,7 +25,7 @@ from api.auth import _write_allowed
 from api.credentials import _credentials_travel_to
 from api.env import LIVEKIT_API_KEY, LIVEKIT_API_SECRET
 from api.hooks import _hook_state
-from api.wire import _cors
+from api.wire import _cors, refused
 from station import StationClient
 from station_config import StationConfig
 from tts_adapter import available_voices as tts_voice_list
@@ -215,11 +215,7 @@ async def handle_test_tts(request: web.Request) -> web.Response:
     live call. The realtime factor is the number that matters: above 1.0 the
     buffer starves and playback gaps."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     secrets_store.apply_to_env()
 
     body = await request.json() if request.can_read_body else {}
@@ -496,11 +492,7 @@ async def handle_test_stt(request: web.Request) -> web.Response:
     estimates 400ms for any cloud provider and never calls it.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     secrets_store.apply_to_env()
 
     body = await request.json() if request.can_read_body else {}
@@ -622,11 +614,7 @@ async def handle_test_llm(request: web.Request) -> web.Response:
     panel, instead of on a live caller.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     secrets_store.apply_to_env()
 
     body = await request.json() if request.can_read_body else {}
@@ -802,11 +790,7 @@ async def handle_prompt_preview(request: web.Request) -> web.Response:
     style you've set.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
 
     import brain
     from call.tools import effective_tools
@@ -854,11 +838,7 @@ async def handle_speed_test(request: web.Request) -> web.Response:
     paths, not a synthetic benchmark.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
 
     import time as _time
 
@@ -1140,11 +1120,7 @@ async def handle_test_env(request: web.Request) -> web.Response:
     so this at least catches a missing key or a bad provider/model combination
     before a caller discovers it."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
 
     secrets_store.apply_to_env()
     body = await request.json() if request.can_read_body else {}
@@ -1324,11 +1300,7 @@ async def handle_test_admin(request: web.Request) -> web.Response:
     BEFORE saving it; falls back to the stored/env ones. Probes /listeners —
     admin-gated, read-only, side-effect free."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
 
     body = await request.json() if request.can_read_body else {}
     from station_config import admin_credentials
@@ -1372,11 +1344,7 @@ async def handle_test_station(request: web.Request) -> web.Response:
     # Same gate as every other test endpoint: without an admin key, a foreign
     # origin must not be able to read the station URL and tool list.
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
 
     from livekit.agents import mcp as lk_mcp
 

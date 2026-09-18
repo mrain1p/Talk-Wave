@@ -283,6 +283,7 @@ from tests.test_tools_logic import (  # noqa: F401
     TestAnObligationBelongsToTheCallerNotTheDJsWording,
 )
 from tests.test_house_rules import (  # noqa: F401
+    TestTheRefusalCardIsWrittenOnce,
     TestEveryScenarioIsWellFormedBeforeItCostsAnything,
     TestTheWidgetHarnessOnlyDrivesLocal,
 )

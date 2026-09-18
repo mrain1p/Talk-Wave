@@ -17,17 +17,11 @@ from aiohttp import web
 
 import settings as settings_store
 from api.auth import _write_allowed
-from api.wire import _cors
+from api.wire import _cors, refused
 from openlines import director, premises, state
 from station import StationClient
 
 log = logging.getLogger("callin.openlines")
-
-
-def _refuse(request: web.Request) -> web.Response:
-    return _cors(request, web.json_response(
-        {"error": request.get("auth_error") or "not allowed",
-         "authRequired": bool(request.get("auth_required"))}, status=401))
 
 
 def _cfg() -> dict:
@@ -112,7 +106,7 @@ def public_open_line(persona: dict, show: dict) -> dict:
 
 async def handle_open_lines_status(request: web.Request) -> web.Response:
     if not _write_allowed(request):
-        return _refuse(request)
+        return refused(request)
     return _cors(request, web.json_response(status_payload()))
 
 
@@ -124,7 +118,7 @@ async def handle_open_lines_premises(request: web.Request) -> web.Response:
     fetches for one screen is two ways for it to disagree with itself.
     """
     if not _write_allowed(request):
-        return _refuse(request)
+        return refused(request)
 
     import secrets_store
 
@@ -158,7 +152,7 @@ async def handle_open_lines_premises(request: web.Request) -> web.Response:
 
 async def handle_open_lines_premise_add(request: web.Request) -> web.Response:
     if not _write_allowed(request):
-        return _refuse(request)
+        return refused(request)
     body = await request.json() if request.can_read_body else {}
     item = premises.add(str(body.get("text") or ""),
                         list(body.get("personas") or []))
@@ -172,7 +166,7 @@ async def handle_open_lines_premise_add(request: web.Request) -> web.Response:
 async def handle_open_lines_premise_edit(request: web.Request) -> web.Response:
     """Edit or delete one entry. DELETE removes; POST updates text and/or aim."""
     if not _write_allowed(request):
-        return _refuse(request)
+        return refused(request)
     pid = request.match_info.get("premise_id", "")
     if request.method == "DELETE":
         return _cors(request, web.json_response(
@@ -206,7 +200,7 @@ async def handle_open_lines_open(request: web.Request) -> web.Response:
         if not (cfg.get("open_lines_guest_trigger")
                 and cfg.get("open_lines_enabled")
                 and caller_tier(request) in {"guest", "admin"}):
-            return _refuse(request)
+            return refused(request)
     body = await request.json() if request.can_read_body else {}
     # "dj" or "shelf", for THIS press only. Absent = whatever the settings
     # page says, which is what the section's own button sends.
@@ -233,7 +227,7 @@ async def handle_open_lines_close(request: web.Request) -> web.Response:
     station's TTS — and a stack restarted in between still airs it exactly
     once, because `signed_off` is the latch, not this request."""
     if not _write_allowed(request):
-        return _refuse(request)
+        return refused(request)
     closed = state.close(reason="operator")
     return _cors(request, web.json_response(
         {"ok": bool(closed), "status": status_payload()}))

@@ -23,7 +23,7 @@ from aiohttp import web
 import settings as settings_store
 from api.auth import _write_allowed
 from api.env import PORT
-from api.wire import _cors
+from api.wire import _cors, refused
 from log_setup import describe
 from api.hook_receiver import (  # noqa: F401  (shared state, one-way; the
     # receiver's own faces are re-exported so its callers — diagnostics, the
@@ -38,7 +38,6 @@ from api.hook_receiver import (  # noqa: F401  (shared state, one-way; the
     _mint_hook_secret,
     _secret_path,
     _store_hook_secret,
-    _unauthorised,
     handle_hooks_recent,
     handle_station_hook,
 )
@@ -149,7 +148,7 @@ def _station_said(r: httpx.Response) -> str:
 async def handle_hooks_test(request: web.Request) -> web.Response:
     """Prove a push can actually get from the station to us."""
     if not _write_allowed(request):
-        return _unauthorised(request)
+        return refused(request)
     return _cors(request, web.json_response(await fire_test_hook()))
 
 
