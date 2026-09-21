@@ -84,6 +84,7 @@ from tests.test_http import (  # noqa: F401
     TestTheSettingsApiRegistersThroughTheLock,
 )
 from tests.test_widget import (
+    TestEveryStateChipHasAWriterAndEveryWriterAChip,
     TestTheFacesSitSideBySide,
     TestTheGuideCardRidesItsOwnSwitch,
     TestTheGuideOffersTheTakeover,

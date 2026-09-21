@@ -324,7 +324,7 @@ SCHEMA: dict[str, dict] = {
              "'OpenAI-compatible', optional for locca. With one set, the "
              "Model list is read from it (“Test keys + reload models”) — "
              "servers like llama-swap only route model names they declare."),
-    "llm_temperature": dict(group="brains", kind="number", label="Temperature (0–2)",
+    "llm_temperature": dict(group="brains", kind="number", label="Temperature",
         help="0.8 suits a DJ. Below 0.5 sounds clipped."),
 
     # --- ears ---
@@ -891,11 +891,9 @@ SCHEMA: dict[str, dict] = {
         label="Programme guide card", alias="schedule shows week guide",
         help="A third card beside the phone and the player: the station's "
              "week — today's shows hour by hour, then every show with its "
-             "description, its DJs and their souls, and its times, opening "
-             "in place. Read from the "
-             "station's public schedule through this server and cached "
-             "five minutes. Off, and the row at the card's foot never "
-             "names it."),
+             "description, its DJs and its times. Read from the station's "
+             "public schedule through this server, cached five minutes. "
+             "Off, and the row at the card's foot never names it."),
     "guide_shelved_shows": dict(group="phone", kind="check",
         label="Shelved shows in the guide", alias="schedule roster hidden",
         needs=("show_guide", True),
@@ -930,7 +928,7 @@ SCHEMA: dict[str, dict] = {
              "X then a shoutout for Y\" — with the actions taken flashed "
              "back and listed under a Booth tab. Who may command is "
              "\"Operator commands\" in Permissions; each command spends an "
-             "LLM turn like a text message."),
+             "LLM turn."),
     "player_cast_button": dict(group="phone", kind="check",
         needs=("swipe_player", True),
         label="Cast button on the player", alias="chromecast airplay",
@@ -960,7 +958,7 @@ SCHEMA: dict[str, dict] = {
     "idle_prompt_secs": dict(group="closing", kind="number", label="Check in after", unit="sec", alias="timeout nudge",
         help="Seconds without SPOKEN WORDS before the DJ asks if they're still "
              "there. Background noise doesn't count. 0 never checks in."),
-    "idle_max_nudges": dict(group="closing", kind="number", label="Check-ins before hanging up (count)",
+    "idle_max_nudges": dict(group="closing", kind="number", label="Check-ins before hanging up",
         needs=("idle_prompt_secs", True),
         help="After this many unanswered check-ins the DJ signs off and gets back "
              "to the broadcast."),
@@ -1141,12 +1139,12 @@ SCHEMA: dict[str, dict] = {
              "audience is already looking at the card. Whatever you write is "
              "spoken aloud, so write it the way it should sound."),
     "open_lines_minutes": dict(group="openlines", kind="number",
-        label="How long a line stays open (min)", alias="duration window",
+        label="A line stays open", alias="duration window how long minutes",
         needs=("open_lines_enabled", True),
         help="Then the DJ closes it on air, in character. A topic nobody took "
              "up still made the station sound like one that takes part."),
     "open_lines_reminder_minutes": dict(group="openlines", kind="number",
-        label="Remind every (min)", alias="repeat nudge",
+        label="Remind every", alias="repeat nudge",
         needs=("open_lines_enabled", True),
         help="The DJ raises the open topic again during the window. 0 = "
              "announce once and say no more until it closes."),
@@ -1175,12 +1173,11 @@ SCHEMA: dict[str, dict] = {
     "open_lines_min_listeners": dict(group="openlines", kind="number",
         label="Only with at least this many listeners", alias="audience empty",
         needs=("open_lines_enabled", True),
-        help="Checked when a line opens and before each reminder, never in "
-             "the middle — a topic that vanished because somebody closed a tab "
-             "would strand whoever was already typing. No reported count "
-             "counts as nobody: a cold station no longer solicits an empty "
-             "room. 0 = open regardless (also the setting for a station that "
-             "never reports its listeners)."),
+        help="Checked when the automatic cadence opens a line and before "
+             "each reminder, never mid-window. No reported count counts as "
+             "nobody, so a cold station stops asking an empty room. Your "
+             "own press opens a line regardless. 0 = never checked (also the "
+             "setting for a station that does not report listeners)."),
     # kind="picks": a text-valued field whose control is drawn, like "order"
     # and "emoji". It saves, loads and diffs as a text field (panel.js folds it
     # into TEXT_FIELDS); the ticks beside it write the comma-separated ids. Not
@@ -1193,7 +1190,7 @@ SCHEMA: dict[str, dict] = {
              "on air. Not every DJ on a station should be soliciting arguments, "
              "and the one on at 3am may not be the one you want doing it."),
     "open_lines_every_minutes": dict(group="openlines", kind="number",
-        label="Open one automatically every (min)", alias="schedule auto cron",
+        label="How a line opens", alias="schedule auto cron every minutes automatically",
         needs=("open_lines_enabled", True),
         help="0 = manual only, and that is the default: nothing reaches your "
              "listeners that you did not press the button for. Set it once you "
@@ -1345,12 +1342,12 @@ SCHEMA: dict[str, dict] = {
         help="e.g. 'never name the caller' or 'tie it to the current track'."),
 
     # --- station awareness ---
-    "context_recent_tracks": dict(group="context", kind="number", label="Recently played songs (count)",
+    "context_recent_tracks": dict(group="context", kind="number", label="Recently played songs",
         help="Each item costs time-to-first-token on EVERY turn, not just at "
              "the start. 0 leaves it out."),
-    "context_upcoming": dict(group="context", kind="number", label="Coming-up songs (count)",
+    "context_upcoming": dict(group="context", kind="number", label="Coming-up songs",
         help="Lets the DJ answer 'what's next' without guessing."),
-    "context_booth_lines": dict(group="context", kind="number", label="On-air chatter (lines)",
+    "context_booth_lines": dict(group="context", kind="number", label="On-air chatter", unit="lines",
         help="Recent lines from the on-air DJ, so the call doesn't repeat them."),
     "context_schedule": dict(group="context", kind="check", label="Know the rest of the line-up",
         help="The names of the station's OTHER shows, so \"what's on after "

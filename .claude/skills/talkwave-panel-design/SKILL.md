@@ -181,10 +181,21 @@ carries ducking/suppress/mute).
 
 The three controls live in the **Transmission group** (0.9.155, the operator's own sketch): a
 bordered `.transmission` cluster whose micro-label is the only outlined group on the dash —
-because these three ACT and everything else reads. The Line spans the top (`grid-column:
-1/-1`) wearing a drawn `.switch` (knob right + line-green open, left + coral paused); Live
-calls and Voicemail sit under it and, while the line is paused, go `disabled` + dimmed +
-**amber** — held, not broken. The `#modeSay` caption reads out the combination.
+because these three ACT and everything else reads. The Line is the first card in that
+column wearing a drawn `.switch`: **knob right + coral while the line is open, knob left
++ quiet while it is paused**, with a 4px coral left rule and a 19px coral word on the live
+card. Live calls and Voicemail sit under it and, while the line is paused, go `disabled` +
+dimmed + **amber** — held, not broken. The `#modeSay` caption reads out the combination.
+
+> This used to say "knob right + line-green open, left + coral paused", and the Line is
+> the one control on the dash where that is backwards. The base layer in `panel.css` does
+> paint `--ok` green for an open kill card — and `body.panelpage` overrides it at higher
+> specificity, so the shipped page paints coral for open and `--sage-dim` for paused, knob
+> and word together. **Coral here means LIVE, not wrong**: this is the card you press to
+> stop every call at once, and the state it is loudest about is the one where pressing it
+> does something. A reader following the old sentence would have "fixed" a working control
+> into saying the opposite. Checked against the computed styles and corrected 2026-09-20,
+> the same way the radius scale was.
 
 Below it, **tiles in a strict grid** — `repeat(3, 1fr)`, two columns under 760px,
 `grid-auto-rows: 1fr`, every row full, every tile one height. Tiles are glanceable
