@@ -4,7 +4,7 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
-## Unreleased
+## 0.99.47
 
 A page-by-page read of the settings page. Nothing was broken — every finding was the page being quietly less readable than it looks.
 
