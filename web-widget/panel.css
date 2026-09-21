@@ -934,7 +934,13 @@
      card is still the button; the switch is its state, not a second
      control. Off: knob left, quiet. On: knob right, line-green. The kill
      switch alone goes coral when thrown, because a paused line is the one
-     off-state that is a deliberate act against the callers of right now. */
+     off-state that is a deliberate act against the callers of right now.
+
+     THIS IS THE BASE LAYER, and body.panelpage inverts it below (search
+     "ON states in chrome read CORAL"): on the settings page an open line
+     reads coral and a paused one reads dim. Read both before changing
+     either — the skill's own description of this control was backwards for
+     months because it described only this half (2026-09-20). */
   .ctrlcard .switch {
     position: absolute; right: 13px; top: 50%; transform: translateY(-50%);
     width: 40px; height: 22px; border-radius: 999px;

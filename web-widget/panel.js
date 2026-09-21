@@ -1356,8 +1356,21 @@
       resolved.context_booth_lines + ' on-air'].join(' · '));
     setTag('tagCall', resolved.persona_override ? 'pinned persona' : 'live DJ');
     setTag('tagTurns', resolved.allow_interruptions ? 'interruptible' : 'finishes its sentence');
-    setTag('tagLimits', 'ends by ' + resolved.max_call_seconds + 's'
-      + (resolved.idle_prompt_secs ? ' · checks in at ' + resolved.idle_prompt_secs + 's' : ''));
+    // tagClosing, not tagLimits: the markup has no such id, so this
+    // section's chip shipped blank while its text was built on every paint
+    // and thrown away (found 2026-09-20 reading the panel page by page).
+    //
+    // The clause quotes the SILENCE a caller may run up, not a count of
+    // check-ins. clocks.py speaks its "still there?" on the FIRST idle
+    // window and only when idle_max_nudges > 1 (`first and max_nudges > 1`);
+    // the last window is the goodbye. So the field counts WINDOWS, and
+    // "N check-ins" would be wrong at every value the box allows — at 1 it
+    // buys no check-in at all.
+    setTag('tagClosing', 'ends by ' + resolved.max_call_seconds + ' sec'
+      + (resolved.idle_prompt_secs > 0 && resolved.idle_max_nudges > 0
+        ? ' · or ' + (resolved.idle_prompt_secs * resolved.idle_max_nudges)
+          + ' sec of silence'
+        : ' · never ends on silence'));
     // The tag says what the operator SET, not an internal fallback: the hold
     // is sized to the words the station actually spoke, so quoting a number
     // of seconds here described something that almost never happens.
@@ -1386,6 +1399,37 @@
     setTag('tagTunein', resolved.tune_in_on_call
       ? 'on · ' + resolved.tune_in_volume + '%' : 'off — requests may be refused');
     setTag('tagRecord', resolved.record_calls ? 'keeping ' + resolved.record_keep : 'not kept');
+    // The colour the caller hears, named out of the dropdown's own words so
+    // a new effect cannot leave this tag behind. "off" says "no shared
+    // effect" rather than "clean voice", because it is not a claim about
+    // what anybody hears: a per-DJ costume outranks the shared pick (live.py
+    // merges voice_effects.effect_for unconditionally), so a caller can be
+    // hearing CB radio while this reads off.
+    //
+    // 60 on a blank, never 100 — look_payload resolves it that way, and its
+    // own comment names `or 100` as the bug that turned intensity-zero into
+    // full blast.
+    const fxPick = String(resolved.voice_effect || 'none');
+    const fxRaw = resolved.voice_effect_level;
+    const fxLevel = (fxRaw === '' || fxRaw == null) ? 60 : +fxRaw;
+    const fxChoice = ((SCHEMA.fields.voice_effect
+      && SCHEMA.fields.voice_effect.choices) || [])
+      .find((c) => c[0] === fxPick);
+    setTag('tagEffects', fxPick === 'none' ? 'off · no shared effect'
+      : 'on · ' + String((fxChoice && fxChoice[1]) || fxPick)
+          .split('—')[0].trim()
+        + ' · ' + fxLevel + '%');
+    // Sixteen fields, one chip — and its master switch is a dashboard card,
+    // so a folded section reading "on" while that card reads Off would be
+    // the panel disagreeing with itself. The LINE outranks the switch the
+    // same way the tier row outranks the doors above: api/chat._refusal
+    // turns every text caller away with "the line's closed for now" while
+    // calls_paused is set, before the tier check is ever reached.
+    setTag('tagChat', !doorOn('chat_enabled') ? 'off'
+      : doorOn('calls_paused') ? 'off — the line is paused'
+        : 'on · ' + (resolved.max_open_chats || '∞') + ' at once · '
+          + (resolved.chat_greeting_mode === 'off' ? 'no greeting'
+            : resolved.chat_greeting_mode + ' greeting'));
     // The Players page's per-block tags. Counted or named, never listed —
     // a tag is a glance, and the first word is the state (setTag colours
     // it). The whole-page tally lives in the tab strip (paintCardCounts).

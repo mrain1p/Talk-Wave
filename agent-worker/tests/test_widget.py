@@ -3874,6 +3874,63 @@ class TestTheMusicComesBackAfterACall(unittest.TestCase):
         self.assertIn("unparkPlayer()", block)
 
 
+class TestEveryStateChipHasAWriterAndEveryWriterAChip(unittest.TestCase):
+    """A chip nothing writes is a section that never says where it stands.
+
+    The folded section list is how an operator reads this page: 32 of 35
+    sections tell you their state from the summary line. Three did not —
+    Closing the call, Voice effects and Text line shipped with the slot in
+    the markup and no writer anywhere. Text line was the one that stung: it
+    hangs off a master switch the DASHBOARD already reports as off, while its
+    own header said nothing at all.
+
+    And the same fault from the other end: `setTag('tagLimits', ...)` built
+    "ends by 900s · checks in at 40s" on every paint and wrote it to an id
+    the markup does not have, so the call's own length ceiling was computed
+    and thrown away — while tagClosing, the section those two fields actually
+    live in, sat blank. One question, asked both ways: does every slot have a
+    writer, and does every writer have a slot.
+
+    Found 2026-09-20 in a page-by-page read of the panel (docs/adr/
+    review-ledger.md). Nothing was broken, which is exactly why nobody saw
+    it: a blank chip looks like a section with nothing to say.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from tests.support import REPO
+
+        cls.html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+        cls.js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        cls.slots = set(re.findall(r'id="(tag[A-Za-z]+)"', cls.html))
+        # Written by setTag (the state-colouring path) or assigned directly.
+        # The direct ones are counts rather than states — "23 of 36 available"
+        # has no state word to colour — so they are written, just not tagged.
+        cls.written = set(re.findall(r"setTag\('(tag[A-Za-z]+)'", cls.js))
+        cls.assigned = {m for m in re.findall(r"\$\('(tag[A-Za-z]+)'\)", cls.js)}
+
+    def test_the_scan_found_both_sides(self):
+        # A regex that matched nothing would pass every assertion below.
+        self.assertGreater(len(self.slots), 25, "no tag slots found in panel.html")
+        self.assertGreater(len(self.written), 25, "no setTag calls found in panel.js")
+
+    def test_every_chip_in_the_markup_is_written_by_something(self):
+        blank = sorted(self.slots - self.written - self.assigned)
+        self.assertEqual(
+            blank, [],
+            "these sections ship a state chip that nothing ever fills, so they "
+            "are the only ones on the page that cannot be read folded. Call "
+            f"setTag for them — first word is the state: {blank}")
+
+    def test_no_writer_points_at_a_chip_that_is_not_there(self):
+        missing = sorted(self.written - self.slots)
+        self.assertEqual(
+            missing, [],
+            "setTag writes these on every paint and the markup has no such id, "
+            "so the text is built and thrown away. Repoint the call, or add the "
+            f"slot: {missing}")
+
+
 class TestSectionTagsCanShowTheirState(unittest.TestCase):
     """Found while verifying Open Lines' own tag, and it was never about Open
     Lines: EVERY section tag on the panel rendered the same grey.
