@@ -4,6 +4,16 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+A page-by-page read of the settings page. Nothing was broken — every finding was the page being quietly less readable than it looks.
+
+- **Three sections now say where they stand.** Closing the call, Voice effects and Text line showed nothing in the folded list while the other 32 told you their state at a glance. The Text line one matters most: it hangs off a switch the dashboard already reports, and its own header said nothing. A fourth chip's worth of text — the call's length ceiling — was being worked out on every repaint and written to a label that does not exist.
+- **The Text line header tells the truth while the line is paused.** It reads the line, not just its own switch: with everything paused the booth turns text callers away, so a header saying "on" would have been the page disagreeing with its own dashboard.
+- **The Station awareness rows say what they count again.** "On-air chatter" now carries its "lines" marker beside the box instead of in brackets in a label nobody rendered, and eight labels that had drifted from what the page actually shows were put back.
+- **Three help notes trimmed**, two of which also overstated what the setting does — the listener floor is only checked when a line opens on its own, and your own press opens one regardless.
+- **Under the hood:** a check that every state chip has something writing it and every writer has a chip to write to, so a fourth blank one cannot ship; and the panel's design guide, which described the big pause control backwards, corrected against what the page actually paints.
+
 ## 0.99.46
 
 Housekeeping that turned out not to be housekeeping: every item on the "tidy

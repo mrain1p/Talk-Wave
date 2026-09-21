@@ -743,3 +743,39 @@ fix held end to end — the DJ read the new sentence and put a request in
 instead. What remains is conduct, already known: 5x stage-direction
 asterisks, 2x over-length, one opener repeat, and a reply-length p90 of 90
 words against the archive's 50.
+
+### The settings page, read page by page (2026-09-20/21)
+
+Twelve pages, 35 sections, 207 settings. **No setting lies about what it does
+and none is dead** — a sweep for fields with no reader flagged 15, and all 15
+turned out to be read through a computed name (`p + "dj_avatar"`,
+`f"sound_{kind}"`) or a resolver (`voicemail_policy`, `opens_on_player`). Five
+stored settings have no panel row: three are env-only deployment plumbing, two
+are default-off experiment switches the code parks until the closing scenario
+set measures them. Every select's options follow "value — consequence".
+
+What was wrong was all of one kind: the page saying less than it knows.
+
+- **Three of 35 state chips had no writer at all** (Closing the call, Voice
+  effects, Text line) and one writer had no chip (`setTag('tagLimits')`, built
+  every paint and thrown away while `tagClosing` sat blank). Both halves are
+  now one guard.
+- **Eight schema labels were a second copy** of labels `panel.html` holds
+  statically, drifted from them, and every one still carried the bracketed
+  unit banned at 0.98.58.
+- **Three help strings over the 300-char budget**, two of them also
+  overstating the behaviour.
+- **The design skill described the Line control backwards.** It documents the
+  base CSS layer; `body.panelpage` overrides it at higher specificity, and the
+  shipped page paints coral for OPEN. A reader following the skill would have
+  inverted a working control — the same failure the skill already records
+  about the radius scale, in the same file, two sections apart.
+
+**On method**: the wording for the chips was drafted by one pass and refuted
+by another, and the adversarial pass found something wrong in every single
+draft — a count that was false at every reachable value, a claim about what a
+caller hears that a per-DJ override makes untrue, a `100` fallback where the
+code resolves `60`, and a state word that ignored the kill switch. All four
+were confirmed against the code before being acted on. The lesson is the one
+this ledger keeps relearning: a plausible sentence about behaviour is not a
+true one until someone reads the branch.
