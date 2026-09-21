@@ -22,7 +22,7 @@ from aiohttp import web
 import admin_auth
 from api import wire
 from api.live_cache import _live_cache
-from api.wire import _auth_key, _cors  # noqa: F401
+from api.wire import _auth_key, _cors, refused  # noqa: F401
 
 log = logging.getLogger("callin.token")
 
@@ -351,11 +351,7 @@ async def handle_set_password(request: web.Request) -> web.Response:
 
     if scope == "guest":
         if not _write_allowed(request):
-            return _cors(request, web.json_response(
-                {"error": request.get("auth_error") or "not allowed",
-                 "authRequired": bool(request.get("auth_required"))},
-                status=401,
-            ))
+            return refused(request)
         if not new:                       # blank clears it — the line reopens
             admin_auth.clear_guest_password()
             _live_cache["data"] = None
@@ -395,8 +391,7 @@ async def handle_set_password(request: web.Request) -> web.Response:
                 {"error": err, "authRequired": True}, status=401))
         _auth_clear(ip)
     elif not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed"}, status=401))
+        return refused(request)
 
     try:
         admin_auth.set_password(new)

@@ -86,9 +86,10 @@ async def greet(chat, cfg: dict, on_event) -> None:
 
     station = StationClient()
     try:
-        persona = await station.resolve_live_persona()
-        chat.persona_name = persona.get("name") or chat.persona_name
-        chat.persona_id = persona.get("id") or chat.persona_id
+        # Asked of the CHAT, not the station: this is the turn that pins
+        # the conversation, and the reply after it has to come from whoever
+        # said hello. See Chat.dj.
+        persona = await chat.dj(station)
         if mode == "fresh":
             text = await fresh_greeting(chat, cfg, station, persona)
         else:
@@ -123,9 +124,10 @@ async def nudge(chat, cfg: dict, on_event) -> None:
 
     station = StationClient()
     try:
-        persona = await station.resolve_live_persona()
-        chat.persona_name = persona.get("name") or chat.persona_name
-        chat.persona_id = persona.get("id") or chat.persona_id
+        # Held, not re-resolved. A nudge is the BOOTH breaking a silence, and
+        # one arriving from a DJ the caller has not been talking to is the
+        # mid-subject swap Chat.dj exists to stop.
+        persona = await chat.dj(station)
 
         # The nudge needs the conversation it is nudging — an opener does not.
         out = await _one_line(cfg, station, persona, (

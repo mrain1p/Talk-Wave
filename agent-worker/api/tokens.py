@@ -23,7 +23,7 @@ import settings as settings_store
 import station_prefetch
 from api.auth import _guest_ok, _write_allowed, caller_tier
 from api.env import LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_PUBLIC_URL
-from api.wire import _caller_key, _cors
+from api.wire import _caller_key, _cors, refused
 
 log = logging.getLogger("callin.token")
 
@@ -323,11 +323,7 @@ async def handle_token(request: web.Request) -> web.Response:
     on_air = (bool(isinstance(body, dict) and body.get("onAir"))
               and not probe and not voicemail)
     if probe and not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
 
     cfg = settings_store.load()
     if not probe:

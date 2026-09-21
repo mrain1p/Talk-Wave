@@ -788,3 +788,62 @@ class TestTheHearingTestSpeaksWithARealVoice(unittest.TestCase):
                       "the hearing test no longer resolves the live persona "
                       "for an empty voice — '' goes to the backend and 400s")
         self.assertIn("voice_for", body)
+
+
+class TestTheKeyCheckAsksTheBackendRatherThanGuessing(unittest.TestCase):
+    """Which key a cloud voice wants is tts_adapter's answer, and the pipeline
+    probe had its own spelling of it: "tts_api_key or openai_api_key, always".
+
+    Wrong in both directions, and each one reaches an operator:
+
+      * an adapter that names its own env — `auth.key_env`, which is how
+        ElevenLabs sits beside the generic OpenAI-shaped ones — was reported
+        as MISSING A KEY with its key stored and working;
+      * a non-OpenAI cloud host with only an OpenAI key stored was reported
+        as FINE, when adapter_api_key will never send that key there. The
+        OpenAI key stands in on an OpenAI host and nowhere else.
+
+    A diagnostic that lies about the thing it diagnoses is worse than no
+    diagnostic, which is a sentence already written in api/diagnostics.py
+    about a different fault in the same file.
+    """
+
+    OPENAI = {"base_url": "https://api.openai.com/v1", "auth": {"type": "bearer"}}
+    OTHER = {"base_url": "https://tts.example.net/v1", "auth": {"type": "bearer"}}
+    VENDOR = {"base_url": "https://api.elevenlabs.io",
+              "auth": {"type": "header", "key_env": "ELEVENLABS_API_KEY"}}
+
+    def _key(self, adapter, env):
+        import os
+        from unittest import mock
+
+        from tts_adapter import adapter_api_key
+
+        with mock.patch.dict(os.environ, env, clear=True):
+            return adapter_api_key(adapter, str(adapter.get("base_url") or ""))
+
+    def test_a_vendor_key_counts_as_a_key(self):
+        self.assertEqual(
+            self._key(self.VENDOR, {"ELEVENLABS_API_KEY": "el-test"}), "el-test")
+        # …and its absence is what "missing" should mean, not the absence of
+        # the generic one it does not use.
+        self.assertEqual(self._key(self.VENDOR, {"TTS_API_KEY": "generic"}), "")
+
+    def test_the_openai_key_stands_in_only_on_an_openai_host(self):
+        self.assertEqual(
+            self._key(self.OPENAI, {"OPENAI_API_KEY": "sk-test"}), "sk-test")
+        self.assertEqual(self._key(self.OTHER, {"OPENAI_API_KEY": "sk-test"}), "")
+
+    def test_the_pipeline_probe_does_not_restate_the_rule(self):
+        # The fix is that there is one rule, so this is what stops the second
+        # spelling coming back. Source, because the probe's own answer needs a
+        # station, a LiveKit and a settings store to reach.
+        from tests.support import AGENT_WORKER
+
+        src = (AGENT_WORKER / "api" / "diagnostics.py").read_text(encoding="utf-8")
+        head, _, tail = src.partition('# --- keys the current configuration')
+        block = tail[:tail.index('result["keys"]')]
+        self.assertIn("adapter_api_key", block,
+                      "the key check stopped asking tts_adapter")
+        self.assertNotIn('secrets_store.get("openai_api_key")', block,
+                         "the probe is spelling the cloud-TTS key rule again")

@@ -19,7 +19,7 @@ import tune_in
 import voice_effects
 from api.auth import _write_allowed, caller_tier
 from api.env import LIVEKIT_PUBLIC_URL
-from api.live_cache import _LIVE_TTL, _live_cache
+from api.live_cache import _LIVE_TTL, _live_cache, build_lock
 from api.openlines import public_open_line
 # Re-exported: the look half moved to api/look.py at 0.10.131 and
 # `from api.live import look_payload` is what every caller already
@@ -34,7 +34,7 @@ from api.look import (  # noqa: F401
 )
 from api.sounds import _resolved_sound
 from api.stats import _listener_count
-from api.wire import _cors
+from api.wire import _cors, refused
 from brain.briefing import demojibake
 from log_setup import describe
 from onair import hush
@@ -182,11 +182,7 @@ async def handle_live_preview(request: web.Request) -> web.Response:
     — the values are merged over the stored config in memory and thrown away.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     try:
         patch = await request.json()
     except Exception:
@@ -336,9 +332,30 @@ async def handle_live(request: web.Request) -> web.Response:
     sending CORS headers to whatever origin the widget is embedded on."""
     import time as _time
 
-    if _live_cache["data"] is not None and _time.time() - _live_cache["at"] < _LIVE_TTL:
+    def fresh():
+        return (_live_cache["data"] is not None
+                and _time.time() - _live_cache["at"] < _LIVE_TTL)
+
+    if fresh():
         return _cors(request, web.json_response(
             _for_this_caller(request, _live_cache["data"])))
+
+    # One rebuild at a time (see live_cache.build_lock). Asked again after the
+    # wait, because the whole point is that the winner filled it.
+    async with build_lock():
+        if fresh():
+            return _cors(request, web.json_response(
+                _for_this_caller(request, _live_cache["data"])))
+        return await _build_live(request)
+
+
+async def _build_live(request: web.Request) -> web.Response:
+    """The cache-miss path: read the station and shape the card.
+
+    Split from handle_live only so the lock above reads as one thing. Its
+    caller holds the build lock for the whole of it.
+    """
+    import time as _time
 
     station = StationClient()
     try:

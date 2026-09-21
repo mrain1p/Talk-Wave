@@ -16,7 +16,7 @@ from aiohttp import web
 import sounds as sound_assets
 from api.auth import _write_allowed
 from api.live_cache import _live_cache
-from api.wire import _cors
+from api.wire import _cors, refused
 
 log = logging.getLogger("callin.token")
 
@@ -135,9 +135,7 @@ def _wav_secs(path: Path):
 
 async def handle_sounds_list(request: web.Request) -> web.Response:
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))}, status=401))
+        return refused(request)
     meta = _sound_meta()
     library = []
     for entry in sound_assets.library():
@@ -167,9 +165,7 @@ async def handle_sound_meta(request: web.Request) -> web.Response:
     """File one sound under a category — the operator's own taxonomy, which
     is what makes the shelf filterable like a soft sound pack."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))}, status=401))
+        return refused(request)
     import json
 
     try:
@@ -229,9 +225,7 @@ async def handle_sound_upload(request: web.Request) -> web.Response:
     """Store an uploaded sound. Operator-only — this writes to disk and the
     result is served to every caller."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))}, status=401))
+        return refused(request)
 
     try:
         reader = await request.multipart()
@@ -307,9 +301,7 @@ async def handle_sound_upload(request: web.Request) -> web.Response:
 
 async def handle_sound_delete(request: web.Request) -> web.Response:
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))}, status=401))
+        return refused(request)
     name = _safe_sound_name(request.match_info.get("name", ""))
     if name:
         (SOUNDS_DIR / name).unlink(missing_ok=True)

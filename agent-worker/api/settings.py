@@ -22,7 +22,7 @@ from api.auth import _auth_configured, _write_allowed
 from api.credentials import _credentials_travel_to, _is_saved_host
 from api.hooks import _hook_state, _register_once
 from api.live_cache import _live_cache
-from api.wire import _cors
+from api.wire import _cors, refused
 from log_setup import describe
 from station import StationClient
 from station_config import StationConfig
@@ -51,11 +51,7 @@ async def handle_get_settings(request: web.Request) -> web.Response:
     # Config is operator-only once a password exists; before one is set
     # (first-run) it stays open so the panel can render and nudge.
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     # `secrets` is status only — set/unset, source, masked tail. Key material
     # never travels back to the browser.
     return _cors(
@@ -83,11 +79,7 @@ async def handle_post_secrets(request: web.Request) -> web.Response:
     """Set or clear API keys. Blank values mean 'unchanged' — the panel shows
     masked placeholders, so an untouched field must not wipe a working key."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     try:
         body = await request.json()
     except Exception:
@@ -114,11 +106,7 @@ async def handle_post_secrets(request: web.Request) -> web.Response:
 
 async def handle_post_settings(request: web.Request) -> web.Response:
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     try:
         patch = await request.json()
     except Exception:
@@ -152,11 +140,7 @@ async def handle_voice_effects(request: web.Request) -> web.Response:
     """The whole map — persona id to effect kind. Admin: it is panel
     furniture, and the caller-facing answer already rides /live."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     import voice_effects
 
     return _cors(request, web.json_response({"effects": voice_effects.read()}))
@@ -164,11 +148,7 @@ async def handle_voice_effects(request: web.Request) -> web.Response:
 
 async def handle_voice_effect_set(request: web.Request) -> web.Response:
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     try:
         body = await request.json()
     except Exception:
@@ -430,11 +410,7 @@ async def handle_settings_options(request: web.Request) -> web.Response:
     """Everything the settings UI needs to populate its dropdowns, read live
     rather than hardcoded in the page."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     import time as _time
     secrets_store.apply_to_env()
 

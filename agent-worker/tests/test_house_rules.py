@@ -146,6 +146,82 @@ class TestTheRoutingTableIsInOnePlace(unittest.TestCase):
         self.assertEqual(back, [], f"api/ must not depend on its caller: {back}")
 
 
+class TestTheRefusalCardIsWrittenOnce(unittest.TestCase):
+    """One door, one card. The admin refusal was written out at thirty-six
+    call sites plus four byte-identical private helpers, and the copies had
+    already come apart: five dropped `authRequired`, including one branch of
+    the change-password handler whose other branch sets it.
+
+    Nobody could see that difference, which is the rest of the finding —
+    `authRequired` is emitted by every one of these and read by nothing: not
+    the widget, not the panel, not a test. It is kept (removing a response
+    field is the operator's call) but it now has one definition, so it is one
+    line to delete rather than thirty-six to find.
+
+    Other doors answer 401 too and they are NOT this card. Each is named
+    below with what makes it different, because "some other 401s exist" is
+    how this list would rot back into thirty-six.
+    """
+
+    # file -> how many 401s it may write for itself, and why they are not the
+    # admin card.
+    OTHER_DOORS = {
+        "wire.py": (1, "the card itself"),
+        "auth.py": (3, "the password door answering for ITSELF — a lockout "
+                       "reason from _auth_gate/_auth_fail, not the admin "
+                       "gate's `auth_error`, and authRequired is flatly true "
+                       "because you are being asked for a password right now"),
+        "player.py": (1, "the caller's door, not the operator's: a guest code "
+                         "is what is missing and the panel's admin flag would "
+                         "mean nothing on it"),
+        "tokens.py": (1, "the mint's guest door — it answers guestRequired, "
+                         "which is the flag the WIDGET actually reads"),
+        "hook_receiver.py": (1, "the station proving itself to us over HMAC. "
+                                "No CORS and no auth_error: nothing about it "
+                                "is a browser being turned away"),
+    }
+
+    def test_no_module_writes_the_admin_refusal_for_itself(self):
+        import re as _re
+
+        extra = []
+        for path in sorted((AGENT_WORKER / "api").glob("*.py")):
+            src = path.read_text(encoding="utf-8")
+            n = len(_re.findall(r"status=401", src))
+            allowed = self.OTHER_DOORS.get(path.name, (0, ""))[0]
+            if n > allowed:
+                extra.append(f"{path.name}: {n} 401s, {allowed} accounted for")
+        self.assertEqual(
+            extra, [],
+            "these write their own refusal instead of calling wire.refused. "
+            "Use it; or, if this really is a different door, say so in "
+            f"OTHER_DOORS with what makes it different: {extra}")
+
+    def test_the_card_still_carries_both_fields(self):
+        # The one definition, asserted rather than assumed — every caller
+        # above now depends on it and nothing else does.
+        from unittest import mock
+
+        from api import wire
+
+        req = mock.Mock()
+        req.get = lambda k, d=None: {"auth_error": "", "auth_required": True}.get(k, d)
+        with mock.patch.object(wire, "_cors", lambda _r, res: res):
+            body = wire.refused(req).body.decode("utf-8")
+        self.assertIn('"error": "not allowed"', body)
+        self.assertIn('"authRequired": true', body)
+
+    def test_the_gates_are_what_put_the_reason_on_the_request(self):
+        # refused() reads `auth_error`/`auth_required` off the request and
+        # writes neither. If the gates stopped setting them the card would
+        # quietly say "not allowed" to everything, which is the failure it
+        # was built to prevent.
+        gates = (AGENT_WORKER / "api" / "auth.py").read_text(encoding="utf-8")
+        for key in ("auth_error", "auth_required"):
+            self.assertIn(f'request["{key}"]', gates,
+                          f"nothing in api/auth.py sets {key} any more")
+
+
 class TestEveryStoreDefaultsToTheOneDataDir(unittest.TestCase):
     """With no `*_PATH` env set, every on-disk store must resolve its default
     to the ONE shared `data/` dir. The suite overrides each path into a temp
@@ -736,15 +812,29 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
 
     EXEMPT is "this file is meant to be long, and that is the right answer".
     A declaration table is the clear case: settings.py grows by a few lines
-    every time the station gains a setting, and making that ordinary act come
-    and edit a number in this file would be ceremony no reader ever benefits
-    from. Exempt files are not measured, only justified.
+    every time the station gains a setting.
+
+    That used to mean exempt files were not measured at all, only justified —
+    the argument being that making an ordinary act come and edit a number here
+    would be ceremony no reader benefits from. Thirty days of it were measured
+    on 2026-09-17 and the argument did not survive: call.js went 5,576 -> 8,598
+    lines in a month, five whole ceilings of growth with nothing said, while
+    test_album_tools.py more than doubled and four more files gained over 40%.
+    The clear case it was written for did the opposite — settings.py SHRANK by
+    half, because somebody split it.
+
+    So exempt files carry a number too, and it is deliberately loose: the
+    recorded size plus ALLOWANCE, or plus MIN_HEADROOM, whichever is larger. A
+    file gaining a few lines a week never notices; the run that actually
+    happened would have been stopped a third of the way through. Running out is
+    not "you were wrong to be long" — it is the same decision coming round
+    again, which is the only thing this file has ever asked for.
 
     SPLITTING is debt: too long, known, and going to be dealt with. Those are
-    ratcheted — the recorded number is the size when the entry was written, and
-    the file may shrink freely but never grow past it. An entry whose file has
-    come back under the ceiling must be deleted, so the list cannot drift into
-    describing a problem that no longer exists.
+    ratcheted harder — the recorded number is the size when the entry was
+    written, and the file may shrink freely but never grow past it at all. An
+    entry whose file has come back under the ceiling must be deleted, so the
+    list cannot drift into describing a problem that no longer exists.
 
     The distinction matters in the other direction too. A ceiling that only
     ever means "apologise" pushes toward splitting files to satisfy the number
@@ -754,17 +844,25 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
 
     CEILING = 600
 
+    # How far an EXEMPT file may grow past the size recorded beside it before
+    # the exemption has to be argued again. Calibrated against the drift that
+    # produced the rule rather than picked: +40% catches call.js's +54% month,
+    # and the 400-line floor keeps a small exempt file from tripping on what
+    # is, for it, ordinary work.
+    ALLOWANCE = 0.40
+    MIN_HEADROOM = 400
+
     # Long on purpose. Not measured — only required to still exist and still
     # say why.
     EXEMPT = {
-        "agent-worker/test_sidecar.py":
+        "agent-worker/test_sidecar.py": (632,
             "the aggregator: one import line per test class, so the single "
             "command that CI, the hook, the skill and CLAUDE.md all name keeps "
             "working — and TestNoTestClassIsSilentlySkipped forces every class "
             "under tests/ to be named here. It grows by exactly one line per "
             "test class and holds no logic a split could separate. Crossed "
-            "the ceiling on the 2026-09-14 upstream pass.",
-        "agent-worker/brain/briefing.py":
+            "the ceiling on the 2026-09-14 upstream pass."),
+        "agent-worker/brain/briefing.py": (636,
             "the prompt's own vocabulary: one _fmt_* function per fact the "
             "station publishes, each turning a payload field into the "
             "sentence a DJ would say about it. They are siblings, not a "
@@ -774,8 +872,8 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "would run through the one place a reader goes to ask 'what does "
             "the DJ actually get told?'. Crossed the ceiling at 0.99.43 when "
             "the upstream pass of 2026-09-07 added the length floor, the "
-            "talk window and the era-window renderer.",
-        "agent-worker/station_config.py":
+            "talk window and the era-window renderer."),
+        "agent-worker/station_config.py": (681,
             "the station's config mirror, and every method on it is the same "
             "shape: read the one cached /settings payload, find one setting "
             "wherever the station happens to nest it, fall back to the "
@@ -785,8 +883,8 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "drift the mirror exists to prevent. Crossed the ceiling at "
             "0.99.43 when the upstream pass of 2026-09-07 added the length "
             "floor (#1582), the talk-window switch (#1562) and the inherited "
-            "voice slot (#1566); each is ~25 lines of finding one key.",
-        "agent-worker/call/tools/music.py":
+            "voice slot (#1566); each is ~25 lines of finding one key."),
+        "agent-worker/call/tools/music.py": (745,
             "the request and queue tools, and the length is the STATION'S "
             "surface rather than this file's ambition: one wrapper per action "
             "the DJ can take, each carrying the station's own refusal words "
@@ -799,8 +897,8 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "The seam to split on is real (reads vs writes) but it is the "
             "SAME `actions` budget, `refusals` gate and `_fmt_track` on both "
             "sides, which is the coupling the 600-line rule exists to make "
-            "visible rather than to forbid.",
-        "web-widget/skins.css":
+            "visible rather than to forbid."),
+        "web-widget/skins.css": (740,
             "nineteen skins, one self-contained token block each, and a test "
             "(TestASkinCannotReachPastItsTokens) that already forbids any "
             "block from reaching another's scope — the failure mode a size "
@@ -808,15 +906,15 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "nineteen stylesheet fetches on the public call page for zero "
             "isolation gained. Crossed the ceiling at 0.99.13+ when the "
             "operator's slapped-together verdict rebuilt the weak skins with "
-            "real multi-layer drawings (2026-08-31).",
-        "agent-worker/scripted_call.py":
+            "real multi-layer drawings (2026-08-31)."),
+        "agent-worker/scripted_call.py": (3034,
             "the conduct harness, and it cannot be split: it is DELIVERED by "
             "stdin — `docker exec -i <worker> python - < scripted_call.py` — "
             "so a second module would simply not be there when it ran, which "
             "is the whole reason it is one file. Most of its length is the "
             "scenario tables, and those are supposed to grow: every real call "
-            "worth not repeating becomes a few lines of caller turns here.",
-        "agent-worker/settings.py":
+            "worth not repeating becomes a few lines of caller turns here."),
+        "agent-worker/settings.py": (1487,
             "the layered store (FIELDS, load/save/_migrate) plus the resolver "
             "machinery that reads the tables (schema_payload, _choices_for, "
             "provider_base_urls, mcp_tools_payload). The approved tables-out "
@@ -828,8 +926,8 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "so settings_store.* is byte-identical; the crossing is one-way "
             "(machinery reads the tables, the tables call nothing). What is "
             "left is still over the ceiling because the store's field handling "
-            "and its resolvers are genuinely one subject; stays exempt.",
-        "agent-worker/settings_schema.py":
+            "and its resolvers are genuinely one subject; stays exempt."),
+        "agent-worker/settings_schema.py": (1728,
             "the operator panel's declarative presentation data (SUPERGROUPS/"
             "GROUPS/SCHEMA) plus the mirrored provider/vocab tables — a "
             "declaration table, not logic, peeled from settings.py at Batch 1 "
@@ -837,8 +935,8 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "because the station has a lot of settings, and reading it top to "
             "bottom is how you find one — the same reasoning settings.py itself "
             "carried. Pure data: the functions that read it stayed in "
-            "settings.py, so nothing here is logic that could be split.",
-        "agent-worker/tests/test_open_lines.py":
+            "settings.py, so nothing here is logic that could be split."),
+        "agent-worker/tests/test_open_lines.py": (1565,
             "one feature, and the seam was measured before exempting it. Open "
             "Lines is six modules (state, premise, premises, schedule, air, "
             "followup) plus a director loop, and every class here shares the "
@@ -848,21 +946,21 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "in both directions. The panel-CSS class that did NOT belong was "
             "moved to test_widget.py, where its subject is. What is left is "
             "the feature's own behaviour, and the first test in the file is "
-            "the one the feature was allowed to exist on.",
-        "web-widget/panel.html":
+            "the one the feature was allowed to exist on."),
+        "web-widget/panel.html": (2415,
             "a settings form with eighty-odd controls is this long. There is no "
             "build step here by choice, so there is no include mechanism to "
             "break it up with, and splitting the markup across pages would "
-            "scatter one form the operator reads top to bottom.",
-        "agent-worker/api/diagnostics.py":
+            "scatter one form the operator reads top to bottom."),
+        "agent-worker/api/diagnostics.py": (1453,
             "one module per job, and /test/* is genuinely one job: eight probes "
             "that all answer 'can this box reach that thing', plus the prompt "
             "preview. The call-record and log readback handlers — a DIFFERENT "
             "job (reading back what happened, not probing whether it works) — "
             "were split to api/readback.py at Batch 2 (2026-08-29). Splitting "
             "the probes from each other would scatter one answer across eight "
-            "files.",
-        "agent-worker/station.py":
+            "files."),
+        "agent-worker/station.py": (2009,
             "the SUB/WAVE REST client — reads that assemble the prompt plus the "
             "admin-gated write wrappers behind the DJ's tools (one class per "
             "external service; the 'read-only' claim was corrected at Batch 1). "
@@ -871,38 +969,38 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "when the station gains an endpoint, the same declarative-surface "
             "reason settings.py is exempt; splitting it scatters one client "
             "across files that all hold the same httpx session and the same "
-            "last-known-good caches.",
-        "web-widget/panel.js":
+            "last-known-good caches."),
+        "web-widget/panel.js": (6714,
             "measured again after the 0.10.85 split took the sound board out "
             "(4481 → 3715): the regions left are the settings form, the "
             "dashboard, the permission matrix and the test probes, and every "
             "one of them reads the same draft, resolved, secrets and options "
             "state — the fifteen-names verdict from 0.9.106 holds for what "
-            "remains. The one real seam this file grew has been cut.",
-        "web-widget/panel-sounds.js":
+            "remains. The one real seam this file grew has been cut."),
+        "web-widget/panel-sounds.js": (798,
             "one subject: the sound board — slot cards, the shelf, previews "
             "and uploads. Split from panel.js at 0.10.85 along the ratchet's "
             "recorded seam; it grows a row when the board gains a moment, "
-            "and splitting a board across files would scatter one table.",
-        "web-widget/call.js":
+            "and splitting a board across files would scatter one table."),
+        "web-widget/call.js": (8598,
             "measured, and every candidate region is coupled BOTH ways. The "
             "corner controls need two names out and owe fifteen back; the call "
             "itself needs twenty-five. The best candidate, captions, is five "
             "crossings for 140 lines and would still leave this file over the "
             "ceiling. Every part of a call touches room, live, callBtn, capBox "
-            "and muted, because that is what a call is.",
-        "web-widget/style.css":
+            "and muted, because that is what a call is."),
+        "web-widget/style.css": (6059,
             "the call card and everything both pages share, since 0.99.2 "
             "cut the panel-only half out: the old '193 panel-only lines' "
             "claim had drifted seventeen-fold while every embed downloaded "
             "all of it. What remains is one surface's styling plus the "
-            "shared base, and the regions left genuinely serve the card.",
-        "web-widget/panel.css":
+            "shared base, and the regions left genuinely serve the card."),
+        "web-widget/panel.css": (3221,
             "the operator-page half of the 0.99.2 cut — the settings run, "
             "the preview stage, the Players page and the panelpage "
             "newspaper redesign, loaded by panel.html alone. One page, one "
             "file; the leak check both ways is written in its header, and "
-            "TestThePanelStylesStayOffTheCallPage holds it.",
+            "TestThePanelStylesStayOffTheCallPage holds it."),
         # The three test modules that crossed the ceiling in 0.9.111, and they
         # are here for one reason that applies to all of tests/: this ceiling
         # and agent-worker/CLAUDE.md's placement rule point in opposite
@@ -918,41 +1016,41 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # them stops being one subject is the day it gets split — which is
         # what happened to test_sidecar.py at 5,791 lines, and that split was
         # by subject, not by size.
-        "agent-worker/tests/test_call_flow.py":
+        "agent-worker/tests/test_call_flow.py": (5356,
             "one subject: a call while it runs. Answering, holding for the "
-            "broadcast, coming back from it, the silence ladder, ending.",
-        "agent-worker/tests/test_http.py":
+            "broadcast, coming back from it, the silence ladder, ending."),
+        "agent-worker/tests/test_http.py": (1431,
             "one subject: the HTTP edge — caller identity (who the server "
             "believes you are, for cooldown and the unspoofable auth lockout), "
             "mint ceilings, the listener sampler and feedback endpoints. Grows "
             "a case per identity/rate rule, the same subject-placement rule as "
-            "the other module tests here.",
-        "agent-worker/tests/test_call_record.py":
+            "the other module tests here."),
+        "agent-worker/tests/test_call_record.py": (1675,
             "one subject: what is written down about a call, and what is "
-            "deliberately not — now including the caller's own verdict.",
-        "agent-worker/tests/test_brain.py":
+            "deliberately not — now including the caller's own verdict."),
+        "agent-worker/tests/test_brain.py": (1088,
             "one subject: prompt assembly and what the DJ is told — the "
             "briefing/conduct seam, the caller's context, the budget caps that "
             "stop one bad track swallowing the prompt, and now whether every "
             "mouth speaks as the same DJ. Crossed the ceiling at 0.10.146 when "
             "the back-to-air line and the voicemail greeting were brought back "
             "to the persona's own card; same subject-placement rule as the "
-            "test modules around it.",
-        "agent-worker/tests/test_widget.py":
+            "test modules around it."),
+        "agent-worker/tests/test_widget.py": (4965,
             "one subject: the browser half, guarded from here. It is the "
             "substitute for the JS unit tests this repo has no toolchain to "
-            "run, so it carries text checks the widget cannot make itself.",
-        "agent-worker/tests/test_settings.py":
+            "run, so it carries text checks the widget cannot make itself."),
+        "agent-worker/tests/test_settings.py": (1548,
             "one subject: the layered config — file over env over defaults, "
             "clearing meaning fall-through, and every provider/setting reaching "
             "the thing it configures. Grows a case per setting, the same "
-            "subject-placement rule as the modules below.",
-        "agent-worker/tests/test_voicemail.py":
+            "subject-placement rule as the modules below."),
+        "agent-worker/tests/test_voicemail.py": (1751,
             "one subject: the answering machine — greeting resolution, the "
             "beep as a cue, the bounded recording, delivery, and now the "
             "caller seeing their own words land. Same subject-placement rule "
-            "as the test modules below.",
-        "agent-worker/tests/test_tools_surface.py":
+            "as the test modules below."),
+        "agent-worker/tests/test_tools_surface.py": (1032,
             "a census, not prose: the ROUTES and TOOLS manifests gain a "
             "pinned line (and its justifying comment) every time the surface "
             "gains a route or a tool, and pinning a new route should not "
@@ -960,39 +1058,39 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "reasoning as settings.py. The assertions are a page; the "
             "manifests are the length. Crossed the ceiling on 2026-08-17 "
             "when the soundbite routes and the cover proxy were pinned in "
-            "one evening.",
-        "agent-worker/tests/test_chat.py":
+            "one evening."),
+        "agent-worker/tests/test_chat.py": (1568,
             "one subject: the text line — the door, the flood brakes, the "
             "typed register of the one brain, and now where a tool run's "
             "receipt card lands. Crossed the ceiling when 0.10.65 added the "
             "card-routing cases; same subject-placement rule as the modules "
-            "around it.",
-        "agent-worker/tests/test_secrets_and_auth.py":
+            "around it."),
+        "agent-worker/tests/test_secrets_and_auth.py": (619,
             "one subject, and the file says it in a line: something not "
             "leaving, or somebody not getting in. It grows a case per place a "
             "stored secret could travel, and those places are found one at a "
             "time — crossed the ceiling on the 2026-09-17 review pass, which "
             "found the panel's voice lookup handing a previewed host the "
             "stored TTS key. Same subject-placement rule as the modules "
-            "around it.",
-        "agent-worker/tests/test_voice.py":
+            "around it."),
+        "agent-worker/tests/test_voice.py": (790,
             "one subject: whether a speech backend can say the thing — "
             "discovery, sample rates, pace, and now the shipped adapter "
             "contracts. Crossed the ceiling when 0.9.122 added vendor "
             "adapters and their guards; same subject-placement rule as the "
-            "three above.",
-        "agent-worker/tests/test_station.py":
+            "three above."),
+        "agent-worker/tests/test_station.py": (1698,
             "one subject: what the station says, and what the card and the "
             "DJ say about it. Crossed the ceiling when 0.10.91 pinned "
             "refusals naming their blocklist rule; same subject-placement "
-            "rule as the modules around it.",
-        "agent-worker/tests/test_webhooks.py":
+            "rule as the modules around it."),
+        "agent-worker/tests/test_webhooks.py": (1295,
             "one subject: the station's pushes — registering for them, "
             "proving one arrived, and what a verified push may steer. "
             "Crossed the ceiling when 0.10.89 pinned the voice lifecycle's "
             "phased entries; same subject-placement rule as the modules "
-            "around it.",
-        "agent-worker/tests/test_conduct.py":
+            "around it."),
+        "agent-worker/tests/test_conduct.py": (941,
             "one subject: what the prompt is allowed to promise. It gains a "
             "test whenever a tool or a conduct rule is added, because that is "
             "precisely when the prompt can start naming something the line "
@@ -1000,38 +1098,38 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "action. Crossed the ceiling at 0.98.22 with the reads row and "
             "the finder mode; same subject-placement rule as the two modules "
             "below, and trimming the comments to sit under a number is the "
-            "thing this class's own docstring warns against.",
-        "agent-worker/tests/test_tools_logic.py":
+            "thing this class's own docstring warns against."),
+        "agent-worker/tests/test_tools_logic.py": (2175,
             "one subject: what a tool does once reached — provider "
             "construction, adapters, and what the DJ may claim afterwards. "
             "Crossed the ceiling when 0.10.86 pinned the Google-STT "
             "service-account trap; same subject-placement rule as the "
-            "modules around it.",
-        "agent-worker/tests/test_house_rules.py":
+            "modules around it."),
+        "agent-worker/tests/test_house_rules.py": (2266,
             "one subject: how this repo is kept. It grows a rule per "
             "incident — the aggregator sweep alone (0.10.5) came from two "
             "test classes that had silently never run — and splitting the "
             "rules about structure across files would defeat the point of "
-            "having one place that states them.",
-        "agent-worker/tests/test_discovery.py":
+            "having one place that states them."),
+        "agent-worker/tests/test_discovery.py": (1009,
             "one subject: the ways into the library that are not a name "
             "search. Crossed the ceiling at 0.98.17, when browsing learned to "
             "speak the station's own vocabulary — and the vocabulary tests "
             "belong beside the browse tests, because every one of these bugs "
-            "was the tool and the station disagreeing about a word.",
-        "agent-worker/tests/test_album_tools.py":
+            "was the tool and the station disagreeing about a word."),
+        "agent-worker/tests/test_album_tools.py": (1545,
             "one subject: putting a RUN of tracks in and taking one back "
             "out — the album, the mix, and the clear-out that mirrors "
             "them. Crossed the ceiling at 0.98.16, when a mix became "
             "undoable by the label it was queued under; the tests for the "
             "undo belong beside the tests for the queueing, because the "
-            "bug was that the two had nothing in common.",
-        "agent-worker/tests/test_takeover.py":
+            "bug was that the two had nothing in common."),
+        "agent-worker/tests/test_takeover.py": (635,
             "one subject: putting a show on air, the one caller action "
             "that outlives the call — and, since 0.98.16, what the tool "
             "says when it cannot tell which show was meant. The miss is "
             "the same subject as the match: both decide what a whole "
-            "station hears for an hour.",
+            "station hears for an hour."),
     }
 
     # path -> (lines when the entry was written, what it is waiting to become).
@@ -1172,8 +1270,20 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # why it is not with `canAsk`: that block only exists when the help
         # button is on, and the guide's takeover must not be offered or
         # withheld by an unrelated setting.
-        "agent-worker/api/live.py": (697, "the shared payload build split "
-                                          "from the per-caller resolve"),
+        "agent-worker/api/live.py": (718, "the shared payload build split "
+                                          "from the per-caller resolve. "
+                                          "RAISED to 718 (2026-09-17) by the "
+                                          "single-flight on the cache miss: "
+                                          "twenty-one lines, and they CUT the "
+                                          "named seam rather than blur it — "
+                                          "the build is now _build_live, a "
+                                          "function of its own with the lock "
+                                          "held around it, so what is left in "
+                                          "handle_live is the per-caller "
+                                          "resolve this entry has always said "
+                                          "it should be. The complexity moved "
+                                          "with the body; see the ledger "
+                                          "below."),
         # 0.97.77 pushed it over making the ringing concurrent (the mint-time
         # snapshot head start, the MCP warm-up, the join riding prepare). The
         # seam is the phase boundary the docstring has named all along:
@@ -1289,7 +1399,7 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # one way out, so the caller's `bye` and the message ceiling stop
         # popping a chat and leaking the LLM client it owns. Twelve lines,
         # all of them in the COLLECTION half the seam already names.
-        "agent-worker/chat/session.py": (785, "the one-conversation half "
+        "agent-worker/chat/session.py": (806, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "
@@ -1300,6 +1410,15 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
                                               "— the wiring shrank the "
                                               "consultation but the holder + "
                                               "its comment grew the file; the "
+                                              "806 (2026-09-17): Chat.dj, "
+                                              "the persona PIN, moved here "
+                                              "from inside ask() because the "
+                                              "greeting and the nudge were "
+                                              "resolving their own and the rule "
+                                              "held on the reply path alone. "
+                                              "It is one-conversation state, so "
+                                              "it lands squarely on this side of "
+                                              "the seam; the split is still owed. "
                                               "recorded split is unaffected"),
         # Over the ceiling at 631 at 0.99.6 (top-down review, 2026-08-28),
         # from 597. The three fixes all land on the REGISTRATION side: the
@@ -1525,6 +1644,48 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         both = sorted(set(self.EXEMPT) & set(self.SPLITTING))
         self.assertEqual(both, [], f"listed as both debt and deliberate: {both}")
 
+    def test_no_exempt_file_has_outgrown_its_allowance(self):
+        # Being long is still a legitimate permanent answer. Being MUCH longer
+        # than when somebody last thought about it is a different answer, and
+        # nobody has given it. See the class docstring for the month that was
+        # measured before this existed.
+        over = []
+        for path, (was, _why) in self.EXEMPT.items():
+            if path not in self.sizes:
+                continue
+            budget = max(int(was * (1 + self.ALLOWANCE)), was + self.MIN_HEADROOM)
+            if self.sizes[path] > budget:
+                over.append(f"{path}: {self.sizes[path]} lines, recorded at "
+                            f"{was}, allowed {budget}")
+        self.assertEqual(
+            sorted(over), [],
+            "these are exempt from the ceiling, not from being thought about. "
+            "Split them; or raise the recorded number in the same commit and "
+            "extend the reason with what the new lines are for — that write-up "
+            f"is the whole point of the entry: {sorted(over)}")
+
+    def test_every_exempt_number_is_a_real_measurement(self):
+        # A number below the ceiling would mean the entry was never needed,
+        # and one a whole allowance above today's size means somebody parked
+        # headroom rather than recording a size. Either makes the ratchet
+        # above a no-op.
+        #
+        # A file that has merely SHRUNK is fine and deliberately costs
+        # nothing: making a good change come and edit a number here is the
+        # ceremony this class exists to avoid. Its budget stays generous until
+        # somebody next has a reason to touch the entry.
+        wrong = sorted(
+            f"{path}: recorded {was}, file is {self.sizes[path]}"
+            for path, (was, _why) in self.EXEMPT.items()
+            if path in self.sizes
+            and (was <= self.CEILING
+                 or was > self.sizes[path] * (1 + self.ALLOWANCE))
+        )
+        self.assertEqual(
+            wrong, [],
+            "an exempt entry's number is the file's size when somebody last "
+            f"decided it was right to be this long: {wrong}")
+
     def test_no_file_being_split_has_grown(self):
         grown = sorted(
             f"{path} was {was}, is now {self.sizes[path]}"
@@ -1554,7 +1715,7 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
     def test_every_entry_says_why(self):
         # An entry with no reason is indistinguishable from one added to make
         # the suite go green, which is precisely what this must not become.
-        reasons = dict(self.EXEMPT)
+        reasons = {p: why for p, (_, why) in self.EXEMPT.items()}
         reasons.update({p: why for p, (_, why) in self.SPLITTING.items()})
         thin = sorted(path for path, why in reasons.items()
                       if len(why.strip()) < 40)
@@ -2007,7 +2168,10 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         # Batch 1 — platform hubs
         "agent-worker/settings.py::_migrate": (33, "Batch 1 — settings migration ladder"),
         # Batch 2 — the api edge
-        "agent-worker/api/live.py::handle_live": (55, "Batch 2 — the /live god-dict assembler"),
+        # Was handle_live at 55. The single-flight (2026-09-17) left the
+        # cache read and the lock in handle_live and moved the assembler into
+        # _build_live, so the number moved with the body and came down two.
+        "agent-worker/api/live.py::_build_live": (53, "Batch 2 — the /live god-dict assembler"),
         "agent-worker/api/diagnostics.py::handle_speed_test": (47, "Batch 2 — diagnostics god-module"),
         # 47 (2026-08-31): the owes_action veto joins the reprompt gate.
         "agent-worker/api/chat.py::handle_chat_ws": (47, "Batch 2 — the chat websocket loop"),
@@ -2018,7 +2182,6 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         "agent-worker/api/diagnostics.py::handle_test_llm": (32, "Batch 2 — diagnostics god-module"),
         "agent-worker/api/voicemail.py::handle_voicemail_status": (27, "Batch 2 — voicemail status handler"),
         "agent-worker/api/voicemail.py::handle_voicemail_stage": (27, "Batch 2 — voicemail stage handler"),
-        "agent-worker/api/settings.py::handle_settings_options": (25, "Batch 2 — provider-discovery gather"),
         # Batch 3 — the call core
         # 47 -> 48 (2026-09-17): one branch at the top of the loop — a gate
         # the CONSTRUCTOR primed re-publishes here, where the room is

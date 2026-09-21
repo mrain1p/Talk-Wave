@@ -25,10 +25,23 @@ import re
 
 log = logging.getLogger("callin.speech_filter")
 
-# "*shuffles papers*", "*Sound of records*" — asterisk-delimited stage business.
-_ASTERISK = re.compile(r"\*[^*\n]{1,120}\*")
-# "[pause]", "[sound of rain]" — bracketed directions.
-_BRACKET = re.compile(r"\[[^\]\n]{1,120}\]")
+# "*shuffles papers*", "*Sound of records*" — asterisk-delimited stage
+# business. And "[pause]", "[sound of rain]" — the bracketed kind.
+#
+# PUBLIC, because spoken_rules grades what this strips and the two had
+# written the shapes down separately. They disagreed, and not harmlessly:
+# this side refused to cross a newline or run past 120 characters, while
+# the grader's did both. Measured 2026-09-17 — a stage direction spanning a
+# line break, and one longer than 120 characters, went out on air with the
+# asterisks still in them, on a line where `strip_stage_directions` is on
+# and the grader was already calling it a fault. Four shapes, all audible.
+#
+# The caps are gone rather than copied across. A character class that
+# excludes its own closing mark cannot join two short directions into one
+# long match, and a 120-character asterisk block is not somebody's
+# emphasis. TestTheGraderAndTheStripperAgree holds the two together now.
+STAGE_ASTERISK = re.compile(r"\*[^*]+\*")
+STAGE_BRACKET = re.compile(r"\[[^\]]+\]")
 # Sound and action words models reach for when they narrate the scene rather
 # than speak it. Needed because a stage direction doesn't always LEAD with the
 # verb — "(Phone rings)" went out on a real call, because the older rule only
@@ -205,8 +218,8 @@ def strip_stage_directions(text: str) -> str:
     """Remove anything the model wrote *about* speaking rather than to say."""
     if not text:
         return text
-    cleaned = _ASTERISK.sub(" ", text)
-    cleaned = _BRACKET.sub(" ", cleaned)
+    cleaned = STAGE_ASTERISK.sub(" ", text)
+    cleaned = STAGE_BRACKET.sub(" ", cleaned)
     cleaned = _PAREN_ACTION.sub(" ", cleaned)
     cleaned = _SYMBOLS.sub(" ", cleaned)
     cleaned = _WHITESPACE.sub(" ", cleaned).strip()

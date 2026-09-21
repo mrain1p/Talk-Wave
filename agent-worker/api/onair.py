@@ -23,7 +23,7 @@ from aiohttp import web
 
 import settings as settings_store
 from api.auth import _write_allowed
-from api.wire import _cors
+from api.wire import _cors, refused
 from onair import chunks, hush
 
 log = logging.getLogger("callin.onair")
@@ -120,8 +120,7 @@ async def handle_on_air_dump(request: web.Request) -> web.Response:
     through the shared store, and a marker with nothing to kill would sit
     waiting for the next caller instead."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed"}, status=401))
+        return refused(request)
     from api.tokens import on_air_call_live
 
     if not on_air_call_live():

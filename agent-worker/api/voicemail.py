@@ -14,7 +14,7 @@ from aiohttp import web
 
 import settings as settings_store
 from api.auth import _write_allowed
-from api.wire import _cors
+from api.wire import _cors, refused
 from station import StationClient
 from voicemail import deliver as vm_deliver
 from voicemail import greetings
@@ -22,17 +22,11 @@ from voicemail import greetings
 log = logging.getLogger("callin.voicemail")
 
 
-def _refuse(request: web.Request) -> web.Response:
-    return _cors(request, web.json_response(
-        {"error": request.get("auth_error") or "not allowed",
-         "authRequired": bool(request.get("auth_required"))}, status=401))
-
-
 async def handle_voicemail_status(request: web.Request) -> web.Response:
     """What is staged, per persona, and whether it is current — so the panel
     can say "3 of 4 staged, Rosie's is stale" instead of a bare button."""
     if not _write_allowed(request):
-        return _refuse(request)
+        return refused(request)
 
     import secrets_store
 
@@ -132,7 +126,7 @@ async def handle_voicemail_stage(request: web.Request) -> web.Response:
     a silent pickup a week later.
     """
     if not _write_allowed(request):
-        return _refuse(request)
+        return refused(request)
 
     import secrets_store
     from tts_adapter import AdapterTTS, resolve_adapter
@@ -252,7 +246,7 @@ async def handle_voicemail_clip(request: web.Request) -> web.StreamResponse:
 
 async def handle_voicemail_clip_delete(request: web.Request) -> web.Response:
     if not _write_allowed(request):
-        return _refuse(request)
+        return refused(request)
     pid = request.match_info.get("persona_id", "")
     greetings.clip_path(pid).unlink(missing_ok=True)
     greetings.ack_path(pid).unlink(missing_ok=True)
@@ -266,7 +260,7 @@ async def handle_voicemail_clip_delete(request: web.Request) -> web.Response:
 async def handle_voicemail_override(request: web.Request) -> web.Response:
     """Set (or clear, with empty text) one persona's own greeting line."""
     if not _write_allowed(request):
-        return _refuse(request)
+        return refused(request)
     try:
         body = await request.json()
     except Exception:
@@ -278,14 +272,14 @@ async def handle_voicemail_override(request: web.Request) -> web.Response:
 
 async def handle_voicemail_messages(request: web.Request) -> web.Response:
     if not _write_allowed(request):
-        return _refuse(request)
+        return refused(request)
     return _cors(request, web.json_response(
         {"messages": vm_deliver.held_messages()}))
 
 
 async def handle_voicemail_clear(request: web.Request) -> web.Response:
     if not _write_allowed(request):
-        return _refuse(request)
+        return refused(request)
     vm_deliver.clear_messages()
     return _cors(request, web.json_response({"ok": True, "messages": []}))
 
@@ -305,7 +299,7 @@ _UPLOAD_CEILING = 8 * 1024 * 1024
 
 def _guest_refuse(request: web.Request) -> web.Response:
     if request.get("auth_error"):
-        return _refuse(request)
+        return refused(request)
     return _cors(request, web.json_response(
         {"error": "The booth doesn't take messages on this line."},
         status=403))

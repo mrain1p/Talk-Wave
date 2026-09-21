@@ -20,7 +20,7 @@ from aiohttp import web
 
 from api.auth import _write_allowed
 from api.tokens import _mint_info
-from api.wire import _cors
+from api.wire import _cors, refused
 
 log = logging.getLogger("callin.token")
 
@@ -32,9 +32,7 @@ async def handle_calls(request: web.Request) -> web.Response:
     it's a transcript of what callers said.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))}, status=401))
+        return refused(request)
     from call.record import recent
 
     # The worker writes the record and never sees the browser that called, so
@@ -61,9 +59,7 @@ async def handle_clear_calls(request: web.Request) -> web.Response:
     transcript no longer exists.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))}, status=401))
+        return refused(request)
     from call.record import clear
 
     gone = clear()
@@ -80,9 +76,7 @@ async def handle_delete_call(request: web.Request) -> web.Response:
     about to read back.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))}, status=401))
+        return refused(request)
     from call.record import delete_one
 
     rid = request.match_info.get("rid", "")
@@ -107,9 +101,7 @@ async def handle_mark_call(request: web.Request) -> web.Response:
     what they heard, stored beside the caller's rather than over it.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))}, status=401))
+        return refused(request)
     from call.record import mark_one
 
     try:
@@ -134,9 +126,7 @@ async def handle_clear_logs(request: web.Request) -> web.Response:
     so this clears what the panel shows rather than destroying the record.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))}, status=401))
+        return refused(request)
     import log_setup
 
     gone = log_setup.clear()
@@ -150,11 +140,7 @@ async def handle_logs(request: web.Request) -> web.Response:
     call agent runs in its own container; its logs need
     `docker logs <worker container>`."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     import log_setup
 
     records = log_setup.recent_records(300)

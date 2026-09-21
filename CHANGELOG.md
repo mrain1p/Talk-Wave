@@ -4,6 +4,18 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.46
+
+Housekeeping that turned out not to be housekeeping: every item on the "tidy
+this up one day" list had a live fault behind it.
+
+- **A stage direction that runs over a line break stops being read out.** The DJ's own *shuffles records* asides are stripped before they reach you — unless they spanned two lines or ran long, in which case they went out on air with the asterisks still in them. Four shapes, all audible, all fixed.
+- **The booth stops changing DJ mid-conversation on the text line.** A takeover between the greeting and the first reply could change who was answering you, and an unprompted line into a quiet chat could arrive from a DJ you had never been talking to. The reply path already held the person you were talking to; now the other two do.
+- **The settings page stops reporting a voice key it can see.** With a voice backend that carries its own key — ElevenLabs, say — the check said the key was missing while it was stored and working. The reverse too: a cloud voice on a non-OpenAI address with only an OpenAI key stored was reported as fine, when that key is never sent there.
+- **Five endpoints stop answering half a refusal**, and the two station credential checks stop wording the same failure two different ways.
+- **The card is built once when several tabs ask at the same moment.** With more than one page open, the moment the shared answer expired every tab set the station working independently — six reads each, at the same instant.
+- **Under the hood:** the file-size ledger now records a measured size rather than only a reason, after a month's drift was measured (one file grew by five whole ceilings with nothing said); and the DJ's tool drill was re-run against the released image, where the fault it found last week is gone.
+
 ## 0.99.45
 
 A review of the whole app — the code read from eighteen angles, every finding argued against the code before it was believed, and the DJ's tools drilled against the live station. What it found, in the order it would bite a caller:

@@ -25,7 +25,7 @@ from api.auth import _write_allowed
 from api.credentials import _credentials_travel_to
 from api.env import LIVEKIT_API_KEY, LIVEKIT_API_SECRET
 from api.hooks import _hook_state
-from api.wire import _cors
+from api.wire import _cors, refused
 from station import StationClient
 from station_config import StationConfig
 from tts_adapter import available_voices as tts_voice_list
@@ -215,11 +215,7 @@ async def handle_test_tts(request: web.Request) -> web.Response:
     live call. The realtime factor is the number that matters: above 1.0 the
     buffer starves and playback gaps."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     secrets_store.apply_to_env()
 
     body = await request.json() if request.can_read_body else {}
@@ -496,11 +492,7 @@ async def handle_test_stt(request: web.Request) -> web.Response:
     estimates 400ms for any cloud provider and never calls it.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     secrets_store.apply_to_env()
 
     body = await request.json() if request.can_read_body else {}
@@ -622,11 +614,7 @@ async def handle_test_llm(request: web.Request) -> web.Response:
     panel, instead of on a live caller.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
     secrets_store.apply_to_env()
 
     body = await request.json() if request.can_read_body else {}
@@ -802,11 +790,7 @@ async def handle_prompt_preview(request: web.Request) -> web.Response:
     style you've set.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
 
     import brain
     from call.tools import effective_tools
@@ -854,11 +838,7 @@ async def handle_speed_test(request: web.Request) -> web.Response:
     paths, not a synthetic benchmark.
     """
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
 
     import time as _time
 
@@ -1140,11 +1120,7 @@ async def handle_test_env(request: web.Request) -> web.Response:
     so this at least catches a missing key or a bad provider/model combination
     before a caller discovers it."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
 
     secrets_store.apply_to_env()
     body = await request.json() if request.can_read_body else {}
@@ -1256,36 +1232,15 @@ async def handle_test_env(request: web.Request) -> web.Response:
                       "back-to-air handoff will all be refused",
         }
     else:
-        base = settings_store.station_base_url()
-        try:
-            from station_config import admin_credentials
+        from station_config import admin_credentials
 
-            user, password = admin_credentials()
-            async with httpx.AsyncClient(timeout=6.0) as c:
-                r = await c.get(f"{base}/listeners", auth=httpx.BasicAuth(user, password))
-            if r.status_code == 401:
-                result["admin"] = {
-                    "ok": False,
-                    "detail": "station rejected these credentials — library search, "
-                              "on-air announcements and the back-to-air handoff will "
-                              "all be refused",
-                }
-            elif r.status_code == 429:
-                # Mirrors the Test button's own answer. Without this the pipeline
-                # reported a rate-limited station as WRONG CREDENTIALS, which is
-                # the one reading that makes an operator go and change a password
-                # that was right all along.
-                result["admin"] = {
-                    "ok": False,
-                    "detail": "station login rate limiter is active — wait 15 minutes "
-                              "(or restart the station) and check again; this does not "
-                              "mean the credentials are wrong",
-                }
-            else:
-                r.raise_for_status()
-                result["admin"] = {"ok": True, "detail": "accepted by the station"}
-        except Exception as e:
-            result["admin"] = {"ok": False, "detail": _plain_error(e)[:120]}
+        ok, detail = await probe_station_admin(*admin_credentials(), timeout=6.0)
+        # The only thing this side adds: what a refusal will actually cost.
+        # It used to add it by writing the whole ladder out again.
+        if not ok and detail == "station rejected these credentials":
+            detail += (" — library search, on-air announcements and the "
+                       "back-to-air handoff will all be refused")
+        result["admin"] = {"ok": ok, "detail": detail}
 
     # --- listeners: the station refuses song requests when nobody is tuned in ---
     try:
@@ -1306,10 +1261,29 @@ async def handle_test_env(request: web.Request) -> web.Response:
     llm_p = str(cfg.get("llm_provider", "")).lower()
     if llm_p in ("openai", "google", "anthropic") and not secrets_store.get(f"{llm_p}_api_key"):
         need.append(f"{llm_p} (LLM)")
-    if str(cfg.get("tts_mode")) == "cloud" and not (
-        secrets_store.get("tts_api_key") or secrets_store.get("openai_api_key")
-    ):
-        need.append("cloud TTS")
+    # ASKED, not restated. The rule for which key a cloud voice wants lives in
+    # tts_adapter.adapter_api_key: an adapter may name its own env
+    # (`auth.key_env` — how ElevenLabs sits beside the generic ones), and the
+    # OpenAI key only stands in ON AN OPENAI HOST. This probe had its own
+    # spelling — "tts_api_key or openai_api_key, always" — and it was wrong in
+    # both directions: an operator on ElevenLabs with their key stored was told
+    # cloud TTS was missing one, and an operator with only an OpenAI key and a
+    # non-OpenAI host was told everything was fine when that key will never be
+    # sent. A diagnostic that lies about the thing it diagnoses is worse than
+    # no diagnostic.
+    if str(cfg.get("tts_mode")) == "cloud":
+        from tts_adapter import adapter_api_key, load_adapter
+
+        try:
+            adapter = load_adapter(resolve_adapter(cfg.get("tts_adapter")),
+                                   mode="cloud")
+            base_url = str(adapter.get("base_url") or "")
+            if not adapter_api_key(adapter, base_url):
+                need.append("cloud TTS")
+        except Exception:                                     # noqa: BLE001
+            # An adapter that will not load is its own fault with its own row
+            # (the voice test says so properly); it is not evidence about keys.
+            pass
     result["keys"] = {"ok": not need, "missing": need}
     result["webhook"] = dict(_hook_state)
     if need:
@@ -1324,11 +1298,7 @@ async def handle_test_admin(request: web.Request) -> web.Response:
     BEFORE saving it; falls back to the stored/env ones. Probes /listeners —
     admin-gated, read-only, side-effect free."""
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
 
     body = await request.json() if request.can_read_body else {}
     from station_config import admin_credentials
@@ -1345,26 +1315,46 @@ async def handle_test_admin(request: web.Request) -> web.Response:
             {"ok": False, "detail": "no credentials to test — fill in both fields"}
         ))
 
+    ok, detail = await probe_station_admin(user, password)
+    # The only thing this side adds: these may be typed and not yet saved.
+    if ok and draft:
+        detail += " (draft — remember to save)"
+    return _cors(request, web.json_response({"ok": ok, "detail": detail}))
+
+
+async def probe_station_admin(user: str, password: str,
+                              timeout: float = 8.0) -> tuple[bool, str]:
+    """Do these station credentials work? (ok, what to tell the operator).
+
+    /listeners is the probe because it is admin-gated, read-only and
+    side-effect free — proving the credentials without touching the station.
+
+    ONE ladder, because there were two: the pipeline check and the panel's
+    Test access button each walked 401 / 429 / raise_for_status with their
+    own wording, and a diagnostic that says two things about one fact is
+    worse than one that says nothing. The 429 branch is the load-bearing one
+    — a rate-limited station answers 401-shaped, and reporting that as WRONG
+    CREDENTIALS is what sends an operator to change a password that was right
+    all along.
+
+    The caller adds its own context (a draft that is not saved yet, or what
+    the refusal will cost). What HAPPENED is decided here.
+    """
     base = settings_store.station_base_url()
     try:
-        async with httpx.AsyncClient(timeout=8.0) as c:
-            r = await c.get(f"{base}/listeners", auth=httpx.BasicAuth(user, password))
+        async with httpx.AsyncClient(timeout=timeout) as c:
+            r = await c.get(f"{base}/listeners",
+                            auth=httpx.BasicAuth(user, password))
         if r.status_code == 401:
-            detail = "station rejected these credentials"
-            ok = False
-        elif r.status_code == 429:
-            detail = ("station login rate limiter is active — wait 15 minutes "
-                      "(or restart the station) and test again; this does not "
-                      "mean the credentials are wrong")
-            ok = False
-        else:
-            r.raise_for_status()
-            detail = ("accepted by the station"
-                      + (" (draft — remember to save)" if draft else ""))
-            ok = True
-        return _cors(request, web.json_response({"ok": ok, "detail": detail}))
-    except Exception as e:
-        return _cors(request, web.json_response({"ok": False, "detail": _plain_error(e)[:140]}))
+            return False, "station rejected these credentials"
+        if r.status_code == 429:
+            return False, ("station login rate limiter is active — wait 15 "
+                           "minutes (or restart the station) and try again; "
+                           "this does not mean the credentials are wrong")
+        r.raise_for_status()
+        return True, "accepted by the station"
+    except Exception as e:                                    # noqa: BLE001
+        return False, _plain_error(e)[:140]
 
 
 async def handle_test_station(request: web.Request) -> web.Response:
@@ -1372,11 +1362,7 @@ async def handle_test_station(request: web.Request) -> web.Response:
     # Same gate as every other test endpoint: without an admin key, a foreign
     # origin must not be able to read the station URL and tool list.
     if not _write_allowed(request):
-        return _cors(request, web.json_response(
-            {"error": request.get("auth_error") or "not allowed",
-             "authRequired": bool(request.get("auth_required"))},
-            status=401,
-        ))
+        return refused(request)
 
     from livekit.agents import mcp as lk_mcp
 

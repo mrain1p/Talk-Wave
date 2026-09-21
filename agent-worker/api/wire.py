@@ -88,6 +88,29 @@ def _cors(request: web.Request, resp: web.StreamResponse) -> web.StreamResponse:
     return resp
 
 
+def refused(request: web.Request, message: str = "not allowed") -> web.Response:
+    """The admin refusal card, in one place.
+
+    It was written out at thirty-six call sites plus four private helpers
+    (`_refuse` three times and `_unauthorised` once, all byte-identical), and
+    the copies had already come apart: five of them dropped `authRequired`,
+    including one branch of the change-password handler whose OTHER branch
+    sets it. Nobody could see the difference, which is the second half of the
+    finding — `authRequired` is emitted by every one of these and read by
+    nothing: not the widget, not the panel, not a test. It is kept because
+    removing a field from a response is the operator's call, not a cleanup's,
+    and because after this there is one line to delete instead of thirty-six.
+
+    `auth_error` and `auth_required` are put on the request by the gates in
+    api/auth.py, which are the only things that know WHY the door said no.
+    """
+    return _cors(request, web.json_response(
+        {"error": request.get("auth_error") or message,
+         "authRequired": bool(request.get("auth_required"))},
+        status=401,
+    ))
+
+
 async def handle_options(request: web.Request) -> web.Response:
     return _cors(request, web.Response(status=204))
 

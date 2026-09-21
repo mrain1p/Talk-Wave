@@ -283,6 +283,7 @@ from tests.test_tools_logic import (  # noqa: F401
     TestAnObligationBelongsToTheCallerNotTheDJsWording,
 )
 from tests.test_house_rules import (  # noqa: F401
+    TestTheRefusalCardIsWrittenOnce,
     TestEveryScenarioIsWellFormedBeforeItCostsAnything,
     TestTheWidgetHarnessOnlyDrivesLocal,
 )
@@ -417,6 +418,7 @@ from tests.test_tools_logic import (  # noqa: F401
     TestOnlyThisDJsSegmentsCanBeRun,
 )
 from tests.test_speech_filter import (  # noqa: F401
+    TestTheGraderAndTheStripperAgree,
     TestALineIsGradedByWhatKindOfWrongItIs,
     TestATypedToolCallNeverReachesTheSpeaker,
     TestPunctuationIsSpokenNotSpelled,
@@ -462,6 +464,7 @@ from tests.test_webhooks import (  # noqa: F401
     TestWeOnlyAskForEventsTheStationKnows,
 )
 from tests.test_voice import (  # noqa: F401
+    TestTheKeyCheckAsksTheBackendRatherThanGuessing,
     TestABackendTooSlowToBeOnAPhoneCallSaysSo,
     TestADeclaredSampleRateIsMeasuredNotTrusted,
     TestAPersonaCanWearItsOwnEffect,

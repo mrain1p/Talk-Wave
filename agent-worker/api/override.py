@@ -17,7 +17,7 @@ from aiohttp import web
 
 import settings as settings_store
 from api.auth import _guest_ok, _write_allowed, caller_tier
-from api.wire import _cors
+from api.wire import _cors, refused
 from station import StationClient
 
 log = logging.getLogger("callin.override")
@@ -27,12 +27,6 @@ log = logging.getLogger("callin.override")
 # card names the two differently, because "pinned to The Graveyard Shift"
 # and "locked to a genre" are different sentences to an operator.
 GENRE_LOCK_SHOW_ID = "genre_lock"
-
-
-def _refuse(request: web.Request) -> web.Response:
-    return _cors(request, web.json_response(
-        {"error": request.get("auth_error") or "not allowed",
-         "authRequired": bool(request.get("auth_required"))}, status=401))
 
 
 async def override_payload() -> dict:
@@ -91,7 +85,7 @@ async def override_payload() -> dict:
 
 async def handle_override_status(request: web.Request) -> web.Response:
     if not _write_allowed(request):
-        return _refuse(request)
+        return refused(request)
     try:
         payload = await override_payload()
     except Exception as e:                                     # noqa: BLE001
@@ -204,7 +198,7 @@ async def handle_override_clear(request: web.Request) -> web.Response:
     # to it. Without this the guide's button could pin a show and offer no
     # way back from the page that pinned it.
     if not (_write_allowed(request) or _takeover_allowed(request)):
-        return _refuse(request)
+        return refused(request)
     import secrets_store
 
     secrets_store.apply_to_env()

@@ -79,8 +79,12 @@ _WAIT_RELAY = re.compile(
 # Stage directions and markup the TTS would read out loud. `speech_filter`
 # strips these before speaking; flagging them here is how a sweep can see that
 # the model produced them at all, which the stripped output cannot show.
-_ASTERISKS = re.compile(r"\*[^*]+\*")
-_BRACKETS = re.compile(r"\[[^\]]+\]")
+# Borrowed, never restated: this grades what speech_filter strips, so a
+# shape it calls a fault and that one leaves alone is a stage direction the
+# caller actually hears. That is exactly what happened before 2026-09-17 —
+# see the note beside these in speech_filter.py.
+from speech_filter import STAGE_ASTERISK as _ASTERISKS
+from speech_filter import STAGE_BRACKET as _BRACKETS
 _WRAPPED = re.compile(r"^[\"'“”].*[\"'“”]$", re.DOTALL)
 _EMOJI = re.compile(r"[\U0001F000-\U0001FAFF☀-➿]")
 
