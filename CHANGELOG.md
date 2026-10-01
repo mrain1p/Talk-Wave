@@ -4,8 +4,12 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
-## Unreleased
+## 0.99.48
 
+Calls from your own network, and what the DJ hears while the station has the mic.
+
+- **What you say during a hold is answered.** Speaking while the DJ was mid-way through its "hold on, this is going out on air" line threw your words away — no reply, and the DJ came back from the break picking up a conversation that never happened. It now answers what you actually said once the air is clear.
+- **A call with no audio path says so.** When the audio connection never came up, the card read "Call ended" as if you had hung up; it now says it reached the studio but had no audio path. The call record names that failure too, instead of listing three possible causes.
 - **Calling from a computer on your own network.** If phones on your wifi connect but a computer on the same wifi rings and drops, the networking guide now explains why (the router isn't looping its traffic back) and has the fix, which keeps outside callers working.
 
 ## 0.99.47
