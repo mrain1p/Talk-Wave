@@ -4288,6 +4288,23 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         self.assertNotIn("innerHTML", painter)
         self.assertIn("textContent", painter)
 
+    def test_the_chevrons_are_drawn_not_typed(self):
+        # ▸, ▾ and ▴ are the font's SMALL triangles — a four-pixel speck
+        # beside ON AIR NOW and over PUT ON AIR (operator, 2026-10-01:
+        # "comically small"). One stroked mark for the rows, the shelf's
+        # heading and the hero's fold, built as nodes like the face icons.
+        chev = self.js.split("function guideChev()")[1][:900]
+        self.assertIn("createElementNS", chev)
+        self.assertNotIn("innerHTML", chev)
+        for glyph in ("▸", "\\u25B8", "▾", "▴"):
+            self.assertNotIn(glyph, self.js)
+        row = self.js.split("function guideRow")[1][:2200]
+        self.assertIn("chev.appendChild(guideChev());", row)
+        self.assertIn("fold.appendChild(guideChev());", self.js)
+        # A box the mark fills, so each turn happens about its centre.
+        box = self.css.split(".card .gdchev, .card .gdshelfchev {")[1].split("}")[0]
+        self.assertIn("width: 12px; height: 12px;", box)
+
     def test_the_day_reads_forward_from_midnight(self):
         # Operator, 2026-09-03: the strip is a DAY view, so it starts at
         # 12 AM and proceeds. It used to scroll itself to the block on air,
@@ -4656,8 +4673,10 @@ def _phone_surface_block(css: str) -> str:
     for chunk in css.split("@media (max-width: 500px) {")[1:]:
         # The token line is the block's first statement, so a short look is
         # enough to tell it from the faces block earlier in the file.
-        if "--sleeve:" in chunk[:900]:
-            return chunk[:9000]
+        if "--sleeve:" in chunk[:1500]:
+            # To the next top-level block, not a character count: a fixed
+            # 9000 went stale the first time the block grew past it.
+            return chunk.split("\n  @media")[0]
     raise AssertionError("the phone surfaces block is gone")
 
 
@@ -4777,10 +4796,98 @@ class TestThePlayersDockIsTwoBandsThatLineUp(unittest.TestCase):
         # title, less air round the playhead.
         block = _phone_surface_block(self.css)
         self.assertIn("--sleeve: 120px; --well-h: 92px;", block)
-        self.assertIn("--hero-title: 22px;", block)
+        # 19, was 22 (operator, 2026-10-01: "the title of the song is too
+        # large and the name and album are slightly too small") — the artist
+        # and the record come up the step the title comes down.
+        self.assertIn("--hero-title: 19px;", block)
+        self.assertIn("--pl-artist: 15px; --pl-release: 13px;", block)
         self.assertIn("body:not(.compact) .card .plprog { height: 32px; }", block)
         self.assertIn("body:not(.compact) .card .pltabs "
                       "{ padding: 10px 16px 8px; }", block)
+
+    def test_the_docks_gave_their_room_to_what_is_above_them(self):
+        # Operator, 2026-10-01: the pause, send and volume rows "should be
+        # smaller and shorter to allow more room for the elements above
+        # them", and Call the booth and the You | DJ meter with them. One
+        # control height for the phone still — the 620x544 card's 38 — so
+        # both docks come down together, and their spacing with them.
+        block = _phone_surface_block(self.css)
+        self.assertIn("--seg-h: 38px; --control-h: 38px;", block)
+        self.assertIn("--dock-gap: 10px; --dock-pad: 10px;", block)
+        # The strip stays a step under the rows it sits over.
+        self.assertIn("body:not(.compact) .card .pldock .plvu { height: 32px; }",
+                      block)
+        self.assertIn("body:not(.compact) .card .pldock .plheart { width: 32px; }",
+                      block)
+        self.assertIn("body:not(.compact) .card .pldock "
+                      "{ padding: var(--dock-pad) 16px; }", block)
+
+
+class TestTheStageSpeaksInOneVoice(unittest.TestCase):
+    """The phone face's stage: what the route costs, then what the booth is
+    asking — two label-and-sentence steps, both sentences in the box's one
+    body voice.
+
+    Operator, 2026-10-01: the open-lines question was "just too bolded and
+    sticks out too much. it should look like the other text in that area",
+    and ALSO ON THE LINE with its list of doors was "not needed".
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        cls.js = widget_js()["call.js"]
+
+    def test_the_question_wears_the_sentence_above_it(self):
+        say = self.css.split("  .idleboard .stagesay {")[1].split("}")[0]
+        subj = self.css.split("  .idleboard .opensubj {")[1].split("}")[0]
+        for rule in (say, subj):
+            self.assertIn("font: 13px/1.45 var(--font-body)", rule)
+            self.assertIn("color: var(--sage)", rule)
+        # The amber label over it says whose question it is; the sentence
+        # does not have to shout it as well.
+        self.assertNotIn("700", subj)
+
+    def test_also_on_the_line_is_gone(self):
+        stage = self.js.split("function buildStage")[1].split("function openLine")[0]
+        self.assertNotIn("Also on the line", stage)
+        self.assertNotIn("alsoOnTheLine", self.js)
+        self.assertNotIn("stagefoot", self.js)
+        self.assertNotIn(".stagefoot", self.css)
+
+
+class TestALongTitleStepsDownToFitItsLines(unittest.TestCase):
+    """The player's song title, sized to the lines it has (fitTitle).
+
+    A long name used to fall back to the TOP of the ladder — "On the Nature
+    of Daylight (Entropy)" at 22px, the loudest thing on the sheet — and was
+    still cut off mid-word beside the sleeve on a turned phone (operator,
+    2026-10-01: "the title of the song is too large").
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        js = widget_js()["call.js"]
+        cls.fit = js.split("function fitTitle")[1].split("function buildPlayerHero")[0]
+
+    def test_one_line_only_from_the_top_two_steps(self):
+        # The bottom step never buys a single line: at 411px it drew that
+        # name at 15, the artist line's own size, where 360px drew it at 19.
+        self.assertIn("for (const px of steps.slice(0, 2)) {", self.fit)
+
+    def test_then_the_largest_step_that_holds_the_whole_name(self):
+        # Half a line of slack: the heavy face overhangs its 1.1 line box by
+        # ~2px with nothing cut, and a strict compare picked the bottom step
+        # for every long name (measured in the stub). A cut line is a whole
+        # line over.
+        self.assertIn("el.scrollHeight - el.clientHeight < px / 2", self.fit)
+        self.assertIn("const size = pick || steps[steps.length - 1];", self.fit)
+
+    def test_a_turned_phone_fits_it_again(self):
+        # The fit ran only when the NAME changed, so a step picked for the
+        # upright 328px stood beside the sleeve's 216 once the phone turned.
+        self.assertIn("window.addEventListener('resize'", self.fit)
+        self.assertIn("delete t.dataset.fit;", self.fit)
 
 
 class TestLandscapeSpendsTheAxisItHas(unittest.TestCase):
@@ -4889,6 +4996,53 @@ class TestLandscapeSpendsTheAxisItHas(unittest.TestCase):
         band = self._band()
         self.assertIn(".gdscroll:has(> .gdgrid:not([hidden])) {", band)
         self.assertIn("grid-template-columns: minmax(0, 1fr);", band)
+
+    def _rule(self, band, selector):
+        return band.split(selector + " {")[1].split("}")[0]
+
+    def test_send_is_never_drawn_under_the_transport(self):
+        # The request field held a 180px floor (--lreq) inside a box that was
+        # itself allowed to shrink below it, so on a 756px cover screen the
+        # box gave, its contents did not, and SEND was drawn under PAUSE
+        # (operator's phone, 2026-10-01). The box's floor is its own
+        # min-content now — SEND and its gap, with the field's width zeroed
+        # — and the field is what gives.
+        band = self._band()
+        pre = "body:not(.compact):not(.panelpage) .card.faces .pldock "
+        self.assertNotIn("--lreq", self.css)
+        self.assertIn("min-width: min-content",
+                      self._rule(band, pre + ".plreq"))
+        self.assertIn("width: 0; min-width: 0;",
+                      self._rule(band, pre + ".plreq input"))
+        # …and the row's two halves stand under the sheet's two columns, so
+        # the field starts where the queue does.
+        self.assertIn("flex: 0 1 318px", self._rule(band, pre + ".plctl"))
+        self.assertIn("grid-template-columns: 318px minmax(0, 1fr);", band)
+
+    def test_the_route_switch_is_the_call_rows_twin(self):
+        # Side by side they are one band read across the card, and they were
+        # drawn as two: a shorter switch in smaller type, on a floor 14px
+        # lower (operator, 2026-10-01: "similar to size and composition to
+        # the call the booth row to its right").
+        band = self._band()
+        pre = "body:not(.compact):not(.panelpage) .card.faces"
+        sw = self._rule(band, pre + " .routeswitch")
+        self.assertIn("height: var(--control-h)", sw)
+        self.assertIn("margin: 0 0 var(--dock-pad)", sw)
+        self.assertIn("height: var(--control-h); font-size: 11px;",
+                      self._rule(band, pre + ".routed .routeswitch .rcell"))
+
+    def test_the_record_gets_its_column(self):
+        # "the left row doesn't do justice to the song name and title": the
+        # name came down to the phone's 19 and is fitted to its lines
+        # (fitTitle), the artist and record came up a step, and the chips
+        # hold one whole row instead of a second one cut in half.
+        band = self._band()
+        self.assertIn("--hero-title: 19px;", band)
+        self.assertIn("--pl-artist: 15px; --pl-release: 13px;", band)
+        self.assertIn("max-height: 20px; overflow: hidden;", self._rule(
+            band, "body:not(.compact):not(.panelpage) .card.faces "
+                  ".plscroll .pltags"))
 
 
 class TestTheGuideOffersTheTakeover(_TempStores):

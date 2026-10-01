@@ -804,11 +804,13 @@
   }
 
   // THE STAGE (design handoff, 2026-09-03). While the route switch is up,
-  // the box under it answers three questions in the order a caller asks
-  // them: what does this route COST me, what is the booth actually asking,
-  // and what else is this line for. It used to be one centred sentence in a
-  // box four hundred pixels tall — the operator's "wasted space", and the
-  // reason the phone face read as unfinished beside the other two.
+  // the box under it answers two questions in the order a caller asks
+  // them: what does this route COST me, and what is the booth actually
+  // asking. It used to be one centred sentence in a box four hundred pixels
+  // tall — the operator's "wasted space", and the reason the phone face read
+  // as unfinished beside the other two. A third step, ALSO ON THE LINE and
+  // the doors the line answers, went 2026-10-01 (operator: "not needed") —
+  // the ? menu lists the same doors wherever the station publishes them.
   //
   // Nothing here invents copy: the consequence line is the same wording
   // override it always was, and the middle is only ever drawn from an open
@@ -883,18 +885,6 @@
       if (t) mid.appendChild(t);
     }
     wrap.appendChild(mid);
-    // 3. WHAT ELSE THE LINE IS FOR, under a rule, quiet — so an open line
-    // never reads as the only thing a caller may ring about.
-    const foot = document.createElement('div');
-    foot.className = 'stagefoot';
-    const flab = document.createElement('span');
-    flab.className = 'stagefootlab';
-    flab.textContent = 'Also on the line';
-    const fsay = document.createElement('span');
-    fsay.className = 'stagefootsay';
-    fsay.textContent = alsoOnTheLine(d);
-    foot.append(flab, fsay);
-    wrap.appendChild(foot);
     return wrap;
   }
 
@@ -944,24 +934,6 @@
     const top = Date.now() - d.getMinutes() * 60000 - d.getSeconds() * 1000
       - d.getMilliseconds();
     return top + (on.end - now.abs) * 3600000;
-  }
-
-  // The doors this line answers besides whatever is up right now, in the
-  // card's own voice. Read from the same permissions the ask menu is
-  // filtered by — WHEN the station publishes them: `canAsk` is null unless
-  // show_caller_help is on (api/live.py), and this then falls back to the
-  // shipped defaults the way the rest of the card does. So on a station that
-  // keeps its permissions private the first door is named from the default
-  // rather than from the setting; this used to claim it "can never name
-  // something the DJ would refuse" (spec review, 2026-09-05).
-  function alsoOnTheLine(d) {
-    const can = (d && d.canAsk) || {};
-    const bits = [];
-    if (can.allow_requests !== false) bits.push('requests');
-    if (can.allow_announcements) bits.push('shout-outs');
-    if (can.allow_library_search) bits.push('what played earlier');
-    if (!bits.length) bits.push('a word with the booth');
-    return bits.join(' · ');
   }
 
   // The card's heart — the same add-only public like the player sheet sends,
@@ -5811,9 +5783,18 @@
   // THE SONG'S NAME, SIZED TO THE ROOM IT HAS. It was a flat 25px with a
   // two-line clamp, so a long name wrapped and a short one did not, and the
   // size said nothing about either. The largest step that keeps it to ONE
-  // line wins; when none does, the stylesheet's own size stands and the
-  // clamp holds it to two — which is the right answer for a name that is
-  // genuinely long, not a reason to shrink it to a caption.
+  // line wins — the top step or the one under it; when neither does, the
+  // largest step at which the WHOLE name fits the clamp's lines; when none
+  // does that either, the smallest step, and the clamp's ellipsis on it.
+  // That middle rung is new (operator, 2026-10-01). A long name used to fall
+  // back to the stylesheet's size — the TOP of the ladder — so the longest
+  // titles were drawn the largest ("On the Nature of Daylight (Entropy)" at
+  // 22px, the loudest thing on the sheet) and, beside a sleeve on a turned
+  // phone, cut off mid-word all the same. And the bottom step never buys a
+  // single line: measured the same day, a 411px phone drew that name at 15
+  // on one line — the artist line's own size — where a 360px phone drew it
+  // at 19 over two. One line at the foot of the ladder is a name squeezed
+  // into a box; two lines a step up is still a headline.
   //
   // Steps, not a continuous fit: this card has a type scale and a title is
   // not exempt from it. Measured through the element itself the way
@@ -5825,8 +5806,9 @@
   // 25px step in the type-scale test ("neither on the 620x544 card") was
   // not true of what shipped (spec review, 2026-09-05). The ladder is the
   // card's display steps and the surface picks where it starts: 25/22/19
-  // on the phone, 19/17/15 here. An inline size the stylesheet cannot
-  // out-rank has to answer to the same scale the stylesheet does.
+  // installed on a wide screen, 19/17/15 on the phone and here. An inline
+  // size the stylesheet cannot out-rank has to answer to the same scale the
+  // stylesheet does.
   const TITLE_SCALE = [25, 22, 19, 17, 15];
   function titleSteps(el) {
     const top = parseFloat(
@@ -5840,17 +5822,42 @@
     el.style.fontSize = '';
     requestAnimationFrame(() => {
       if (el.dataset.fit !== txt || !el.clientWidth) return;
+      const steps = titleSteps(el);
       const was = el.style.whiteSpace;
       el.style.whiteSpace = 'nowrap';
       let pick = 0;
-      for (const px of titleSteps(el)) {
+      for (const px of steps.slice(0, 2)) {
         el.style.fontSize = px + 'px';
         if (el.scrollWidth <= el.clientWidth) { pick = px; break; }
       }
       el.style.whiteSpace = was;
-      el.style.fontSize = pick ? pick + 'px' : '';
+      // Wrapped, the clamp's box is its lines and scrollHeight is the
+      // whole name — plus the heavy face's own overhang, which a 1.1 line
+      // box does not contain: measured 2px over at every step with nothing
+      // cut. A cut line is a whole line over, so half of one is the test.
+      for (const px of pick ? [] : steps) {
+        el.style.fontSize = px + 'px';
+        if (el.scrollHeight - el.clientHeight < px / 2) { pick = px; break; }
+      }
+      const size = pick || steps[steps.length - 1];
+      el.style.fontSize = size ? size + 'px' : '';
     });
   }
+  // A turned phone is a different column — 328px of title upright, 216
+  // beside the sleeve on its side — and the fit only ran when the NAME
+  // changed, so a step picked for one stood in the other. Same answer the
+  // week grid gives a resize (bindGuideSpans), once the window settles.
+  let titleRefit = 0;
+  window.addEventListener('resize', () => {
+    clearTimeout(titleRefit);
+    titleRefit = setTimeout(() => {
+      const t = $('plTrack');
+      const txt = t && t.dataset.fit;
+      if (!txt) return;
+      delete t.dataset.fit;
+      fitTitle(t, txt);
+    }, 150);
+  });
 
   // The player's hero: the sleeve BESIDE the title rather than over it
   // (design handoff, 2026-09-03). Centred, the title had the sheet's whole
@@ -6601,6 +6608,32 @@
     if (b) b.onclick = () => showFace(f.id);
   });
 
+  // THE GUIDE'S CHEVRON, DRAWN. The rows, the shelf's heading and the
+  // hero's fold wore U+25B8 and U+25BE — the font's SMALL triangles, which
+  // came out as a four-pixel speck beside ON AIR NOW and over PUT ON AIR
+  // (operator, 2026-10-01: "comically small"). One stroked mark in the face
+  // icons' own language instead: currentColor, so each place keeps its ink,
+  // and drawn pointing right, so each place turns it the way its glyph used
+  // to point. Built as nodes like dressFace's marks — the guide never writes
+  // markup.
+  function guideChev() {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('class', 'gdchevsvg');
+    svg.setAttribute('width', '12'); svg.setAttribute('height', '12');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2.6');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', 'M9 5l7 7-7 7');
+    svg.appendChild(path);
+    return svg;
+  }
+
   // ---- The programme guide itself: the station's week, in the shape of
   // the operator's own guide page — today's shows hour by hour in a strip,
   // then every show with its DJ, tagline and times, opening in place. The
@@ -7334,7 +7367,7 @@
         const n = document.createElement('span');
         n.className = 'gdshelfn'; n.textContent = String(shelved.length);
         const chev = document.createElement('span');
-        chev.className = 'gdshelfchev'; chev.textContent = '▸';
+        chev.className = 'gdshelfchev'; chev.appendChild(guideChev());
         chev.setAttribute('aria-hidden', 'true');
         cap.append(lab, n, chev);
         const say = () => {
@@ -7616,9 +7649,10 @@
     // AN ARROW, not a word (operator, 2026-09-04). A worded pill on the
     // hero's floor read as a control with an opinion; a chevron under the
     // text is the shape every expandable block on this card already uses.
+    // The stylesheet points it down or up from the box's own `min`.
+    fold.appendChild(guideChev());
     const say = () => {
       const open = !box.classList.contains('min');
-      fold.textContent = open ? '▴' : '▾';
       fold.setAttribute('aria-expanded', open ? 'true' : 'false');
       fold.setAttribute('aria-label', open
         ? 'Show less of what is on air' : 'Read more about what is on air');
@@ -7735,7 +7769,7 @@
     const flag = document.createElement('span'); flag.className = 'gdflag';
     flag.textContent = live ? 'On air now' : '';   // paintGuide adds NEXT
     const chev = document.createElement('span'); chev.className = 'gdchev';
-    chev.textContent = '\u25B8'; chev.setAttribute('aria-hidden', 'true');
+    chev.appendChild(guideChev()); chev.setAttribute('aria-hidden', 'true');
     end.append(flag, chev);
     title.append(name, end);
     const sub = document.createElement('div'); sub.className = 'gdrowsub';

@@ -404,6 +404,74 @@ class TestTheGuidesTakeoverIsGatedByItsSetting(_TempStores):
         self.assertEqual(status, 502)
         self.assertFalse(body.get("ok"))
 
+
+class TestTheGuidesTakeoverIsLoggedByTheShowsName(_TempStores):
+    """The day-log line a guide takeover leaves — what the player's Requests
+    tab prints and the DJ's booth_log reads aloud."""
+
+    _post = TestTheGuidesTakeoverIsGatedByItsSetting._post
+
+    def _logged(self, body, schedule):
+        """Pin through the real router against a station that takes it, and
+        return the line the day-log kept."""
+        from pathlib import Path
+        from unittest import mock
+
+        import settings as settings_store
+        from api import override
+        from call import daylog
+
+        class _St(override.StationClient):
+            def __init__(self):
+                pass
+
+            async def pin_show(self, show_id, minutes, until="fixed"):
+                return {"ok": True}
+
+            async def schedule(self):
+                return schedule
+
+            async def aclose(self):
+                pass
+
+        settings_store.save({"allow_takeover": "open", "front_access": "open"})
+        old_path = os.environ.get("DAYLOG_PATH")
+        os.environ["DAYLOG_PATH"] = str(Path(self._tmp.name) / "day-log.json")
+        orig = override.StationClient
+        override.StationClient = _St
+        try:
+            # The first-run lockdown shuts every door until an admin password
+            # exists; this is about the log line, not the door.
+            with mock.patch("api.auth._auth_configured", return_value=True):
+                status, _ = self._post(body)
+            self.assertEqual(status, 200)
+            return daylog.recent(1)[0]["what"]
+        finally:
+            override.StationClient = orig
+            if old_path is None:
+                os.environ.pop("DAYLOG_PATH", None)
+            else:
+                os.environ["DAYLOG_PATH"] = old_path
+
+    def test_the_log_names_the_show_not_its_id(self):
+        # The button posts an id and the id is what this logged, so the
+        # player's Requests tab printed "s_f10db9 for 60 min" (operator's
+        # phone, 2026-10-01). The DJ's own takeover tool notes the name.
+        what = self._logged(
+            {"showId": "s_f10db9", "minutes": 60},
+            {"shows": [{"id": "s_f10db9", "name": "THE OVERLOOK · After Dark"}]})
+        self.assertEqual(what, "THE OVERLOOK · After Dark for 60 min")
+
+    def test_a_show_the_schedule_cannot_name_never_logs_the_id(self):
+        # The pin has already landed by the time the name is looked up; a
+        # schedule that does not answer words it plainly rather than leaking
+        # the id into a log the DJ reads aloud.
+        what = self._logged({"showId": "s_f10db9", "minutes": 60}, {})
+        self.assertEqual(what, "a show for 60 min")
+        self.assertEqual(
+            self._logged({"showId": None, "minutes": 60}, {}),
+            "Default programming for 60 min")
+
 class TestUsageControls(unittest.TestCase):
     """The guard against runaway spend — every refusal must fire, phrased
     in-world, and 0 must mean unlimited."""
