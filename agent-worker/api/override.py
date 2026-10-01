@@ -118,6 +118,25 @@ def _takeover_allowed(request: web.Request) -> bool:
         settings_store.load().get("allow_takeover"), caller_tier(request))
 
 
+async def _show_name(station: StationClient, show_id: str) -> str:
+    """The station's own name for a pinned show, for the day-log line.
+
+    The guide's button posts an id, and the id is what this used to log —
+    so the player's Requests tab printed "s_f10db9 for 60 min" (operator's
+    phone, 2026-10-01), and the DJ's booth_log would have read the same
+    string to a caller. The DJ's own takeover tool notes the name, so both
+    routes to one action now leave one shape of line. Best-effort: the pin
+    has already landed, and a schedule that will not answer leaves "" for
+    the caller to word, never the id.
+    """
+    schedule = await station.schedule()
+    shows = schedule.get("shows") if isinstance(schedule, dict) else None
+    for s in shows if isinstance(shows, list) else []:
+        if isinstance(s, dict) and str(s.get("id") or "") == show_id:
+            return str(s.get("name") or "").strip()
+    return ""
+
+
 def _tier_refuse(request: web.Request) -> web.Response:
     return _cors(request, web.json_response(
         {"error": "your access level does not include changing the DJ"},
@@ -166,8 +185,11 @@ async def handle_override_set(request: web.Request) -> web.Response:
 
     secrets_store.apply_to_env()
     station = StationClient()
+    name = ""
     try:
         res = await station.pin_show(show_id, window, until=until)
+        if show_id and isinstance(res, dict) and res.get("ok"):
+            name = await _show_name(station, show_id)
     finally:
         try:
             await station.aclose()
@@ -181,7 +203,8 @@ async def handle_override_set(request: web.Request) -> web.Response:
 
     # The week the card re-reads must show the pin that was just made.
     guide.forget()
-    daylog.note("takeover", (show_id or "Default programming")
+    daylog.note("takeover", ("Default programming" if show_id is None
+                             else name or "a show")
                 + (" until the schedule changes" if until == "schedule-change"
                    else f" for {window} min"),
                 tier=caller_tier(request))

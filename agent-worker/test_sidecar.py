@@ -73,6 +73,7 @@ from tests.test_http import (  # noqa: F401
     TestAPasswordAttemptCannotChooseItsOwnLockoutBucket,
     TestHttpSurface,
     TestTheGuidesTakeoverIsGatedByItsSetting,
+    TestTheGuidesTakeoverIsLoggedByTheShowsName,
     TestJoinTokensExpire,
     TestTheModelListFollowsTheEndpoint,
     TestUsageControls,
@@ -90,6 +91,8 @@ from tests.test_widget import (
     TestTheGuideOffersTheTakeover,
     TestTheCardWearsOneSurfaceFamily,
     TestThePlayersDockIsTwoBandsThatLineUp,
+    TestTheStageSpeaksInOneVoice,
+    TestALongTitleStepsDownToFitItsLines,
     TestLandscapeSpendsTheAxisItHas,
     TestNotOnTheScheduleReadsAsAHeading,
     TestSectionTagsCanShowTheirState,  # noqa: F401

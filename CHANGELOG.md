@@ -4,13 +4,21 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.49
+
+A tidier phone card, and a DJ that stops losing what you say while the station has the mic.
+
+- **What you say during a hold is answered.** Speaking while the DJ was mid-way through its "this is going out on air" line threw your words away, and the DJ came back from the break picking up a conversation that never happened. It now answers what you actually said once the air is clear.
+- **A call with no audio path says so.** When the audio connection never came up, the card read "Call ended" as if you had hung up; it now says it reached the studio but had no audio path, and the call record names that failure instead of listing three possible causes.
+- **Calling from a computer on your own network.** If phones on your wifi connect but a computer on the same wifi rings and drops, the networking guide explains why (the router isn't looping its traffic back) and has the fix, which keeps outside callers working.
+- **A takeover from the guide is logged by name.** The Requests tab showed a show put on air from the guide by its ID ("s_f10db9 for 60 min"); it now shows the show's name. Older entries keep the ID until they age out of the 48-hour log.
+- **Long song titles stop shouting.** The player's title now steps down to fit its two lines instead of jumping to the biggest size, and the artist and album come up a size.
+- **More room on the phone.** The player's controls and the phone face's Call row and meter are shorter, giving the queue and the stage about 28px back. The open-lines question reads like the sentence above it, and "Also on the line" is gone.
+- **Landscape and the guide line up.** The ON AIR / OFF AIR switch matches the Call row beside it, SEND no longer sits under PAUSE, and the guide's little arrows are proper drawn chevrons.
+
 ## 0.99.48
 
-Calls from your own network, and what the DJ hears while the station has the mic.
-
-- **What you say during a hold is answered.** Speaking while the DJ was mid-way through its "hold on, this is going out on air" line threw your words away — no reply, and the DJ came back from the break picking up a conversation that never happened. It now answers what you actually said once the air is clear.
-- **A call with no audio path says so.** When the audio connection never came up, the card read "Call ended" as if you had hung up; it now says it reached the studio but had no audio path. The call record names that failure too, instead of listing three possible causes.
-- **Calling from a computer on your own network.** If phones on your wifi connect but a computer on the same wifi rings and drops, the networking guide now explains why (the router isn't looping its traffic back) and has the fix, which keeps outside callers working.
+Released the same morning as 0.99.49 and folded forward — the full story rides v0.99.49's notes.
 
 ## 0.99.47
 
