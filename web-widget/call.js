@@ -3941,8 +3941,19 @@
       // refreshLive that then blanked the error line. The catch claims the
       // teardown by bumping callGen before it disconnects, which makes this
       // a no-op and leaves the reset to the one path that knows what failed.
+      //
+      // …EXCEPT WHEN LIVEKIT GETS THERE FIRST. A media path that never comes
+      // up fires this event ~15s in, a beat BEFORE connect() rejects — so the
+      // echo still won, painted "Call ended", and the catch then found the
+      // call already over and never said "no audio path". Every desktop call
+      // from the operator's own wifi failed exactly this way (2026-10-01)
+      // while the card blamed nobody. Until the call is set up, the catch
+      // gets first claim; if no rejection follows, this ends it after all.
+      let settled = false;
       room.on(LivekitClient.RoomEvent.Disconnected, () => {
-        if (myGen === callGen) endCall(true);
+        if (myGen !== callGen) return;
+        if (settled) { endCall(true); return; }
+        setTimeout(() => { if (myGen === callGen) endCall(true); }, 2000);
       });
       room.on(LivekitClient.RoomEvent.Reconnecting, () => {
         setAgentState('reconnecting');
@@ -4010,6 +4021,7 @@
       document.querySelector('.card').classList.add('oncall');
       if (!rafId) tick();
       setStatus(word('waiting', 'Connected — waiting for the DJ…'), 'connected');
+      settled = true;
     } catch (err) {
       // A deliberate Hang up during connect lands in here too: endCall has
       // already bumped callGen, set callEnded and reset the card to idle,
@@ -4050,8 +4062,11 @@
         console.warn(
           'Talk Wave: signalling connected but no media path was established. '
           + 'The caller reached the room; audio could not flow. Usually the '
-          + 'network cannot reach the media port, or the caller is on an '
-          + 'IPv4-only network while the station only publishes IPv6.', err);
+          + 'network cannot reach the media port, the caller is on an '
+          + 'IPv4-only network while the station only publishes IPv6, or the '
+          + 'caller is on the station\'s own network and the router will not '
+          + 'loop the call back (docs/networking.md, "Callers on your own '
+          + 'network").', err);
       }
       setStatus(
         denied ? 'Microphone blocked — allow mic access'

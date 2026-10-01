@@ -132,7 +132,7 @@ Measured on the deployed worker, 2026-08-14, `gemini-3.1-flash-lite`, three roun
 
 ## 5. Who may speak
 
-Ten things can start a DJ turn. Each was added for a real incident, and **they do not know about each other** — there is no single "the DJ speaks now" gate. The on-air hold hangs off `CallAgent.on_user_turn_completed`, which fires for CALLER turns only, so it covers the reply path and nothing else.
+Eleven things can start a DJ turn. Each was added for a real incident, and **they do not know about each other** — there is no single "the DJ speaks now" gate. The on-air hold hangs off `CallAgent.on_user_turn_completed`, which fires for CALLER turns only, so it covers the reply path and nothing else.
 
 | What speaks | Where | Waits for clear air? |
 |---|---|---|
@@ -141,6 +141,7 @@ Ten things can start a DJ turn. Each was added for a real incident, and **they d
 | the late request match | `call/tools/late_match.py` | yes, quiet-beat loop |
 | the idle check-in and goodbye | `call/clocks.py` | yes, reads `air.on_air` |
 | the come-back after a link | `call/comeback.py` | by construction |
+| the answer to a dropped turn | `call/comeback.py` | yes — and first the line that refused it plays out. A caller turn that ends during a line nothing may cut (the hand-over, the check-in) is dropped by the SDK, so this answers it; a come-back already under way answers it instead |
 | the hand-over line | `call/air.py` watch loop | it is the air |
 | the promise nudge | `call/promise_guard.py` | yes |
 | the time-limit sign-off | `call/clocks.py` | yes |

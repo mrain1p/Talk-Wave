@@ -389,25 +389,26 @@ def _note_if_nothing_was_heard(call, duration: float, final: list) -> None:
     NOTHING in our own logs said so — the failure was only visible in
     LiveKit's ICE candidates and the caller's browser console.
 
-    This can't distinguish a broken media path from a silent caller, so it
-    doesn't pretend to. It records the shape and names the candidates in
-    order of likelihood, which is what a future investigation needs.
+    What separates a broken media path from a silent caller is what reached
+    the booth: the page's setup note and the caller's microphone track both
+    ride the media connection, so a call that got neither never had one.
     """
     if call.heard["n"] or not call.record:
         return
 
     dj_spoke = any(who == "dj" and text.strip() for who, text in final)
+    setup = (getattr(call.record, "data", {}) or {}).get("setup", {}) or {}
     log.warning(
-        "no caller audio received room=%s duration=%.0fs dj_spoke=%s — "
-        "media path, blocked microphone, or a silent caller",
+        "no caller audio received room=%s duration=%.0fs dj_spoke=%s "
+        "caller_audio=%s — media path, blocked microphone, or a silent caller",
         call.ctx.room.name, duration, dj_spoke,
+        setup.get("callerAudio") or "never",
     )
     # The call page reports its own side since 0.99.13+ (attach_caller_note):
     # its mic permission and connection state are exactly the distinction the
-    # three-way shrug below could never make from in here. With the note
-    # present, name the cause; without it (an older cached widget, a page
-    # that died before sending), shrug honestly as before.
-    setup = (getattr(call.record, "data", {}) or {}).get("setup", {}) or {}
+    # booth could never make from in here. With the note present, name the
+    # cause; without it (an older cached widget, or a media path that never
+    # came up to carry it), the microphone track decides it below.
     mic = str(setup.get("callerMic") or "")
     conn = str(setup.get("callerConn") or "")
     lead = (f"No audio was ever received from the caller ({duration:.0f}s on "
@@ -428,13 +429,20 @@ def _note_if_nothing_was_heard(call, duration: float, final: list) -> None:
             "a media path that never established is the likely read; see "
             "off-LAN calling in the README.")
         return
+    if not setup.get("callerAudio"):
+        call.record.problem(
+            lead + "Neither the page's setup note nor the caller's microphone "
+            "ever reached the booth, and both travel on the call's media "
+            "connection — so it never came up, and the page told them there "
+            "was no audio path. For a caller off-LAN that is the UDP forward; "
+            "from the booth's own network, a browser hiding its address from "
+            "a router that won't loop the call back. docs/networking.md "
+            "covers both (\"Callers on your own network\").")
+        return
     call.record.problem(
-        lead + "Three things look like this from the booth: the caller was "
-        "off-LAN and the media path never established, their microphone was "
-        "blocked, or they genuinely said nothing. If they reported \"Could "
-        "not connect\" after about fifteen seconds of ringing, it is the "
-        "first — see off-LAN calling in the README."
-    )
+        lead + "The caller's microphone reached the booth, so the line was "
+        "up; the page sent no setup note (an older cached page), and the "
+        "likeliest read is that they said nothing or were muted.")
 
 def _note_if_the_voice_fell_behind(call) -> None:
     """Say so, in the record, when the TTS could not keep up with playback.

@@ -1341,6 +1341,25 @@ class TestTheStatusChipDescribesTheCallNotTheSDK(unittest.TestCase):
                       self.js)
         self.assertIn("djOnAir = false; djHasSpoken = false;", self.js)   # endCall
 
+    def test_a_call_whose_audio_never_came_up_is_not_called_ended(self):
+        # A media path that never establishes fires Disconnected a beat BEFORE
+        # connect() rejects, so the echo painted "Call ended" and the catch
+        # found the call over and never said "no audio path" — every desktop
+        # call from the operator's own wifi, 2026-10-01. Until setup finishes
+        # the echo defers to the catch, and ends the call itself only if no
+        # rejection follows (or a setup that never threw would hang the card).
+        start = self.js.index("room.on(LivekitClient.RoomEvent.Disconnected")
+        handler = self.js[start:start + 300]
+        self.assertIn("if (settled) { endCall(true); return; }", handler)
+        self.assertIn("setTimeout(() => { if (myGen === callGen) endCall(true); }",
+                      handler)
+        # Settled only once the whole setup has run — the mic, the note, the
+        # waiting line — because a publish can fail after connect() resolved.
+        self.assertLess(self.js.index("Connected — waiting for the DJ", start),
+                        self.js.index("settled = true;", start))
+        self.assertIn("'Reached the studio, but no audio path — try mobile data'",
+                      self.js)
+
 
 class TestTheCallButtonSaysWhatTheOperatorChose(unittest.TestCase):
     """The label is resolved server-side so the two surfaces cannot drift, and

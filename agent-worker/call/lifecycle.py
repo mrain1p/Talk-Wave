@@ -416,7 +416,26 @@ def attach_caller_note(ctx: JobContext, record) -> None:
 
     The message is caller-authored and therefore untrusted: two known keys,
     values clamped to short strings, everything else ignored.
+
+    One fact the booth CAN see for itself rides beside it: whether the
+    caller's microphone track ever arrived. The note needs a working media
+    path to travel, so the commonest failure — a path that never comes up —
+    left neither, and the record still shrugged. No note AND no track is that
+    failure, named (every desktop call from the operator's own wifi,
+    2026-10-01, while their phone connected fine).
     """
+
+    def _on_track(track, *_rest) -> None:
+        try:
+            from livekit import rtc
+
+            if record is not None and getattr(track, "kind", None) == \
+                    rtc.TrackKind.KIND_AUDIO:
+                record.setup_note("callerAudio", "arrived")
+        except Exception as e:                                # noqa: BLE001
+            log.debug("could not note the caller's audio: %s", e)
+
+    ctx.room.on("track_subscribed", _on_track)
 
     def _on_note(packet) -> None:
         if getattr(packet, "topic", "") != "talkwave.setup-note":

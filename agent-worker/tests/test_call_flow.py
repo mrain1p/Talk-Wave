@@ -375,6 +375,52 @@ class TestSilentCallIsRecorded(unittest.TestCase):
         postmortem._note_if_nothing_was_heard(s, 12.0, [])
         self.assertIn("the DJ did not speak", s.record.data["problems"][0]["what"])
 
+    def test_no_note_and_no_microphone_is_named_as_the_media_path(self):
+        # The note travels on the media connection, so the commonest failure
+        # — a path that never comes up — sent none, and the record shrugged at
+        # three suspects for every desktop call from the operator's own wifi
+        # (2026-10-01). The booth sees whether the microphone arrived; neither
+        # arriving IS that failure.
+        from call import postmortem
+
+        s = self._session(heard=0)
+        postmortem._note_if_nothing_was_heard(s, 21.0, [("dj", "Evening.")])
+        what = s.record.data["problems"][0]["what"]
+        self.assertIn("never came up", what)
+        self.assertIn("Callers on your own network", what)
+        self.assertNotIn("Three things look like this", what)
+
+    def test_a_microphone_that_arrived_is_not_called_a_media_path_failure(self):
+        from call import postmortem
+
+        s = self._session(heard=0)
+        s.record.setup_note("callerAudio", "arrived")
+        postmortem._note_if_nothing_was_heard(s, 40.0, [("dj", "Evening.")])
+        what = s.record.data["problems"][0]["what"]
+        self.assertIn("the line was up", what)
+        self.assertNotIn("never came up", what)
+
+    def test_the_caller_note_watch_records_an_arriving_microphone(self):
+        from livekit import rtc
+
+        from call import lifecycle
+        from call.record import CallRecord
+
+        handlers = {}
+
+        class _Room:
+            def on(self, name, fn):
+                handlers[name] = fn
+
+        record = CallRecord("callin-test", {"name": "Test DJ"}, {})
+        lifecycle.attach_caller_note(types.SimpleNamespace(room=_Room()), record)
+        handlers["track_subscribed"](
+            types.SimpleNamespace(kind=rtc.TrackKind.KIND_VIDEO), None, None)
+        self.assertNotIn("callerAudio", record.data.get("setup", {}))
+        handlers["track_subscribed"](
+            types.SimpleNamespace(kind=rtc.TrackKind.KIND_AUDIO), None, None)
+        self.assertEqual(record.data["setup"]["callerAudio"], "arrived")
+
 
 class TestCallRecordTimestamps(unittest.TestCase):
     """A call record has to say WHEN, unambiguously.
@@ -1592,6 +1638,126 @@ class TestComingBackFromAirIsAnnounced(unittest.TestCase):
         fire(types.SimpleNamespace(item=types.SimpleNamespace(
             role="assistant", text_content="Lining that up for you now.")))
         self.assertEqual(guard.last_dj_line, "Lining that up for you now.")
+
+    # Room 7fb56fb676bb, 2026-10-01: "Can you hear me?" ended during the
+    # hand-over line, which nothing may cut, so the SDK dropped the turn —
+    # no reply, not even in the conversation — and the DJ came back from a
+    # thirty-second hold with "you were telling me about your song".
+
+    def test_the_sdk_still_words_a_dropped_turn_the_way_it_is_listened_for(self):
+        # Its log line is the only place the SDK says which turn it dropped,
+        # so an upgrade that rewords it would bring the drop straight back.
+        import inspect
+
+        from livekit.agents.voice import agent_activity
+
+        from call import comeback
+
+        src = inspect.getsource(agent_activity)
+        self.assertIn(f'"{comeback.SDK_DROPPED_TURN}"', src)
+        self.assertIn('extra={"user_input": info.new_transcript}', src)
+
+    def test_a_dropped_turn_is_answered_once_the_line_is_done(self):
+        import logging
+
+        from call import comeback
+        from call.air import OnAirGuard
+
+        replies, handlers = [], {}
+
+        class _Session:
+            current_speech = None
+
+            def on(self, name, fn):
+                handlers[name] = fn
+
+            async def generate_reply(self, **kw):
+                replies.append(kw)
+
+        async def _run():
+            guard = OnAirGuard(types.SimpleNamespace(), {}, room=None)
+            comeback.catch_dropped_turns(_Session(), guard)
+            try:
+                logging.getLogger("livekit.agents").warning(
+                    comeback.SDK_DROPPED_TURN,
+                    extra={"user_input": "Can you hear me?"})
+                for _ in range(50):
+                    if replies:
+                        break
+                    await asyncio.sleep(0.01)
+            finally:
+                handlers["close"]()     # or the handler outlives this test
+
+        asyncio.run(_run())
+        self.assertEqual(len(replies), 1, "the dropped words were never answered")
+        self.assertEqual(replies[0].get("user_input"), "Can you hear me?")
+
+    def test_the_return_from_air_answers_what_the_hand_over_dropped(self):
+        import time
+
+        from call import comeback
+        from call.air import OnAirGuard
+
+        replies = []
+
+        class _Session:
+            async def generate_reply(self, **kw):
+                replies.append(kw)
+
+        guard = OnAirGuard(types.SimpleNamespace(), {}, room=None)
+        guard.dropped_words = ["Can you hear me?"]
+        guard.dropped_at = time.monotonic()
+        asyncio.run(comeback.come_back(guard, _Session()))
+        self.assertEqual(replies[0].get("user_input"), "Can you hear me?")
+        self.assertIn("has not been answered", replies[0]["instructions"])
+        self.assertEqual(guard.dropped_words, [], "answered twice later")
+
+    def test_words_the_caller_has_moved_on_from_are_not_answered(self):
+        # A newer turn reached the DJ the ordinary way and got its own reply;
+        # answering the older one now answers a moment that has passed.
+        import time
+
+        from call import comeback
+        from call.floor import Floor
+
+        # Dropped a second ago, then the caller spoke: a real gap, because
+        # Windows' monotonic clock ticks every ~16ms and would tie the two.
+        guard = types.SimpleNamespace(dropped_words=["Can you hear me?"],
+                                      dropped_at=time.monotonic() - 1.0,
+                                      floor=Floor())
+        guard.floor.caller_spoke()
+        self.assertEqual(comeback.take_dropped(guard), "")
+        self.assertEqual(guard.dropped_words, [])
+
+    def test_a_return_the_station_cut_off_keeps_the_words_but_not_twice(self):
+        # Cut mid-reply, the words wait for the next clear — but the SDK had
+        # already added them to the conversation, so they must not go in again.
+        import time
+
+        from call import comeback
+        from call.air import OnAirGuard
+
+        class _Session:
+            async def generate_reply(self, **kw):
+                await asyncio.Event().wait()
+
+        guard = OnAirGuard(types.SimpleNamespace(), {}, room=None)
+        guard.dropped_words = ["Can you hear me?"]
+        guard.dropped_at = time.monotonic()
+
+        async def _run():
+            task = asyncio.create_task(comeback.come_back(guard, _Session()))
+            await asyncio.sleep(0)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(_run())
+        self.assertEqual(guard.dropped_words, ["Can you hear me?"])
+        self.assertEqual(comeback._as_their_message(guard, "Can you hear me?"),
+                         {}, "the words would be added to the conversation twice")
 
     def test_the_djs_own_action_gets_a_comeback_line_too(self):
         # mark_on_air() sets `on_air` directly, so the watch loop never saw a
