@@ -4845,9 +4845,18 @@
      other), and a list scrolling inside a sheet that cannot show its own
      dock is worse than a sheet that scrolls. The short-phone rule above
      stands there, untouched. */
+  /* …AND THE SHEET SCROLLS WHEN EVEN THE LIST'S FLOOR DOES NOT FIT. Two
+     rows is the list's floor, but the group around it could shrink to
+     nothing and `overflow: hidden` clipped what it lost: in a phone BROWSER,
+     whose own bar takes the height the installed app gets, the hero and the
+     booth left Up next a 63px group at 360x640 — its list wholly behind the
+     dock — and 64 of 104px of list at 360x698, with nothing to scroll to
+     (measured 2026-10-01). The group keeps its content as its floor now, and
+     the sheet scrolls only when that floor genuinely does not fit; where it
+     does (the installed app at 754) nothing has changed. */
   @media (max-width: 700px) and (min-height: 640px) {
-    body:not(.compact) .plscroll { overflow: hidden; }
-    body:not(.compact) .plscroll > .plqgroup { flex: 1 1 auto; min-height: 0; }
+    body:not(.compact) .plscroll { overflow-x: hidden; overflow-y: auto; }
+    body:not(.compact) .plscroll > .plqgroup { flex: 1 1 auto; min-height: min-content; }
     body:not(.compact) .plscroll > .plpanel:not(.plqueue) { flex: none; }
   }
 
@@ -5378,13 +5387,17 @@
        a fourth record could not be reached at all: "i can only see two
        things and cant scroll them" (operator's phone, 2026-09-06). Two rows
        is the floor; everything above that is whatever the hero and the
-       booth leave, and the body is the scroller. */
+       booth leave, and the body is the scroller.
+       The two rows are the body's HEIGHT as well as its minimum: flex grows
+       it from there, and it is what the group's own floor is measured from
+       (min-content, see the short-screen rule) — an auto height measured
+       the whole list instead, and the sheet scrolled at every size. */
     body:not(.compact) .card .plscroll .plqgroup .plpanel.plqueue {
       flex: 1 1 auto; min-height: 0;
     }
     body:not(.compact) .card .plscroll .plqgroup .plpanel.plqueue .plpanelbody {
-      height: auto; flex: 1 1 auto; min-height: calc(var(--plrow-h) * 2);
-      overflow-y: auto;
+      height: calc(var(--plrow-h) * 2); flex: 1 1 auto;
+      min-height: calc(var(--plrow-h) * 2); overflow-y: auto;
     }
     /* The ribbon is the screen's own foot at the handoff's height. */
     /* 46, was the handoff's 54 (operator, 2026-09-04): with the mark and

@@ -4,7 +4,7 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
-## 0.99.50
+## 0.99.51
 
 Calls that stay on your earbuds, a tidier phone card, and a DJ that stops losing what you say while the station has the mic.
 
@@ -13,18 +13,24 @@ Calls that stay on your earbuds, a tidier phone card, and a DJ that stops losing
 - **A call with no audio path says so.** When the audio connection never came up, the card read "Call ended" as if you had hung up; it now says it reached the studio but had no audio path, and the call record names that failure instead of listing three possible causes.
 - **Calling from a computer on your own network.** If phones on your wifi connect but a computer on the same wifi rings and drops, the networking guide explains why (the router isn't looping its traffic back) and has the fix, which keeps outside callers working.
 - **A takeover from the guide is logged by name.** The Requests tab showed a show put on air from the guide by its ID ("s_f10db9 for 60 min"); it now shows the show's name. Older entries keep the ID until they age out of the 48-hour log.
+- **Handing a show back from the guide shows up in Requests.** The guide's Hand back wrote nothing, so the tab showed a takeover going up and never coming down; it now logs "Takeover cancelled — back to the weekly schedule", the same line the DJ's own cancel writes.
 - **Long song titles stop shouting.** The player's title now steps down to fit its two lines instead of jumping to the biggest size, and the artist and album come up a size.
 - **More room on the phone.** The player's controls and the phone face's Call row and meter are shorter, giving the queue and the stage about 28px back. The open-lines question reads like the sentence above it, and "Also on the line" is gone.
+- **Up next stays reachable in a phone's browser.** In a mobile browser rather than the installed app, a shorter screen could push the queue behind the player's controls with no way to scroll to it; the player now scrolls just enough to show two rows of it.
 - **Landscape and the guide line up.** The ON AIR / OFF AIR switch matches the Call row beside it, SEND no longer sits under PAUSE, and the guide's little arrows are proper drawn chevrons.
 - **Under the hood:** the browser check that runs before every release stops failing at random on the settings page's sign-out button.
 
+## 0.99.50
+
+Released the same morning as 0.99.51 and folded forward — the full story rides v0.99.51's notes.
+
 ## 0.99.49
 
-Released the same morning as 0.99.50 and folded forward — the full story rides v0.99.50's notes.
+Released the same morning as 0.99.51 and folded forward — the full story rides v0.99.51's notes.
 
 ## 0.99.48
 
-Released the same morning as 0.99.50 and folded forward — the full story rides v0.99.50's notes.
+Released the same morning as 0.99.51 and folded forward — the full story rides v0.99.51's notes.
 
 ## 0.99.47
 
