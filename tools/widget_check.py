@@ -494,6 +494,13 @@ def check_controls(browser, rep: Report, base: str) -> None:
 # stop. Anything not named here gets pressed.
 PANEL_KEEP_OFF = {
     "logoutBtn": "signs out — everything after it would be pressing a gate",
+    # The dashboard's own sign-out clicks logoutBtn, which RELOADS the page.
+    # It ships hidden and appears once the sign-in probe lands, so whether
+    # the sweep reached it was a race: when it did, the reload destroyed the
+    # page under the next press and the sweep came up short — "tileOnAir:
+    # Execution context was destroyed" and 46 of 50, on 3 of 5 runs
+    # (2026-10-01), against a panel nothing had changed.
+    "dashLogoutBtn": "signs out via logoutBtn — reloads the page mid-sweep",
     "loginBtn": "the panel is already unlocked here; Unlock with no password "
                 "is the gate's own error path, not a control",
     "setPwBtn": "opens the change-password flow",

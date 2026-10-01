@@ -4,10 +4,11 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
-## 0.99.49
+## 0.99.50
 
-A tidier phone card, and a DJ that stops losing what you say while the station has the mic.
+Calls that stay on your earbuds, a tidier phone card, and a DJ that stops losing what you say while the station has the mic.
 
+- **Calls stay on your Bluetooth earbuds or car on Android.** Music played through your earbuds or the car until a call started, then the ring, the DJ and the music all jumped to the phone's loudspeaker. The call's sound now follows the call to the earbuds, the car or a wired headset, and only uses the loudspeaker when nothing else is connected.
 - **What you say during a hold is answered.** Speaking while the DJ was mid-way through its "this is going out on air" line threw your words away, and the DJ came back from the break picking up a conversation that never happened. It now answers what you actually said once the air is clear.
 - **A call with no audio path says so.** When the audio connection never came up, the card read "Call ended" as if you had hung up; it now says it reached the studio but had no audio path, and the call record names that failure instead of listing three possible causes.
 - **Calling from a computer on your own network.** If phones on your wifi connect but a computer on the same wifi rings and drops, the networking guide explains why (the router isn't looping its traffic back) and has the fix, which keeps outside callers working.
@@ -15,10 +16,15 @@ A tidier phone card, and a DJ that stops losing what you say while the station h
 - **Long song titles stop shouting.** The player's title now steps down to fit its two lines instead of jumping to the biggest size, and the artist and album come up a size.
 - **More room on the phone.** The player's controls and the phone face's Call row and meter are shorter, giving the queue and the stage about 28px back. The open-lines question reads like the sentence above it, and "Also on the line" is gone.
 - **Landscape and the guide line up.** The ON AIR / OFF AIR switch matches the Call row beside it, SEND no longer sits under PAUSE, and the guide's little arrows are proper drawn chevrons.
+- **Under the hood:** the browser check that runs before every release stops failing at random on the settings page's sign-out button.
+
+## 0.99.49
+
+Released the same morning as 0.99.50 and folded forward — the full story rides v0.99.50's notes.
 
 ## 0.99.48
 
-Released the same morning as 0.99.49 and folded forward — the full story rides v0.99.49's notes.
+Released the same morning as 0.99.50 and folded forward — the full story rides v0.99.50's notes.
 
 ## 0.99.47
 

@@ -92,6 +92,7 @@ from tests.test_widget import (
     TestTheCardWearsOneSurfaceFamily,
     TestThePlayersDockIsTwoBandsThatLineUp,
     TestTheStageSpeaksInOneVoice,
+    TestTheCallsSoundIsOpenedByTheCall,
     TestALongTitleStepsDownToFitItsLines,
     TestLandscapeSpendsTheAxisItHas,
     TestNotOnTheScheduleReadsAsAHeading,
