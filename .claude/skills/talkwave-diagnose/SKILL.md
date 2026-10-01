@@ -72,5 +72,35 @@ LiveKit host (docs/networking.md option 3; the TLS front-door section covers sig
 If an off-LAN caller fails NOW, check the config regressed before anything else:
 `docker logs <livekit> | grep "using external IPs"` must show the real public IPv4, not the
 LAN address — a re-pinned `node_ip`, a moved DHCP lease under the router rule, or newly
-appeared CGNAT are the three ways it comes back. Only then look elsewhere, and still do not
-diagnose it as a firewall problem on the caller's side.
+appeared CGNAT are the three ways it comes back. When LiveKit's validation of the public
+address fails, that line is replaced by `no external IPs found, using node IP` (preceded by
+`could not validate external IP`), so a bare grep for it prints nothing — read the startup
+lines whole. Only then look elsewhere, and still do not diagnose it as a firewall problem on
+the caller's side.
+
+## A computer on the LAN rings and drops while phones connect
+
+Measured 2026-10-01 on the live deployment: every call from a desktop browser on the
+operator's own wifi died at ICE, while phones on the same wifi and on mobile data connected.
+**Compare the devices before naming a cause** — `participant closing` lines carry
+`clientInfo` (os, browser) — then read the ICE lines, not the transcript:
+
+- the failing pair: `"state": "failed"`, remote `srflx` = the deployment's OWN public IP,
+  `"requestsReceived": 0` — the router did not loop it back;
+- the failing browser's host candidates: `[remote][filtered] udp host :<port>` — mDNS names,
+  dropped by LiveKit;
+- a working phone's pair: remote `udp host 192.168.x.x` — it showed its real address and
+  never needed the router.
+
+LiveKit's own startup says the same: `could not validate external IP … context canceled`,
+because the validation loops through the router too. On 2026-09-06 that validation passed on
+the same box; a router that once looped back can stop. The fix is docs/networking.md
+"Callers on your own network": host networking, `advertise_internal_ip`,
+`skip_external_ip_validation`, `interfaces.includes`, and `LIVEKIT_URL` on the host address.
+**The validation skip is load-bearing:** without it, host networking on a box with a public
+IPv6 fell back to `["<LAN>/<LAN>", "<v6>/<v6>"]` — the public IPv4 gone, every IPv4 caller
+off the LAN stranded. That was seen live and rolled back within two minutes.
+
+What still misleads here: the widget says *Call ended* instead of its no-audio-path message for
+this failure, and the worker's no-audio postmortem names off-LAN, a blocked mic or silence —
+never "a LAN browser with no route".

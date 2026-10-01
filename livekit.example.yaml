@@ -14,6 +14,14 @@ rtc:
   # so a LAN value silently breaks every off-LAN caller while working perfectly on the LAN.
   # It exists for bridge networking, where LiveKit would otherwise advertise its container IP.
   # node_ip: 192.168.1.10
+  # A computer on your own LAN whose browser hides its address (a random .local name, typically until
+  # the site holds a saved mic permission) reaches the public address only if your router loops
+  # traffic back. If its calls ring and drop while phones connect, offer the LAN address as well.
+  # That needs host networking, the LAN interface below, and BOTH lines (without the second, a
+  # router that won't loop back drops the public address, and every off-LAN caller with it):
+  # see "Callers on your own network" in docs/networking.md.
+  # advertise_internal_ip: true
+  # skip_external_ip_validation: true
   # Restrict candidate/bind enumeration to your real interface (ip -o addr). Without this, VM
   # bridges and docker networks are enumerated too — slow connectivity checks at best, and a
   # bridge holding a tentative IPv6 crash-loops the media port bind at worst.

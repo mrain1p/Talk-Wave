@@ -4,6 +4,10 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+- **Calling from a computer on your own network.** If phones on your wifi connect but a computer on the same wifi rings and drops, the networking guide now explains why (the router isn't looping its traffic back) and has the fix, which keeps outside callers working.
+
 ## 0.99.47
 
 A page-by-page read of the settings page. Nothing was broken — every finding was the page being quietly less readable than it looks.

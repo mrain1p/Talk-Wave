@@ -28,7 +28,8 @@
 #     See docs/networking.md.
 #   - Want callers from outside your network? Follow docs/networking.md (one router
 #     rule), then swap the two command lines under livekit-server — LAN callers keep
-#     working through your router.
+#     working through your router, if it loops traffic back. If a computer on your LAN
+#     rings and drops while phones connect, see "Callers on your own network" there.
 
 services:
   livekit-server:
