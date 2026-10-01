@@ -82,11 +82,18 @@ The same applies to any bind-mounted config a service reads once at startup.
    `CALLIN_ADMIN_KEY` set, **before** it is reachable beyond the LAN.
 6. Set `SUBWAVE_STREAM_URL` to the station's **public https** stream.
 
-## The three failures that look like something else
+## The four failures that look like something else
 
 **Hangs at "Ringing" while every server check passes.** LiveKit is advertising an address the
 browser cannot reach. Set `HOST_IP` and recreate. The same cause shows up as webhooks arriving
 on a `172.x` address. Firewall needs **UDP 7882** and **TCP 7881**.
+
+**A computer on the LAN rings and drops; phones connect.** The browser hides its LAN address,
+so its only route is the public one through the router, and the router won't loop it back.
+Offer the LAN address too — docs/networking.md "Callers on your own network". It moves
+LiveKit onto the host network, so `LIVEKIT_URL` and the proxy's `/rtc` route move to the host
+address in the same change, and `skip_external_ip_validation` must come with it or the public
+address drops out for every caller off the LAN.
 
 **The DJ is there but there is no music.** An `http://` stream on an `https://` page is blocked
 as mixed content — *silently*. Set the station stream URL to an https one. Note the station's
