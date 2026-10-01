@@ -4856,6 +4856,64 @@ class TestTheStageSpeaksInOneVoice(unittest.TestCase):
         self.assertNotIn(".stagefoot", self.css)
 
 
+class TestTheCallsSoundIsOpenedByTheCall(unittest.TestCase):
+    """On Android, the call's audio graph lives in a context opened AFTER the
+    microphone went live.
+
+    Chrome there fixes a stream's kind when it opens — call audio with a mic
+    live, media without — and the context was opened at the Call press, so
+    the whole call went out as media. The mic moves Bluetooth earbuds or a
+    car onto hands-free and parks the media link, and the ring, the DJ and
+    the station came out of the phone's loudspeaker (operator, 2026-10-01:
+    "plays the music just fine on my earbuds but once i make a callin to the
+    booth it changes to just be speaker phone. similar experience when in my
+    car"). Driven end to end against a fake LiveKit with an Android user
+    agent: every source lands in the context born after the mic, in both
+    pickup orders, and a desktop call is untouched.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = widget_js()["call.js"]
+
+    def test_the_move_runs_once_the_mic_is_live_and_before_its_meter(self):
+        start = self.js.split("async function startCall")[1]
+        live = start.index("await room.localParticipant.setMicrophoneEnabled(true);")
+        move = start.index("moveCallSoundOntoTheCall();")
+        meter = start.index("anYou = analyserFor(mic?.track?.mediaStreamTrack);")
+        self.assertLess(live, move)
+        self.assertLess(move, meter)
+
+    def test_it_is_androids_alone(self):
+        # Nowhere else splits a page's sound by kind, and on an iPhone a
+        # context opened outside a tap may never start.
+        self.assertIn("const SOUND_OPENS_BY_KIND = /Android/i.test(", self.js)
+        fn = self.js.split("function moveCallSoundOntoTheCall")[1][:900]
+        self.assertIn("if (!SOUND_OPENS_BY_KIND || ctxOpenedInCall) return;", fn)
+
+    def test_a_pickup_that_beat_the_mic_comes_across_whole(self):
+        # The DJ's meter included: an analyser left in the closed context
+        # read silence for the rest of the call.
+        fn = self.js.split("function moveCallSoundOntoTheCall")[1][:900]
+        self.assertIn("if (fx || stationMix || djTrack) rebuildGraph();", fn)
+        rebuild = self.js.split("function rebuildGraph()")[1][:1200]
+        self.assertIn("anDj = analyserFor(djTrack.mediaStreamTrack);", rebuild)
+        # The route-change ladder's rung 2 is the same rewire.
+        ladder = self.js.split("async function checkAudioAlive")[1][:1400]
+        self.assertIn("rebuildGraph();", ladder)
+
+    def test_it_is_given_back_when_the_call_ends(self):
+        # Call audio with no call up goes to the EARPIECE on Android — the
+        # next ring would be a whisper. Both ways a call ends.
+        end = self.js.split("function endCall(remote)")[1][:1800]
+        self.assertIn("retireCallSound();", end)
+        catch = self.js.split("if (myGen !== callGen || callEnded) return;")[1][:2400]
+        self.assertIn("retireCallSound();", catch)
+        retire = self.js.split("function retireCallSound()")[1][:500]
+        # …unless the next call has already begun, whose own call it is.
+        self.assertIn("if (gen !== callGen || !ctxOpenedInCall) return;", retire)
+
+
 class TestALongTitleStepsDownToFitItsLines(unittest.TestCase):
     """The player's song title, sized to the lines it has (fitTitle).
 

@@ -3442,20 +3442,7 @@
       if (!ctxLooksDead()) return;
       console.warn('Talk Wave: audio route changed (' + why + ') — rebuilding the graph');
       // Rung 2: a fresh context at the live rate, everything rewired.
-      const hadStation = !!stationMix;
-      dropEffect(); unmixStation();
-      resetCtx();
-      if (djTrack) {
-        if (wireEffect(djTrack)) { if (djEl) djEl.muted = true; }
-        else if (djEl) { djEl.muted = false; djEl.play?.(); }
-        anDj = analyserFor(djTrack.mediaStreamTrack);
-      }
-      const mic = room && room.localParticipant
-        && room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
-      if (mic && mic.track) anYou = analyserFor(mic.track.mediaStreamTrack);
-      if (hadStation) { tuneOut(); tuneIn(); }
-      applyVolume();
-      routeAudio(onSpeaker);
+      rebuildGraph();
       // Rung 3: if even the fresh context refuses to run, the element is
       // the way out.
       recoverTimers.push(setTimeout(() => {
@@ -3471,9 +3458,82 @@
     }
   }
 
+  // A fresh context with everything rewired into it: the DJ (through the
+  // effect, or plain beside a mixed station), the station by retuning (a
+  // captured element cannot be given back), both meters. The ladder's rung 2,
+  // and the call's own route below asks for the same rewire for its reason.
+  function rebuildGraph() {
+    const hadStation = !!stationMix;
+    dropEffect(); unmixStation();
+    resetCtx();
+    if (djTrack) {
+      if (wireEffect(djTrack)) { if (djEl) djEl.muted = true; }
+      else if (djEl) { djEl.muted = false; djEl.play?.(); }
+      anDj = analyserFor(djTrack.mediaStreamTrack);
+    }
+    const mic = room && room.localParticipant
+      && room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
+    if (mic && mic.track) anYou = analyserFor(mic.track.mediaStreamTrack);
+    if (hadStation) { tuneOut(); tuneIn(); }
+    applyVolume();
+    routeAudio(onSpeaker);
+  }
+
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) checkAudioAlive('page visible');
   });
+
+  // -------------------------------------------- the call's own sound route
+  // ON ANDROID, THE CALL'S SOUND HAS TO BE OPENED BY THE CALL. Chrome there
+  // decides what KIND of sound a stream is when the stream opens — call
+  // audio if a microphone is live at that moment, media if not — and never
+  // revisits it. The context this card plays a call through is opened at
+  // the Call press, inside the tap that unlocks it, a breath before the mic:
+  // so the ring, the DJ and the station bed all went out as MEDIA. The
+  // instant the mic engages, the phone moves Bluetooth earbuds or a car onto
+  // their hands-free link and parks the media one — and media with nowhere
+  // to go comes out of the phone's own loudspeaker (operator, 2026-10-01:
+  // "plays the music just fine on my earbuds but once i make a callin to the
+  // booth it changes to just be speaker phone. similar experience when in my
+  // car").
+  //
+  // So once the mic is live the graph moves into a context opened THEN,
+  // which Chrome opens as call audio and routes with the call: the earbuds,
+  // the car, a wired headset, and the loudspeaker only when there is nothing
+  // else, which is Chrome's own choice for a call (wired, USB, Bluetooth,
+  // then speakerphone — never the earpiece). Android only: nowhere else
+  // splits a page's sound by kind, and on an iPhone a context opened outside
+  // a tap may never start.
+  const SOUND_OPENS_BY_KIND = /Android/i.test(navigator.userAgent || '');
+  let ctxOpenedInCall = false;
+
+  function moveCallSoundOntoTheCall() {
+    if (!SOUND_OPENS_BY_KIND || ctxOpenedInCall) return;
+    ctxOpenedInCall = true;
+    // A pickup that beat the mic comes across whole — a voice or station in
+    // the graph, and the DJ's meter even on the element path: an analyser
+    // left in the closed context reads silence for the rest of the call
+    // (caught driving a pickup ahead of the mic, 2026-10-01). Otherwise the
+    // next sound simply opens the new one — a ring mid-cadence loses the
+    // rest of one burst, at the moment the headset is changing profile anyway.
+    if (fx || stationMix || djTrack) rebuildGraph();
+    else resetCtx();
+  }
+
+  // …and gives it back after the call. Opened as call audio, it stays call
+  // audio once the mic is gone, and Android sends call audio with no call up
+  // to the EARPIECE: the next ring would be a whisper. After the hang-up
+  // tone, which plays through it — unless the next call has already begun,
+  // whose own call it then is.
+  function retireCallSound() {
+    if (!ctxOpenedInCall) return;
+    const gen = callGen;
+    setTimeout(() => {
+      if (gen !== callGen || !ctxOpenedInCall) return;
+      ctxOpenedInCall = false;
+      resetCtx();
+    }, 1500);
+  }
 
   function stationLevel() {
     const s = (live && live.stream) || {};
@@ -3974,6 +4034,11 @@
       } else if (pttOn()) {
         paintPtt();
       }
+      // The mic is live, so the call has its own sound route now — and the
+      // context opened at the press is on the wrong one (see
+      // moveCallSoundOntoTheCall). Before the meter below, which joins the
+      // new context.
+      moveCallSoundOntoTheCall();
 
       const mic = room.localParticipant.getTrackPublication(
         LivekitClient.Track.Source.Microphone);
@@ -4022,6 +4087,7 @@
       callGen += 1;
       callEnded = true;
       if (room) { try { await room.disconnect(); } catch (e) {} }
+      retireCallSound();
       // Three failures wore the same "Could not connect" label, and the most
       // common one is the least obvious: the room is joined and signalling is
       // fine, but audio has no route — so it rings for ~15s and then dies.
@@ -4209,6 +4275,7 @@
     // holding it here outlives nothing.
     const endedRoom = releaseRoom();
     if (room) { if (!remote) room.disconnect(); playSound('hangup'); }
+    retireCallSound();
     room = null; muted = false;
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     dropEffect();
