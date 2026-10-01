@@ -4805,6 +4805,23 @@ class TestThePlayersDockIsTwoBandsThatLineUp(unittest.TestCase):
         self.assertIn("body:not(.compact) .card .pltabs "
                       "{ padding: 10px 16px 8px; }", block)
 
+    def test_the_list_is_reachable_where_its_floor_does_not_fit(self):
+        # In a phone BROWSER the bar takes the height the installed app gets,
+        # and Up next was clipped behind the dock with nothing to scroll to:
+        # a 63px group at 360x640, 64 of 104px of list at 360x698 (measured
+        # 2026-10-01). The group keeps its two rows; the sheet scrolls only
+        # when even those do not fit.
+        short = self.css.split(
+            "@media (max-width: 700px) and (min-height: 640px) {")[1].split("\n  }")[0]
+        self.assertIn("body:not(.compact) .plscroll { overflow-x: hidden; "
+                      "overflow-y: auto; }", short)
+        self.assertIn("min-height: min-content;", short)
+        self.assertNotIn("min-height: 0;", short)
+        # …measured from the two rows, not the whole list: an auto height
+        # made the floor every record and the sheet scrolled at every size.
+        block = _phone_surface_block(self.css)
+        self.assertIn("height: calc(var(--plrow-h) * 2); flex: 1 1 auto;", block)
+
     def test_the_docks_gave_their_room_to_what_is_above_them(self):
         # Operator, 2026-10-01: the pause, send and volume rows "should be
         # smaller and shorter to allow more room for the elements above

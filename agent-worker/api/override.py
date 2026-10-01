@@ -236,5 +236,14 @@ async def handle_override_clear(request: web.Request) -> web.Response:
     from api import guide
 
     guide.forget()
+    if isinstance(res, dict) and res.get("ok"):
+        from call import daylog
+
+        # The undo belongs in the log beside the pin: the player's Requests
+        # tab showed a guide takeover going up and never coming down. The
+        # words are the DJ's own cancel's (subwave_cancel_takeover), so the
+        # two routes to one action leave one shape of line.
+        daylog.note("takeover lifted", "back to the weekly schedule",
+                    tier=caller_tier(request))
     return _cors(request, web.json_response(
         res if isinstance(res, dict) else {"ok": False}))

@@ -472,6 +472,67 @@ class TestTheGuidesTakeoverIsLoggedByTheShowsName(_TempStores):
             self._logged({"showId": None, "minutes": 60}, {}),
             "Default programming for 60 min")
 
+    def _cleared(self, answer):
+        """Hand back through the real router against a station that answers
+        `answer`; the day-log's entries afterwards."""
+        import asyncio
+        from pathlib import Path
+        from unittest import mock
+
+        from aiohttp.test_utils import TestClient, TestServer
+
+        import settings as settings_store
+        import token_server
+        from api import override
+        from call import daylog
+
+        class _St(override.StationClient):
+            def __init__(self):
+                pass
+
+            async def clear_pinned_show(self):
+                return answer
+
+            async def aclose(self):
+                pass
+
+        async def go():
+            client = TestClient(TestServer(token_server.build_app()))
+            await client.start_server()
+            try:
+                r = await client.post("/station/override/clear", json={})
+                return r.status
+            finally:
+                await client.close()
+
+        settings_store.save({"allow_takeover": "open", "front_access": "open"})
+        old_path = os.environ.get("DAYLOG_PATH")
+        os.environ["DAYLOG_PATH"] = str(Path(self._tmp.name) / "day-log.json")
+        orig = override.StationClient
+        override.StationClient = _St
+        try:
+            with mock.patch("api.auth._auth_configured", return_value=True):
+                self.assertEqual(asyncio.run(go()), 200)
+            return daylog.recent(5)
+        finally:
+            override.StationClient = orig
+            if old_path is None:
+                os.environ.pop("DAYLOG_PATH", None)
+            else:
+                os.environ["DAYLOG_PATH"] = old_path
+
+    def test_the_hand_back_is_logged_beside_the_pin(self):
+        # The Requests tab showed a guide takeover going up and never coming
+        # down: the guide's Hand back wrote nothing. Same words the DJ's own
+        # cancel writes, so the two routes leave one shape of line.
+        entries = self._cleared({"ok": True})
+        self.assertEqual([(e["kind"], e["what"]) for e in entries],
+                         [("takeover lifted", "back to the weekly schedule")])
+
+    def test_a_refused_hand_back_logs_nothing(self):
+        # The station said no — nothing came down, so nothing is written.
+        self.assertEqual(self._cleared({"ok": False, "error": "no"}), [])
+
 class TestUsageControls(unittest.TestCase):
     """The guard against runaway spend — every refusal must fire, phrased
     in-world, and 0 must mean unlimited."""
