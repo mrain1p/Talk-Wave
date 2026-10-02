@@ -4,6 +4,20 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.52
+
+A tidy-up of the card in the web view and on the station page, and a player that leads with what it has.
+
+- **The player's booth box is the same width with or without words.** While the DJ had said nothing it shrank to the size of its own label, with an empty line under it; it is full width now, its label centred while it waits.
+- **The volume slider lines up with the request field.** At desktop width it stopped halfway across, with a gap before the level meter; it now runs to the request field's edge, with the meter above SEND.
+- **The tab bar keeps the card's rounded corners** on the phone face at desktop width, instead of poking out square below them.
+- **A slimmer YOU | DJ row.** It is a readout, not a button, so it sits a step below CALL THE BOOTH instead of matching it.
+- **The embed lines up.** On the station page the YOU | DJ row ran edge to edge while everything else kept its inset; it lines up now, and the stage shows the open-lines label where it used to show a divider over an empty box.
+- **A scrolling song title fades at both ends while it moves**, so the station page's ticker no longer looks cut off mid-scroll.
+- **The player opens on the tab that has something in it.** With nothing queued it shows Just played instead of "Nothing queued", the tabs carry a count, and a tab you pick stays picked.
+- **No more lone clock.** A track the station sends no length for shows its time as "2:47 playing" under the album, instead of on a row of its own.
+- **Easier-to-read small labels.** The grey behind YOU, DJ, JUST PLAYED and the like was below the usual readability minimum; it is a step lighter in dark mode and a step darker in light mode.
+
 ## 0.99.51
 
 Calls that stay on your earbuds, a tidier phone card, and a DJ that stops losing what you say while the station has the mic.

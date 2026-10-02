@@ -411,6 +411,9 @@
         <span class="plartwrap"><img class="plglow" id="plGlow" alt="" aria-hidden="true" hidden /><span class="plart"><img id="plArt" alt="" hidden /><span class="plmono" id="plMono" aria-hidden="true" hidden></span></span></span>
         <div class="pltrack" id="plTrack"></div>
         <div class="plalbum" id="plAlbum"></div>
+        <!-- A record the station gave no length for: its counting clock, on the
+             record's own lines rather than alone on a row (see paintNowPlaying). -->
+        <div class="plclock" id="plClock" hidden><span class="plclockt" id="plClockT"></span>playing</div>
         <div class="pltags" id="plTags"></div>
         <div class="plprog"><span class="plel" id="plElapsed"></span><span class="plbar" aria-hidden="true"><span class="plfill"></span></span><span class="pllen" id="plLen"></span></div>
         <!-- Up next and Just played share ONE card, its two faces worn as
@@ -422,8 +425,8 @@
              /state snapshot. -->
         <div class="plqgroup">
         <div class="pltabs" role="tablist" aria-label="Queue and history">
-          <button type="button" class="pltab on" id="plTabNext" role="tab" aria-selected="true"><span class="ppip" id="plNextPip" aria-hidden="true"></span>Up next</button>
-          <button type="button" class="pltab" id="plTabPast" role="tab" aria-selected="false" hidden>Just played</button>
+          <button type="button" class="pltab on" id="plTabNext" role="tab" aria-selected="true"><span class="ppip" id="plNextPip" aria-hidden="true"></span>Up next<span class="plcount" id="plNextCount"></span></button>
+          <button type="button" class="pltab" id="plTabPast" role="tab" aria-selected="false" hidden>Just played<span class="plcount" id="plPastCount"></span></button>
           <!-- The booth's receipt printer (operator, 2026-09-01): the
                station day-log — queues, shoutouts, takeovers from calls,
                texts and operator commands, tier-attributed, never caller

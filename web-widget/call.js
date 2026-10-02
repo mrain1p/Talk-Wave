@@ -1171,6 +1171,7 @@
         $('plElapsed').textContent = '';
         $('plLen').textContent = '';
         if (prog) prog.hidden = true;
+        if ($('plClock')) $('plClock').hidden = true;
         deck.style.setProperty('--pl-progress', '0%');
         }
       return;
@@ -1207,15 +1208,26 @@
     // the bar) — but only while the record actually runs, so the pinned
     // "3:37 — 3:37" the 2026-08-24 review reported cannot return: past the
     // length plus a grace the whole row hides, and a record whose length
-    // the station never sent keeps the counting clock alone, no bar and no
-    // end time to be honest about — same deal as the header cluster above.
+    // the station never sent keeps its counting clock with no bar and no
+    // end time to be honest about — inline on the record's lines, below.
     if (deck) {
       const running = !!npLength && secs < npLength + 8;
-      $('plElapsed').textContent = ticking ? mmss(shown) : '';
+      // NO LENGTH, NO ROW. The counting clock of a record the station gave
+      // no length for stood alone on a row of its own — an amber figure over
+      // nothing, the sheet's one orphan (design review, 2026-10-02). It rides
+      // the record's own lines now, as "16:46 playing"; the row is kept for
+      // a bar with two ends to be honest about.
+      const inline = !running && ticking;
+      $('plElapsed').textContent = running ? mmss(shown) : '';
       $('plLen').textContent = running ? mmss(npLength) : '';
       const bar = prog && prog.querySelector('.plbar');
       if (bar) bar.hidden = !running;
-      if (prog) prog.hidden = !(running || ticking);
+      if (prog) prog.hidden = !running;
+      const clk = $('plClock');
+      if (clk) {
+        clk.hidden = !inline;
+        $('plClockT').textContent = inline ? mmss(shown) : '';
+      }
       deck.style.setProperty('--pl-progress', running ? pct : '0%');
       // The header's wall clock rides the same tick while the sheet is up.
     }
@@ -5943,7 +5955,7 @@
     const meta = document.createElement('div');
     meta.className = 'plmeta';
     block.append(art, meta);
-    ['plTrack', 'plAlbum', 'plTags'].forEach((id) => {
+    ['plTrack', 'plAlbum', 'plClock', 'plTags'].forEach((id) => {
       const el = $(id);
       if (el) meta.appendChild(el);
     });
@@ -6379,6 +6391,9 @@
   // itself while there is history, and loses the floor if its history
   // empties under it.
   let plTab = 'next';
+  // Whether the reader has chosen a tab. Until they do, the card opens on
+  // the face that has rows (below); after, their choice holds.
+  let plTabPicked = false;
   let plQueueCounts = { next: 0, past: 0 };
 
   function paintQueueTabs() {
@@ -6389,6 +6404,18 @@
     // The Booth face is the operator's receipt printer — offered only when
     // the server said this caller's key clears operator mode.
     if (tb) tb.hidden = !(plAbilities && plAbilities.command);
+    // HOW MANY, as a bare figure beside the label and only when there is
+    // something to count — not the meta words the 2026-09-01 ruling took off
+    // the shoulder. And THE FACE WITH ROWS: an empty Up next greeted the
+    // reader with "Nothing queued" while three records sat behind Just
+    // played (design review, 2026-10-02). 'next' is still the resting face
+    // whenever it has anything in it, and a tab the reader picks holds.
+    const nc = $('plNextCount'), pc = $('plPastCount');
+    if (nc) nc.textContent = plQueueCounts.next ? String(plQueueCounts.next) : '';
+    if (pc) pc.textContent = plQueueCounts.past ? String(plQueueCounts.past) : '';
+    if (!plTabPicked) {
+      plTab = (!plQueueCounts.next && plQueueCounts.past) ? 'past' : 'next';
+    }
     if ((tp.hidden && plTab === 'past')
         || (!tb || tb.hidden) && plTab === 'booth') plTab = 'next';
     const face = plTab;
@@ -6408,11 +6435,11 @@
                                     face === 'next' && !!plQueueCounts.next);
   }
 
-  $('plTabNext').onclick = () => { plTab = 'next'; paintQueueTabs(); };
-  $('plTabPast').onclick = () => { plTab = 'past'; paintQueueTabs(); };
+  $('plTabNext').onclick = () => { plTab = 'next'; plTabPicked = true; paintQueueTabs(); };
+  $('plTabPast').onclick = () => { plTab = 'past'; plTabPicked = true; paintQueueTabs(); };
   if ($('plTabBooth')) {
     $('plTabBooth').onclick = () => {
-      plTab = 'booth'; paintQueueTabs(); refreshBoothLog();
+      plTab = 'booth'; plTabPicked = true; paintQueueTabs(); refreshBoothLog();
     };
   }
 
