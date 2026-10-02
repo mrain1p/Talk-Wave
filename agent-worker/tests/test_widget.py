@@ -932,6 +932,36 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
         self.assertNotIn("--lines-h:", self.css)
         self.assertNotIn("--action-h:", self.css)
 
+    def test_the_level_band_sits_a_step_below_the_call_button(self):
+        # The instrument is read, not pressed; at the full control height it
+        # was as loud as the one action on the face (operator's web view,
+        # 2026-10-02). The mid-call volume box beside it shares the height so
+        # the band stays one row.
+        duplex = self.css.split("  .meters .duplex {")[1].split("}")[0]
+        vol = self.css.split("  .rig.on .meters .vol {")[1].split("}")[0]
+        for rule in (duplex, vol):
+            self.assertIn("height: calc(var(--control-h) - 8px)", rule)
+
+    def test_the_embeds_instrument_keeps_the_cards_inset(self):
+        # `padding: 5px 0 0` zeroed the band's own side padding too, so the
+        # instrument ran edge to edge on the station page while the Call row
+        # under it kept the card's inset (operator's embed, 2026-10-02).
+        self.assertIn(
+            "body.compact .meters { padding-top: 5px; padding-bottom: 0; }",
+            self.css)
+        self.assertNotIn("body.compact .meters { padding: 5px 0 0; }", self.css)
+
+    def test_a_riding_title_fades_its_leading_edge_only_while_it_rides(self):
+        # The far end of the ride cut the title hard at the left wall —
+        # "EAKY WITH YOU" on the station page (2026-10-02). The fade rides
+        # the slide's own clock and is zero while the title rests.
+        self.assertIn("@property --marq-lead {", self.css)
+        marq = self.css.split("  @keyframes marqlead {")[1].split("\n  }")[0]
+        self.assertIn("0%, 14% { --marq-lead: 0px; }", marq)
+        self.assertIn(
+            "animation: marqlead var(--marq-t, 9s) linear infinite alternate;",
+            self.css)
+
     def test_reading_back_a_finished_call_scrolls_rather_than_grows(self):
         # It used to open the box to 200px, which was safe only because there
         # was no call left for the resize to interrupt. The box scrolls now, so
@@ -1961,6 +1991,39 @@ class TestNoStyleUsesAnUndefinedToken(unittest.TestCase):
     This reads style.css the way a browser would: every `var(--x)` must name a
     custom property that is DEFINED somewhere in the sheet. It would have
     failed the moment that input was written."""
+
+    def test_the_quiet_label_grey_reads_on_every_surface(self):
+        # --sage-dim carries the small labels — YOU, DJ, JUST PLAYED, UNTIL…
+        # — and sat at 3.3-3.9:1 in both default themes, under the 4.5:1 floor
+        # for text that size (design review, 2026-10-02). Computed from the
+        # sheet's own palettes, so a later tweak that slips under fails here.
+        import re
+
+        css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+
+        def lum(hexv):
+            chans = []
+            for i in (0, 2, 4):
+                c = int(hexv[i:i + 2], 16) / 255
+                chans.append(c / 12.92 if c <= 0.04045
+                             else ((c + 0.055) / 1.055) ** 2.4)
+            return 0.2126 * chans[0] + 0.7152 * chans[1] + 0.0722 * chans[2]
+
+        def ratio(a, b):
+            hi, lo = sorted((lum(a), lum(b)), reverse=True)
+            return (hi + 0.05) / (lo + 0.05)
+
+        palettes = 0
+        for m in re.finditer(r"--sage-dim:\s*#([0-9a-fA-F]{6})", css):
+            block = css[css.rfind("{", 0, m.start()):css.find("}", m.end())]
+            tokens = dict(re.findall(r"--([a-z-]+):\s*#([0-9a-fA-F]{6})", block))
+            for ground in ("pine", "granite", "granite-hi"):
+                self.assertIn(ground, tokens, "a palette without its grounds")
+                self.assertGreaterEqual(
+                    ratio(m.group(1), tokens[ground]), 4.5,
+                    f"--sage-dim #{m.group(1)} on --{ground} #{tokens[ground]}")
+            palettes += 1
+        self.assertEqual(palettes, 4, "the dark and light palettes, both copies")
 
     def test_every_var_reference_is_defined(self):
         import re
@@ -4638,6 +4701,20 @@ class TestTheGuideCardRidesItsOwnSwitch(_TempStores):
         self.assertIn("border: 0", face)
         self.assertNotIn("faceseg", self.css)
 
+    def test_the_row_keeps_the_cards_rounded_corners(self):
+        # The card only clips while a sheet is up, so on the phone face the
+        # row's square foot stood out past the card's corners at desktop
+        # width (operator's web view, 2026-10-02). Clipped, not overflow-
+        # hidden — the sliding rule rides 1px above the row — and only where
+        # the row sits inside the card (not the phone's fixed foot, not the
+        # landscape rail).
+        self.assertIn(
+            "clip-path: inset(-3px 0 0 0 round 0 0 var(--skin-radius) "
+            "var(--skin-radius));", self.css)
+        self.assertIn("@media (min-width: 501px) and (orientation: portrait),\n"
+                      "         (min-width: 501px) and (min-height: 561px) {",
+                      self.css)
+
     def test_the_lit_rule_follows_the_finger_across_the_band(self):
         # What makes the band a PAGER rather than three buttons: the rule
         # tracks the drag, and only settles when the swipe does.
@@ -4754,13 +4831,62 @@ class TestThePlayersDockIsTwoBandsThatLineUp(unittest.TestCase):
 
     def test_the_fader_reaches_the_request_fields_edge(self):
         # .plctl's gap is 6 and .plreq's is 10, so the level carries the 4 —
-        # on the surface where the fader FLEXES. The 620x544 card keeps its
-        # own `margin-left: auto`, which holds the level against the row's
-        # right edge instead.
+        # at EVERY width now. The 620x544 card capped the fader at 320px and
+        # pushed the level to the far edge with `margin-left: auto`, which
+        # left a fader-sized hole in the strip and lined it up with nothing
+        # under it (operator's web view, 2026-10-02).
         self.assertIn(
             "body:not(.compact) .card .pldock .plvu { margin-left: 4px; }",
             self.css)
-        self.assertIn(".pldock .plvu { margin-left: auto; }", self.css)
+        self.assertNotIn(".pldock .plvu { margin-left: auto; }", self.css)
+        self.assertNotIn("#plVol { max-width: 320px; }", self.css)
+
+    def test_the_queue_opens_on_the_face_that_has_rows(self):
+        # An empty Up next greeted the reader with "Nothing queued" while
+        # three records sat behind Just played (design review, 2026-10-02).
+        # 'next' stays the resting face whenever it has rows, and a tab the
+        # reader picks holds; the figure beside a label shows only when
+        # there is something to count.
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        tabs = js.split("function paintQueueTabs")[1].split("function paintPlayerButtons")[0]
+        self.assertIn("plTab = (!plQueueCounts.next && plQueueCounts.past) ? 'past' : 'next';",
+                      tabs)
+        self.assertIn("if (!plTabPicked) {", tabs)
+        for tab in ("plTabNext", "plTabPast", "plTabBooth"):
+            handler = tabs.split(f"$('{tab}').onclick")[1].split("};")[0]
+            self.assertIn("plTabPicked = true", handler, tab)
+        self.assertIn('Up next<span class="plcount" id="plNextCount"></span></button>', html)
+        self.assertIn('Just played<span class="plcount" id="plPastCount"></span></button>', html)
+        self.assertIn(".card .pltabs .pltab .plcount:empty { display: none; }", self.css)
+
+    def test_a_record_with_no_length_counts_on_its_own_lines(self):
+        # The counting clock of a record the station gave no length for sat
+        # alone on the playhead's row — an amber figure over nothing. It rides
+        # the record's lines now; the row is for a bar with two ends.
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        self.assertLess(html.index('id="plAlbum"'), html.index('id="plClock"'))
+        self.assertLess(html.index('id="plClock"'), html.index('id="plTags"'))
+        self.assertIn("['plTrack', 'plAlbum', 'plClock', 'plTags']", js)
+        paint = js.split("function paintNowPlaying")[1].split("\n  }\n")[0]
+        self.assertIn("const inline = !running && ticking;", paint)
+        self.assertIn("if (prog) prog.hidden = !running;", paint)
+        self.assertIn("clk.hidden = !inline;", paint)
+        self.assertIn(".card .plclock[hidden] { display: none; }", self.css)
+
+    def test_an_empty_booth_is_a_full_width_bar(self):
+        # The desktop block's `align-self: start` shrank the well to its own
+        # label while the booth was quiet (operator's web view, 2026-10-02).
+        # The height stays reserved and nothing stands in for the words —
+        # the label centres in it instead.
+        well = self.css.split(
+            "  .plscroll > .plpanel:not(.plqueue) {")[1].split("}")[0]
+        self.assertIn("align-self: stretch", well)
+        self.assertIn("min-height: var(--well-h)", well)
+        self.assertIn(
+            ".plscroll > .plpanel:not(.plqueue):has(> .plpanelbody:empty) {"
+            "\n    justify-content: center;", self.css)
 
     def test_the_level_fits_inside_its_own_box(self):
         vu = self.css.split("  .card .pldock .plvu {")[1].split("}")[0]
@@ -4854,6 +4980,21 @@ class TestTheStageSpeaksInOneVoice(unittest.TestCase):
     def setUpClass(cls):
         cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
         cls.js = widget_js()["call.js"]
+
+    def test_a_rule_is_only_drawn_over_something(self):
+        # With nothing in the middle the rule was a hairline over an empty
+        # box (operator's embed, 2026-10-02).
+        self.assertIn(
+            ".idleboard .stagerule:has(+ .stagemid:empty) { display: none; }",
+            self.css)
+
+    def test_the_embed_keeps_the_open_lines_label(self):
+        # The embed has no room for the question, but hiding the one-line
+        # label too left the rule introducing nothing — on the station page
+        # with open lines up.
+        self.assertIn("body.compact .idleboard .opensubj { display: none; }",
+                      self.css)
+        self.assertNotIn("body.compact .idleboard .openhead,", self.css)
 
     def test_the_question_wears_the_sentence_above_it(self):
         say = self.css.split("  .idleboard .stagesay {")[1].split("}")[0]
