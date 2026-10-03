@@ -4,19 +4,26 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
-## 0.99.52
+## 0.99.53
 
-A tidy-up of the card in the web view and on the station page, and a player that leads with what it has.
+Calls that pick up sooner, a card that says what's next after a call, and a tidier player and station-page card.
 
+- **Calls pick up sooner.** Every call waited while the station looked up its settings, which the station has lately been taking three to four seconds to answer. A call now uses the copy kept from a recent call (refreshed every ten minutes at most), so the DJ answers without that wait. A change made on the station's side reaches calls within about ten minutes, and the settings page still reads the station live.
+- **After a call, the card shows what's next.** "Call ended" sat over an empty box. The open-lines question now fills it, with the route for your next call where there's room, and the transcript and rating stay at the bottom where they were. On a shorter card the extras step aside rather than run into the transcript or the rating.
+- **Two rows of player controls instead of three.** The request field is on top, and PAUSE sits at the end of the like, skip and volume row, showing the level bars itself while the music plays. The queue gets the row back, SEND sits over PAUSE, and the volume slider ends where the request field does.
+- **The station-page card gives its room to the question.** Between calls the embed drops the YOU | DJ row (it comes back when a call starts, and the card stays the same height), and the open-lines question shows in its place whenever it fits.
 - **The player's booth box is the same width with or without words.** While the DJ had said nothing it shrank to the size of its own label, with an empty line under it; it is full width now, its label centred while it waits.
-- **The volume slider lines up with the request field.** At desktop width it stopped halfway across, with a gap before the level meter; it now runs to the request field's edge, with the meter above SEND.
 - **The tab bar keeps the card's rounded corners** on the phone face at desktop width, instead of poking out square below them.
 - **A slimmer YOU | DJ row.** It is a readout, not a button, so it sits a step below CALL THE BOOTH instead of matching it.
-- **The embed lines up.** On the station page the YOU | DJ row ran edge to edge while everything else kept its inset; it lines up now, and the stage shows the open-lines label where it used to show a divider over an empty box.
+- **The embed lines up.** On the station page the YOU | DJ row ran edge to edge while everything else kept its inset; it lines up now, and where the question has no room the open-lines label still shows instead of a divider over an empty box.
 - **A scrolling song title fades at both ends while it moves**, so the station page's ticker no longer looks cut off mid-scroll.
 - **The player opens on the tab that has something in it.** With nothing queued it shows Just played instead of "Nothing queued", the tabs carry a count, and a tab you pick stays picked.
 - **No more lone clock.** A track the station sends no length for shows its time as "2:47 playing" under the album, instead of on a row of its own.
 - **Easier-to-read small labels.** The grey behind YOU, DJ, JUST PLAYED and the like was below the usual readability minimum; it is a step lighter in dark mode and a step darker in light mode.
+
+## 0.99.52
+
+Released the same day as 0.99.53 and folded forward — the full story rides v0.99.53's notes.
 
 ## 0.99.51
 

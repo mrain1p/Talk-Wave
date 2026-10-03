@@ -352,9 +352,16 @@ class StationConfig:
 
     def __init__(
         self, base_url: str | None = None, timeout: float = 4.5,
-        with_auth: bool = True,
+        with_auth: bool = True, recent_settings: bool = False,
     ) -> None:
         """`with_auth=False` reads the station without logging in.
+
+        `recent_settings=True` answers /settings from the last mint's copy
+        (station_prefetch.recall_settings, up to a few hours old) before the
+        network — the call's ringing never waits on the station's slowest
+        read for configuration that changes when the operator edits it. Only
+        the worker's call setup asks for it; the panel and the previews read
+        live, so an operator's change shows the moment they look.
 
         The station password belongs to the station in the saved settings and
         nowhere else. A caller pointing this at some other base_url — which the
@@ -379,6 +386,7 @@ class StationConfig:
         )
         self._cache: dict[str, Any] = {}
         self._authed = bool(auth)
+        self._recent = bool(recent_settings)
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -386,6 +394,17 @@ class StationConfig:
     async def _get(self, path: str) -> dict:
         if path in self._cache:
             return self._cache[path]
+        # The same guard as prime(): only an authed client may adopt another
+        # process's /settings, and only a real one. See station_prefetch.
+        if path == "/settings" and self._recent and self._authed:
+            import station_prefetch
+
+            kept = station_prefetch.recall_settings()
+            if kept:
+                log.info("station /settings from the last mint's copy — the "
+                         "slow read stays off the ringing")
+                self._cache[path] = kept
+                return kept
         try:
             r = await self._client.get(path)
             if r.status_code == 401:

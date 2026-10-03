@@ -39,6 +39,20 @@ PATH = Path(
 # that was fetched for some OTHER call and has to be treated as unknown.
 MAX_AGE_SECS = 10.0
 
+# THE SETTINGS HALF KEEPS LONGER. /settings is what the operator CONFIGURED —
+# the persona->voice map, the segment assignments — not who is on air, so a
+# copy hours old is the right answer where a snapshot seconds old is not. And
+# it is the slow read: /api/settings answered in a 3.5s median on the
+# operator's station (its Caddy access log, 2026-10-02), so this head start
+# lost the race to the worker on 7 of 8 calls and every one of them rang
+# through the full read. Requests that began during one were mostly slow as
+# well, so Talk Wave reads it as rarely as it can: the worker takes a copy up
+# to SETTINGS_MAX_AGE_SECS old (StationConfig(recent_settings=True)), and a
+# mint refreshes the copy only once it is past SETTINGS_REFRESH_SECS. Still no
+# polling: a quiet line reads nothing at all.
+SETTINGS_MAX_AGE_SECS = 6 * 60 * 60
+SETTINGS_REFRESH_SECS = 10 * 60
+
 
 async def capture(with_skills: bool) -> None:
     """Fetch one snapshot and store it. Called by the token server per mint.
@@ -52,11 +66,21 @@ async def capture(with_skills: bool) -> None:
 
     station, station_cfg = StationClient(), StationConfig()
     try:
-        snapshot, station_settings = await asyncio.gather(
-            station.snapshot(with_skills=with_skills),
-            station_cfg.settings(),
-        )
-        store(snapshot, station_settings, with_skills=with_skills)
+        kept = _stored_settings(SETTINGS_MAX_AGE_SECS)
+        if kept is not None and time.time() - kept[1] <= SETTINGS_REFRESH_SECS:
+            snapshot = await station.snapshot(with_skills=with_skills)
+            station_settings, settings_t = kept
+        else:
+            snapshot, station_settings = await asyncio.gather(
+                station.snapshot(with_skills=with_skills),
+                station_cfg.settings(),
+            )
+            settings_t = time.time()
+            # A failed read is {} — never let it overwrite a good copy.
+            if not station_settings and kept is not None:
+                station_settings, settings_t = kept
+        store(snapshot, station_settings, with_skills=with_skills,
+              settings_t=settings_t)
     except Exception as e:                                       # noqa: BLE001
         log.info("snapshot prefetch skipped (%s) — the worker reads instead", e)
     finally:
@@ -64,13 +88,16 @@ async def capture(with_skills: bool) -> None:
         await station_cfg.aclose()
 
 
-def store(snapshot: dict, station_settings: dict, *, with_skills: bool) -> None:
+def store(snapshot: dict, station_settings: dict, *, with_skills: bool,
+          settings_t: float | None = None) -> None:
     """Write the head start down where the worker can find it."""
+    now = time.time()
     payload = {
-        "t": time.time(),
+        "t": now,
         "withSkills": bool(with_skills),
         "snapshot": snapshot,
         "stationSettings": station_settings or {},
+        "settingsT": settings_t or now,
     }
     try:
         PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -117,3 +144,33 @@ def recall(*, with_skills: bool) -> tuple[dict, dict] | None:
     if not isinstance(station_settings, dict):
         station_settings = {}
     return snap, station_settings
+
+
+def _stored_settings(max_age: float) -> tuple[dict, float] | None:
+    """(station_settings, when they were read) if the copy on disk is real
+    and no older than max_age — else None. A file from before the settings
+    half had its own clock counts its snapshot's."""
+    try:
+        d = json.loads(PATH.read_text(encoding="utf-8"))
+    except Exception:                                            # noqa: BLE001
+        return None
+    if not isinstance(d, dict):
+        return None
+    station_settings = d.get("stationSettings")
+    if not isinstance(station_settings, dict) or not station_settings:
+        return None
+    try:
+        t = float(d.get("settingsT") or d.get("t") or 0)
+    except (TypeError, ValueError):
+        return None
+    if time.time() - t > max_age:
+        return None
+    return station_settings, t
+
+
+def recall_settings() -> dict | None:
+    """The station's settings from a recent capture, for the worker's
+    StationConfig — so the ringing never waits on the slow read when a copy
+    from the last few hours already says what it would say."""
+    kept = _stored_settings(SETTINGS_MAX_AGE_SECS)
+    return kept[0] if kept is not None else None

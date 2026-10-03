@@ -1931,11 +1931,11 @@
   #plReqSend:hover:not(:disabled) {
     background: color-mix(in srgb, var(--coral) 12%, transparent);
   }
-  /* The transport's glyph follows the sheet's own playing class: the pause
-     bars while the stream runs, the play triangle while it doesn't. */
+  /* The transport's glyph follows the sheet's own playing class: the
+     level's bars while the stream runs (see the dock's grid), the play
+     triangle while it doesn't. */
   #plPlayBtn .plpi { flex: none; display: block; }
   .player.playing #plPlayBtn .plpi-play { display: none; }
-  .player:not(.playing) #plPlayBtn .plpi-pause { display: none; }
   .plreq { display: flex; gap: 10px; position: relative; }
   /* Operator mode's toggle, lit while the row wears its command face. */
   .card #plOpBtn.on { color: var(--coral); border-color: var(--coral); }
@@ -3960,6 +3960,19 @@
   body.compact .meters { padding-top: 5px; padding-bottom: 0; }
   body.compact .bars { height: 14px; }
   body.compact .talkrow { padding: 5px 0 0; }
+  /* IDLE, AN EMBED HAS NO METER ROW. On the full card the empty trough
+     reads as a booth; in a host page's column it was a band of dashes
+     between the stage and the doors (design pass, 2026-10-02). The talk
+     row's answer, one row down: the card is a fixed 400 with the line box as
+     its one elastic band, so the row's height goes to the stage and the
+     frame never moves, and the meters come back with the call — the one
+     moment the caller is watching the card change anyway. The doors then
+     open the dock band themselves. */
+  body.compact .card[data-mode="idle"] .rig > .meters { display: none; }
+  body.compact .card[data-mode="idle"] .rig > .actionrow {
+    border-top: 1px solid var(--hairline);
+    margin-top: var(--dock-gap); padding-top: var(--dock-pad);
+  }
 
 
   /* Measuring mode. The stretch above would otherwise report the frame's own
@@ -4394,6 +4407,12 @@
      hairline under the premise with an empty box beneath — the stage
      reading as half built (operator's embed, 2026-10-02). */
   .idleboard .stagerule:has(+ .stagemid:empty) { display: none; }
+  /* A post-call stage too tall for the room between the status line and
+     the strip gives up its first step (fitStage, call.js). The rule goes
+     with it — it introduced the middle after the premise, and with no
+     premise above it would be a hairline under "Call ended". */
+  .idleboard .stage.short > .stagetop,
+  .idleboard .stage.short > .stagerule { display: none; }
   /* The middle. An OPEN LINE sits under the rule that introduces it, where
      it reads as the next thing said; centred, it floated in the middle of
      two voids with the foot row stranded below (operator, 2026-09-04). The
@@ -4483,13 +4502,16 @@
     justify-content: flex-start; text-align: left;
     margin: 0 0 12px; font-size: 13px; line-height: 1.45;
   }
-  /* An embed has no room for a segment's subject over a 12px sentence in a
-     box that is already the smallest thing on the card — but the LABEL is
-     one line, and it is what the rule above it introduces. Hiding both left
+  /* An embed shows a segment's question only where it FITS (fitStage,
+     call.js). The box is the smallest thing on the card, and what is left
+     of it depends on the host's frame, the now-playing line and how long
+     the DJ's question runs. Where it does not fit the LABEL stays — it is
+     one line, and it is what the rule above it introduces; hiding both left
      the rule over an empty box on the station page, open lines and all
-     (operator's embed, 2026-10-02). The question stays on the full card. */
-  body.compact .idleboard .opensubj { display: none; }
-  body.compact .idleboard .openhead { margin: 0; }
+     (operator's embed, 2026-10-02). Unmeasured is the old answer: no
+     question, so a frame not laid out yet cannot paint one through the box. */
+  body.compact .idleboard .stage:not(.roomy) .opensubj { display: none; }
+  body.compact .idleboard .stage:not(.roomy) .openhead { margin: 0; }
 
   /* -- 1a. the dock ------------------------------------------------------
      The level band and the action row, full-bleed on --granite over a
@@ -4837,7 +4859,7 @@
      height with them, which is the other half of that note. */
   .card .pldock .plctl { gap: 6px; }
   .card .pldock .plheart {
-    width: 36px; height: 36px; flex: none;
+    width: var(--control-h); height: var(--control-h); flex: none;
     border: 1px solid var(--edge); color: var(--sage);
     display: inline-flex; align-items: center; justify-content: center;
   }
@@ -4855,7 +4877,7 @@
      own height, --pine ground, a hairline, contents centred. The range
      input takes the box itself; its track draws centred inside it. */
   .card .pldock #plVol {
-    flex: 1 1 auto; min-width: 96px; height: 36px; margin: 0;
+    flex: 1 1 auto; min-width: 48px; height: var(--control-h); margin: 0;
     padding: 0 10px; box-sizing: border-box;
     background: var(--pine); border: 1px solid var(--hairline);
   }
@@ -4868,29 +4890,39 @@
      instruments on one band lining up with nothing (operator, 2026-09-06).
      The bars still GROW from their own bottom; it is the row of them that
      is centred. */
-  /* THE STRIP LINES UP WITH THE ROW UNDER IT. The dock is two bands of
-     the same width and they read as a grid or they read as a mess: the
-     fader ended at SEND's LEFT edge and the level sat in a 58px box that
-     lined up with nothing, while its own eleven bars needed 63px of a 40px
-     well and were being clipped by the `overflow: hidden` that hid the
-     fault — "the visualizer is also spilling over too much" (operator,
-     2026-09-08). One tail width for the level and for SEND, one gap to
-     match .plreq's, and the fader's right edge is then the request field's
-     right edge exactly. */
-  .card .pldock { --dock-tail: 64px; }
-  .card .pldock .plvu {
-    flex: none; width: var(--dock-tail); height: 36px; box-sizing: border-box;
-    padding: 0 6px; overflow: hidden; align-items: center;
-    justify-content: center; gap: 2px;
-    background: var(--pine); border: 1px solid var(--hairline);
+  /* TWO ROWS, NOT THREE (design pass, 2026-10-02). The request row first;
+     then the strip, with the transport at its end — PAUSE still nearest the
+     thumb — carrying the level that used to stand in a box of its own
+     beside the fader. The full-width transport row and the level's box
+     both went, and the queue above got their height.
+     A GRID, so the two rows share one seam. The transport's column is
+     SEND's width, and the request row's gap is the dock's own (inherit), so
+     the fader's right edge is the request field's and PAUSE stands under
+     SEND at whatever gap a surface picks: the 2026-09-08 rule — "they read
+     as a grid or as a mess" — kept by construction, where it used to take
+     a 4px margin to make two different gaps agree. The column may grow
+     past the tail for a longer word ("Try again"); a dead stream is the
+     one state that is allowed to break the line. */
+  .card .pldock {
+    --dock-tail: 88px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(var(--dock-tail), max-content);
   }
-  /* THE FADER REACHES THE REQUEST FIELD'S RIGHT EDGE, at every width.
-     .plctl's gap is 6 and .plreq's is 10, so the level takes the 4 that
-     makes the two seams equal (operator, 2026-09-08 on the phone; the web
-     view's own copy of the gap closed 2026-10-02). */
-  body:not(.compact) .card .pldock .plvu { margin-left: 4px; }
-  /* 11 bars at 2px with a 2px gap is 42px in a 50px well — the row fits
-     inside its box instead of being cut off by it. */
+  .card .pldock .plreq, .card .pldock .plreqmsg { grid-column: 1 / -1; }
+  .card .pldock .plreq { gap: inherit; }
+  .card .pldock .plctl { min-width: 0; }
+  /* The level inside the transport: five of its bars, in the button's own
+     ink, where the pause glyph stood — so while the stream plays the
+     button shows it playing, and its word says what a press will do.
+     Stopped, the play triangle comes back and the bars go. */
+  .card .pldock #plPlayBtn .plvu { display: none; }
+  .card .player.playing .pldock #plPlayBtn .plvu {
+    display: flex; flex: none; width: auto; height: 13px; margin: 0;
+    padding: 0; gap: 2px; align-items: flex-end; overflow: visible;
+    background: none; border: 0;
+  }
+  .card .pldock #plPlayBtn .plvu span { background: currentColor; }
+  .card .pldock #plPlayBtn .plvu span:nth-child(n+6) { display: none; }
   .card .pldock .plvu span { width: 2px; }
   .card .pldock .plreq #plReqSend { width: var(--dock-tail); padding: 0; }
   /* THE PHONE IS THE RIBBON'S JOB NOW. This button was the way back to the
@@ -4902,7 +4934,7 @@
   .card .pldock .plheart.liked, .card .pldock .plheart.on { color: var(--coral); }
   .card .pldock .plreq input { height: var(--control-h); }
   .card .pldock .plreq #plReqSend { height: var(--control-h); flex: none; }
-  .card .pldock #plPlayBtn { height: var(--control-h); width: 100%; }
+  .card .pldock #plPlayBtn { height: var(--control-h); width: 100%; padding: 0 8px; }
 
   /* The sleeve is a WIDTH question now, not a height one: beside the title
      it takes the face's own token, where over the panels it had to be
@@ -5414,17 +5446,11 @@
        (operator, 2026-09-08). The band keeps its 38px; what it gives back
        is the space around it. */
     body:not(.compact) .card .plprog { height: 32px; }
-    /* (The level's 4px — the fader reaching the request field's edge —
-       is a top-level rule now, beside `.card .pldock .plvu`.)
-       The strip comes down with the rows under it, still a step below
-       them (36 under 44 before, 32 under 38 now): it is furniture, and the
-       request field and the transport are what a thumb is reaching for. The
-       dock's own padding rides the token the phone face's dock does. */
+    /* (The strip was a step under the rows it sat over here, 32 under 38.
+       It shares the transport's row now (design pass, 2026-10-02), and one
+       row is one height — --control-h, the top-level rule's.) The dock's
+       own padding rides the token the phone face's dock does. */
     body:not(.compact) .card .pldock { padding: var(--dock-pad) 16px; }
-    body:not(.compact) .card .pldock .plheart,
-    body:not(.compact) .card .pldock #plVol,
-    body:not(.compact) .card .pldock .plvu { height: 32px; }
-    body:not(.compact) .card .pldock .plheart { width: 32px; }
     /* The meters keep one row here: the level band is the dock's own
        instrument now, and the volume rides the call it belongs to. */
     body:not(.compact) .meters { flex-wrap: nowrap; }
@@ -5803,14 +5829,17 @@
     }
 
     /* THE CONTROL ROW IS ONE ROW: like, skip, phone, operator, volume,
-       meter, request, SEND, play — the three stacked rows become one band.
+       request, SEND, play — the stacked rows become one band, so the dock
+       is a flex row here and not the grid it is everywhere else, and the
+       strip leads although the request row comes first in the markup.
        Every bordered box is border-box, or each renders 2px wider than its
        width and the row overflows by ~50px (§5). The request field and the
        fader are the flexible things in it; the field's placeholder stays one
        line however narrow it gets (nowrap and an ellipsis — it once wrapped
-       to three, §5). The play button keeps its word. */
+       to three, §5). The play button keeps its word, and the level rides in
+       it as it does on every surface. */
     body:not(.compact):not(.panelpage) .card.faces .pldock {
-      flex-direction: row; flex-wrap: nowrap; align-items: center;
+      display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center;
       gap: 8px; padding: 8px 14px 12px; height: auto;
     }
     body:not(.compact):not(.panelpage) .card.faces .pldock,
@@ -5828,15 +5857,13 @@
        now: the field gives first, then the fader, and the buttons never. */
     body:not(.compact):not(.panelpage) .card.faces .pldock .plctl {
       flex: 0 1 318px; min-width: 0; gap: 6px; width: auto; margin-right: 6px;
+      order: -1;
     }
     body:not(.compact):not(.panelpage) .card.faces .pldock .plheart {
       width: var(--lctl); height: var(--lctl);
     }
     body:not(.compact):not(.panelpage) .card.faces .pldock #plVol {
       flex: 1 1 auto; min-width: 48px; width: auto; height: var(--lctl);
-    }
-    body:not(.compact):not(.panelpage) .card.faces .pldock .plvu {
-      height: var(--lctl); margin-left: 0;
     }
     /* A zero basis, so the strip keeps its 318 and this takes what is left;
        a min-content floor, so the box can never be narrower than SEND and

@@ -35,6 +35,7 @@ Three phases in `call/session.py`, in the order the caller experiences them: `pr
 The ringing is shorter than it looks on paper, because most of its questions are answered before the worker asks them:
 
 - the token server **prefetches the station snapshot** the moment it mints the room (`station_prefetch.py`) — adopted only while fresh, and refused otherwise;
+- the station's **`/settings`** (the persona-to-voice map and segment assignments) is configuration, not who is on air, so the call reads it from the last mint's copy (up to six hours old) instead of waiting on it — it is the station's slowest read, and a mint refreshes the copy at most every ten minutes. The panel always reads it live;
 - the room join, the TTS voice list and the station's MCP handshake all ride **`prepare()`'s one concurrent wait**, instead of queuing behind it.
 
 The call record's `setup` block writes down what each leg took (`preparedSecs`, `onLineSecs`, `greetingSecs`) and whether the snapshot was `prefetched` or `fetched` — so **"calls feel slow to connect" is readable off one record**, instead of an evening of probes.

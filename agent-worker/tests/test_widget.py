@@ -951,6 +951,18 @@ class TestTheCardIsOneHeightAndStaysThere(unittest.TestCase):
             self.css)
         self.assertNotIn("body.compact .meters { padding: 5px 0 0; }", self.css)
 
+    def test_an_idle_embed_gives_its_meter_row_to_the_stage(self):
+        # A band of empty dashes between the stage and the doors in a host
+        # page's column (design pass, 2026-10-02). Keyed on the idle mode,
+        # like the talk row, so the call brings it back inside the same 400;
+        # the doors then open the dock band.
+        self.assertIn('body.compact .card[data-mode="idle"] .rig > .meters '
+                      '{ display: none; }', self.css)
+        doors = self.css.split(
+            'body.compact .card[data-mode="idle"] .rig > .actionrow {')[1].split("}")[0]
+        self.assertIn("border-top: 1px solid var(--hairline)", doors)
+        self.assertIn("margin-top: var(--dock-gap)", doors)
+
     def test_a_riding_title_fades_its_leading_edge_only_while_it_rides(self):
         # The far end of the ride cut the title hard at the left wall —
         # "EAKY WITH YOU" on the station page (2026-10-02). The fade rides
@@ -4809,35 +4821,39 @@ class TestTheCardWearsOneSurfaceFamily(unittest.TestCase):
 
 
 class TestThePlayersDockIsTwoBandsThatLineUp(unittest.TestCase):
-    """The strip over the request row, and they read as a grid or as a mess.
+    """The request row over the strip and its transport, and they read as a
+    grid or as a mess.
 
     Operator, 2026-09-08: the phone button is a second door to a place the
     faces ribbon already goes; the fader stopped at SEND's left edge instead
     of the request field's right one; and the level's eleven bars needed 63px
     of a 40px well, clipped by the `overflow: hidden` that hid the fault.
+    Design pass, 2026-10-02: two rows, not three — PAUSE joined the strip
+    and carries the level, and the queue got the transport row's height.
     """
 
     @classmethod
     def setUpClass(cls):
         cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
 
-    def test_the_level_and_send_share_one_tail_width(self):
-        self.assertIn(".card .pldock { --dock-tail: 64px; }", self.css)
-        vu = self.css.split("  .card .pldock .plvu {")[1].split("}")[0]
-        self.assertIn("width: var(--dock-tail)", vu)
+    def test_the_transport_and_send_share_one_tail_width(self):
+        dock = self.css.split("  .card .pldock {\n    --dock-tail: 88px;")[1].split("}")[0]
+        self.assertIn("display: grid;", dock)
+        self.assertIn("grid-template-columns: minmax(0, 1fr) "
+                      "minmax(var(--dock-tail), max-content);", dock)
         self.assertIn(
             ".card .pldock .plreq #plReqSend { width: var(--dock-tail); padding: 0; }",
             self.css)
 
     def test_the_fader_reaches_the_request_fields_edge(self):
-        # .plctl's gap is 6 and .plreq's is 10, so the level carries the 4 —
-        # at EVERY width now. The 620x544 card capped the fader at 320px and
-        # pushed the level to the far edge with `margin-left: auto`, which
-        # left a fader-sized hole in the strip and lined it up with nothing
-        # under it (operator's web view, 2026-10-02).
-        self.assertIn(
-            "body:not(.compact) .card .pldock .plvu { margin-left: 4px; }",
-            self.css)
+        # By construction now: the request row's gap IS the dock's column
+        # gap, so the fader — the strip's last item — ends where the field
+        # does at whatever gap a surface picks. The 4px that made two
+        # different gaps agree went with the level's box, and so did the
+        # 620x544 card's 320px cap, which left a fader-sized hole in the
+        # strip (operator's web view, 2026-10-02).
+        self.assertIn(".card .pldock .plreq { gap: inherit; }", self.css)
+        self.assertNotIn(".pldock .plvu { margin-left: 4px; }", self.css)
         self.assertNotIn(".pldock .plvu { margin-left: auto; }", self.css)
         self.assertNotIn("#plVol { max-width: 320px; }", self.css)
 
@@ -4888,13 +4904,24 @@ class TestThePlayersDockIsTwoBandsThatLineUp(unittest.TestCase):
             ".plscroll > .plpanel:not(.plqueue):has(> .plpanelbody:empty) {"
             "\n    justify-content: center;", self.css)
 
-    def test_the_level_fits_inside_its_own_box(self):
-        vu = self.css.split("  .card .pldock .plvu {")[1].split("}")[0]
-        self.assertIn("gap: 2px", vu)
-        self.assertIn("justify-content: center", vu)
-        self.assertIn(".card .pldock .plvu span { width: 2px; }", self.css)
-        # 11 bars at 2px with a 2px gap is 42px; the well is 64 - 12 - 2.
-        self.assertIn("padding: 0 6px", vu)
+    def test_the_level_rides_in_the_transport(self):
+        # Where the pause glyph stood, in the button's own ink, and only
+        # while the stream plays; stopped, the triangle. Five of the eleven
+        # bars — the eleven needed 42px, and the button has a word to carry.
+        html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        play = html.split('<button id="plPlayBtn"')[1].split("</button>")[0]
+        self.assertIn('id="plVu"', play)
+        self.assertNotIn("plpi-pause", html)
+        self.assertNotIn('id="plVu"', html.split('<div class="plctl">')[1].split("</div>")[0])
+        # The markup in the order it is read, so a keyboard walks it as seen.
+        self.assertLess(html.index('class="plreq"'), html.index('class="plctl"'))
+        self.assertLess(html.index('class="plctl"'), html.index('id="plPlayBtn"'))
+        self.assertIn(".card .pldock #plPlayBtn .plvu { display: none; }", self.css)
+        self.assertIn(".card .player.playing .pldock #plPlayBtn .plvu {", self.css)
+        self.assertIn(".card .pldock #plPlayBtn .plvu span { background: currentColor; }",
+                      self.css)
+        self.assertIn(".card .pldock #plPlayBtn .plvu span:nth-child(n+6) "
+                      "{ display: none; }", self.css)
 
     def test_the_phone_button_stands_down_beside_the_faces_row(self):
         self.assertIn(".card.faces .pldock #plPhoneBtn { display: none; }",
@@ -4957,11 +4984,11 @@ class TestThePlayersDockIsTwoBandsThatLineUp(unittest.TestCase):
         block = _phone_surface_block(self.css)
         self.assertIn("--seg-h: 38px; --control-h: 38px;", block)
         self.assertIn("--dock-gap: 10px; --dock-pad: 10px;", block)
-        # The strip stays a step under the rows it sits over.
-        self.assertIn("body:not(.compact) .card .pldock .plvu { height: 32px; }",
-                      block)
-        self.assertIn("body:not(.compact) .card .pldock .plheart { width: 32px; }",
-                      block)
+        # The strip was a step under the rows it sat over; it shares the
+        # transport's row now (2026-10-02), and one row is one height.
+        self.assertNotIn(".pldock .plheart { width: 32px; }", block)
+        squares = self.css.split("  .card .pldock .plheart {")[1].split("}")[0]
+        self.assertIn("width: var(--control-h); height: var(--control-h);", squares)
         self.assertIn("body:not(.compact) .card .pldock "
                       "{ padding: var(--dock-pad) 16px; }", block)
 
@@ -4988,13 +5015,17 @@ class TestTheStageSpeaksInOneVoice(unittest.TestCase):
             ".idleboard .stagerule:has(+ .stagemid:empty) { display: none; }",
             self.css)
 
-    def test_the_embed_keeps_the_open_lines_label(self):
-        # The embed has no room for the question, but hiding the one-line
-        # label too left the rule introducing nothing — on the station page
-        # with open lines up.
-        self.assertIn("body.compact .idleboard .opensubj { display: none; }",
-                      self.css)
+    def test_the_embed_shows_the_question_only_where_it_fits(self):
+        # The question waits for room in the embed's box (fitStage), and
+        # unmeasured it stays off. The one-line label stays either way:
+        # hiding it too left the rule introducing nothing — on the station
+        # page with open lines up.
+        self.assertIn("body.compact .idleboard .stage:not(.roomy) .opensubj "
+                      "{ display: none; }", self.css)
         self.assertNotIn("body.compact .idleboard .openhead,", self.css)
+        fit = self.js.split("function fitStage")[1].split("function openLine")[0]
+        self.assertIn("if (compact) stage.classList.add('roomy');", fit)
+        self.assertIn("stage.classList.remove('roomy');", fit)
 
     def test_the_question_wears_the_sentence_above_it(self):
         say = self.css.split("  .idleboard .stagesay {")[1].split("}")[0]
@@ -5012,6 +5043,32 @@ class TestTheStageSpeaksInOneVoice(unittest.TestCase):
         self.assertNotIn("alsoOnTheLine", self.js)
         self.assertNotIn("stagefoot", self.js)
         self.assertNotIn(".stagefoot", self.css)
+
+    def test_the_stage_comes_back_after_a_call(self):
+        # "Call ended" over an empty box (operator's web view, 2026-10-02).
+        # Between the status line and the post-call strip, on every surface
+        # — but not the centred board, which sits over the box rather than
+        # in its flow.
+        board = self.js.split("function paintBoard")[1].split("function buildStage")[0]
+        busy = board.split("const busy =")[1].split(";")[0]
+        self.assertNotIn("endedBar", busy)
+        stage, centred = board.split("fitStage(box);")
+        self.assertNotIn("afterCall", stage.split("const afterCall")[1])
+        self.assertIn("if (afterCall) { box.hidden = true; return; }", centred)
+
+    def test_a_short_box_gives_up_whole_steps(self):
+        # On the 725x649 card the open line was drawn straight through
+        # TRANSCRIPT and HOW WAS IT? (measured 2026-10-02). The route's
+        # premise goes first, then the stage; nothing paints through.
+        fit = self.js.split("function fitStage")[1].split("function openLine")[0]
+        steps = [fit.index(s) for s in ("stage.classList.add('short')",
+                                        "stage.classList.remove('roomy')",
+                                        "if (after) box.hidden = true;")]
+        self.assertEqual(steps, sorted(steps))
+        self.assertIn("paintBoard(live)", fit)      # refit on a turn or unfold
+        self.assertIn(".idleboard .stage.short > .stagetop,\n"
+                      "  .idleboard .stage.short > .stagerule { display: none; }",
+                      self.css)
 
 
 class TestTheCallsSoundIsOpenedByTheCall(unittest.TestCase):
@@ -5231,8 +5288,13 @@ class TestLandscapeSpendsTheAxisItHas(unittest.TestCase):
         self.assertIn("width: 0; min-width: 0;",
                       self._rule(band, pre + ".plreq input"))
         # …and the row's two halves stand under the sheet's two columns, so
-        # the field starts where the queue does.
+        # the field starts where the queue does. The dock is a grid with
+        # the request row first everywhere else (2026-10-02); on its side it
+        # stays one flex row, and the strip leads it.
         self.assertIn("flex: 0 1 318px", self._rule(band, pre + ".plctl"))
+        self.assertIn("order: -1;", self._rule(band, pre + ".plctl"))
+        self.assertIn("display: flex; flex-direction: row;",
+                      self._rule(band, pre.rstrip()))
         self.assertIn("grid-template-columns: 318px minmax(0, 1fr);", band)
 
     def test_the_route_switch_is_the_call_rows_twin(self):
