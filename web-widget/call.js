@@ -719,9 +719,16 @@
     const busy = !!room || chatOpen || inConversation()
       || document.querySelector('.card').classList.contains('oncall')
       || (capBox.classList.contains('on') && capBox.children.length)
-      || !$('guestGate').hidden || !$('setupNudge').hidden
-      || !$('endedBar').hidden;
+      || !$('guestGate').hidden || !$('setupNudge').hidden;
     if (busy) { box.hidden = true; return; }
+    // AFTER A CALL THE STAGE COMES BACK. The post-call strip (transcript,
+    // rating) stays where it was, at the box's foot, and the status line
+    // stays first — the post-call flow rules in style.css place all three
+    // — but the middle between them was empty: "Call ended" over nothing
+    // (operator's web view, 2026-10-02). The route and the open line for
+    // the next call belong there, as much of them as the box has room for
+    // (fitStage).
+    const afterCall = !$('endedBar').hidden;
 
     const paused = !!(d && d.callsPaused);
     const dj = (($('djName').textContent) || '').trim();
@@ -751,8 +758,13 @@
       box.hidden = false;
       box.innerHTML = '';
       box.appendChild(buildStage(d, dj, paused, tryLine));
+      fitStage(box);
       return;
     }
+    // The centred board is the one shape that cannot share the box — it is
+    // placed over it, not in its flow — so after a call it stays down, as it
+    // always did.
+    if (afterCall) { box.hidden = true; return; }
     // Each door twice: is it OFFERED at all, and is it usable right now. The
     // second is what earns the strike-through — a board that lists a way in
     // the card will refuse is worse than one that lists nothing.
@@ -887,6 +899,46 @@
     wrap.appendChild(mid);
     return wrap;
   }
+
+  // THE STAGE GIVES UP WHOLE STEPS RATHER THAN PAINT THROUGH ANYTHING. The
+  // box is one height, and the stage is drawn into whatever it has left.
+  //  - In an embed the booth's question is the step that waits for room. It
+  //    gets what the idle meter row gave back (design pass, 2026-10-02), but
+  //    a long question, or a host that keeps the now-playing line, can still
+  //    leave too little — and then the label stands alone, as it always did.
+  //  - After a call the status line sits over the stage and the post-call
+  //    strip under it. On the web view's 725x649 card the three wanted 30px
+  //    more than the box has, and the open line was drawn straight through
+  //    TRANSCRIPT and HOW WAS IT? (measured 2026-10-02). The route's
+  //    consequence goes first — the switch directly above says it in the
+  //    same colour — then an embed's question, then the stage, which is the
+  //    old "Call ended" over the strip. Never a scroll: the strip is what
+  //    the caller came back for.
+  function fitStage(box) {
+    const stage = box.firstElementChild;
+    if (!stage || !box.clientHeight) return;
+    const over = () => stage.offsetHeight > box.clientHeight + 1;
+    const after = !$('endedBar').hidden || !$('rateBar').hidden;
+    if (compact) stage.classList.add('roomy');
+    if (!over()) return;
+    if (after) {
+      stage.classList.add('short');
+      if (!over()) return;
+    }
+    if (compact) {
+      stage.classList.remove('roomy');
+      if (!over()) return;
+    }
+    if (after) box.hidden = true;
+  }
+  // A turned or unfolded phone is a different box, and the fit above only
+  // runs when the board is painted — the poll's twenty seconds is too long
+  // to sit on a stage drawn for the other shape.
+  let boardRefit = 0;
+  window.addEventListener('resize', () => {
+    clearTimeout(boardRefit);
+    boardRefit = setTimeout(() => paintBoard(live), 150);
+  });
 
   // The open line the station has up, with the moment it closes resolved to
   // a clock time. THE EARLIER of the line's own expiry and the end of the

@@ -161,7 +161,7 @@ class CallSession:
         self.tier = settings_store.tier_from_room(self.room_name)
         self.cfg = settings_store.permissions_for(settings_store.load(), self.tier)
         self.station = StationClient()
-        self.station_cfg = StationConfig()
+        self.station_cfg = StationConfig(recent_settings=True)  # see station_prefetch
         # The station's MCP endpoint, built (and its connect started) in
         # prepare() so the handshake happens under the ringing, not in front
         # of the greeting.

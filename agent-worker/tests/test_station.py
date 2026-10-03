@@ -1305,6 +1305,133 @@ class TestTheMintsHeadStartIsFreshOrNothing(unittest.TestCase):
         self.assertIsNotNone(got)
         self.assertEqual({"values": {"personas": []}}, got[1])
 
+    # THE SETTINGS HALF KEEPS LONGER. /api/settings answered in a 3.5s median
+    # on the operator's station (2026-10-02), so the head start lost the race
+    # to the worker on 7 of 8 calls and every caller rang through the read.
+    # It is configuration, not who is on air: a copy hours old is right.
+
+    def _age(self, key, secs):
+        import json
+        import time
+
+        import station_prefetch
+
+        d = json.loads(station_prefetch.PATH.read_text(encoding="utf-8"))
+        d[key] = time.time() - secs
+        station_prefetch.PATH.write_text(json.dumps(d), encoding="utf-8")
+
+    def test_the_settings_outlive_a_stale_snapshot(self):
+        import station_prefetch
+
+        station_prefetch.store(self.SNAP, {"values": {"v": 1}}, with_skills=False)
+        self._age("t", station_prefetch.MAX_AGE_SECS + 60)
+        self.assertIsNone(station_prefetch.recall(with_skills=False),
+                          "the snapshot half must still go stale in seconds")
+        self.assertEqual({"values": {"v": 1}}, station_prefetch.recall_settings())
+        self._age("settingsT", station_prefetch.SETTINGS_MAX_AGE_SECS + 60)
+        self.assertIsNone(station_prefetch.recall_settings())
+
+    def test_an_empty_settings_copy_is_no_copy(self):
+        # {} is what a failed or unauthenticated read looks like.
+        import station_prefetch
+
+        station_prefetch.store(self.SNAP, {}, with_skills=False)
+        self.assertIsNone(station_prefetch.recall_settings())
+
+    def _capture(self, settings_answer):
+        import station as station_mod
+        import station_config as station_config_mod
+        import station_prefetch
+
+        snap, reads = self.SNAP, []
+
+        class FakeStation:
+            async def snapshot(self, with_skills=False):
+                return dict(snap)
+
+            async def aclose(self):
+                pass
+
+        class FakeCfg:
+            async def settings(self):
+                reads.append(1)
+                return settings_answer
+
+            async def aclose(self):
+                pass
+
+        old = (station_mod.StationClient, station_config_mod.StationConfig)
+        station_mod.StationClient = FakeStation
+        station_config_mod.StationConfig = FakeCfg
+        try:
+            asyncio.run(station_prefetch.capture(with_skills=False))
+        finally:
+            station_mod.StationClient, station_config_mod.StationConfig = old
+        return len(reads)
+
+    def test_a_mint_with_a_recent_copy_does_not_read_settings_again(self):
+        import station_prefetch
+
+        station_prefetch.store(self.SNAP, {"values": {"v": 1}}, with_skills=False)
+        self._age("settingsT", 60)
+        self.assertEqual(0, self._capture({"values": {"v": 2}}))
+        self.assertEqual({"values": {"v": 1}}, station_prefetch.recall_settings())
+        self.assertIsNotNone(station_prefetch.recall(with_skills=False),
+                             "the snapshot half is still fresh from this mint")
+        self._age("settingsT", station_prefetch.SETTINGS_REFRESH_SECS + 60)
+        self.assertEqual(1, self._capture({"values": {"v": 2}}))
+        self.assertEqual({"values": {"v": 2}}, station_prefetch.recall_settings())
+
+    def test_a_failed_refresh_keeps_the_good_copy(self):
+        import station_prefetch
+
+        station_prefetch.store(self.SNAP, {"values": {"v": 1}}, with_skills=False)
+        self._age("settingsT", station_prefetch.SETTINGS_REFRESH_SECS + 60)
+        self.assertEqual(1, self._capture({}))
+        self.assertEqual({"values": {"v": 1}}, station_prefetch.recall_settings())
+
+    def _config_reads(self, recent):
+        import httpx
+
+        import station_config as station_config_mod
+
+        hits = []
+
+        def handler(request):
+            hits.append(request.url.path)
+            return httpx.Response(200, json={"values": {"live": True}})
+
+        async def run():
+            sc = station_config_mod.StationConfig(base_url="http://station",
+                                                  recent_settings=recent)
+            await sc.aclose()
+            sc._authed = True
+            sc._client = httpx.AsyncClient(base_url="http://station",
+                                           transport=httpx.MockTransport(handler))
+            try:
+                return await sc._get("/settings")
+            finally:
+                await sc.aclose()
+
+        return asyncio.run(run()), hits
+
+    def test_the_worker_rings_on_the_copy_and_the_panel_reads_live(self):
+        import station_prefetch
+
+        station_prefetch.store(self.SNAP, {"values": {"v": 1}}, with_skills=False)
+        got, hits = self._config_reads(recent=True)
+        self.assertEqual({"values": {"v": 1}}, got)
+        self.assertEqual([], hits, "the ringing waited on the slow read")
+        got, hits = self._config_reads(recent=False)
+        self.assertEqual({"values": {"live": True}}, got)
+        self.assertEqual(["/settings"], hits)
+
+    def test_only_the_calls_own_setup_takes_the_copy(self):
+        from tests.support import AGENT_WORKER
+
+        session = (AGENT_WORKER / "call" / "session.py").read_text(encoding="utf-8")
+        self.assertIn("self.station_cfg = StationConfig(recent_settings=True)", session)
+
 
 class TestTheGenreShelvesTheStationComputesItself(unittest.TestCase):
     """GET /library/genres/related, adopted on the 2026-09-01 upstream pass.
