@@ -122,6 +122,14 @@ class TestWhatTheBackendSaidReachesTheOperator(unittest.TestCase):
         self.assertIn("Voice 'New-Walken' not found", self._said(
             self._resp(text="Voice 'New-Walken' not found in /voices.")))
 
+    def test_a_streamed_refusal_is_read_off_its_data_line(self):
+        # Gemini's Interactions API, asked to stream, refuses as an SSE event
+        # (measured on the operator's key, 2026-10-04).
+        said = self._said(self._resp(text=(
+            'event: error\ndata: {"error":{"message":"No matching speaker voice '
+            'found for name: bf_isabella and language: ","code":"invalid_request"}}\n\n')))
+        self.assertTrue(said.startswith("No matching speaker voice"), said)
+
     def test_a_wall_of_audio_is_not_an_explanation(self):
         # A backend that answers 4xx with a body of PCM would otherwise put
         # several hundred bytes of mojibake in the operator's error line.
@@ -298,6 +306,18 @@ class TestVoiceDiscoveryIsNotHardcodedToOneShape(unittest.TestCase):
 
         self.assertEqual("/voices", asked["url"])
         self.assertEqual(["Delia1", "New-Walken"], got)
+
+    def test_the_discovery_half_is_one_module_reexported(self):
+        # Split from tts_adapter.py along its ledger seam (0.99.54): callers
+        # still import from tts_adapter, and must get the same functions, not
+        # copies that could drift apart.
+        import tts_adapter
+        import tts_voices
+
+        for name in ("available_voices", "pick_speakable_voice", "parse_voice_list",
+                     "load_adapter", "resolve_adapter", "adapter_api_key"):
+            with self.subTest(name=name):
+                self.assertIs(getattr(tts_voices, name), getattr(tts_adapter, name))
 
     def test_there_is_only_one_voice_lookup_left(self):
         # station_config carried a second copy: its own client, its own
@@ -602,7 +622,7 @@ class TestShippedAdaptersAreWellFormed(unittest.TestCase):
                 self.assertTrue(cfg.get("endpoint_path"),
                                 "an adapter without endpoint_path cannot speak")
                 self.assertIn(cfg["response"]["type"],
-                              ("raw_audio", "json_field", "json_url"))
+                              ("raw_audio", "json_field", "json_url", "sse_json"))
                 self.assertIn(str(cfg["audio"].get("encoding", "")).lower(),
                               ("pcm", "wav", "mp3"))
                 self.assertGreater(int(cfg["audio"].get("sample_rate", 0)), 7999)
@@ -688,6 +708,159 @@ class TestTheVoiceCanLiveInTheUrl(unittest.TestCase):
         finally:
             del os.environ["ELEVENLABS_API_KEY"]
             del os.environ["TTS_API_KEY"]
+
+
+class TestGeminiSpeaksThroughTheAdapter(unittest.TestCase):
+    """Google's Gemini voices (SUB/WAVE #1718), described as an adapter rather
+    than wired in as a second engine — so the speech filter, the pace meter,
+    Test voice and the voicemail greeting all reach it unchanged. The shape is
+    the one measured on the operator's own key on 2026-10-04: the Interactions
+    API, `stream: true`, server-sent `step.delta` events carrying base64 PCM
+    at 24 kHz."""
+
+    ADAPTER = AGENT_WORKER / "tts-adapters" / "google-gemini-cloud.json"
+    BASE = "https://generativelanguage.googleapis.com"
+
+    def _tts(self, **kw):
+        from tts_adapter import AdapterTTS
+
+        kw.setdefault("voice", "Kore")
+        kw.setdefault("api_key", "g-test")
+        return AdapterTTS(base_url=self.BASE, adapter_path=str(self.ADAPTER), **kw)
+
+    def _speak(self, events, text="Hello there, caller."):
+        """Frames out of one synthesis against a fake Gemini stream, and what
+        the request carried."""
+        import httpx
+        from livekit.agents import APIConnectOptions
+
+        sse = "".join(f"event: {e.get('event_type', 'x')}\ndata: {json.dumps(e)}\n\n"
+                      for e in events).encode()
+        seen = {}
+
+        def handler(request):
+            seen.update(url=str(request.url), headers=dict(request.headers),
+                        body=json.loads(request.content))
+            return httpx.Response(200, content=sse,
+                                  headers={"content-type": "text/event-stream"})
+
+        async def go():
+            engine = self._tts()
+            await engine._client.aclose()
+            engine._client = httpx.AsyncClient(
+                base_url=self.BASE, transport=httpx.MockTransport(handler))
+            try:
+                stream = engine.synthesize(
+                    text, conn_options=APIConnectOptions(max_retry=0, timeout=10))
+                return [ev.frame async for ev in stream]
+            finally:
+                await engine.aclose()
+
+        return asyncio.run(go()), seen
+
+    @staticmethod
+    def _audio(pcm: bytes) -> dict:
+        import base64
+
+        return {"index": 0, "event_type": "step.delta",
+                "delta": {"type": "audio", "mime_type": "audio/l16",
+                          "sample_rate": 24000, "channels": 1,
+                          "data": base64.b64encode(pcm).decode()}}
+
+    def test_the_body_is_the_interactions_request(self):
+        tts = self._tts()
+        try:
+            self.assertEqual({
+                "model": "gemini-3.8-flash-lite-tts",
+                "input": [{"type": "user_input",
+                           "content": [{"type": "text", "text": "Hi."}]}],
+                "generation_config": {"speech_config": [{"voice": "Kore"}]},
+                "response_format": {"type": "audio", "mime_type": "audio/l16",
+                                    "sample_rate": 24000},
+                "stream": True,
+            }, tts._build_body("Hi."))
+        finally:
+            asyncio.run(tts.aclose())
+
+    def test_a_flat_adapter_builds_exactly_what_it_did(self):
+        from tts_adapter import AdapterTTS
+
+        tts = AdapterTTS(voice="alloy", base_url="https://api.openai.com",
+                         adapter_path=str(AGENT_WORKER / "tts-adapters" / "openai-cloud.json"),
+                         allow_stored_key=False)
+        try:
+            body = tts._build_body("Hi.")
+            self.assertEqual("Hi.", body["input"])
+            self.assertEqual("alloy", body["voice"])
+            self.assertFalse([k for k in body if "." in k])   # no dotted key leaked
+        finally:
+            asyncio.run(tts.aclose())
+
+    def test_a_streamed_answer_becomes_the_calls_audio(self):
+        pcm = b"\x01\x00" * 480
+        frames, seen = self._speak([
+            {"event_type": "interaction.created"},
+            {"index": 0, "step": {"type": "model_output"}, "event_type": "step.start"},
+            self._audio(pcm), self._audio(pcm),
+            {"event_type": "interaction.completed"},
+        ])
+        self.assertEqual(960, sum(f.samples_per_channel for f in frames))
+        self.assertTrue(all(f.sample_rate == 24000 for f in frames))
+        self.assertTrue(seen["url"].endswith("/v1beta/interactions"))
+        # The key rides a header — never the URL, which error lines print.
+        self.assertEqual("g-test", seen["headers"].get("x-goog-api-key"))
+        self.assertNotIn("key=", seen["url"])
+        self.assertEqual("Hello there, caller.",
+                         seen["body"]["input"][0]["content"][0]["text"])
+
+    def test_a_stream_with_no_audio_is_a_failure_not_a_silent_turn(self):
+        with self.assertRaises(Exception) as ctx:
+            self._speak([{"event_type": "interaction.created"},
+                         {"event_type": "interaction.completed"}])
+        self.assertIn("no audio", str(ctx.exception))
+
+    def test_an_error_mid_stream_says_what_the_backend_said(self):
+        with self.assertRaises(Exception) as ctx:
+            self._speak([{"event_type": "interaction.created"},
+                         {"error": {"message": "Resource has been exhausted"}}])
+        self.assertIn("Resource has been exhausted", str(ctx.exception))
+
+    def test_a_model_saved_for_another_backend_is_not_sent(self):
+        for model, expect in (("tts-1", "gemini-3.8-flash-lite-tts"),
+                              ("gemini-3.8-flash-tts", "gemini-3.8-flash-tts"),
+                              ("", "gemini-3.8-flash-lite-tts")):
+            tts = self._tts(model=model)
+            try:
+                with self.subTest(model=model):
+                    self.assertEqual(expect, tts._build_body("x")["model"])
+            finally:
+                asyncio.run(tts.aclose())
+
+    def test_the_voices_are_the_adapters_own_list(self):
+        from tts_adapter import available_voices, pick_speakable_voice
+
+        voices = asyncio.run(available_voices("", adapter_path=str(self.ADAPTER)))
+        self.assertEqual(30, len(voices))
+        self.assertEqual("Kore", voices[0])
+        # A DJ the station voices through Gemini keeps that exact voice; a
+        # Kokoro id falls to the first, and the call record says why.
+        self.assertEqual(("Puck", ""), pick_speakable_voice("Puck", voices))
+        voice, why = pick_speakable_voice("bf_isabella", voices)
+        self.assertEqual("Kore", voice)
+        self.assertIn("bf_isabella", why)
+
+    def test_the_station_floor_fills_a_blank_gemini_slot(self):
+        from station_config import _extract_persona_voices
+
+        settings = {"values": {
+            "tts": {"defaultEngine": "gemini", "gemini": {"voice": "Charon"}},
+            "personas": [
+                {"id": "p_named", "tts": {"engine": "gemini", "voice": "Puck"}},
+                {"id": "p_blank", "tts": {"engine": "gemini", "voice": ""}},
+                {"id": "p_inherit", "tts": {"engine": "inherit", "voice": "bm_george"}},
+            ]}}
+        self.assertEqual({"p_named": "Puck", "p_blank": "Charon", "p_inherit": "Charon"},
+                         _extract_persona_voices(settings))
 
 
 class TestAPersonaCanWearItsOwnEffect(unittest.TestCase):

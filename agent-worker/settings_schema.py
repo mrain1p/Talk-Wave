@@ -392,6 +392,14 @@ SCHEMA: dict[str, dict] = {
              "like' search over a description, and 'more like this' off the "
              "track on air. Needs the station's analyzer — without it the DJ "
              "says it can't. Queues nothing and costs no action."),
+    "allow_listener_countries": dict(group="perms", kind="select", tiered=True,
+        label="Say where listeners tune in from", admin=True,
+        help="One line in the DJ's briefing: the countries the station's own "
+             "last-24-hours rollup says its listeners came from, so \"where's "
+             "everyone listening from?\" gets a real answer. Only countries "
+             "with at least three listeners are named — on a small station one "
+             "listener's country points at a person — and never the sites or "
+             "pages they came from. A read: queues nothing, costs no action."),
     "allow_exact_queue": dict(group="perms", kind="select", tiered=True, label="Queue the exact track picked",
         admin=True,
         needs=("allow_library_search", TIERS),

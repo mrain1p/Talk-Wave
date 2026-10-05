@@ -632,5 +632,35 @@ async def station_context(station, cfg: dict, snap: dict, show: dict,
     # the DJ is about to be told it can't do.
     if cfg.get("allow_skills"):
         parts.append(_fmt_skills(snap.get("skills") or []))
+    if cfg.get("allow_listener_countries"):
+        parts.append(_fmt_audience(snap.get("audience") or {}))
 
     return "\n".join(filter(None, parts))
+
+
+# On a small station a country with one listener points at a person, so a
+# country is named only once this many listeners share it.
+AUDIENCE_FLOOR = 3
+
+
+def _fmt_audience(aud: dict) -> str:
+    """Where the last day's listeners tuned in from — the station's /audience
+    rollup, countries only (the sites and pages are the operator's business,
+    not a caller's), each at or over AUDIENCE_FLOOR, six at most. Nothing at
+    all when no country clears the floor: a list of two names would read as
+    the whole audience."""
+    named = []
+    for row in (aud.get("countries") if isinstance(aud, dict) else None) or []:
+        if not isinstance(row, dict):
+            continue
+        code = str(row.get("country") or "").strip().upper()
+        n = row.get("count")
+        if (isinstance(n, int) and not isinstance(n, bool) and n >= AUDIENCE_FLOOR
+                and code.isalpha() and 2 <= len(code) <= 3):
+            named.append(f"{code} {n}")
+        if len(named) == 6:
+            break
+    if not named:
+        return ""
+    return ("Where the last day's listeners tuned in from (country codes — say "
+            "the countries' names): " + ", ".join(named) + ".")

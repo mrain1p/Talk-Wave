@@ -4930,6 +4930,31 @@ class TestThePlayersDockIsTwoBandsThatLineUp(unittest.TestCase):
         # so the button is still the way back.
         self.assertNotIn("\n  .pldock #plPhoneBtn { display: none; }", self.css)
 
+    def test_an_installed_window_scrolls_rather_than_clips(self):
+        # The one player surface without the valve: at 790x567 the queue's
+        # tabs began at 353px of a 312px middle with overflow hidden, the rows
+        # unreachable (2026-10-04).
+        self.assertIn("""  @media (display-mode: standalone) and (min-width: 501px),
+         (display-mode: minimal-ui) and (min-width: 501px) {
+    body:not(.compact) .card .plscroll { overflow-y: auto; scrollbar-width: thin; }""",
+                      self.css)
+
+    def test_a_short_installed_window_takes_the_desktop_cards_bands(self):
+        # A laptop's installed app is the desktop card's shape, not a phone's,
+        # and the phone's numbers need ~780px of window.
+        head = self.css.split("    body:not(.compact) .card {\n      --ident-h: 88px;")[0]
+        query = head[head.rindex("@media"):]
+        self.assertIn("(min-width: 701px) and (display-mode: standalone) and "
+                      "(max-height: 779px)", query)
+        self.assertIn("(min-width: 701px) and (not (display-mode: standalone))", query)
+
+    def test_the_monogram_scales_with_its_sleeve(self):
+        # A fixed 44px put two CJK characters in a stack taller than the
+        # desktop card's 76px sleeve whenever a record had no art.
+        mono = self.css.split("  .plmono {")[1].split("}")[0]
+        self.assertIn("font-size: min(44px, calc(var(--sleeve, 120px) * .36));", mono)
+        self.assertIn("white-space: nowrap", mono)
+
     def test_the_record_is_centred_on_the_phone(self):
         # "the player album art and title should be centered. its weird
         # anchored to the left" (operator, 2026-09-08). The panels under it
@@ -5055,6 +5080,14 @@ class TestTheStageSpeaksInOneVoice(unittest.TestCase):
         stage, centred = board.split("fitStage(box);")
         self.assertNotIn("afterCall", stage.split("const afterCall")[1])
         self.assertIn("if (afterCall) { box.hidden = true; return; }", centred)
+
+    def test_the_post_call_strip_wraps_rather_than_cuts(self):
+        # "TRANSCRIPT · 4 LINES" needs ~206px and the rating ~164; a 360px
+        # phone's strip has 290, and the toggle was cut to "4 LI". The
+        # rating's label stays (operator), so the rating takes a second line.
+        after = self.css.split("  .after { position: absolute;")[1].split("}")[0]
+        self.assertIn("flex-wrap: wrap", after)
+        self.assertNotIn(".rate .rlabel { display: none", self.css)
 
     def test_a_short_box_gives_up_whole_steps(self):
         # On the 725x649 card the open line was drawn straight through

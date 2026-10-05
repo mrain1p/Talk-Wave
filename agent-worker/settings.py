@@ -165,6 +165,7 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # who describes what they want gets one blind request and whatever comes
     # back; on, the DJ can offer three real records by name.
     "allow_sound_search": (None, "open"),
+    "allow_listener_countries": (None, "off"),
     # An EXPERIMENT, and a mode rather than a capability: on, the six ways of
     # looking leave the DJ's tool list and one `subwave_find_music` takes
     # their place holding them, so the model reports what the caller said

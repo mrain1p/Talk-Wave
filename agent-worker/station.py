@@ -138,6 +138,10 @@ ACTION_TIMEOUT = 45.0
 # because a caller is waiting on the answer.
 LIBRARY_TIMEOUT = 15.0
 
+# POST /library/blocklist/check takes at most this many rows a call
+# (routes/library.ts BLOCK_CHECK_MAX).
+BLOCK_CHECK_MAX = 500
+
 # The station's TTS boundary (its spoken-script-policy module, upstream
 # #1455): under an English or UNSET persona language -- unset is the product
 # default, and every persona on this deployment is unset -- any Han,
@@ -338,15 +342,48 @@ class StationClient:
         async def _skills() -> list[dict]:
             return await self.list_skills() if with_skills else []
 
-        dj, personas, now, state, session, schedule, skills = await asyncio.gather(
+        async def _audience() -> dict:
+            # The station-wide switch, not the caller's tier: the snapshot is
+            # shared (station_prefetch) and the briefing gates who hears it.
+            import settings as settings_store
+
+            wanted = str(settings_store.load().get("allow_listener_countries")
+                         or "off").lower() != "off"
+            return await self.audience() if wanted else {}
+
+        (dj, personas, now, state, session, schedule, skills,
+         audience) = await asyncio.gather(
             self.live_dj(), self.personas(), self.now_playing(),
             self.state(), self.session(), self.schedule(), _skills(),
+            _audience(),
         )
         return {
             "dj": dj, "personas": personas, "now_playing": now,
             "state": state, "session": session, "schedule": schedule,
-            "skills": skills,
+            "skills": skills, "audience": audience,
         }
+
+    async def audience(self, since_minutes: int = 1440) -> dict:
+        """The station's own audience rollup — GET /audience: distinct
+        listeners a day, and the countries, sites and pages they came from.
+        Admin-gated; {} when unavailable. Only the countries ever reach a
+        caller (briefing._fmt_audience). Short timeout: it rides the
+        snapshot's gather, and must never be the read the ringing waits on.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {}
+        try:
+            r = await self._client.get(
+                "/audience", params={"sinceMinutes": int(since_minutes)},
+                auth=httpx.BasicAuth(user, password), timeout=4.0)
+            r.raise_for_status()
+            return _body(r)
+        except Exception as e:
+            log.info("audience unavailable: %s", describe(e))
+            return {}
 
     def persona_from(self, dj: dict, personas: list[dict]) -> dict:
         """Resolve the on-air persona from an already-fetched snapshot."""
@@ -761,7 +798,11 @@ class StationClient:
                                        timeout=LIBRARY_TIMEOUT)
             r.raise_for_status()
             d = r.json()
-            return d if isinstance(d, dict) else {}
+            if not isinstance(d, dict):
+                return {}
+            if isinstance(d.get("results"), list):
+                d["results"] = await self.mark_blocked(d["results"])
+            return d
         except Exception as e:
             log.warning("similar-tracks (%s) failed: %s",
                         track_id or query, describe(e))
@@ -1310,10 +1351,10 @@ class StationClient:
                              "artist": e.get("artist"), "album": e.get("album"),
                              "year": e.get("year"),
                              "duration": e.get("durationSec")})
-            return rows
         except Exception as e:
             log.info("playlist %s unavailable: %s", playlist_id, describe(e))
             return None
+        return await self.mark_blocked(rows)
 
     async def run_skill(self, name: str) -> dict:
         """Fire one of the station's own segments. Admin-only."""
@@ -1791,6 +1832,102 @@ class StationClient:
             log.info("liked tracks unavailable: %s", describe(e))
             return []
 
+    async def mark_blocked(self, rows: list, id_key: str = "id") -> list:
+        """Stamp the station's never-play verdict on rows a listing returned
+        without one — POST /library/blocklist/check, the same `blockedBy` ref
+        /dj/search puts on its own rows, so _drop_blocked and _fmt_track read
+        it unchanged. /similar-tracks, /playlists/:id and /library/history
+        come back bare, and the DJ could offer a blocked track out of them and
+        only meet the queue gate's 409 after promising it (upstream pass,
+        2026-09-28). `id_key` names the TRACK id: a history row's own `id` is
+        the play's.
+
+        Admin-gated. Without credentials, or when the check fails, the rows
+        come back exactly as they were: no worse than before it existed.
+        """
+        from station_config import admin_credentials
+
+        todo = [r for r in rows or [] if isinstance(r, dict)
+                and r.get(id_key) and "blockedBy" not in r]
+        user, password = admin_credentials()
+        if not (todo and user and password):
+            return rows
+        verdicts: dict = {}
+        try:
+            for i in range(0, len(todo), BLOCK_CHECK_MAX):
+                tracks = [
+                    {"id": str(t[id_key]),
+                     **{k: t[k] for k in ("title", "artist", "album", "albumId",
+                                          "artistId", "genre", "year")
+                        if t.get(k) is not None}}
+                    for t in todo[i:i + BLOCK_CHECK_MAX]]
+                r = await self._client.post(
+                    "/library/blocklist/check", json={"tracks": tracks},
+                    auth=httpx.BasicAuth(user, password), timeout=LIBRARY_TIMEOUT)
+                r.raise_for_status()
+                got = _body(r).get("blocked")
+                if isinstance(got, dict):
+                    verdicts.update(got)
+        except Exception as e:
+            log.info("never-play check unavailable: %s", describe(e))
+            return rows
+        for t in todo:
+            if str(t[id_key]) in verdicts:
+                t["blockedBy"] = verdicts[str(t[id_key])]
+        return rows
+
+    async def listener_connections(self) -> dict:
+        """Who is connected right now — GET /listeners/connections: a row per
+        listener (IP, stream, user agent, seconds connected; Safari's second
+        socket folded in) and the proxies the station trusted. Admin-gated, and
+        for the operator's panel only — never a caller's business.
+
+        {} when it could not be read. A 502 is the station failing to reach
+        Icecast's admin interface, which is not "nobody listening", so its
+        reason comes back as {"error": ...}.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {}
+        try:
+            r = await self._client.get(
+                "/listeners/connections", auth=httpx.BasicAuth(user, password),
+                timeout=LIBRARY_TIMEOUT)
+            if r.status_code == 502:
+                return {"error": str(_body(r).get("error")
+                                     or "the station could not reach Icecast's admin")}
+            r.raise_for_status()
+            return _body(r)
+        except Exception as e:
+            log.info("listener connections unavailable: %s", describe(e))
+            return {}
+
+    async def untagged_tracks(self, cursor: str = "", limit: int = 50) -> dict:
+        """Library tracks the station has not tagged yet — GET
+        /library/untagged, a cursor-paged walk of Navidrome that looks at up to
+        5,000 songs a page, so one page can take a while. Operator-only.
+        {"rows": [...], "nextCursor": str | None}; {} when it failed.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {}
+        params: dict = {"limit": max(1, min(100, int(limit)))}
+        if cursor:
+            params["cursor"] = cursor
+        try:
+            r = await self._client.get(
+                "/library/untagged", params=params,
+                auth=httpx.BasicAuth(user, password), timeout=90.0)
+            r.raise_for_status()
+            return _body(r)
+        except Exception as e:
+            log.info("untagged walk unavailable: %s", describe(e))
+            return {}
+
     async def play_history(self, limit: int = 12) -> list[dict]:
         """What has actually aired, newest first. Admin-only.
 
@@ -1814,10 +1951,11 @@ class StationClient:
             )
             r.raise_for_status()
             rows = _body(r).get("rows") or []
-            return rows if isinstance(rows, list) else []
         except Exception as e:
             log.info("play history unavailable: %s", describe(e))
             return []
+        return await self.mark_blocked(rows if isinstance(rows, list) else [],
+                                       id_key="trackId")
 
     async def sound_search_available(self) -> bool | None:
         """Whether this station can answer a sound search at all.

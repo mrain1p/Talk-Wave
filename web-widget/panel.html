@@ -853,6 +853,7 @@
         <div class="permgrid" id="permGridCallAdmin">
           <div class="phead"><span>Also on this call</span><span>Anyone</span><span>Guest</span><span>Admin</span></div>
           <div class="row permrow" data-perm="allow_sound_search"><select id="allow_sound_search"></select></div>
+          <div class="row permrow" data-perm="allow_listener_countries"><select id="allow_listener_countries"></select></div>
           <div class="row permrow" data-perm="allow_exact_queue"><select id="allow_exact_queue"></select></div>
           <div class="row permrow" data-perm="allow_album_queue"><select id="allow_album_queue"></select></div>
           <div class="row permrow" data-perm="allow_cancel_queue"><select id="allow_cancel_queue"></select></div>
@@ -2390,6 +2391,33 @@
           <button type="button" class="runbtn danger" id="logsClearBtn">Clear</button>
         </div>
         <div class="result scrolly logs" id="logsResult"></div>
+      </div>
+    </details>
+
+    <!-- Two reads the station already serves its own admin, here on demand
+         (upstream pass, 2026-09-28). Neither reaches a call. -->
+    <details class="sec diag" data-diag="listeners">
+      <summary><span class="chev">▶</span><span class="secname">Who's listening now</span><em class="secblurb"></em><span class="tag">the station's connections</span>
+        <button class="runbtn" id="viewListenersBtn">Load</button></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Everyone connected to the
+          station's stream right now: address, stream, player and how long,
+          as the station's own admin shows them. Never shown to a caller.
+          Needs the station admin login.</p>
+        <div class="result" id="listenersResult"></div>
+      </div>
+    </details>
+
+    <details class="sec diag" data-diag="untagged">
+      <summary><span class="chev">▶</span><span class="secname">Untagged songs</span><em class="secblurb"></em><span class="tag">the tagger's backlog</span>
+        <button class="runbtn" id="viewUntaggedBtn">Load</button></summary>
+      <div class="body">
+        <p class="hint wide" style="margin-top:0">Songs in your library the
+          station has not tagged yet, so searches by mood, energy or era cannot
+          find them. The station walks the library to answer, so a page can
+          take a while. Needs the station admin login.</p>
+        <div class="result scrolly" id="untaggedResult"></div>
+        <button type="button" class="btnquiet" id="untaggedMoreBtn" hidden>Next 50</button>
       </div>
     </details>
 

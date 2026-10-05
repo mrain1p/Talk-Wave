@@ -628,7 +628,10 @@ class TestTheStationsFavouritesAndItsMemory(unittest.TestCase):
         # The commonest reason this gets read is somebody ringing back to ask
         # whether their request aired. "Yes, yours" is the answer.
         tools = _build(ALL_ON, _Station(
-            history=[{"title": "Aired", "artist": "Q", "requester": "María",
+            # `requestedBy`, the station's own field (plays.ts PlayRecord).
+            # This fixture said `requester`, which the station never sends —
+            # so the test passed while the tool never once named anybody.
+            history=[{"title": "Aired", "artist": "Q", "requestedBy": "María",
                       "source": "request"}]))
         out = asyncio.run(tools["subwave_already_played"]())
         self.assertIn("Aired", out)
@@ -639,7 +642,7 @@ class TestTheStationsFavouritesAndItsMemory(unittest.TestCase):
         # somebody's name — upstream stopped it reaching aired copy in #1384
         # and it must not reach a caller's ear through us either.
         tools = _build(ALL_ON, _Station(
-            history=[{"title": "Aired", "artist": "Q", "requester": "anon",
+            history=[{"title": "Aired", "artist": "Q", "requestedBy": "anon",
                       "source": "request"}]))
         out = asyncio.run(tools["subwave_already_played"]())
         self.assertNotIn("anon", out)

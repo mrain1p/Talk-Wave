@@ -185,6 +185,10 @@ class TestExposedSurface(unittest.TestCase):
         # The listener series behind the ACTIVITY strip — operator telemetry,
         # gated like the call records and logs it sits beside.
         "GET /stats/listeners": "admin",
+        # The station's own admin reads on the Diagnostics page (0.99.54): an
+        # IP-and-browser list and a library walk, neither a caller's business.
+        "GET /station/listeners": "admin",
+        "GET /station/untagged": "admin",
         "DELETE /calls": "admin",
         # One record rather than all of them. Same gate as clear-all — a
         # transcript is a caller's words either way.

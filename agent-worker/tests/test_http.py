@@ -84,6 +84,10 @@ class TestHttpSurface(_TempStores):
         ("GET", "/logs"),
         ("GET", "/station/override"),
         ("POST", "/station/override/clear"),
+        # The station's own admin reads, relayed to Diagnostics: an IP list and
+        # a library walk, neither of them a caller's business.
+        ("GET", "/station/listeners"),
+        ("GET", "/station/untagged"),
     ]
     # Reachable by anyone: the widget itself, and what it reads to render.
     PUBLIC = ["/health", "/", "/call.js", "/style.css", "/embed.js"]
@@ -107,6 +111,64 @@ class TestHttpSurface(_TempStores):
                 await client.close()
 
         return asyncio.run(go())
+
+    def test_the_station_views_say_why_they_are_empty(self):
+        # Diagnostics → Who's listening now / Untagged songs. No login is a
+        # sentence rather than a blank; a station refusal arrives with its own
+        # reason; the untagged cursor is passed through untouched.
+        from unittest import mock
+
+        import station as station_mod
+
+        async def conns(self):
+            return {"count": 1, "connections": [{"ip": "203.0.113.7", "mount": "/stream.mp3"}]}
+
+        async def icecast_refused(self):
+            return {"error": "Icecast admin auth rejected"}
+
+        seen = {}
+
+        async def untagged(self, cursor="", limit=50):
+            seen["cursor"] = cursor
+            return {"rows": [{"id": "u1", "title": "T"}], "nextCursor": "abc"}
+
+        async def check(client, ts):
+            from api import auth as api_auth
+
+            # The operator's own key, so a password another test set cannot
+            # turn these into refusals.
+            api_auth.ADMIN_KEY, key = "views-key", {"X-Admin-Key": "views-key"}
+            out = {}
+            try:
+                with mock.patch("station_config.has_admin", return_value=False):
+                    out["nologin"] = await (await client.get(
+                        "/station/listeners", headers=key)).json()
+                with mock.patch("station_config.has_admin", return_value=True):
+                    with mock.patch.object(station_mod.StationClient,
+                                           "listener_connections", conns):
+                        out["ok"] = await (await client.get(
+                            "/station/listeners", headers=key)).json()
+                    with mock.patch.object(station_mod.StationClient,
+                                           "listener_connections", icecast_refused):
+                        out["refused"] = await (await client.get(
+                            "/station/listeners", headers=key)).json()
+                    with mock.patch.object(station_mod.StationClient,
+                                           "untagged_tracks", untagged):
+                        out["untagged"] = await (await client.get(
+                            "/station/untagged?cursor=xyz", headers=key)).json()
+            finally:
+                api_auth.ADMIN_KEY = ""
+            return out
+
+        from api import station_views
+
+        out = self._serve(check)
+        self.assertEqual({"ok": False, "error": station_views.NEEDS_LOGIN}, out["nologin"])
+        self.assertTrue(out["ok"]["ok"])
+        self.assertEqual("203.0.113.7", out["ok"]["connections"][0]["ip"])
+        self.assertEqual({"ok": False, "error": "Icecast admin auth rejected"}, out["refused"])
+        self.assertEqual("xyz", seen["cursor"])
+        self.assertEqual("abc", out["untagged"]["nextCursor"])
 
     def test_public_routes_answer_without_credentials(self):
         # Body length as well as status: a 200 carrying nothing would break

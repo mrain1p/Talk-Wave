@@ -96,11 +96,13 @@ Which models actually carry a call: [what to run](models.md).
 
 ### Voice (TTS)
 
-Backend, adapter, endpoint, voice (default: mirrored per-persona from the station), and the speech keys — a dedicated TTS server key, ElevenLabs, Fish Audio. Adapters ship for OpenAI-compatible servers, ElevenLabs, Fish Audio, and SUB/WAVE's own Remote `/speak` contract.
+Backend, adapter, endpoint, voice (default: mirrored per-persona from the station), and the speech keys — a dedicated TTS server key, ElevenLabs, Fish Audio. Adapters ship for OpenAI-compatible servers, ElevenLabs, Fish Audio, Google's Gemini voices, and SUB/WAVE's own Remote `/speak` contract.
+
+**Google (Gemini) voices** — pick `google-gemini-cloud.json` as the adapter (Backend: cloud; the endpoint fills itself in). They use the Google / Gemini key under Brains, the one a Gemini brain already uses, and Google bills them per use. Voice offers the thirty prebuilt voices the station's own Gemini engine speaks; left on the station's voice, a DJ the station voices through Gemini keeps that exact voice and any other DJ speaks as the first, Kore. Model: `gemini-3.8-flash-lite-tts` (the default, first audio in about a second) or `gemini-3.8-flash-tts` (fuller, about half a second slower).
 
 Also here, the **voice effect**: ten colours on the DJ's voice — telephone, CB, walkie-talkie, AM, megaphone, underwater, stadium PA, intercom, shortwave, lo-fi — applied in the caller's browser only, with an **intensity dial** (0–100, full character down to a hint of radio) and a **Test with effect** button that plays the configured voice through it at that intensity.
 
-> A **cloud voice** (ElevenLabs, Fish Audio, or the station's Remote `/speak`) is warmer and quicker to first audio than a local model on CPU. And leaving the voice mirrored from the station keeps the call-in DJ sounding like the on-air one.
+> A **cloud voice** (ElevenLabs, Fish Audio, Google's Gemini voices, or the station's Remote `/speak`) is warmer and quicker to first audio than a local model on CPU. And leaving the voice mirrored from the station keeps the call-in DJ sounding like the on-air one.
 
 ### Ears (STT)
 
@@ -136,6 +138,7 @@ What a caller may trigger, and **which caller** — each row set to the least tr
 
 - **Like the track on air** — the same heart any listener taps. Needs no station credentials.
 - **Find music by how it sounds** — two discovery reads: a "sounds like" search over a description, and "more like this" off the track on air. They match the analysed audio rather than words in a title, change nothing, and cost nothing against Actions per call. Browsing by mood, genre and era rides the library-search row instead.
+- **Say where listeners tune in from** — off by default. One line in the DJ's briefing, from the station's own last-24-hours audience rollup: the countries its listeners came from, so "where's everyone listening from?" gets a real answer. Only countries with at least three listeners are named, and never the sites or pages they came from. A read; needs the station admin login.
 - **Take a track back out of the queue** — off by default: the queue is shared, so it can pull a record somebody else asked for, which is why the station gives its own listeners no cancel.
 - **The three station-wide switches** — skip the current track, fire a programme beat, put a different show on air. These reach every listener.
 

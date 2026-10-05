@@ -1656,9 +1656,16 @@
   /* The wash must stay UNDER the sheet's content: both bands get their own
      stacking context so a z-indexed child can never slip beneath it. */
   .plscroll, .pldock, .plhead { position: relative; z-index: 1; }
+  /* THE MONOGRAM SCALES WITH ITS SLEEVE. A fixed 44px suited the phone's
+     120px sleeve and the installed app's 156, and on the desktop card's 76
+     two CJK characters (88px) wrapped into a stack taller than the sleeve and
+     spilled out of it whenever a record had no art (2026-10-04). One line, at
+     about a third of the sleeve, capped at the 44 it always was. */
   .plmono {
     display: flex; align-items: center; justify-content: center;
     color: var(--coral); font: 700 44px/1 var(--font-mono);
+    font-size: min(44px, calc(var(--sleeve, 120px) * .36));
+    white-space: nowrap; overflow: hidden;
   }
   .plart img[hidden], .plmono[hidden], .plglow[hidden] { display: none; }
   .pltrack {
@@ -2905,7 +2912,15 @@
      display:flex on the container only when something in it is visible;
      otherwise it must not eat pointer events over the box. */
   .after { position: absolute; left: 9px; right: 9px; bottom: 7px;
-           display: flex; align-items: center; gap: 8px; pointer-events: none; }
+           display: flex; align-items: center; gap: 8px; pointer-events: none;
+           flex-wrap: wrap; row-gap: 6px; }
+  /* WRAP RATHER THAN CUT. The drawer toggle needs ~206px and the rating
+     ~164, and on a 360px phone the strip has 290 — so "TRANSCRIPT · 4 LINES"
+     was cut to "TRANSCRIPT · 4 LI" (2026-10-04). The rating's label stays
+     (operator, above); when the two do not fit on one line the rating takes
+     the next, still right-aligned by its own auto margin, and a wide card
+     keeps its single row. A short box makes room through fitStage, which
+     measures the strip at whatever height it ends up. */
   .after > * { pointer-events: auto; }
   /* WITH THE DRAWER OPEN, THE STRIP JOINS THE FLOW. Floating, it sits at its
      anchor's bottom edge while the opened transcript scrolls beneath it — so
@@ -5521,9 +5536,14 @@
 
      Installed is excluded because there the card is the WINDOW — it has the
      phone's room on a wide screen and wants the phone's numbers, which is
-     exactly what the block below says. */
+     exactly what the block below says. Unless the window is SHORT: a
+     laptop's installed app opens around 790x567, which is this box's shape,
+     not a phone's, and the phone's numbers need about 780px of window to fit
+     (measured 2026-10-04). Under that, an installed window takes these. */
   @media (min-width: 701px) and (not (display-mode: standalone))
-         and (not (display-mode: minimal-ui)) {
+         and (not (display-mode: minimal-ui)),
+         (min-width: 701px) and (display-mode: standalone) and (max-height: 779px),
+         (min-width: 701px) and (display-mode: minimal-ui) and (max-height: 779px) {
     body:not(.compact) .card {
       --ident-h: 88px; --station-h: 50px;
       --portrait: 72px; --thumb: 36px;
@@ -6019,6 +6039,17 @@
       --dock-gap: 14px; --dock-pad: 14px;
       --hero-title: 25px; --gd-hero-h: 220px;
     }
+  }
+  /* THE INSTALLED APP SCROLLS RATHER THAN CLIPS. It was the one player
+     surface without the valve the phone, the phone browser and the desktop
+     page each have, so a window too short for its numbers clipped the queue
+     instead of letting it scroll — at 790x567 the queue's tabs began at
+     353px of a 312px middle, the rows unreachable (measured 2026-10-04). A
+     short window at desktop width now takes the desktop page's bands (see
+     that block) and fits; anything else too short for its numbers scrolls. */
+  @media (display-mode: standalone) and (min-width: 501px),
+         (display-mode: minimal-ui) and (min-width: 501px) {
+    body:not(.compact) .card .plscroll { overflow-y: auto; scrollbar-width: thin; }
   }
   /* The embed answers with the smallest set that still reads as the same
      design: the bands and the rules are there, the room they are drawn at

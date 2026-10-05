@@ -730,6 +730,14 @@ async def fake_browse(self, moods="", energy="", genre="", year_from=None,
     return {"rows": LIBRARY[:3], "total": 3, "moodVocab": vocab}
 
 
+async def fake_mark_blocked(self, rows, id_key="id"):
+    # A READ the station serves by POST (/library/blocklist/check): nothing on
+    # the station changes, but the verb is what the safety scan reads. The rows
+    # come back unmarked, which is the no-credentials behaviour.
+    STATION_CALLS.append(("mark_blocked", {"rows": len(rows or [])}))
+    return rows
+
+
 def muzzle_the_station() -> None:
     StationClient.search_library = fake_search
     StationClient.submit_request = fake_submit
@@ -752,6 +760,7 @@ def muzzle_the_station() -> None:
     StationClient.block_track = fake_block
     StationClient.unblock_track = fake_unblock
     StationClient.set_genre_lock = fake_genre_lock
+    StationClient.mark_blocked = fake_mark_blocked
 
 
 # The MCP-served half of the surface is reads, all of it — every write is

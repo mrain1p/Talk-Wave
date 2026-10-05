@@ -2,12 +2,10 @@
 TTS for the call-in agent — one canonical call, translated at request time
 into whatever shape the target backend expects, per a JSON adapter config.
 
-Two responsibilities live here: SYNTHESIS (AdapterTTS — the canonical-call to
-backend translation, and the speech-filter cleaning chokepoint every spoken
-line passes through), and VOICE DISCOVERY (parse_voice_list / available_voices
-— which voices a backend can actually speak). Discovery returns an EMPTY LIST
-to mean "could not find out", never "the backend has no voices"; callers must
-not collapse the two.
+SYNTHESIS lives here: AdapterTTS, the canonical-call to backend translation,
+and the speech-filter cleaning chokepoint every spoken line passes through.
+The adapter config and VOICE DISCOVERY (which voices a backend can actually
+speak) are tts_voices.py, re-exported below so callers import from one place.
 
 This is the v2 adapter design from BUILD-INSTRUCTIONS, implemented as a real
 `livekit.agents.tts.TTS` subclass so it drops straight into an AgentSession.
@@ -26,8 +24,10 @@ Notes from probing the actual backends (2026-08-02):
     but a live call should point at a fast cloud endpoint. See README.
 
 Streaming: when the adapter config sets `"stream": true` in static_fields and
-the response is raw PCM, audio is pushed to the emitter chunk-by-chunk as it
-arrives rather than buffered, which is what keeps time-to-first-audio low.
+the response is raw PCM, or server-sent JSON events carrying base64 PCM
+(`sse_json`, Gemini's Interactions API), audio is pushed to the emitter
+chunk-by-chunk as it arrives rather than buffered, which is what keeps
+time-to-first-audio low.
 """
 
 from __future__ import annotations
@@ -47,280 +47,20 @@ from livekit.agents.utils import shortuuid
 
 from log_setup import describe
 from tts_pace import PaceMeter, seconds_of_pcm
+from tts_voices import (  # noqa: F401 — re-exported; see the module docstring
+    ADAPTER_DIR,
+    _default_adapter_path,
+    _is_openai_host,
+    adapter_api_key,
+    adapter_headers,
+    available_voices,
+    load_adapter,
+    parse_voice_list,
+    pick_speakable_voice,
+    resolve_adapter,
+)
 
 log = logging.getLogger("callin.agent")
-
-ADAPTER_DIR = Path(__file__).parent / "tts-adapters"
-
-
-def _default_adapter_path(mode: str = "") -> Path:
-    """The adapter to use when none was named.
-
-    `mode` is passed in now rather than read back out of os.environ. Four
-    different places used to write os.environ["TTS_MODE"] purely so this line
-    could read it — a setting laundered through process-global state with no
-    owner, and in the token server that state is shared by every concurrent
-    request, so two operators testing different backends raced each other.
-    The environment remains the fallback for a worker that has not been told.
-    """
-    explicit = os.environ.get("TTS_ADAPTER_CONFIG")
-    if explicit:
-        return Path(explicit)
-    # Default matches settings.py ("cloud"); these disagreed previously, so a
-    # caller that hadn't set TTS_MODE got the local adapter while the rest of
-    # the app assumed cloud.
-    mode = (mode or os.environ.get("TTS_MODE", "cloud")).lower()
-    return ADAPTER_DIR / ("local-vibevoice.json" if mode == "local" else "openai-cloud.json")
-
-
-def _is_openai_host(base_url: str) -> bool:
-    """Is this URL actually OpenAI's own API, rather than something whose
-    hostname merely contains that string?"""
-    from urllib.parse import urlparse
-
-    host = (urlparse(str(base_url or "")).hostname or "").lower()
-    return host == "api.openai.com" or host.endswith(".api.openai.com")
-
-
-def adapter_api_key(adapter: dict, base_url: str = "", allow_stored: bool = True) -> str:
-    """The key this backend wants, from the environment.
-
-    Most adapters describe an OpenAI-shaped endpoint and take TTS_API_KEY (or
-    the OpenAI key, on an OpenAI host — the README promises one key covers
-    cloud TTS). A vendor with a key of its own says so with `auth.key_env`,
-    which is what lets ElevenLabs sit beside the generic adapters instead of
-    needing the operator to paste the same key into TTS_API_KEY and lose the
-    ability to use both.
-    """
-    if not allow_stored:
-        return ""
-    auth = adapter.get("auth") or {}
-    named = str(auth.get("key_env") or "").strip()
-    if named:
-        return os.environ.get(named, "")
-    key = os.environ.get("TTS_API_KEY", "")
-    if not key and _is_openai_host(base_url):
-        key = os.environ.get("OPENAI_API_KEY", "")
-    return key
-
-
-def adapter_headers(adapter: dict, api_key: str) -> dict:
-    auth = adapter.get("auth", {"type": "none"})
-    kind = auth.get("type", "none")
-    if not api_key:
-        return {}
-    if kind == "bearer":
-        return {"Authorization": f"Bearer {api_key}"}
-    if kind == "header":
-        return {auth.get("header_name", "X-API-Key"): api_key}
-    return {}
-
-
-def parse_voice_list(data: object, prefer: str = "") -> list[str]:
-    """Voice ids out of whatever shape the backend answered with.
-
-    `prefer` names the field that IS the id when a backend's catalogue carries
-    both an id and a display name. ElevenLabs is the case: its entries are
-    `{voice_id, name, ...}`, only voice_id is addressable, and the default
-    order below would pick `name` and hand the caller a list of labels that
-    every synthesis request then 404s on.
-
-    There is no standard here, and at least four shapes are in the wild:
-    OpenAI's {"data": [{"id": ...}]}, a bare ["name", ...], {"voices": [...]}
-    with either dicts or strings inside, and a mapping of id -> details.
-
-    Reading only the first is worse than it sounds. An empty list means "could
-    not find out" everywhere in this file, so a backend that answers its voice
-    list perfectly well in the wrong shape does not read as "unknown voices" —
-    it silently disables pick_speakable_voice, the panel's dropdown falls back
-    to stock OpenAI names, and the station's voice goes to a backend that
-    never had it. Tolerating the shapes costs nothing and means most new
-    backends need no adapter entry at all.
-    """
-    if isinstance(data, dict):
-        for key in ("data", "voices", "results", "items"):
-            if isinstance(data.get(key), list):
-                data = data[key]
-                break
-        else:
-            # A mapping of id -> details. Every value being a dict is what
-            # distinguishes it from an error envelope like {"detail": "..."},
-            # which would otherwise offer "detail" as a voice.
-            if data and all(isinstance(v, dict) for v in data.values()):
-                data = list(data.keys())
-
-    if not isinstance(data, list):
-        return []
-
-    found: set[str] = set()
-    for item in data:
-        if isinstance(item, str):
-            if item.strip():
-                found.add(item.strip())
-        elif isinstance(item, dict):
-            for key in ([prefer] if prefer else []) + ["id", "name", "voice", "voice_id"]:
-                value = item.get(key)
-                if isinstance(value, str) and value.strip():
-                    found.add(value.strip())
-                    break
-    return sorted(found)
-
-
-async def available_voices(
-    base_url: str,
-    timeout: float = 6.0,
-    adapter_path: str | Path | None = None,
-    mode: str = "",
-    allow_stored: bool = True,
-) -> list[str]:
-    """What the TTS backend at `base_url` says it can actually speak in.
-
-    An empty list means "could not find out" and never "has none" — the caller
-    must treat those differently, because refusing to speak on a failed lookup
-    would turn a slow TTS server into a silent call.
-
-    Lives here rather than in token_server because the WORKER needs it too:
-    the panel showing a voice list the worker never consults is how a call
-    ends up trying a voice the backend does not have.
-
-    The path comes from the adapter, because discovery is as backend-specific
-    as synthesis and this file only ever described the second half. A backend
-    that serves its list at /voices rather than /v1/audio/voices looked
-    identical to one that was down.
-    """
-    if not base_url:
-        return []
-    # A trailing slash here produced `http://host:8001//v1/audio/voices`, which
-    # some servers route and some 404 — so whether the panel could list voices
-    # at all depended on a character nobody could see. AdapterTTS already
-    # strips it; this was the one path that didn't.
-    base_url = base_url.rstrip("/")
-    path = "/v1/audio/voices"
-    headers: dict = {}
-    prefer = ""
-    try:
-        adapter = load_adapter(adapter_path, mode=mode)
-        path = str(adapter.get("voices_path") or path)
-        prefer = str(adapter.get("voices_id_field") or "")
-        # Authenticated, because some catalogues are. ElevenLabs answers
-        # /v1/voices with a 401 and no body without xi-api-key, and an empty
-        # list here means "could not find out" — so the panel would have shown
-        # eleven stock OpenAI voice names for a backend that has none of them,
-        # and the first call would have failed on a voice that never existed.
-        # …but only to a host the operator has SAVED. `base_url` reaches here
-        # from a ?tts_base_url= the panel is previewing, and this lookup used
-        # to hand that stranger the stored TTS/ElevenLabs key — invariant 4,
-        # the same rule the Test button already obeyed. Caller decides.
-        headers = adapter_headers(
-            adapter, adapter_api_key(adapter, base_url, allow_stored=allow_stored))
-    except Exception as e:                                    # noqa: BLE001
-        # An unreadable adapter is the caller's problem to report, not a
-        # reason to skip the lookup with the default path.
-        log.info("adapter unreadable for voice discovery (%s)", describe(e))
-    try:
-        async with httpx.AsyncClient(base_url=base_url, timeout=timeout) as c:
-            r = await c.get(path, headers=headers)
-            r.raise_for_status()
-            return parse_voice_list(r.json(), prefer=prefer)
-    except Exception as e:                                    # noqa: BLE001
-        log.info("voice list unavailable from %s%s (%s)", base_url, path, e)
-        return []
-
-
-def pick_speakable_voice(wanted: str, available: list[str]) -> tuple[str, str]:
-    """(voice to use, why it changed). An empty reason means it did not.
-
-    The station tells us which voice each DJ uses ON AIR, and mirroring that is
-    right — the call-in DJ should sound like the one broadcasting. But the
-    station's voice belongs to the station's TTS, and this service may be
-    pointed at a different one. Rosie's station voice is an ElevenLabs id;
-    against local VibeVoice every request 400s, so the DJ generated a perfectly
-    good greeting and the caller heard silence for the whole call. Even the
-    dead-air fallback was mute, because it speaks through the same backend.
-
-    A voice the backend does not have is therefore not a reason to say nothing.
-    It is a reason to say it in a different voice and to write down why.
-    """
-    wanted = str(wanted or "").strip()
-    if not available:
-        return wanted, ""            # lookup failed — not evidence of anything
-    if wanted and wanted in available:
-        return wanted, ""
-    fallback = available[0]
-    if not wanted:
-        return fallback, ""          # nothing asked for; nothing surprising
-    return fallback, (
-        f"The station uses voice {wanted!r} for this DJ, and the TTS backend "
-        f"does not have it — speaking as {fallback!r} instead. Every line would "
-        f"otherwise have failed and the caller would have heard nothing. Set "
-        f"Voice under Models & voice to choose deliberately, or point this at "
-        f"the TTS server the station itself uses."
-    )
-
-
-def resolve_adapter(value: str | None) -> str | None:
-    """The adapter file a setting names, constrained to ADAPTER_DIR.
-
-    `tts_adapter` reaches this from saved settings *and* from the body of
-    /test/tts and /test/speed, which is a request. The resolution used to be
-    the same three lines copied into three modules, and all three read "join
-    it to ADAPTER_DIR unless it is absolute" — so an absolute path went
-    straight to open(), and a relative one with ../ in it walked out of the
-    directory before the exists() check ever looked. A request could name any
-    file on the disk and learn whether it existed and whether it parsed as
-    JSON, which in first-run mode needs no password at all.
-
-    Same shape as _safe_sound_name: one flat directory, a known extension,
-    nothing that can point elsewhere. The panel only ever offers a filename
-    out of ADAPTER_DIR.glob("*.json"), so nothing legitimate is lost.
-
-    The one exception is TTS_ADAPTER_CONFIG. That is set at deploy time by
-    whoever runs the container, not by a request, and pointing it at a mounted
-    file outside the image is a supported thing to do — so an absolute path is
-    honoured when it is *exactly* that value and never otherwise.
-    """
-    name = str(value or "").strip()
-    if not name:
-        return None
-
-    from_env = str(os.environ.get("TTS_ADAPTER_CONFIG") or "").strip()
-    if from_env and name == from_env:
-        return name
-
-    if name != Path(name).name or not name.lower().endswith(".json"):
-        log.warning(
-            "ignoring tts adapter %r — it must be a .json filename in %s, "
-            "with no path in it", name, ADAPTER_DIR,
-        )
-        return None
-    candidate = ADAPTER_DIR / name
-    try:
-        if candidate.resolve().parent != ADAPTER_DIR.resolve():
-            return None
-    except OSError:
-        return None
-    return str(candidate) if candidate.is_file() else None
-
-
-def load_adapter(path: str | Path | None = None, mode: str = "") -> dict:
-    p = Path(path) if path else _default_adapter_path(mode)
-    with open(p, "r", encoding="utf-8") as f:
-        cfg = json.load(f)
-    # The one key with no sensible default: without a path to POST audio to,
-    # the backend cannot be reached. Fail here, naming the file, rather than a
-    # KeyError deep in the first synthesis (the report-only type check is blind
-    # across this untyped-dict seam, so this is the guard that catches it).
-    if "endpoint_path" not in cfg or not str(cfg["endpoint_path"]).strip():
-        raise ValueError(
-            f"TTS adapter {p} is missing 'endpoint_path' — the URL path audio "
-            "requests are POSTed to. Add it to the adapter JSON.")
-    cfg.setdefault("method", "POST")
-    cfg.setdefault("static_fields", {})
-    cfg.setdefault("auth", {"type": "none"})
-    cfg.setdefault("response", {"type": "raw_audio"})
-    cfg.setdefault("audio", {"encoding": "pcm", "sample_rate": 24000, "num_channels": 1})
-    cfg.setdefault("voices_path", "/v1/audio/voices")
-    return cfg
 
 
 _ERROR_BODY_CHARS = 400
@@ -349,6 +89,12 @@ async def _backend_said(r: httpx.Response) -> str:
         return ""
     if not text:
         return ""
+    # A streamed refusal arrives as server-sent events — Gemini's
+    # Interactions API answers a bad voice with `event: error` — and the
+    # reason is the JSON on its data line.
+    if text.startswith(("event:", "data:")):
+        text = next((ln[5:].strip() for ln in text.splitlines()
+                     if ln.startswith("data:")), text)
 
     try:
         data = json.loads(text)
@@ -375,6 +121,76 @@ async def _raise_for_status(r: httpx.Response) -> None:
         f"TTS backend returned HTTP {r.status_code} for {r.request.url}"
         + (f" — {said}" if said else "")
     )
+
+
+def _put(body: dict, path: str, value) -> None:
+    """Set `value` at a dotted path — `input.0.content.0.text` — building the
+    dicts and lists on the way. A flat name is the old `body[key] = value`, so
+    every adapter written before nesting reads exactly as it did. Gemini's
+    Interactions API is why: its text and voice live four levels down."""
+    keys = path.split(".")
+    node = body
+    for i, key in enumerate(keys):
+        if isinstance(node, list):
+            key = int(key)
+            node.extend({} for _ in range(key + 1 - len(node)))
+        if i == len(keys) - 1:
+            node[key] = value
+            return
+        kind = list if keys[i + 1].isdigit() else dict
+        child = node[key] if isinstance(node, list) else node.get(key)
+        if not isinstance(child, kind):
+            child = node[key] = kind()
+        node = child
+
+
+def _get(obj, path: str):
+    """The value at a dotted path, or None — the reading half of _put."""
+    for key in path.split("."):
+        if isinstance(obj, list) and key.isdigit() and int(key) < len(obj):
+            obj = obj[int(key)]
+        elif isinstance(obj, dict):
+            obj = obj.get(key)
+        else:
+            return None
+    return obj
+
+
+async def _push_sse_audio(r: httpx.Response, spec: dict, emitter) -> int:
+    """Audio out of a stream of server-sent JSON events, as Gemini's
+    Interactions API sends it: each `step.delta` event carries a slice of raw
+    PCM as base64 at `delta.data`. `match` names the fields an audio event has
+    (dotted paths, as in request_field_map) and `field` is where its bytes are.
+
+    An event carrying `error` is the backend refusing mid-stream. A stream that
+    ends with no audio at all is a failure too: passed off as success, the turn
+    would complete in silence and nothing would retry it."""
+    match = spec.get("match") or {}
+    produced = 0
+    async for line in r.aiter_lines():
+        payload = line[5:].strip() if line.startswith("data:") else ""
+        if not payload or payload == "[DONE]":
+            continue
+        try:
+            event = json.loads(payload)
+        except ValueError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        if event.get("error"):
+            err = event["error"]
+            said = err.get("message") if isinstance(err, dict) else err
+            raise APIConnectionError(f"TTS backend stopped mid-stream — {said}")
+        if any(_get(event, k) != v for k, v in match.items()):
+            continue
+        data = _get(event, spec.get("field", "data"))
+        if isinstance(data, str) and data:
+            chunk = base64.b64decode(data)
+            produced += len(chunk)
+            emitter.push(chunk)
+    if not produced:
+        raise APIConnectionError("TTS backend streamed no audio")
+    return produced
 
 
 def riff_sample_rate(data: bytes) -> int | None:
@@ -422,6 +238,14 @@ class AdapterTTS(tts.TTS):
 
         self._voice = voice
         self._model = model or self._adapter.get("default_model", "")
+        # A model saved for another backend — "tts-1" left in the box after
+        # switching to Gemini — is a 400 on every line. An adapter that names
+        # its models speaks a stranger's with its own default instead.
+        known = self._adapter.get("models")
+        if model and isinstance(known, list) and known and model not in known:
+            log.warning("tts model %r is not one this adapter offers — using %r",
+                        model, self._adapter.get("default_model", ""))
+            self._model = self._adapter.get("default_model", "")
         # How this backend has kept up, over the whole call. One AdapterTTS is
         # built per call, so this needs no key and cannot mix two callers.
         self._pace = PaceMeter()
@@ -460,8 +284,9 @@ class AdapterTTS(tts.TTS):
         for canonical_key, backend_key in self._adapter.get("request_field_map", {}).items():
             if backend_key is None:
                 continue
-            body[backend_key] = canonical.get(canonical_key)
-        body.update(self._adapter.get("static_fields", {}))
+            _put(body, backend_key, canonical.get(canonical_key))
+        for key, value in self._adapter.get("static_fields", {}).items():
+            _put(body, key, value)
         return body
 
     def _headers(self) -> dict:
@@ -612,7 +437,7 @@ class AdapterChunkedStream(tts.ChunkedStream):
         resp_cfg = adapter["response"]
         audio_cfg = adapter["audio"]
         mime = audio_cfg.get("mime_type", "audio/pcm")
-        streaming = bool(body.get("stream")) and resp_cfg["type"] == "raw_audio"
+        streaming = bool(body.get("stream")) and resp_cfg["type"] in ("raw_audio", "sse_json")
 
         request_id = shortuuid()
         output_emitter.initialize(
@@ -636,10 +461,13 @@ class AdapterChunkedStream(tts.ChunkedStream):
                     headers=impl._headers(),
                 ) as r:
                     await _raise_for_status(r)
-                    async for chunk in r.aiter_bytes():
-                        if chunk:
-                            produced += len(chunk)
-                            output_emitter.push(chunk)
+                    if resp_cfg["type"] == "sse_json":
+                        produced = await _push_sse_audio(r, resp_cfg, output_emitter)
+                    else:
+                        async for chunk in r.aiter_bytes():
+                            if chunk:
+                                produced += len(chunk)
+                                output_emitter.push(chunk)
                 output_emitter.end_segment()
                 self._note_pace(produced, time.monotonic() - started)
                 return
@@ -657,7 +485,11 @@ class AdapterChunkedStream(tts.ChunkedStream):
                 produced = len(r.content)
                 output_emitter.push(r.content)
             elif kind == "json_field":
-                audio_bytes = base64.b64decode(r.json()[resp_cfg["field"]])
+                found = _get(r.json(), resp_cfg["field"])
+                if not isinstance(found, str) or not found:
+                    raise APIConnectionError(
+                        f"TTS backend answered without audio at {resp_cfg['field']!r}")
+                audio_bytes = base64.b64decode(found)
                 produced = len(audio_bytes)
                 output_emitter.push(audio_bytes)
             elif kind == "json_url":
