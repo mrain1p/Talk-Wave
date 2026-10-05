@@ -38,6 +38,7 @@ Put the far-reaching ones on **admin** and they are yours alone, while the line 
 | `allow_skip_track` / `allow_dj_segment` | admin | every listener | no |
 | `allow_cancel_queue` | guest | another caller's request | no |
 | `allow_sound_search` | **anyone** | your library's contents (reads only) | no |
+| `allow_listener_countries` | off | where your listeners are, by country (a read) | no |
 | `allow_takeover` | admin | every listener | **yes** |
 | `allow_genre_lock` | admin | every listener | **yes — up to 12 hours** |
 | `allow_never_play` | admin | every listener | **yes — permanently** |
@@ -52,6 +53,7 @@ The three that need **station admin credentials** either way: `allow_takeover`, 
 - [ ] **`allow_announcements`** hands the on-air DJ a line to read *to everyone listening*. At guest tier that is only callers you handed the code to.
 - [ ] **`allow_cancel_queue`** — the queue is shared, so it can cancel a record a *different* caller asked for. That is exactly why the station exposes no listener-facing cancel of its own. It ships at **guest**, so on a code-gated line code-holders have it; worth turning off on an open line.
 - [ ] **`allow_sound_search`** is a pair of READS: a "sounds like" search, and the neighbours of the track on air. They queue nothing, change nothing, and are not counted against Actions per call. The risk is disclosure of your library's contents — the same as library search, not action. It ships reachable by **anyone**, matching `allow_library_search`: if your library's contents are private, this is the row to change on an open line.
+- [ ] **`allow_listener_countries`** reads the station's audience rollup into the DJ's briefing, countries only. A country is named only when at least three of the last day's listeners share it, because on a small station one listener's country points at a person. It ships **off**; at **anyone** it tells every caller roughly where your audience is.
 - [ ] **`allow_genre_lock`** is quieter than a takeover, which is the risk: a pinned show announces itself on air in a voice listeners recognise, a narrowed playlist does not. Needs a SUB/WAVE new enough to have the control at all — older stations answer that they can't, rather than failing.
 - [ ] **`allow_never_play`** — **the furthest-reaching switch here, and the only one with no expiry.** It puts the record on air onto the station's never-play list: out of the queue, out of the fallback playlist, never selected again. Nothing goes out on air to say it happened, so an unwanted ban is found by noticing a record has stopped coming round.
 

@@ -40,6 +40,7 @@ from api.readback import (
 )
 from api.env import LIVEKIT_PUBLIC_URL, PORT
 from api.stats import handle_stats_listeners, sample_listeners
+from api.station_views import handle_station_listeners, handle_station_untagged
 from api.hook_receiver import handle_hooks_recent, handle_station_hook
 from api.hooks import handle_hooks_test, keep_station_warm
 from api.auth import handle_guest_login, handle_set_password
@@ -138,6 +139,8 @@ def build_app() -> web.Application:
     app.router.add_get("/calls", handle_calls)
     # The ACTIVITY strip's listener curve — the one series /calls can't carry.
     app.router.add_get("/stats/listeners", handle_stats_listeners)
+    app.router.add_get("/station/listeners", handle_station_listeners)
+    app.router.add_get("/station/untagged", handle_station_untagged)
     # Open Lines: the operator's card. Admin-gated in the handlers, like
     # every other route that can put words on the broadcast.
     app.router.add_get("/open-lines", handle_open_lines_status)

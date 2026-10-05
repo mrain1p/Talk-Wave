@@ -353,6 +353,134 @@ class TestTheDJKnowsWhoIsListening(unittest.TestCase):
         self.assertNotIn("Nobody else", out)
 
 
+    # -- where they are: the station's /audience rollup, behind its own switch
+    # (approved 2026-09-28: countries only, a floor of three, off by default).
+    def test_where_they_listen_from_is_off_unless_switched_on(self):
+        import settings as settings_store
+
+        self.assertEqual("off", settings_store.FIELDS["allow_listener_countries"][1])
+
+    def test_only_countries_with_a_few_listeners_are_named(self):
+        from brain.briefing import _fmt_audience
+
+        line = _fmt_audience({"countries": [
+            {"country": "US", "count": 14}, {"country": "gb", "count": 5},
+            {"country": "DE", "count": 3}, {"country": "FR", "count": 2},
+            {"country": "IS", "count": 1}]})
+        self.assertIn("US 14, GB 5, DE 3.", line)
+        self.assertNotIn("FR", line)
+        self.assertNotIn("IS 1", line)
+
+    def test_no_country_over_the_floor_is_no_line_at_all(self):
+        from brain.briefing import _fmt_audience
+
+        for aud in ({"countries": [{"country": "FR", "count": 2}]}, {},
+                    {"countries": "junk"}, None):
+            with self.subTest(aud=aud):
+                self.assertEqual("", _fmt_audience(aud))
+
+    def test_six_at_most_and_nothing_that_is_not_a_country_code(self):
+        from brain.briefing import _fmt_audience
+
+        rows = [{"country": "<script>", "count": 99}, {"country": "US", "count": True}]
+        rows += [{"country": c, "count": 9} for c in ("US", "GB", "DE", "FR", "JP", "BR", "CA")]
+        line = _fmt_audience({"countries": rows})
+        self.assertNotIn("script", line)
+        self.assertEqual(6, line.count(" 9"))
+        self.assertNotIn("CA", line)
+
+    def test_the_line_reaches_only_the_callers_the_switch_reaches(self):
+        import asyncio
+
+        from brain.briefing import station_context
+
+        snap = {"now_playing": {}, "state": {}, "session": {}, "schedule": {},
+                "skills": [], "audience": {"countries": [{"country": "US", "count": 4}]}}
+        on = asyncio.run(station_context(None, {"allow_listener_countries": True}, snap, {}))
+        off = asyncio.run(station_context(None, {"allow_listener_countries": False}, snap, {}))
+        self.assertIn("US 4", on)
+        self.assertNotIn("US 4", off)
+
+    def _station_read(self, method, status, body, **kw):
+        import httpx
+        from unittest import mock
+
+        import station as station_mod
+
+        asked = []
+
+        def handler(request):
+            asked.append(request.url)
+            return httpx.Response(status, json=body)
+
+        async def run():
+            client = station_mod.StationClient(base_url="http://station")
+            client._client = httpx.AsyncClient(
+                base_url="http://station", transport=httpx.MockTransport(handler))
+            try:
+                with mock.patch("station_config.admin_credentials",
+                                return_value=("admin", "pw")):
+                    return await getattr(client, method)(**kw)
+            finally:
+                await client.aclose()
+
+        return asyncio.run(run()), asked
+
+    def test_the_connections_read_names_an_icecast_refusal(self):
+        # 502 is the station failing to reach Icecast's admin — not "nobody
+        # listening", which is a 200 with an empty list.
+        got, _ = self._station_read("listener_connections", 502,
+                                    {"error": "Icecast admin auth rejected"})
+        self.assertEqual({"error": "Icecast admin auth rejected"}, got)
+        got, _ = self._station_read("listener_connections", 200,
+                                    {"count": 0, "connections": []})
+        self.assertEqual(0, got["count"])
+
+    def test_the_untagged_walk_pages_by_the_stations_cursor(self):
+        got, asked = self._station_read("untagged_tracks", 200,
+                                        {"rows": [], "nextCursor": None},
+                                        cursor="MTA6Mw")
+        self.assertEqual("/library/untagged", asked[0].path)
+        self.assertEqual("MTA6Mw", asked[0].params.get("cursor"))
+        self.assertEqual("50", asked[0].params.get("limit"))
+        self.assertIsNone(got["nextCursor"])
+
+    def test_the_rollup_is_read_only_when_the_switch_is_on(self):
+        # It rides the snapshot's own gather, so it never lengthens the
+        # ringing; switched off it is not asked for at all.
+        import asyncio
+        from unittest import mock
+
+        import settings as settings_store
+        import station as station_mod
+
+        async def empty(*a, **k):
+            return {}
+
+        async def none(*a, **k):
+            return []
+
+        asked = []
+
+        async def audience(self, since_minutes=1440):
+            asked.append(since_minutes)
+            return {"countries": [{"country": "US", "count": 4}]}
+
+        fakes = {n: empty for n in ("live_dj", "now_playing", "state", "session", "schedule")}
+        try:
+            for value, expect in (("off", []), ("admin", [1440])):
+                asked.clear()
+                settings_store.save({"allow_listener_countries": value})
+                with mock.patch.multiple(station_mod.StationClient, personas=none,
+                                         audience=audience, **fakes):
+                    client = station_mod.StationClient.__new__(station_mod.StationClient)
+                    snap = asyncio.run(client.snapshot())
+                with self.subTest(value=value):
+                    self.assertEqual(expect, asked)
+                    self.assertEqual(bool(expect), bool(snap["audience"]))
+        finally:
+            settings_store.save({"allow_listener_countries": ""})
+
 class TestTheDJKnowsWhoIsInTheBoothAndWhatTheShowPlays(unittest.TestCase):
     """Both come off the live show record and neither was read.
 
@@ -846,6 +974,35 @@ class TestAFailedReadSaysWhyItFailed(unittest.TestCase):
             self.assertEqual(asyncio.run(client._get("/state")), {})
         self.assertIn("ReadTimeout", "\n".join(caught.output))
 
+    def test_a_station_still_starting_is_said_to_be_starting(self):
+        # SUB/WAVE 1.16+ answers every route 503 + Retry-After until its
+        # startup recovery finishes (#1679). The credential test printed the
+        # status line, which reads as a broken station mid-restart.
+        from unittest import mock
+
+        import httpx
+
+        from api import diagnostics
+
+        def handler(request):
+            return httpx.Response(503, headers={"Retry-After": "1"},
+                                  json={"error": "starting"})
+
+        real = httpx.AsyncClient
+
+        def fake(*a, **kw):
+            kw["transport"] = httpx.MockTransport(handler)
+            return real(*a, **kw)
+
+        with mock.patch.object(diagnostics.httpx, "AsyncClient", fake), \
+                mock.patch.object(diagnostics.settings_store, "station_base_url",
+                                  return_value="http://station"):
+            ok, said = asyncio.run(diagnostics.probe_station_admin("u", "p"))
+            starting = asyncio.run(diagnostics._station_starting("http://station"))
+        self.assertFalse(ok)
+        self.assertEqual(diagnostics.STATION_STARTING, said)
+        self.assertTrue(starting)
+
 
 class TestATimingOutStationKeepsTheRightDJ(unittest.TestCase):
     """Observed on a real call 2026-08-10: every station read ReadTimeout'd,
@@ -1151,6 +1308,75 @@ class TestTheNeverPlayWritesAndTheGenreLock(unittest.TestCase):
         out = self._run(client, lambda c: c.set_genre_lock(["  ", ""], 60))
         self.assertFalse(out["ok"])
         self.assertEqual(sent, {})
+
+    # -- the never-play CHECK: bare listings get the station's own mark -----
+    def _marked(self, rows, verdicts=None, creds=("admin", "pw"), status=200,
+                id_key="id"):
+        import json
+
+        import httpx
+        from unittest import mock
+
+        import station as station_mod
+
+        sent = []
+
+        def handler(request):
+            body = json.loads(request.content)
+            sent.append(body["tracks"])
+            if status != 200:
+                return httpx.Response(status, json={"error": "nope"})
+            return httpx.Response(200, json={"blocked": {
+                t["id"]: (verdicts or {}).get(t["id"]) for t in body["tracks"]}})
+
+        async def run():
+            client = station_mod.StationClient(base_url="http://station")
+            client._client = httpx.AsyncClient(
+                base_url="http://station", transport=httpx.MockTransport(handler))
+            try:
+                with mock.patch("station_config.admin_credentials",
+                                return_value=creds):
+                    return await client.mark_blocked(rows, id_key=id_key)
+            finally:
+                await client.aclose()
+
+        return asyncio.run(run()), sent
+
+    def test_a_bare_listing_gets_the_stations_own_never_play_mark(self):
+        # /similar-tracks, /playlists/:id and /library/history return rows
+        # with no blockedBy (upstream pass 2026-09-28); the check stamps the
+        # same ref /dj/search carries, so _drop_blocked reads it unchanged.
+        ref = {"kind": "entry", "type": "artist", "id": "ar1", "name": "Nope"}
+        rows = [{"id": "t1", "title": "A", "artist": "Nope"},
+                {"id": "t2", "title": "B", "artist": "Fine"}]
+        out, sent = self._marked(rows, {"t1": ref})
+        self.assertEqual(ref, out[0]["blockedBy"])
+        self.assertIsNone(out[1]["blockedBy"])
+        self.assertEqual([{"id": "t1", "title": "A", "artist": "Nope"},
+                          {"id": "t2", "title": "B", "artist": "Fine"}], sent[0])
+
+    def test_a_history_row_is_checked_by_its_track_not_its_play(self):
+        # A play-log row's own `id` is the PLAY (plays.ts PlayRecord).
+        rows = [{"id": 42, "trackId": "t9", "title": "Aired"}]
+        rule = {"kind": "rule", "label": "No Xmas", "seasonal": True}
+        out, sent = self._marked(rows, {"t9": rule}, id_key="trackId")
+        self.assertEqual("t9", sent[0][0]["id"])
+        self.assertEqual(rule, out[0]["blockedBy"])
+
+    def test_more_than_the_station_takes_goes_in_slices(self):
+        out, sent = self._marked([{"id": f"t{i}"} for i in range(1201)])
+        self.assertEqual([500, 500, 201], [len(s) for s in sent])
+        self.assertTrue(all("blockedBy" in r for r in out))
+
+    def test_a_row_the_station_already_marked_is_not_asked_about(self):
+        _out, sent = self._marked([{"id": "t1", "blockedBy": None}, {"id": "t2"}])
+        self.assertEqual(["t2"], [t["id"] for t in sent[0]])
+
+    def test_without_admin_or_when_the_check_fails_nothing_changes(self):
+        for kw in ({"creds": ("", "")}, {"status": 404}):
+            with self.subTest(case=str(kw)):
+                out, _ = self._marked([{"id": "t1"}], **kw)
+                self.assertNotIn("blockedBy", out[0])
 
 
 class TestTheDJsLanguageSurvivesTheRead(unittest.TestCase):

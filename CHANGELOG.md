@@ -4,6 +4,19 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.54
+
+Google's Gemini voices on calls, a never-play check on every list the DJ offers from, and the rest of the approved station reads.
+
+- **Google (Gemini) voices.** Pick the `google-gemini-cloud.json` adapter under Voice and calls speak with the same thirty Gemini voices SUB/WAVE's own engine uses, on the Google key your Gemini brain already has. A DJ the station voices through Gemini keeps that exact voice on calls. First audio arrives in about a second (measured on a live key).
+- **The DJ stops offering never-play tracks.** Similar tracks, your playlists and the play history now carry the station's never-play mark, so the DJ leaves those tracks out instead of promising one and being refused. A playlist queues without them and says how many it skipped.
+- **"Was that my request?" names who asked.** The play log's requester never reached the DJ because of a field-name mismatch; it does now.
+- **Where listeners tune in from**: a new permission, off by default. It adds one line to the DJ's briefing naming the countries in the station's last-day rollup with at least three listeners each.
+- **A restarting station says so.** The settings page's station checks now say "the station is starting up" instead of printing a raw 503.
+- **Who's listening now and Untagged songs** on the Diagnostics page: the station's own admin reads, loaded when you press Load.
+- **Fixes:** the after-call transcript button no longer gets cut off on a narrow phone, because the rating moves to the next line. The installed app in a laptop-sized window shows the queue instead of clipping it. A record with no art no longer spills its initials outside the cover on the desktop card.
+- **Under the hood:** the voice module was split along its planned seam, and the upstream drift check now reports new SUB/WAVE voice engines.
+
 ## 0.99.53
 
 Calls that pick up sooner, a card that says what's next after a call, and a tidier player and station-page card.

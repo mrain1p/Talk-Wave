@@ -1538,29 +1538,16 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # was killing the Callin global before either page's script could
         # run. It is runtime foundation, not copy, so the seam named below
         # has not moved.
-        "web-widget/shared.js": (756, "the caller-facing copy tables "
+        # 758 at 0.99.54: one ASKS example for allow_listener_countries —
+        # TestTheAskMenuOffersEveryPermission requires one for every tiered
+        # permission, and it lands in the copy table the split moves out.
+        "web-widget/shared.js": (758, "the caller-facing copy tables "
                                       "(ASK_GROUPS, ASKS, NEVER) split from "
                                       "the runtime foundation; the crossing "
                                       "is zero in both directions"),
         "web-widget/panel-viewers.js": (807, "the log viewer split from the "
                                              "call viewer; they share only "
                                              "Panel.afetch and showResult"),
-        # 0.9.122 pushed it over adding per-adapter auth and the {voice}
-        # endpoint templating for ElevenLabs. The seam is real and one-way:
-        # discovery (parse_voice_list, available_voices, pick_speakable_voice,
-        # adapter_api_key/adapter_headers) against synthesis (AdapterTTS and
-        # its stream). Discovery never reads the class; the class needs two
-        # helper names back.
-        # 669 at Batch 1 (2026-08-29): the fail-loud endpoint_path guard in
-        # load_adapter (the report-only type check is blind at this untyped-dict
-        # seam) plus a docstring paragraph naming the discovery half. Both are
-        # on the synthesis/config side; the seam above has not moved and the
-        # discovery split is still the one worth making.
-        # 675 on the 2026-09-17 review pass: available_voices takes
-        # allow_stored, so a previewed host is asked without the stored key
-        # (invariant 4) — on the discovery side, which is the split above.
-        "agent-worker/tts_adapter.py": (675, "a voice-discovery module split "
-                                             "out from the AdapterTTS class"),
         # 0.10.113 pushed it over while rebuilding the duck: the pads were
         # collapsed into one constant and a measured voice.end was made to
         # beat our own estimate, both of which needed the reasoning written

@@ -38,7 +38,7 @@ The realtime factor is the one people skip: it is synthesis time over playback t
 
 ## THE VOICE (TTS)
 
-**Ideal — a cloud voice built for streaming.** OpenAI, ElevenLabs and Fish Audio adapters ship with it. First audio in the low hundreds of milliseconds, and no GPU contention with the station. It bills per character and the DJ speaks on every turn — there is no TTS-side spend ceiling, so the call limits (seconds per call, calls per hour and day) are what bound the worst case.
+**Ideal — a cloud voice built for streaming.** OpenAI, ElevenLabs, Fish Audio and Google (Gemini) adapters ship with it. First audio in the low hundreds of milliseconds (about a second for Gemini), and no GPU contention with the station. It bills per character and the DJ speaks on every turn — there is no TTS-side spend ceiling, so the call limits (seconds per call, calls per hour and day) are what bound the worst case.
 
 **OK — a fast local backend.** Anything speaking a simple HTTP speech API can be pointed at with an adapter; the files in `agent-worker/tts-adapters/` are the worked examples. Pick for speed on the call leg, not for the best sound you can achieve offline.
 

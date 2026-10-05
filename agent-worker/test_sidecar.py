@@ -480,6 +480,7 @@ from tests.test_voice import (  # noqa: F401
     TestShippedAdaptersAreWellFormed,
     TestTheSttModelIsLoadedOnceForTheWholeProcess,
     TestTheVoiceCanLiveInTheUrl,
+    TestGeminiSpeaksThroughTheAdapter,
     TestVoiceDiscoveryIsNotHardcodedToOneShape,
     TestWhatTheBackendSaidReachesTheOperator,
 )

@@ -1178,6 +1178,26 @@ class TestAStationPlaylistGoesInWhole(unittest.TestCase):
         self.assertEqual(actions.batch_ids("the sunday chill one"),
                          ["id1", "id2", "id3"])
 
+    def test_a_never_play_track_is_left_out_and_said(self):
+        # mark_blocked stamps the playlist read; the push never sees the
+        # blocked row, and the caller hears it as the station's taste.
+        ref = {"kind": "entry", "type": "track", "id": "id2", "name": None}
+        st = self._station(entries={
+            "pl1": [_row(1, album="A"), dict(_row(2, album="B"), blockedBy=ref),
+                    _row(3, album="C")], "pl2": [], "pl3": []})
+        actions, out = self._run(st, name="sunday chill")
+        self.assertEqual([t["id"] for t in st.queued], ["id1", "id3"])
+        self.assertIn("never-play list and were left out", out)
+
+    def test_a_playlist_that_is_all_never_play_queues_nothing(self):
+        ref = {"kind": "rule", "label": "No Xmas", "seasonal": True}
+        st = self._station(entries={"pl1": [dict(_row(1), blockedBy=ref)],
+                                    "pl2": [], "pl3": []})
+        actions, out = self._run(st, name="sunday chill")
+        self.assertEqual(st.queued, [])
+        self.assertIn("never-play", out)
+        self.assertEqual(actions.count, 0)
+
     def test_a_name_that_fits_two_queues_nothing_until_the_caller_says(self):
         st = self._station()
         actions, out = self._run(st, name="Sunday")

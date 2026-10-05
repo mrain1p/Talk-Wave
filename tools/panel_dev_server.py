@@ -820,6 +820,19 @@ class Handler(BaseHTTPRequestHandler):
             }, "events": []})
         if path == "/stats/listeners":
             return self._json({"samples": LISTENERS, "intervalSecs": 600})
+        # The station's own admin reads, as /station/* relays them.
+        if path == "/station/listeners":
+            return self._json({"ok": True, "count": 2, "trustedProxies": [], "connections": [
+                {"ip": "203.0.113.7", "mount": "/stream.mp3", "connectedSeconds": 754,
+                 "userAgent": "Mozilla/5.0 (Linux; Android 14) Chrome/129", "connections": 1},
+                {"ip": "198.51.100.23", "mount": "/stream.opus", "connectedSeconds": 5400,
+                 "userAgent": "VLC/3.0.20 LibVLC/3.0.20", "connections": 2}]})
+        if path == "/station/untagged":
+            return self._json({"ok": True, "nextCursor": None, "rows": [
+                {"id": "u1", "title": "Harvest Moon", "artist": "Neil Young",
+                 "album": "Harvest Moon", "year": 1992},
+                {"id": "u2", "title": "Teardrop", "artist": "Massive Attack",
+                 "album": "Mezzanine", "year": 1998}]})
         if path == "/logs":
             return self._json({
                 "records": LOG_RECORDS,

@@ -210,6 +210,41 @@ def consumed_paths() -> set[str]:
             re.findall(r"""f?["'](/[a-z][^"'\s]*)["']""", worker("station.py"))}
 
 
+def engines_report(src: dict, was: dict) -> list[str]:
+    """Print which voice engines the station offers, and what moved since the
+    recorded pass; return the list to record.
+
+    Not a mirror check. `check_tts_engines` compares the one mirrored fact
+    (which engines share the roster's id-space), and comparing the whole list
+    there flagged engines nothing here ever mirrored. But a NEW engine is the
+    movement that bites: a DJ the operator moves onto it hands the voice mirror
+    an id the call voice may not speak — Gemini (#1718) arrived that way on
+    2026-10-02, and this tool said "nothing drifted". So it is reported like
+    the catalogue: listed on the first read, and afterwards only what moved.
+    """
+    engines = sorted(set(_list_after(src.get("schemas/persona.ts", ""),
+                                     "export const TTS_ENGINES = [")))
+    if not engines:
+        print("?? voice engines: nothing parsed from schemas/persona.ts — the "
+              "list moved or its shape changed; look before trusting this")
+        return list(was.get("ttsEngines") or [])
+    known = set(was.get("ttsEngines") or [])
+    print(f"voice engines: {len(engines)} on the station")
+    if not known:
+        print(f"      first read: {engines}")
+        return engines
+    new, gone = sorted(set(engines) - known), sorted(known - set(engines))
+    if new:
+        print(f"      NEW since last pass: {new} — a DJ moved onto one hands "
+              "the voice mirror an id the call voice may not speak; check "
+              "station_config._find_voice and the tts-adapters/")
+    if gone:
+        print(f"      dropped since last pass: {gone}")
+    if not (new or gone):
+        print("      unchanged since last pass")
+    return engines
+
+
 def catalogue_report(src: dict, was: dict) -> tuple[int, list[str]]:
     """Print the catalogue's movement; return (drift count, advertised list)."""
     adv = catalogue_endpoints(src.get("connect/catalog.ts", ""))
@@ -313,12 +348,17 @@ def main() -> int:
         print(f"?? catalogue: report itself failed ({e})")
         cat_drift, advertised = 1, list(was.get("catalog") or [])
     drifted += cat_drift
+    try:
+        engines = engines_report(src, was)
+    except Exception as e:                                      # noqa: BLE001
+        print(f"?? voice engines: report itself failed ({e})")
+        engines = list(was.get("ttsEngines") or [])
 
     print()
     if args.record:
         STAMP.write_text(json.dumps(
             {"sha": head["sha"], "date": head["date"], "drifted": drifted,
-             "catalog": advertised},
+             "catalog": advertised, "ttsEngines": engines},
             indent=2) + "\n", encoding="utf-8")
         print(f"recorded {head['sha'][:12]} in {STAMP.relative_to(ROOT)}")
     print(f"{drifted} of {len(CHECKS) + 1} checks drifted"

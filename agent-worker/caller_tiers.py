@@ -43,6 +43,7 @@ TIERED_PERMISSIONS = (
     "allow_requests",
     "allow_library_search",
     "allow_sound_search",
+    "allow_listener_countries",
     "allow_exact_queue",
     "allow_album_queue",
     "allow_cancel_queue",

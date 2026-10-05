@@ -24,7 +24,7 @@ from .albums import (
     ALBUM_MAX_TRACKS, _READ_FAILED, _SHELF_MAX, _batch_report,
     _first_position, _programme_length, _queue_rows,
 )
-from .rows import _squash, _txt
+from .rows import _drop_blocked, _squash, _txt
 
 
 def _candidates(lists: list[dict], name: str) -> list[dict]:
@@ -112,6 +112,14 @@ def build_playlist_tools(station: StationClient, actions: CallActions) -> list:
         if not rows:
             return (f"\"{pname}\" is empty on the station — nothing to queue. "
                     "Say so plainly.")
+        # Never-play tracks never reach the push: the queue gate refuses each
+        # one, and the report would read them out as the station's refusals
+        # rather than its taste. mark_blocked stamped them on the read.
+        rows, never = _drop_blocked(rows)
+        if not rows:
+            return (f"Every track on \"{pname}\" is on the station's never-play "
+                    "list — nothing queued. Say so as taste rather than as a "
+                    "fault, and offer to look another way.")
         dropped = max(0, len(rows) - ALBUM_MAX_TRACKS)
         rows = rows[:ALBUM_MAX_TRACKS]
         queued, refused, dupes, unqueued = await _queue_rows(
@@ -133,6 +141,9 @@ def build_playlist_tools(station: StationClient, actions: CallActions) -> list:
             actions.denied("refused", f"{len(refused)} track(s) were "
                            "refused by the station and not queued")
         tail = _batch_report(queued, refused, dupes, unqueued, dropped=dropped)
+        if never:
+            tail += (f" {never} track(s) on it are on the station's never-play "
+                     "list and were left out.")
         return (head + " " + tail).strip()
 
     return [queue_playlist]

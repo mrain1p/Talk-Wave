@@ -1,0 +1,43 @@
+{
+  "_comment": "Google's Gemini voices: the thirty prebuilt voices SUB/WAVE's own Gemini engine speaks (Kore, Puck, Charon...). Picking this adapter fills Endpoint in. The key is the Google / Gemini key under Brains, the same one a Gemini brain uses; there is no separate voice key. 'Station's voice for this DJ' gives a DJ the station voices through Gemini that exact voice, and any other DJ speaks as the voice picked under Voice (or Kore, first below). The text is read verbatim; no style prompt is sent. gemini-3.8-flash-lite-tts streams first audio in about a second (measured 2026-10-04 on the operator's key: 0.9s to first audio, a 3.1s line in 1.7s), gemini-3.8-flash-tts is fuller and about half a second slower. Test voice cannot vary the format to measure the rate, and does not need to: Google states 24000 on every chunk.",
+  "endpoint_path": "/v1beta/interactions",
+  "method": "POST",
+  "default_model": "gemini-3.8-flash-lite-tts",
+  "models": [
+    "gemini-3.8-flash-lite-tts",
+    "gemini-3.8-flash-tts",
+    "gemini-3.1-flash-tts-preview",
+    "gemini-2.5-pro-preview-tts"
+  ],
+  "request_field_map": {
+    "text": "input.0.content.0.text",
+    "voice": "generation_config.speech_config.0.voice",
+    "model": "model"
+  },
+  "static_fields": {
+    "input.0.type": "user_input",
+    "input.0.content.0.type": "text",
+    "response_format": { "type": "audio", "mime_type": "audio/l16", "sample_rate": 24000 },
+    "stream": true
+  },
+  "auth": { "type": "header", "header_name": "x-goog-api-key", "key_env": "GOOGLE_API_KEY" },
+  "response": {
+    "type": "sse_json",
+    "match": { "event_type": "step.delta", "delta.type": "audio" },
+    "field": "delta.data"
+  },
+  "voices": [
+    "Kore", "Puck", "Charon", "Zephyr", "Fenrir", "Leda", "Orus", "Aoede",
+    "Callirrhoe", "Autonoe", "Enceladus", "Iapetus", "Umbriel", "Algieba",
+    "Despina", "Erinome", "Algenib", "Rasalgethi", "Laomedeia", "Achernar",
+    "Alnilam", "Schedar", "Gacrux", "Pulcherrima", "Achird", "Zubenelgenubi",
+    "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat"
+  ],
+  "base_url": "https://generativelanguage.googleapis.com",
+  "audio": {
+    "encoding": "pcm",
+    "mime_type": "audio/pcm",
+    "sample_rate": 24000,
+    "num_channels": 1
+  }
+}

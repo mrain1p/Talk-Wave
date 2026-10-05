@@ -6654,6 +6654,80 @@
     finally { btn.disabled = false; }
   };
 
+  // WHO IS LISTENING, AND WHAT THE TAGGER HAS NOT REACHED: two reads the
+  // station already serves its own admin (/listeners/connections and
+  // /library/untagged), here when Load is pressed (upstream pass,
+  // 2026-09-28). Text, never markup: every field is the station's — an
+  // address, a user agent, a song title.
+  function connectedFor(secs) {
+    const s = Math.max(0, Math.round(Number(secs) || 0));
+    if (s < 90) return s + 's';
+    if (s < 5400) return Math.round(s / 60) + ' min';
+    return (s / 3600).toFixed(1) + ' h';
+  }
+  $('viewListenersBtn').onclick = async () => {
+    const btn = $('viewListenersBtn'), out = $('listenersResult');
+    btn.disabled = true;
+    out.className = 'result on'; out.textContent = 'Asking the station…';
+    try {
+      const d = await afetch('/station/listeners').then((r) => r.json());
+      if (!d.ok) { showResult(out, false, 'Failed: ' + (d.error || 'unknown')); return; }
+      const rows = Array.isArray(d.connections) ? d.connections : [];
+      if (!rows.length) { showResult(out, true, 'Nobody is connected to the stream right now.'); return; }
+      const lines = rows.map((c) => [
+        String(c.ip || '?'), String(c.mount || ''),
+        String(c.userAgent || 'unknown player').slice(0, 70),
+        connectedFor(c.connectedSeconds)
+          + ((c.connections || 1) > 1 ? ' (' + c.connections + ' sockets)' : ''),
+      ].filter(Boolean).join(' · '));
+      const proxies = (Array.isArray(d.trustedProxies) ? d.trustedProxies : [])
+        .filter((p) => typeof p === 'string' && p);
+      showResult(out, true, rows.length + ' connected now:\n  ' + lines.join('\n  ')
+        + (proxies.length ? '\n\nRows from ' + proxies.join(', ')
+          + ' are the station\'s trusted proxy, not one listener.' : ''));
+    } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
+    finally { btn.disabled = false; }
+  };
+
+  let untaggedNext = null, untaggedLines = [];
+  async function loadUntagged(more) {
+    const btn = $('viewUntaggedBtn'), moreBtn = $('untaggedMoreBtn'), out = $('untaggedResult');
+    btn.disabled = true; moreBtn.disabled = true;
+    if (!more) {
+      untaggedNext = null; untaggedLines = [];
+      out.className = 'result on scrolly';
+      out.textContent = 'Walking the library — a page can take a while…';
+    }
+    try {
+      const q = more && untaggedNext ? '?cursor=' + encodeURIComponent(untaggedNext) : '';
+      const d = await afetch('/station/untagged' + q).then((r) => r.json());
+      if (!d.ok) {
+        showResult(out, false, 'Failed: ' + (d.error || 'unknown'));
+        moreBtn.hidden = true;
+        return;
+      }
+      (Array.isArray(d.rows) ? d.rows : []).forEach((t) => {
+        untaggedLines.push(String(t.artist || '?') + ' — ' + String(t.title || '?')
+          + (t.album ? ' · ' + String(t.album) : '') + (t.year ? ' (' + t.year + ')' : ''));
+      });
+      untaggedNext = d.nextCursor || null;
+      moreBtn.hidden = !untaggedNext;
+      // The station stops a page after looking at 5,000 songs, so a short
+      // last page is the end of ITS walk, not proof the rest is tagged.
+      const tail = untaggedNext ? 'More to walk — press Next 50.'
+        : 'End of the station\'s walk. It looks at up to 5,000 songs a page, '
+          + 'so a very large library may hold more.';
+      showResult(out, true, (untaggedLines.length
+        ? untaggedLines.length + ' untagged so far:\n  ' + untaggedLines.join('\n  ')
+        : 'Nothing untagged in the part of the library the station walked.')
+        + '\n\n' + tail);
+      out.classList.add('scrolly');
+    } catch (e) { showResult(out, false, 'Failed: ' + e.message); }
+    finally { btn.disabled = false; moreBtn.disabled = false; }
+  }
+  $('viewUntaggedBtn').onclick = () => loadUntagged(false);
+  $('untaggedMoreBtn').onclick = () => loadUntagged(true);
+
   // A run button lives inside its row's <summary>, so a click would toggle the
   // row as well as run the thing. Swallow the toggle, and open the row on the
   // way so the output is visible when it arrives.

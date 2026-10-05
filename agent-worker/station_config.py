@@ -182,6 +182,16 @@ def _station_tts(settings: dict) -> dict:
     return tts if isinstance(tts, dict) else {}
 
 
+def _gemini_floor(station_tts: dict | None) -> str | None:
+    """The station's own Gemini voice — `values.tts.gemini.voice` (#1718) —
+    which a Gemini slot left blank speaks, as does an inherit slot on a station
+    whose default engine is Gemini. It is a Google voice name, so a call on the
+    Google adapter can say it."""
+    gemini = (station_tts or {}).get("gemini") if isinstance(station_tts, dict) else None
+    voice = gemini.get("voice") if isinstance(gemini, dict) else None
+    return voice.strip() if isinstance(voice, str) and voice.strip() else None
+
+
 def _find_voice(node: Any, station_tts: dict | None = None) -> str | None:
     if not isinstance(node, dict):
         return None
@@ -207,12 +217,16 @@ def _find_voice(node: Any, station_tts: dict | None = None) -> str | None:
                 cloud = st.get("cloud")
                 voice = (cloud or {}).get("voice") if isinstance(cloud, dict) else None
                 return voice if isinstance(voice, str) and voice else None
+            if engine == "gemini":
+                return _gemini_floor(st)
             if engine not in _INHERIT_CARRIES_VOICE:
                 return None
         for key in _VOICE_KEYS:
             value = sub.get(key)
             if isinstance(value, str) and value:
                 return value
+        if str(sub.get("engine") or "").strip().lower() == "gemini":
+            return _gemini_floor(station_tts)
     return None
 
 

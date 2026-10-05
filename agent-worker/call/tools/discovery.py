@@ -515,7 +515,9 @@ def build_discovery_tools(cfg: dict, station: StationClient,
                 # Who asked for it, when the station knows: a caller ringing
                 # back to ask whether their request aired is the commonest
                 # reason this gets read, and "yes, yours" is the answer.
-                who = str(row.get("requester") or "").strip()
+                # `requestedBy` is the station's field (plays.ts PlayRecord);
+                # `requester` was read here and never once matched.
+                who = str(row.get("requestedBy") or row.get("requester") or "").strip()
                 source = str(row.get("source") or "").strip()
                 if who and who.lower() != "anon":
                     line += f"  (requested by {who[:40]})"

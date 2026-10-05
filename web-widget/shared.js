@@ -529,6 +529,8 @@ window.Callin = (function () {
       why: 'Answered in character — the DJ knows what’s playing and talks about it.' },
     { group: 'talk', need: null, say: '“How long have you been doing the night shift?”',
       why: 'Answered in character from the DJ Card — no tool needed.' },
+    { group: 'talk', need: 'allow_listener_countries', say: '“Where’s everyone listening from?”',
+      why: 'The countries the station’s last day of listeners came from — only ones with a few listeners each.' },
     // --- request music ---
     { group: 'request', need: 'allow_requests', say: '“Can you play something slower?”',
       why: 'Vague requests work — the station resolves them.' },

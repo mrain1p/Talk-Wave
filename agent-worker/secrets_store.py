@@ -101,7 +101,7 @@ SECRET_HELP: dict[str, str] = {
     "openai_api_key": "Also powers cloud TTS and OpenAI speech-to-text — one key, three legs of the call.",
     "openrouter_api_key": "One key, ~340 models including free tiers. Its catalogue is public, so the list fills before the key does.",
     "anthropic_api_key": "Claude models.",
-    "google_api_key": "Gemini models, and Google speech-to-text.",
+    "google_api_key": "Gemini models and voices, and Google speech-to-text.",
     "deepseek_api_key": "DeepSeek chat and reasoner.",
     "requesty_api_key": "Aggregator — many vendors behind one key. Models are read live from your account.",
     "gateway_api_key": "Vercel's aggregator. Models are read live from your account.",

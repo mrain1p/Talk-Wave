@@ -1322,6 +1322,24 @@ async def handle_test_admin(request: web.Request) -> web.Response:
     return _cors(request, web.json_response({"ok": ok, "detail": detail}))
 
 
+# SUB/WAVE 1.16+ answers EVERY route 503 + Retry-After until its startup
+# recovery finishes (#1679). A station mid-restart is not a broken one, and a
+# 503 then is no verdict on anything this side sent — so both station tests
+# say so instead of printing the status line (upstream pass, 2026-09-28).
+STATION_STARTING = ("the station is starting up — it answers 503 until its "
+                    "startup recovery finishes; try again in a few seconds")
+
+
+async def _station_starting(base: str, timeout: float = 4.0) -> bool:
+    """Is the station at `base` answering 503 because it is still starting?"""
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as c:
+            r = await c.get(f"{base.rstrip('/')}/health")
+        return r.status_code == 503
+    except Exception:                                         # noqa: BLE001
+        return False
+
+
 async def probe_station_admin(user: str, password: str,
                               timeout: float = 8.0) -> tuple[bool, str]:
     """Do these station credentials work? (ok, what to tell the operator).
@@ -1351,6 +1369,8 @@ async def probe_station_admin(user: str, password: str,
             return False, ("station login rate limiter is active — wait 15 "
                            "minutes (or restart the station) and try again; "
                            "this does not mean the credentials are wrong")
+        if r.status_code == 503:
+            return False, STATION_STARTING
         r.raise_for_status()
         return True, "accepted by the station"
     except Exception as e:                                    # noqa: BLE001
@@ -1395,6 +1415,9 @@ async def handle_test_station(request: web.Request) -> web.Response:
     try:
         health = await station.health()
         result["station"] = bool(health)
+        if not health and await _station_starting(base):
+            result.update(starting=True, error=STATION_STARTING)
+            return _cors(request, web.json_response(result))
         persona = await station.resolve_live_persona()
         result["liveDj"] = persona.get("name")
     finally:
