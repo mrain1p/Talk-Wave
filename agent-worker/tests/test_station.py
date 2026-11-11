@@ -665,6 +665,110 @@ class TestTheStationLogSaysWhatWasSaid(unittest.TestCase):
                 self.assertEqual(got[1], "words on air")
 
 
+class TestTheSpeechReadFollowsTheLogOffThePublicState(unittest.TestCase):
+    """SUB/WAVE 1.21 (#1858) moved the booth log from public GET /state to
+    admin GET /debug/dj-log. Found on the 2026-11-09 upstream pass with the
+    operator's station already on 1.29: for weeks every 4s poll had read the
+    absent key as a quiet booth, and the guard that stops the same DJ talking
+    on air and on a call at once was running on the voice.* webhooks alone.
+    The read has to follow the log, and say when it cannot."""
+
+    def _speech(self, handler, state, creds=("admin", "pw")):
+        import httpx
+        from unittest import mock
+
+        import station as station_mod
+
+        async def go():
+            client = station_mod.StationClient(base_url="http://station")
+            client._client = httpx.AsyncClient(
+                base_url="http://station", transport=httpx.MockTransport(handler))
+            try:
+                with mock.patch("station_config.admin_credentials",
+                                return_value=creds):
+                    return await client.on_air_speech(state=state)
+            finally:
+                await client.aclose()
+
+        return asyncio.run(go())
+
+    @staticmethod
+    def _now():
+        from datetime import datetime, timezone
+
+        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    def test_a_state_without_the_log_reads_the_admin_route(self):
+        import httpx
+
+        asked = []
+
+        def handler(request):
+            asked.append((request.url.path, request.headers.get("authorization", "")))
+            return httpx.Response(200, json={
+                "djLog": [{"kind": "link", "message": "Back after this.",
+                           "t": self._now()}],
+                "djLogCount": 1, "timezone": "UTC"})
+
+        # The 1.29 /state: current track present, no djLog key at all.
+        got = self._speech(handler, {"current": {"title": "Dreams"}, "upcoming": []})
+        self.assertIsNotNone(got, "a 1.21+ station read as a quiet booth")
+        self.assertEqual(got[1], "Back after this.")
+        self.assertEqual([p for p, _ in asked], ["/debug/dj-log"])
+        self.assertTrue(asked[0][1].startswith("Basic "),
+                        "the admin route was asked without credentials")
+
+    def test_an_older_station_that_still_publishes_the_log_is_not_asked_twice(self):
+        def handler(request):
+            raise AssertionError(f"needless admin read: {request.url.path}")
+
+        got = self._speech(handler, {"djLog": [
+            {"kind": "link", "message": "from the public read", "t": self._now()}]})
+        self.assertEqual(got[1], "from the public read")
+
+    def test_an_empty_log_is_a_quiet_booth_not_a_failure(self):
+        import httpx
+
+        got = self._speech(
+            lambda req: httpx.Response(200, json={"djLog": [], "djLogCount": 0}),
+            {"current": {}})
+        self.assertIsNone(got)
+
+    def test_without_credentials_the_read_is_blind_not_broken(self):
+        def handler(request):
+            raise AssertionError("asked the admin route with no credentials")
+
+        # None, and no exception: a missing password is the operator's to
+        # fix, not congestion, so it must not hold every call's gate.
+        self.assertIsNone(self._speech(handler, {"current": {}}, creds=("", "")))
+
+    def test_a_refused_read_is_config_not_congestion(self):
+        import httpx
+
+        for status in (401, 403, 404):
+            with self.subTest(status=status):
+                self.assertIsNone(self._speech(
+                    lambda req, s=status: httpx.Response(s, json={"error": "no"}),
+                    {"current": {}}))
+
+    def test_a_station_too_slow_to_answer_raises_so_the_guard_holds(self):
+        import httpx
+
+        # _get swallows a failed read into {}, which is how a station outage
+        # used to read as a quiet booth. The speech read raises instead, and
+        # call/air.py's watch loop turns that into a short hold — a read that
+        # cannot prove the air is clear must not open the gate.
+        def handler(request):
+            raise httpx.ReadTimeout("slow", request=request)
+
+        with self.assertRaises(httpx.ReadTimeout):
+            self._speech(handler, {"current": {}})
+
+        with self.assertRaises(httpx.HTTPStatusError):
+            self._speech(lambda req: httpx.Response(503, json={"error": "starting"}),
+                         {"current": {}})
+
+
 class TestTheHoldMatchesHowLongTheStationWillTalk(unittest.TestCase):
     """A fixed hold was the wrong shape. An announcement is a sentence and a
     segment can run a minute or more, so one number either reopens the gate
