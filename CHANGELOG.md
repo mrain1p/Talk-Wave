@@ -4,9 +4,11 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
-## Unreleased
+## 0.99.55
 
-- **The on-air overlap guard can hear the booth again.** SUB/WAVE 1.21 moved the DJ's log off the public state read, and the station this sidecar watches is now on 1.29, so for weeks every poll read a quiet booth and the guard that keeps the same DJ from talking on air and on a call at once was running on the webhooks alone. It now reads the station's admin `/debug/dj-log` (the same fifty lines), still takes the public read on an older station, and when the station is too slow to answer it holds the call briefly instead of assuming the air is clear. Without station admin credentials it says once in the log that the read is blind.
+The on-air overlap guard can hear the booth again on a station past SUB/WAVE 1.21.
+
+- **The guard reads the booth log where the station keeps it now.** SUB/WAVE 1.21 moved the DJ's log off the public state read, and the station this sidecar watches is on 1.29, so every poll had been reading a quiet booth and the guard that keeps the same DJ from talking on air and on a call at once was running on the webhooks alone. It now reads the station's admin `/debug/dj-log`, still takes the public read on an older station, and a station too slow to answer holds the call briefly instead of being taken for clear air. Without station admin credentials it says once in the log that the read is blind.
 
 ## 0.99.54
 
