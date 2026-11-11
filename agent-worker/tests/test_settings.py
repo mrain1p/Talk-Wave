@@ -11,6 +11,7 @@ import os
 import re
 import unittest
 from pathlib import Path
+from unittest import mock
 import settings as settings_store
 from tests.support import AGENT_WORKER, REPO, _TempStores
 
@@ -131,12 +132,22 @@ class TestSettings(_TempStores):
     def test_a_url_already_stored_broken_falls_back_instead_of_breaking(self):
         # Validation on save can't help a config that was already saved wrong,
         # and handing an unusable URL to the agent is worse than the default.
-        settings_store.save({"station_mcp_url": "Gordon",
-                             "station_base_url": "http://box:7700/api"})
-        self.assertEqual(settings_store.station_mcp_url(),
-                         "http://box:7700/api/mcp")
-        settings_store.save({"station_base_url": "Gordon"})
-        self.assertTrue(settings_store.station_base_url().startswith("http"))
+        #
+        # The station env is pinned to nothing here: api/env.py and main.py
+        # load the checkout's .env on import, so in a full run on a developer
+        # box the real SUBWAVE_MCP_URL sits in os.environ and the broken stored
+        # value fell through to the operator's station instead of the derived
+        # one. CI has no .env, which is why it only ever failed locally.
+        with mock.patch.dict(os.environ):
+            os.environ.pop("SUBWAVE_BASE_URL", None)
+            os.environ.pop("SUBWAVE_MCP_URL", None)
+            settings_store.save({"station_mcp_url": "Gordon",
+                                 "station_base_url": "http://box:7700/api"})
+            self.assertEqual(settings_store.station_mcp_url(),
+                             "http://box:7700/api/mcp")
+            settings_store.save({"station_base_url": "Gordon"})
+            self.assertTrue(
+                settings_store.station_base_url().startswith("http"))
 
     def test_a_broken_stored_url_falls_through_to_the_environment(self):
         # Invariant 1: an unusable stored value falls to the layer beneath it,
@@ -145,19 +156,19 @@ class TestSettings(_TempStores):
         # SUBWAVE_BASE_URL their own container was started with — the env said
         # one station and every call went to another, with nothing on screen
         # connecting the two.
-        old = os.environ.get("SUBWAVE_BASE_URL")
-        os.environ["SUBWAVE_BASE_URL"] = "http://real-station:7700"
-        try:
+        #
+        # SUBWAVE_MCP_URL is cleared too: a developer box's .env (loaded on
+        # import by api/env.py and main.py) otherwise leaves the real MCP
+        # address in the env layer, and the explicit value wins over the one
+        # derived from SUBWAVE_BASE_URL — which is correct, and not the claim.
+        with mock.patch.dict(os.environ,
+                             {"SUBWAVE_BASE_URL": "http://real-station:7700"}):
+            os.environ.pop("SUBWAVE_MCP_URL", None)
             settings_store.save({"station_base_url": "Gordon"})
             self.assertEqual(settings_store.station_base_url(),
                              "http://real-station:7700")
             self.assertEqual(settings_store.station_mcp_url(),
                              "http://real-station:7700/mcp")
-        finally:
-            if old is None:
-                os.environ.pop("SUBWAVE_BASE_URL", None)
-            else:
-                os.environ["SUBWAVE_BASE_URL"] = old
 
     def test_a_url_with_a_note_typed_after_it_is_not_a_url(self):
         # _URLISH was anchored only at the FRONT, so an address with the
