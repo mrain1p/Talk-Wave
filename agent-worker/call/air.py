@@ -132,8 +132,8 @@ class OnAirGuard(AirVerdict):
         # docs/the-call.md still records — and max_call_seconds defaults to
         # 300 while a track runs three to four minutes, so the DJ routinely
         # discusses a record that stopped playing. The watch loop already
-        # reads the station's /state every POLL_SECS for the djLog and threw
-        # the current track away; now a mid-call CHANGE stages one sentence
+        # reads the station every POLL_SECS for the booth log and threw the
+        # current track away; now a mid-call CHANGE stages one sentence
         # here, and the reply path injects it as a system note on the next
         # caller turn (see CallAgent.on_user_turn_completed — the same
         # Gemini-safe insertion point the door hint uses). Staged, not
@@ -581,9 +581,9 @@ class OnAirGuard(AirVerdict):
             if tick % poll_every == 0:
                 was_failing = poll_failed
                 try:
-                    # One /state read serves both questions: the djLog for
-                    # "is the broadcast talking", and the current track for
-                    # "has the world moved on since the briefing". getattr,
+                    # One /state read answers "has the world moved on" and,
+                    # before SUB/WAVE 1.21, "is the broadcast talking"; since
+                    # then station.dj_log does, raising to hold. getattr,
                     # because every test fake of the station implements
                     # on_air_speech alone — a fake without state() keeps the
                     # old single-call path and simply never notes a track,

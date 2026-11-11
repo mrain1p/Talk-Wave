@@ -414,6 +414,7 @@ from tests.test_takeover import (  # noqa: F401
 )
 from tests.test_station import (  # noqa: F401
     TestTheGuideShapesTheStationsWeek,
+    TestTheSpeechReadFollowsTheLogOffThePublicState,
     TestNoIdEscapesItsPathSegment,
     TestTheDJsLanguageSurvivesTheRead,
     TestTheGenreShelvesTheStationComputesItself,

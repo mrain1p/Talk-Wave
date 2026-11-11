@@ -193,6 +193,11 @@ def _sent_but_unconfirmed(e: Exception) -> bool:
     """
     return isinstance(e, httpx.ReadTimeout)
 
+# Whether the booth-log read has already said it is blind (no credentials,
+# or the station refusing them). One line, not one per 4s poll; reset by the
+# next read that works so a recurrence is logged again.
+_dj_log_state: dict = {"warned": False}
+
 # Last-known-good persona, shared across calls in this process.
 #
 # Why: GET /dj is lazily cached on the station side. Warm it answers in ~15ms,
@@ -311,6 +316,47 @@ class StationClient:
 
     async def state(self) -> dict:
         return await self._get("/state")
+
+    async def dj_log(self) -> list[dict] | None:
+        """The station's booth log, newest first — admin GET /debug/dj-log.
+
+        The guard's speech read since SUB/WAVE 1.21 (#1858), when the log left
+        the public /state projection; the admin route serves the same 50-line
+        slice. Three answers, kept apart on purpose:
+
+        - a list: the station answered. Empty is a quiet booth, not a fault.
+        - None: nothing could be learned, and NOT because the station is
+          struggling — no admin credentials, or a 401/403/404 (a wrong
+          password, a station with no such route). Logged once rather than
+          on every 4s poll, and the guard reads it as it read a blank log:
+          quiet. Blind, but no worse than the day this was found.
+        - an exception: a timeout, a refused connection, a 5xx. RAISED, not
+          swallowed like `_get` does, so the guard's own rule applies — a
+          read that cannot prove the air is clear holds the gate briefly
+          (call/air.py FAIL_HOLD), because a congested station is exactly
+          when the on-air DJ is most likely mid-link.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            if not _dj_log_state["warned"]:
+                _dj_log_state["warned"] = True
+                log.warning("no station admin credentials — the on-air speech "
+                            "read (GET /debug/dj-log) is blind until they are set")
+            return None
+        r = await self._client.get(
+            "/debug/dj-log", auth=httpx.BasicAuth(user, password))
+        if r.status_code in (401, 403, 404):
+            if not _dj_log_state["warned"]:
+                _dj_log_state["warned"] = True
+                log.warning("GET /debug/dj-log answered %d — the on-air speech "
+                            "read is blind until that is fixed", r.status_code)
+            return None
+        r.raise_for_status()
+        _dj_log_state["warned"] = False
+        entries = _body(r).get("djLog")
+        return entries if isinstance(entries, list) else []
 
     async def session_feed(self) -> dict:
         """The live DJ session's chat history — the station serves it FOR a
@@ -511,9 +557,21 @@ class StationClient:
         from datetime import datetime, timezone
 
         st = state if state is not None else await self.state()
+        if "djLog" in st:
+            entries = st.get("djLog") or []
+        else:
+            # SUB/WAVE 1.21 (#1858) took the log off the public /state read:
+            # it is operator diagnostics, and the public projection became an
+            # allowlist. Found on the 2026-11-09 upstream pass with the
+            # operator's station already on 1.29 — for weeks every poll had
+            # read the absent key as a quiet booth, and the same-persona
+            # overlap guard had been running on the voice.* webhooks alone.
+            # The key's PRESENCE is the version test: an older station still
+            # publishes it here and is not asked twice.
+            entries = await self.dj_log() or []
         newest = None
         message = ""
-        for entry in (st.get("djLog") or []):
+        for entry in entries:
             kind = str(entry.get("kind") or "")
             # Skill segments are logged under their own name, so treat anything
             # that isn't recognisably bookkeeping as speech.

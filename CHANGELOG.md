@@ -4,6 +4,12 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 0.99.55
+
+The on-air overlap guard can hear the booth again on a station past SUB/WAVE 1.21.
+
+- **The guard reads the booth log where the station keeps it now.** SUB/WAVE 1.21 moved the DJ's log off the public state read, and the station this sidecar watches is on 1.29, so every poll had been reading a quiet booth and the guard that keeps the same DJ from talking on air and on a call at once was running on the webhooks alone. It now reads the station's admin `/debug/dj-log`, still takes the public read on an older station, and a station too slow to answer holds the call briefly instead of being taken for clear air. Without station admin credentials it says once in the log that the read is blind.
+
 ## 0.99.54
 
 Google's Gemini voices on calls, a never-play check on every list the DJ offers from, and the rest of the approved station reads.
