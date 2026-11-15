@@ -165,7 +165,41 @@
     } finally { btn.disabled = false; }
   };
 
-  $('lockBtn').onclick = () => {
+  // ARE YOU SURE. One press on a 28px glyph beside the theme toggle used to
+  // forget the code on the spot — a code the caller may not have written
+  // down, and a tier they climbed on purpose (operator, 2026-11-15: "when
+  // logging out it should have an are you sure popup"). The card's own
+  // dialog, fixed like the ask list so an embed has room for it; Escape and
+  // the scrim are a no, the way the ask list closes.
+  function askConfirm(text, yesWord, noWord) {
+    const pop = $('confirmPop'), txt = $('confirmText');
+    const yes = $('confirmYes'), no = $('confirmNo');
+    if (!pop || !txt || !yes || !no) return Promise.resolve(true);
+    txt.textContent = text;
+    yes.textContent = yesWord || 'Yes';
+    no.textContent = noWord || 'Cancel';
+    pop.hidden = false;
+    return new Promise((resolve) => {
+      const onKey = (e) => { if (e.key === 'Escape') done(false); };
+      const done = (answer) => {
+        pop.hidden = true;
+        yes.onclick = no.onclick = pop.onmousedown = null;
+        document.removeEventListener('keydown', onKey);
+        resolve(answer);
+      };
+      yes.onclick = () => done(true);
+      no.onclick = () => done(false);
+      pop.onmousedown = (e) => { if (e.target === pop) done(false); };
+      document.addEventListener('keydown', onKey);
+      no.focus();
+    });
+  }
+
+  $('lockBtn').onclick = async () => {
+    const sure = await askConfirm(
+      'Sign out of this device? The code is forgotten here, and you will '
+      + 'need it again to get back in.', 'Sign out', 'Stay signed in');
+    if (!sure) return;
     rememberCallKey('');
     setStatus('Signed out — the code is forgotten on this device');
     applyControls(shown || live);
@@ -2282,6 +2316,9 @@
           void sheet.offsetHeight;
           sheet.classList.remove('dragging');
         }
+        // A share link to one show outranks the operator's starting face:
+        // the reader followed it to read that write-up.
+        if (guideWanted && guideOffered() && !inConversation()) showFace('guide');
       } else {
         followStationPalette(d);
         // A tier change (signing in or out) changes what this caller may ask
@@ -5499,6 +5536,32 @@
 
   // The guide face's own state — see THE FACES, further down.
   let guideOpen = false, guideHideTimer = 0, guideData = null, guideAt = 0;
+
+  // A LINK TO ONE SHOW. The guide's rows open in place, so the only way to
+  // point somebody at a DJ's write-up was "open the card, swipe to the
+  // guide, find the row" (operator, 2026-11-15: "copy a share link on the
+  // guide page and it will bring to that dj writeup"). The link is the
+  // card's own URL with `#show/<id>` — a fragment, so it never reaches the
+  // server or the service worker's one cached page — and the config params
+  // a host put in the query are left out on purpose: the link is for a
+  // reader, not an embed. On arrival the guide opens as the first face with
+  // that row open and scrolled to; a reader already on the page gets the
+  // same from a hash change.
+  const SHOW_HASH = '#show/';
+  function showFromHash() {
+    let h = '';
+    try { h = decodeURIComponent(location.hash || ''); } catch (e) { h = ''; }
+    return h.startsWith(SHOW_HASH) ? h.slice(SHOW_HASH.length) : '';
+  }
+  function showLink(id) {
+    return location.origin + location.pathname + SHOW_HASH + encodeURIComponent(id);
+  }
+  let guideWanted = showFromHash();
+  window.addEventListener('hashchange', () => {
+    guideWanted = showFromHash();
+    if (!guideWanted) return;
+    if (guideOpen) paintGuide(); else showFace('guide');
+  });
   let playerOpen = false, playerHideTimer = 0;
 
   // Whether this surface can EVER carry the player, whatever the operator has
@@ -7530,6 +7593,10 @@
           guideRow(show, personas, runs, now, '', false)));
       }
     }
+    // The row a share link asked for, once the week is here to find it in —
+    // then the reader's own taps rule. A stale link to a show the station
+    // no longer lists opens nothing and is forgotten the same way.
+    if (guideWanted && shows.length) { openInList(guideWanted); guideWanted = ''; }
     // The strip STAYS at midnight: it is the day, read forward, and
     // scrolling it to "now" hid the morning behind the left edge.
     today.scrollLeft = 0;
@@ -7545,10 +7612,25 @@
   // Open a show in the list and bring it into view — what the strip's
   // blocks do, and what the hero's own "on the schedule" is beside.
   function openInList(id) {
-    const list = $('guideList');
-    if (!list) return;
-    const row = [...list.children].find((el) => el.dataset.show === id);
+    const list = $('guideList'), shelf = $('guideShelf');
+    const rows = [...(list ? list.children : []), ...(shelf ? shelf.children : [])]
+      .filter((el) => el.classList.contains('gdrow'));
+    const row = rows.find((el) => el.dataset.show === id);
     if (!row) return;
+    // One at a time, as a tap would have it (the row's own toggle rule) —
+    // and a shelved show needs its shelf unfolded first, or the row opens
+    // inside a section that is showing only its heading.
+    guideOpenRows.clear();
+    rows.forEach((el) => {
+      if (el === row) return;
+      el.classList.remove('open'); el.setAttribute('aria-expanded', 'false');
+    });
+    if (shelf && row.parentElement === shelf) {
+      guideShelfOpen = true;
+      shelf.classList.remove('min');
+      const cap = shelf.querySelector('.gdshelfcap');
+      if (cap) cap.setAttribute('aria-expanded', 'true');
+    }
     guideOpenRows.add(id);
     row.classList.add('open');
     row.setAttribute('aria-expanded', 'true');
@@ -7614,9 +7696,66 @@
   // What a show SAYS: the angle when it is on air, the show itself, then
   // the DJ and each guest with their own line and soul. Shared by the
   // hero and the rows, so the two can never say different things.
+  // THE WAY TO POINT SOMEBODY AT THIS SHOW: a button that copies the link
+  // showLink builds. In the open body, first and right-aligned, so the row
+  // leads with its own share control the way a page does — not in the head,
+  // where every collapsed row would wear one. Copies with the clipboard API,
+  // falls back to the old select-and-copy where that is refused (a plain
+  // http LAN address), and offers the system share sheet as a last resort.
+  function shareRow(show) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const row = document.createElement('div'); row.className = 'gdtools';
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'gdshare';
+    b.title = 'Copy a link that opens the guide on this show';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2.2');
+    svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', 'M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7');
+    svg.appendChild(path);
+    const word = document.createElement('span'); word.textContent = 'Share';
+    b.append(svg, word);
+    let back = 0;
+    const say = (text, cls) => {
+      word.textContent = text;
+      b.classList.remove('done', 'bad');
+      if (cls) b.classList.add(cls);
+      clearTimeout(back);
+      if (text !== 'Share') back = setTimeout(() => say('Share'), 1800);
+    };
+    b.onclick = async (e) => {
+      e.stopPropagation();                  // the row is a button too
+      const url = showLink(show.id);
+      try {
+        await navigator.clipboard.writeText(url);
+        say('Link copied', 'done');
+        return;
+      } catch (err) { /* refused: fall through */ }
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = url; ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        const ok = document.execCommand('copy');
+        ta.remove();
+        if (ok) { say('Link copied', 'done'); return; }
+      } catch (err) { /* fall through */ }
+      if (navigator.share) {
+        try { await navigator.share({ title: show.title || show.name, url }); return; }
+        catch (err) { /* dismissed */ }
+      }
+      say("Couldn't copy", 'bad');
+    };
+    row.appendChild(b);
+    return row;
+  }
   function guideBody(show, cast, angle, runs, now, cls) {
     const body = document.createElement('div');
     body.className = 'gdbody' + (cls ? ' ' + cls : '');
+    body.appendChild(shareRow(show));
     const line = (text, lead, klass) => {
       const l = document.createElement('p');
       l.className = 'gdline' + (klass ? ' ' + klass : '');

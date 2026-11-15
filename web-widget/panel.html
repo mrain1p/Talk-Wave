@@ -2443,6 +2443,23 @@
     </div>
   </section>
 
+<!-- ARE YOU SURE, before the one button that signs this browser out of
+     the panel AND the phone (operator, 2026-11-15). The edit sheet's own
+     grammar: a band for the question, a band for the answers. -->
+<div class="oledit" id="signoutAsk" hidden role="dialog" aria-modal="true" aria-labelledby="signoutAskText">
+  <div class="oledbox signoutbox">
+    <div class="oledhead"><span class="olmicro">Sign out</span></div>
+    <div class="oledbody">
+      <p class="signouttext" id="signoutAskText">Sign this browser out? It forgets the
+        panel password and the phone's code here, so both ask again the next time you
+        open them on this device. Nothing changes for anyone else.</p>
+    </div>
+    <div class="oledfoot signoutfoot">
+      <button type="button" class="btnquiet" id="signoutNo">Stay signed in</button>
+      <button type="button" id="signoutYes">Sign out</button>
+    </div>
+  </div>
+</div>
 <script src="/shared.js"></script>
 <script src="/panel.js"></script>
 <script src="/panel-sounds.js"></script>

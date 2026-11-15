@@ -5504,3 +5504,155 @@ class TestNotOnTheScheduleReadsAsAHeading(unittest.TestCase):
         self.assertIn(".card .gdshelf .gdshelfn {\n"
                       "    margin-left: auto; color: var(--sage-dim); "
                       "font-weight: 400;\n  }", self.css)
+
+
+class TestAShowHasALinkOfItsOwn(unittest.TestCase):
+    """"would be good to be able to share a link to the guide page for a
+    specific dj… copy a share link (icon) on the guide page and it will bring
+    to that dj writeup" (operator, 2026-11-15). The rows open in place, so
+    there was no address for one — the link is the card's own URL with a
+    `#show/<id>` fragment, and arriving on it opens the guide on that row."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = widget_js()["call.js"]
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+        cls.sw = (REPO / "web-widget" / "sw.js").read_text(encoding="utf-8")
+
+    def test_the_link_is_a_fragment_on_the_cards_own_address(self):
+        # A fragment never reaches the server, so the service worker's one
+        # cached page ('/') still answers it offline; and the query a host
+        # page configured the card with is left out — the link is for a
+        # reader, not an embed.
+        self.assertIn("const SHOW_HASH = '#show/';", self.js)
+        link = self.js.split("function showLink(id) {")[1].split("}")[0]
+        self.assertIn("location.origin + location.pathname + SHOW_HASH", link)
+        self.assertIn("encodeURIComponent(id)", link)
+        self.assertNotIn("location.search", link)
+        self.assertIn("const home = url.pathname === '/';", self.sw)
+
+    def test_every_open_show_carries_the_button(self):
+        # In the BODY, which the listing rows and the on-air hero both build
+        # through — so the show on air has one too, and a collapsed row does
+        # not wear a control.
+        body = self.js.split("function guideBody(show, cast, angle, runs, now, cls) {")[1][:300]
+        self.assertIn("body.appendChild(shareRow(show));", body)
+        share = self.js.split("function shareRow(show) {")[1].split(
+            "function guideBody(")[0]
+        self.assertIn("b.className = 'gdshare'", share)
+        self.assertIn("showLink(show.id)", share)
+        # The row is itself a button: a press on the share control must not
+        # fold the write-up it is sharing.
+        self.assertIn("e.stopPropagation();", share)
+        # Clipboard first; the old select-and-copy where a plain http LAN
+        # address is refused the API; the share sheet last.
+        order = [share.index("navigator.clipboard.writeText(url)"),
+                 share.index("document.execCommand('copy')"),
+                 share.index("navigator.share(")]
+        self.assertEqual(order, sorted(order))
+        self.assertIn("say('Link copied', 'done')", share)
+
+    def test_arriving_on_the_link_opens_the_guide_on_that_show(self):
+        self.assertIn("let guideWanted = showFromHash();", self.js)
+        # On the first good /live, after the operator's starting face — the
+        # link outranks it — and never over a call in progress.
+        first = self.js.split("if (first) {")[1].split("} else {")[0]
+        self.assertIn("if (guideWanted && guideOffered() && !inConversation()) "
+                      "showFace('guide');", first)
+        self.assertLess(first.index("playerStartApplied = true"),
+                        first.index("guideWanted && guideOffered()"))
+        # The row opens once the week is painted, and only once: a poll must
+        # not keep re-opening a row the reader has since closed. An empty
+        # (failed) read keeps the want for the retry.
+        paint = self.js.split("function paintGuide() {")[1].split(
+            "function castOf(")[0]
+        self.assertIn("if (guideWanted && shows.length) "
+                      "{ openInList(guideWanted); guideWanted = ''; }", paint)
+        # A reader already on the page gets the same from a pasted link.
+        self.assertIn("window.addEventListener('hashchange'", self.js)
+
+    def test_a_shelved_show_unfolds_its_shelf(self):
+        # A show with no hour this week lives under "Not on the schedule",
+        # folded to its heading. Opening the row inside a folded section
+        # shows the reader nothing.
+        fn = self.js.split("function openInList(id) {")[1].split(
+            "// One picture, or the initials")[0]
+        self.assertIn("$('guideShelf')", fn)
+        self.assertIn("guideShelfOpen = true;", fn)
+        self.assertIn("shelf.classList.remove('min');", fn)
+        # One at a time, the row's own rule.
+        self.assertIn("guideOpenRows.clear();", fn)
+
+    def test_the_button_is_quiet_chrome(self):
+        rule = self.css.split("  .card .gdshare {")[1].split("}")[0]
+        self.assertIn("border: 1px solid var(--edge)", rule)
+        self.assertIn("color: var(--sage)", rule)
+        self.assertNotIn("--coral", rule)     # nothing on the station moves
+        self.assertIn(".card .gdshare.done { color: var(--cool); "
+                      "border-color: var(--cool); }", self.css)
+
+
+class TestSigningOutAsksFirst(unittest.TestCase):
+    """"when logging out it should have an are you sure popup. and the icon
+    for that should be a bit better. Its a little confusing and blends in"
+    (operator, 2026-11-15). One press on a grey padlock used to forget the
+    code on the spot; both surfaces now ask, and the card's glyph is a way
+    out in the caller's colour."""
+
+    @classmethod
+    def setUpClass(cls):
+        js = widget_js()
+        cls.js, cls.panel_js = js["call.js"], js["panel.js"]
+        cls.html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        cls.panel = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+
+    def test_the_card_asks_before_it_forgets_the_code(self):
+        for el in ('id="confirmPop"', 'id="confirmText"', 'id="confirmYes"',
+                   'id="confirmNo"'):
+            self.assertIn(el, self.html)
+        handler = self.js.split("$('lockBtn').onclick = async () => {")[1][:420]
+        self.assertIn("await askConfirm(", handler)
+        self.assertLess(handler.index("if (!sure) return;"),
+                        handler.index("rememberCallKey('');"))
+        # Escape and the scrim are a no; the safe answer takes the focus.
+        ask = self.js.split("function askConfirm(text, yesWord, noWord) {")[1].split(
+            "$('lockBtn').onclick")[0]
+        self.assertIn("if (e.key === 'Escape') done(false);", ask)
+        self.assertIn("if (e.target === pop) done(false);", ask)
+        self.assertIn("no.focus();", ask)
+
+    def test_a_hidden_dialog_is_really_hidden(self):
+        # Trap one of the card's design system: a rule that sets a display
+        # outranks the UA's [hidden], so the twin is not optional.
+        self.assertIn("  .confirmpop[hidden] { display: none; }", self.css)
+        rule = self.css.split("  .confirmpop {")[1].split("}")[0]
+        self.assertIn("position: fixed", rule)
+
+    def test_the_glyph_is_a_way_out_in_the_callers_colour(self):
+        lock = self.html.split('id="lockBtn"')[0].rsplit("<button", 1)[1] \
+            + self.html.split('id="lockBtn"')[1].split("</button>")[0]
+        self.assertIn('class="gear signout"', lock)
+        self.assertNotIn("<rect", lock)                 # the padlock's body
+        self.assertIn('d="M12 7H5.5"', lock)            # the arrow, leaving
+        self.assertIn("  .card .gear.signout { color: var(--cool); }", self.css)
+        # Sign-in is its mirror — an arrow INTO a door — on all three heads.
+        # It used to be the same drawing as a log-out icon.
+        self.assertEqual(self.html.count('d="M8 7H2"'), 3)
+        self.assertNotIn('d="M11.5 7H5.5"', self.html)
+
+    def test_the_panel_asks_too(self):
+        for el in ('id="signoutAsk"', 'id="signoutYes"', 'id="signoutNo"'):
+            self.assertIn(el, self.panel)
+        press = self.panel_js.split("$('logoutBtn').onclick = () => {")[1].split("};")[0]
+        self.assertIn("ask.hidden = false;", press)
+        self.assertNotIn("localStorage.removeItem", press)
+        # Both credentials go, and only from the yes.
+        out = self.panel_js.split("function signOutHere() {")[1].split("\n  }\n")[0]
+        self.assertIn("localStorage.removeItem('callinAdminKey');", out)
+        self.assertIn("rememberCallKey('');", out)
+        self.assertIn("$('signoutYes').onclick = signOutHere;", self.panel_js)
+        # The dashboard's copy of the button goes through the same question.
+        self.assertIn("$('dashLogoutBtn').onclick = () => $('logoutBtn').click();",
+                      self.panel_js)
+

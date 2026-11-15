@@ -3579,6 +3579,15 @@
      currentColor rather than an emoji, so the INK is the card's now too; an
      operator who typed an emoji of their own still gets the platform's. */
   .card a.gear { text-decoration: none; font-size: 15px; }
+  /* SIGN OUT wears the caller's colour. It sat among the greys as a padlock
+     and read as a lock, not a way out (operator, 2026-11-15: "a little
+     confusing and blends in"); the glyph is now an arrow leaving a door,
+     and the ink is the caller's side of the line — it is their device this
+     changes. The sign-in glyph is its mirror, an arrow into a door. */
+  .card .gear.signout { color: var(--cool); }
+  .card .gear.signout:hover:not(:disabled) {
+    color: var(--cool); border-color: color-mix(in srgb, var(--cool) 50%, transparent);
+  }
 
   /* "What can I ask?" — a fixed overlay rather than a box inside the card.
      Absolutely positioning it inside the widget meant it was squeezed into
@@ -3629,6 +3638,39 @@
   }
   .askpop-list li.askhead:first-child { padding-top: 2px; }
   .askpop-list .say { display: block; color: var(--text); line-height: 1.4; }
+
+  /* ARE YOU SURE (sign-out). Fixed, like the ask list: a dialog inside the
+     card has no room on an embed. One filled button, and it is the cool one
+     — signing out is the caller's act, not the station's. */
+  .confirmpop {
+    position: fixed; inset: 0; z-index: 2147483000;
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+    background: color-mix(in srgb, var(--pine) 72%, transparent);
+  }
+  .confirmpop[hidden] { display: none; }
+  .confirmbox {
+    width: min(340px, 100%); padding: 16px;
+    border: 1px solid var(--edge); border-radius: 12px; background: var(--granite);
+    box-shadow: 0 16px 44px color-mix(in srgb, black 35%, transparent); text-align: left;
+  }
+  .confirmtext { margin: 0 0 14px; font: 13px/1.5 var(--font-body); color: var(--text); }
+  .confirmacts { display: flex; justify-content: flex-end; gap: 8px; }
+  .confirmpop .confirmacts button {
+    height: 34px; min-height: 0; padding: 0 14px; border-radius: 0;
+    font: 700 11px/1 var(--font-mono); letter-spacing: .1em;
+  }
+  .confirmpop .confirmacts button.quiet {
+    background: transparent; border-color: var(--edge); color: var(--text);
+  }
+  .confirmpop .confirmacts button.quiet:hover:not(:disabled) {
+    background: transparent; border-color: var(--hairline);
+  }
+  .confirmpop .confirmacts button.go {
+    background: var(--cool); border-color: var(--cool); color: var(--pine);
+  }
+  .confirmpop .confirmacts button.go:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--cool) 85%, var(--pine));
+  }
   .askpop-list .why {
     display: block; color: var(--dimmer); font-size: 11px; margin-top: 2px;
     line-height: 1.45;
@@ -5105,6 +5147,24 @@
   .card .gdtake.done { color: var(--coral); border-color: var(--coral); }
   .card .gdtake.back.done { color: var(--cool); border-color: var(--cool); }
   .card .gdtake.bad { color: var(--amber); border-color: var(--amber); }
+  /* THE SHARE CONTROL on an open show (operator, 2026-11-15). Quiet chrome,
+     not coral: copying a link moves nothing on the station's side. Cool
+     once it has copied — the reader's own act, done. */
+  .card .gdtools { display: flex; justify-content: flex-end; margin: 0 0 8px; }
+  .card .gdshare {
+    flex: none; height: 24px; min-height: 0; margin: 0; padding: 0 8px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    background: transparent; border: 1px solid var(--edge); border-radius: 0;
+    color: var(--sage); cursor: pointer;
+    font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em;
+    text-transform: var(--skin-label-case); white-space: nowrap;
+  }
+  .card .gdshare svg { width: 11px; height: 11px; flex: none; }
+  .card .gdshare:hover:not(:disabled) {
+    background: transparent; border-color: var(--hairline); color: var(--alpenglow);
+  }
+  .card .gdshare.done { color: var(--cool); border-color: var(--cool); }
+  .card .gdshare.bad { color: var(--amber); border-color: var(--amber); }
   /* A box the drawn mark fills, so the turn happens about its centre. */
   .card .gdchev, .card .gdshelfchev {
     flex: none; width: 12px; height: 12px; color: var(--sage-dim);

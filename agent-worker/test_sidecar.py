@@ -158,6 +158,8 @@ from tests.test_widget import (
     TestTheStylesheetParsesToTheEnd,
     TestTheUrlRowsOnlyExistInUrlMode,
     TestTheCardOffersTheCountAndTheHeart,
+    TestAShowHasALinkOfItsOwn,
+    TestSigningOutAsksFirst,
 )
 from tests.test_caller_tiers import (  # noqa: F401
     TestTheLadderLivesInOnePlace,
