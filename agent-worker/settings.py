@@ -85,6 +85,17 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "llm_model":        ("LLM_MODEL", ""),
     "llm_base_url":     ("LLM_BASE_URL", ""),
     "llm_temperature":  (None, 0.8),
+    # The net under the brain (1.0.1), mirroring the station's own
+    # llm.fallback.provider/model. Blank = no net, which is what every
+    # deployment had: six days of calls (2026-11-09 to -15) each died with the
+    # same 402 — "prepayment credits are depleted" — while the station beside
+    # them kept talking on its Ollama fallback. When the primary refuses a
+    # request outright (401/402/403, or no connection at all) the call
+    # switches to this leg and the record says so. Any provider the primary
+    # can be; the fallback's Endpoint is the primary's llm_base_url only when
+    # the two share a provider, otherwise the provider's own default address.
+    "llm_fallback_provider": ("LLM_FALLBACK_PROVIDER", ""),
+    "llm_fallback_model":    ("LLM_FALLBACK_MODEL", ""),
 
     # The bundled Whisper (0.10.80): no key, no network, works out of the box
     # — which is what a default should do. Deepgram and the other cloud ears

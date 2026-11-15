@@ -13,11 +13,18 @@ thread" once a job is running.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 from pathlib import Path
 
-from livekit.agents.types import NOT_GIVEN, APIConnectOptions
+from livekit.agents import llm as lk_llm
+from livekit.agents._exceptions import (
+    APIConnectionError, APIStatusError, APITimeoutError,
+)
+from livekit.agents.types import (
+    DEFAULT_API_CONNECT_OPTIONS, NOT_GIVEN, APIConnectOptions,
+)
 from livekit.plugins import anthropic, deepgram, google, openai
 
 import llm_pace
@@ -108,14 +115,231 @@ def build_stt(cfg: dict):
 WITHHELD_KEY = "withheld-by-talk-wave"
 
 
-def build_llm(cfg: dict, *, use_stored_key: bool = True):
-    """`use_stored_key=False` builds the model without the operator's API key.
+def build_llm(cfg: dict, *, use_stored_key: bool = True, fallback: bool = True):
+    """The brain a call (or a text, or a voicemail) thinks with.
 
+    `use_stored_key=False` builds the model without the operator's API key.
     Only the settings panel's test buttons pass this, and only when the base
     URL came from the request rather than from saved settings — a stored key
     must never be posted to a host the operator has not saved. See
     token_server._credentials_travel_to.
+
+    `fallback=False` builds the primary leg alone. The panel's Test and bench
+    buttons pass it: a test that quietly passed on the fallback would report
+    a broken primary as working, which is the one thing a test must not do.
+
+    With `llm_fallback_provider` set (blank by default — no deployment grows
+    a net it did not ask for) the primary is wrapped in a FallbackLLM that
+    carries the turn on the second leg when the first refuses outright. A
+    fallback that cannot be BUILT — openai-compatible with no endpoint, say
+    — costs a warning and leaves the primary standing alone, never the call.
     """
+    primary = _build_one(cfg, use_stored_key=use_stored_key)
+    if not fallback or not str(cfg.get("llm_fallback_provider") or "").strip():
+        return primary
+    second_cfg = fallback_cfg(cfg)
+    try:
+        second = _build_one(second_cfg, use_stored_key=use_stored_key)
+    except Exception as e:                                     # noqa: BLE001
+        log.warning("the fallback brain (%s) could not be built — the primary "
+                    "stands alone: %s", leg_name(second_cfg), e)
+        return primary
+    return FallbackLLM(primary, second,
+                       names=(leg_name(cfg), leg_name(second_cfg)))
+
+
+def leg_name(cfg: dict) -> str:
+    """`provider/model` the way the record and the log already spell it."""
+    return f"{cfg.get('llm_provider') or ''}/{cfg.get('llm_model') or ''}"
+
+
+def fallback_cfg(cfg: dict) -> dict:
+    """The primary's config re-pointed at the fallback leg, so the one
+    builder serves both — any provider the primary can be, the fallback can
+    be, with the same keys, the same temperature and the same model-name
+    hygiene. The Endpoint is the one field that does NOT carry across unless
+    the two legs share a provider: llm_base_url names the PRIMARY's server,
+    and sending Ollama's traffic to a llama.cpp box (or the other way round)
+    is a 404 on every utterance of the leg that was meant to save the call."""
+    out = dict(cfg)
+    net = str(cfg.get("llm_fallback_provider") or "").strip().lower()
+    out["llm_provider"] = net
+    out["llm_model"] = str(cfg.get("llm_fallback_model") or "").strip()
+    if net != str(cfg.get("llm_provider") or "").strip().lower():
+        out["llm_base_url"] = ""
+    return out
+
+
+# The failures the fallback is FOR: the account, not the request, is what is
+# wrong, so the next request will fail the same way and retrying is how six
+# days of calls (2026-11-09 to -15) each died on the same "prepayment credits
+# are depleted" 402. 401 and 403 are the same shape — a key revoked or a
+# project disabled — and a connection that cannot be made at all (the host
+# gone, DNS dead) is an outage no retry fixes inside one call.
+FALLBACK_STATUSES = frozenset({401, 402, 403})
+
+
+def needs_fallback(err) -> bool:
+    """True when the primary's failure is one the second leg should carry.
+
+    NOT a timeout: a model that is merely slow is llm_pace's problem and the
+    operator's model choice, and the panel's help says so. The SDK wraps an
+    exhausted retry loop in a plain APIConnectionError `from` the last
+    attempt's error, so the cause is what says whether the attempts were
+    timeouts (stay) or a dead host (switch)."""
+    if isinstance(err, APIStatusError):
+        return err.status_code in FALLBACK_STATUSES
+    if isinstance(err, APITimeoutError):
+        return False
+    if isinstance(err, APIConnectionError):
+        cause = err.__cause__
+        if isinstance(cause, APITimeoutError):
+            return False
+        if isinstance(cause, APIStatusError):
+            return cause.status_code in FALLBACK_STATUSES
+        return True
+    return False
+
+
+@dataclasses.dataclass
+class FallbackSwitch:
+    """What the record is told when a call changes brains mid-call."""
+
+    primary: str
+    fallback: str
+    error: Exception
+
+    def in_plain_words(self) -> str:
+        why = f"{type(self.error).__name__}: {self.error}"[:200]
+        return (f"The brain ({self.primary}) refused the request — {why} — so "
+                f"the fallback ({self.fallback}) carried the call from there.")
+
+
+class FallbackLLM(lk_llm.LLM):
+    """Two legs, one brain: the primary until it refuses outright, then the
+    fallback for the rest of the session.
+
+    Why a wrapper rather than the session's error event: by the time the
+    session hears a non-recoverable LLM error the turn is lost and the caller
+    gets the apology line. Switching INSIDE the stream re-issues the same
+    turn on the second leg, so the caller hears a reply, from a different
+    brain, and nothing else. The switch is sticky for the life of the object
+    — a 402 does not clear itself between turns — and happens only before
+    the first token: a reply that has started on one model is not finished
+    by another.
+
+    Errors from the legs are relayed as this object's own, which is where the
+    AgentSession listens, except the one the switch absorbs. Metrics are not
+    relayed: the base stream measures the forwarded chunks itself, so the
+    panel's per-turn numbers are the leg that actually answered.
+    """
+
+    def __init__(self, primary, fallback, *, names=("", "")) -> None:
+        super().__init__()
+        self._primary = primary
+        self._fallback = fallback
+        self.primary_name, self.fallback_name = names
+        self.switched = False
+        self.switched_by: Exception | None = None
+        self._label = primary._label
+        primary.on("error", self._relay)
+        fallback.on("error", self._relay)
+
+    @property
+    def active(self):
+        return self._fallback if self.switched else self._primary
+
+    @property
+    def model(self) -> str:
+        return self.active.model
+
+    @property
+    def provider(self) -> str:
+        return self.active.provider
+
+    def chat(self, *, chat_ctx, tools=None,
+             conn_options=DEFAULT_API_CONNECT_OPTIONS,
+             parallel_tool_calls=NOT_GIVEN, tool_choice=NOT_GIVEN,
+             extra_kwargs=NOT_GIVEN):
+        return _FallbackStream(
+            self, chat_ctx=chat_ctx, tools=tools or [],
+            conn_options=conn_options,
+            passthrough=dict(parallel_tool_calls=parallel_tool_calls,
+                             tool_choice=tool_choice, extra_kwargs=extra_kwargs))
+
+    def prewarm(self, *, loop=None) -> None:
+        self._primary.prewarm(loop=loop)
+
+    async def aclose(self) -> None:
+        await self._primary.aclose()
+        await self._fallback.aclose()
+        await super().aclose()
+
+    def _relay(self, ev) -> None:
+        # The one error the switch is about to absorb is not relayed: the
+        # session would record it as a failed turn and say the apology line
+        # over a reply the fallback is already producing.
+        if not self.switched and needs_fallback(getattr(ev, "error", None)):
+            return
+        self.emit("error", ev)
+
+    def _switch(self, err: Exception) -> None:
+        if self.switched:
+            return
+        self.switched = True
+        self.switched_by = err
+        self._label = self._fallback._label
+        ev = FallbackSwitch(self.primary_name, self.fallback_name, err)
+        log.warning("brain fallback: %s", ev.in_plain_words())
+        self.emit("fallback", ev)
+
+
+class _FallbackStream(lk_llm.LLMStream):
+    """One turn: drain the active leg into this stream; if the primary fails
+    before its first chunk with a failure the net is for, switch and drain
+    the fallback instead, in the same stream, so the SDK sees one reply."""
+
+    def __init__(self, owner: FallbackLLM, *, chat_ctx, tools, conn_options,
+                 passthrough: dict) -> None:
+        self._owner = owner
+        self._inner_conn = conn_options
+        self._passthrough = passthrough
+        # The LEGS retry (with the operator's own budget — llm_conn_options);
+        # this shell must not retry on top of them, or a dead primary costs
+        # the caller the budget squared before the fallback is tried.
+        super().__init__(owner, chat_ctx=chat_ctx, tools=tools,
+                         conn_options=dataclasses.replace(conn_options, max_retry=0))
+
+    async def _drain(self, leg, forwarded: list) -> None:
+        stream = leg.chat(chat_ctx=self._chat_ctx, tools=self._tools,
+                          conn_options=self._inner_conn, **self._passthrough)
+        try:
+            async for chunk in stream:
+                self._event_ch.send_nowait(chunk)
+                forwarded.append(1)
+        finally:
+            await stream.aclose()
+
+    async def _run(self) -> None:
+        owner = self._owner
+        if owner.switched:
+            await self._drain(owner.active, [])
+            return
+        forwarded: list = []
+        try:
+            await self._drain(owner._primary, forwarded)
+        except Exception as e:                                 # noqa: BLE001
+            if forwarded or not needs_fallback(e):
+                raise
+            owner._switch(e)
+        else:
+            return
+        await self._drain(owner._fallback, [])
+
+
+def _build_one(cfg: dict, *, use_stored_key: bool = True):
+    """One leg, from `llm_provider` / `llm_model` / `llm_base_url`. The
+    fallback leg comes through here too, on fallback_cfg(cfg)."""
     provider = str(cfg.get("llm_provider") or "").lower()
     # Blank since 0.10.80's fresh-install defaults: nothing is picked until
     # the operator picks it. Refuse with the fix in the message — the bare

@@ -329,6 +329,62 @@ def _music_lean_from(settings: dict, persona_id: str) -> str:
     return ""
 
 
+def _skill_name(skill: dict) -> str:
+    """A catalogue row's name as `POST /dj/skill` wants it. The live station
+    (SUB/WAVE 1.32's `GET /dj/skills`) keys its rows by `kind`; older stations
+    and this repo's own fixtures say `name`. Whichever is present wins."""
+    return str(skill.get("name") or skill.get("kind") or "")
+
+
+def skill_gate(skill: dict) -> str:
+    """Why the STATION's own gates withhold this segment tonight — "" if they
+    don't. Only the operator's gates live here; whose show a segment belongs
+    to, and whether it needs a second voice, are the caller's circumstances
+    and are judged in `runnable_skills` alongside.
+
+      * `enabled: false` — the operator turned it off.
+      * `ready: false` — it cannot run as configured. On 1.32 that is a skill
+        that `requiresKey` and has a `keyProblem` (missing, rejected); the
+        problem is relayed so the DJ can say what is wrong, not just that it is.
+      * `requiresKey: true` with a `keyProblem` and no `ready` field at all —
+        read in case a station ever publishes the key state without the
+        summary flag.
+
+    Absent means runnable, on purpose: a station older than these fields
+    sends none of them, and its every segment must keep working.
+    """
+    if not isinstance(skill, dict):
+        return ""
+    if skill.get("enabled") is False:
+        return "switched off by the operator"
+    problem = " ".join(str(skill.get("keyProblem") or "").split())[:80]
+    if skill.get("ready") is False:
+        if skill.get("requiresKey") is True or problem:
+            return "missing its API key" + (f" ({problem})" if problem else "")
+        return "not ready to run"
+    if skill.get("requiresKey") is True and problem:
+        return f"missing its API key ({problem})"
+    return ""
+
+
+def withheld_skills(catalogue: list[dict]) -> dict[str, str]:
+    """name → reason, for every catalogue row the station's own gates drop.
+
+    Handed to the run-skill tool beside the runnable list. A model that names
+    a segment it was never told about is then answered with the real reason —
+    the station has it switched off tonight — rather than a bare "not yours",
+    which reads as a persona matter and sends it round again with a synonym.
+    """
+    out: dict[str, str] = {}
+    for skill in (catalogue or []):
+        why = skill_gate(skill)
+        if why:
+            name = _skill_name(skill)
+            if name:
+                out[name] = why
+    return out
+
+
 def runnable_skills(catalogue: list[dict],
                     assigned: list[str] | None,
                     has_guests: bool = True) -> list[dict]:
@@ -343,8 +399,10 @@ def runnable_skills(catalogue: list[dict],
       * `enabled: false` — the operator turned it off. A caller could still run
         it, which is the operator's own switch being ignored on their own
         station.
-      * `ready: false` — it needs an API key that isn't set. Offering it buys
-        one confident "let me get the news" and then a failure.
+      * `ready: false` — it needs an API key that isn't set (SUB/WAVE 1.32
+        says which in `requiresKey` + `keyProblem`, and those two are read on
+        their own as well — see `skill_gate`). Offering it buys one confident
+        "let me get the news" and then a failure.
       * assigned to other personas — SUB/WAVE lets a skill belong to some DJs
         and not others, so a caller could make tonight's host run a segment
         that belongs to someone else's show.
@@ -367,13 +425,13 @@ def runnable_skills(catalogue: list[dict],
     for skill in (catalogue or []):
         if not isinstance(skill, dict):
             continue
-        if skill.get("enabled") is False or skill.get("ready") is False:
+        if skill_gate(skill):
             continue
         if skill.get("cronOnly") is True:
             continue
         if skill.get("cohosts") is True and not has_guests:
             continue
-        name = str(skill.get("name") or skill.get("kind") or "")
+        name = _skill_name(skill)
         if allowed is not None and name and name not in allowed:
             continue
         out.append(skill)

@@ -23,6 +23,7 @@ from livekit.agents import AgentSession, APITimeoutError, JobContext
 import speech_filter
 
 from .background import spawn
+from .providers import FallbackLLM
 
 log = logging.getLogger("callin.agent")
 
@@ -189,6 +190,30 @@ def attach_error_recovery(session: AgentSession, record=None, think=None) -> Non
         spawn(_apologise())
 
     session.on("error", _on_session_error)
+
+
+def attach_brain_fallback(session: AgentSession, record=None) -> None:
+    """Write down which brain carried the call when the primary refused.
+
+    The switch (providers.FallbackLLM) is the one LLM failure the session is
+    NOT told about as an error — the fallback is already answering the same
+    turn, and the apology line over a reply would be worse than the 402 —
+    so it is written down here or nowhere. A call that went out on the
+    second brain with no note is how the next six-day gap goes unnoticed.
+    Attached before greet(): the greeting is the first request that can
+    fail. A session whose llm is a plain provider has nothing to hear.
+    """
+    brain = getattr(session, "llm", None)
+    if not isinstance(brain, FallbackLLM):
+        return
+
+    def _on_switch(ev) -> None:
+        if record is None:
+            return
+        record.problem(ev.in_plain_words())
+        record.setup_note("llmCarriedBy", ev.fallback)
+
+    brain.on("fallback", _on_switch)
 
 
 def attach_think_pace(session: AgentSession, think) -> None:

@@ -4,6 +4,13 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+- **A link to one show.** Every open show in the programme guide has a share icon that copies a link to it; the link opens the card on the guide with that show's write-up open and scrolled to, on a phone or a desktop. Shelved shows unfold their shelf on arrival.
+- **Sign-out asks first.** The card's sign-out button and the panel's both put an "are you sure" in front of forgetting the code, and the card's glyph is now an arrow leaving a door in the caller's colour instead of a grey padlock; sign-in is its mirror, an arrow into a door.
+- **A fallback brain, off by default.** Under Brains, a *Fallback provider* and *Fallback model* (the station's own `llm.fallback`, mirrored). When the primary provider refuses a request outright — billing lapsed, a key revoked, nothing answering — the call switches to the fallback for the rest of the call and the caller hears a reply instead of the apology line. The call record notes which brain carried the call. Any provider the primary can be, Ollama on your own box included; a slow model is not a reason to switch, and the Test button still tests the primary alone. Leave both blank and nothing changes. Prompted by six days of calls (9–15 November) that each died on the same depleted-credits 402 while the station beside them kept talking on its own fallback.
+- **The call DJ honours the station's own segment switches.** SUB/WAVE's `GET /dj/skills` says for each segment whether the operator has it on and whether it is ready to run (a skill that needs an API key says what is wrong with the key). The station's manual trigger ignores both, so the call line now reads those fields the way the live station sends them, keeps a switched-off or key-less segment out of the DJ's briefing and off the answering machine's list, and when the DJ names one anyway the tool answers that the station has that segment switched off tonight instead of running it. An older station that sends none of these fields keeps every segment, as before.
+
 ## 1.0.0
 
 Talk Wave 1.0: the call DJ keeps up with SUB/WAVE 1.32, can steer the whole station from the phone, and leans the way the booth does.
