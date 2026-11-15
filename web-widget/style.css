@@ -3323,6 +3323,18 @@
   }
   .captions .cap { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
   .captions.on { display: block; }
+  /* What the card SAYS, for a screen reader: one polite region that call.js
+     copies the status line, the refusals and the finished chat lines into.
+     Its own node because the visible ones cannot be it — #status is
+     display:none whenever it is empty or the transcript has the box, and a
+     region that is not rendered when its text arrives is not announced.
+     Clipped rather than hidden for the same reason, and pinned to the page's
+     corner so it can never add a pixel to the page or to the height an embed
+     reports (review, 2026-11-15). */
+  .srsay {
+    position: absolute; top: 0; left: 0; width: 1px; height: 1px;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
   /* The one message surface. "No answer — the booth didn't pick up" and
      "Call ended" land here, where the caller is already looking, instead of
      in the header band next to ON AIR NOW. Absolutely placed so it SHARES

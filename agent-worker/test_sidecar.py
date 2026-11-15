@@ -160,6 +160,16 @@ from tests.test_widget import (
     TestTheCardOffersTheCountAndTheHeart,
     TestAShowHasALinkOfItsOwn,
     TestSigningOutAsksFirst,
+    TestAHoldDoesNotOutliveItsCall,
+    TestAGuestKeepsTheirCodeAfterAWrongPassword,
+    TestTheOffAirCardIsAWholePaint,
+    TestSpaceBelongsToTheButtonThatHasFocus,
+    TestTheCardSpeaksToAScreenReader,
+    TestTheInstalledWindowWearsTheCardsColour,
+    TestTheLauncherPillKnowsWhatTheCardWillSay,
+    TestStudioPlaybackStopsAndCleansUp,
+    TestAnEmbedCarriesItsHostsSkin,
+    TestTheThemeGlyphMeansOneThingFromTheFirstFrame,
 )
 from tests.test_caller_tiers import (  # noqa: F401
     TestTheLadderLivesInOnePlace,

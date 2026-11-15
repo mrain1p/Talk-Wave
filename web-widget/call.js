@@ -231,7 +231,12 @@
   // operator default.
   function themeOptions() {
     const opts = ['light', 'dark'];
-    if (live && live.stationTheme && live.stationTheme.tokens) opts.push('station');
+    // Until /live has answered, a stored 'station' pick is still the theme
+    // the viewer is ON. Without the second half the glyph painted at boot
+    // was the device monitor and /live then swapped it for the mast — the
+    // button changing its mind about the page it is on (review, 2026-11-15).
+    if ((live && live.stationTheme && live.stationTheme.tokens)
+        || (!live && store.getItem('callinTheme') === 'station')) opts.push('station');
     opts.push('');
     return opts;
   }
@@ -253,6 +258,31 @@
       root.removeAttribute('data-theme');
     }
     paintThemeGlyph();
+    syncThemeColor();
+  }
+
+  // THE WINDOW WEARS THE CARD'S COLOUR (review, 2026-11-15). index.html
+  // ships two theme-color metas keyed on the OS scheme and nothing ever
+  // rewrote them — so the installed app's title bar, and a phone's status
+  // bar, stayed OS-dark over a card the viewer had turned light, and never
+  // took a station palette at all. Read back from the page rather than
+  // worked out from the choice: the theme, the skin and the palette reach
+  // the background by three different routes, and the computed colour is
+  // the one answer that cannot disagree with what is on screen. Both metas
+  // get it, so whichever the browser picks is right. Never in a frame — an
+  // embed has no window furniture of its own.
+  function syncThemeColor() {
+    if (framed) return;
+    const bg = getComputedStyle(document.body).backgroundColor;
+    if (!bg || bg === 'transparent' || /^rgba\(.*,\s*0\)$/.test(bg)) return;
+    document.querySelectorAll('meta[name="theme-color"]')
+      .forEach((m) => m.setAttribute('content', bg));
+  }
+  // "Follow the device" follows the device: with no stored pick the card
+  // repaints itself when the OS flips, and the window has to go with it.
+  if (window.matchMedia) {
+    const osScheme = matchMedia('(prefers-color-scheme: light)');
+    if (osScheme.addEventListener) osScheme.addEventListener('change', syncThemeColor);
   }
 
   function paintThemeGlyph() {
@@ -385,6 +415,7 @@
     // SUB/WAVE page that posts its palette after the frame paints — the coral →
     // purple flash reported 2026-08-10). shared.js reads this at boot.
     try { store.setItem('callinPalette', JSON.stringify(tokens)); } catch (e) { /* private mode */ }
+    syncThemeColor();
   }
 
   // Station mode (HOST-STYLE-GUIDE §2). The host dresses itself in the on-air
@@ -1597,6 +1628,57 @@
     if (box) box.classList.toggle('saying', !!statusText.textContent.trim());
   }
 
+  // THE CARD'S VOICE, FOR A SCREEN READER (review, 2026-11-15). Nothing on
+  // this page was a live region, so a caller who cannot see the card was
+  // never told "No answer", "That code is not right", or that their request
+  // went in. One polite region (#srSay, off screen), and two ways into it.
+  //
+  // The lines the card writes about ITSELF — the status line, the door
+  // code's and the setup box's answers, the player's request and command
+  // receipts — are mirrored by an observer, so every one of their writers
+  // is covered without knowing this exists. They cannot be regions
+  // themselves: each is display:none while it is empty (or while the
+  // transcript has the box), and a region that is not rendered when its
+  // text arrives is not announced.
+  //
+  // The TRANSCRIPT is never observed. The smooth reveal rewrites a caption
+  // a dozen times a sentence and an interim line corrects itself, so a
+  // region on #captions would stutter every word twice. addSystemLine and
+  // the text line's finished DJ messages call say() once, with the whole
+  // line. Speech on a voice call is not announced at all: the DJ's voice IS
+  // the announcement, and a screen reader reading it back would talk over
+  // the DJ and into the caller's open microphone.
+  const sayBox = $('srSay');
+  // Up while a resumed chat replays its history — old lines are not news.
+  let sayHeld = false;
+  function say(text) {
+    const t = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!sayBox || !t || sayHeld || previewMode) return;
+    const line = document.createElement('div');
+    line.textContent = t;
+    sayBox.appendChild(line);
+    // A log, not an archive: a line has been spoken long before four more
+    // arrive, and a removal is not announced.
+    while (sayBox.children.length > 4) sayBox.removeChild(sayBox.firstChild);
+  }
+  if (window.MutationObserver) {
+    ['statusText', 'guestMsg', 'setupPwMsg', 'plReqMsg', 'plOpFlash'].forEach((id) => {
+      const el = $(id);
+      if (!el) return;
+      // Compared when the observer RUNS, after the script that wrote has
+      // finished: the poll re-writes the same sentence every twenty seconds,
+      // and a status cleared and set again in one breath is the same status.
+      // Only a line that is new since this node last spoke is said.
+      let was = '';
+      new MutationObserver(() => {
+        const now = el.textContent.trim();
+        if (now === was) return;
+        was = now;
+        say(now);
+      }).observe(el, { childList: true, characterData: true, subtree: true });
+    });
+  }
+
   // Which DOM the panel's data-spot names reach. Per-element where the card
   // has one thing to point at, block-level (actions, card) where the row
   // describes a region. The photo has two faces — image, or initials.
@@ -2377,6 +2459,9 @@
         setupAskPopup(d.canAsk);
         applyControls(d);
         paintThemeGlyph();
+        // …and the window's colour: the operator's theme and skin have just
+        // been applied, and not every branch of that goes through a token.
+        syncThemeColor();
         // Seeds the palette change-detector so the second poll does not
         // read the load-time palette as a show change. Any tokens it re-sets
         // are the ones the line above just applied.
@@ -2731,10 +2816,21 @@
     const rank = { open: 0, guest: 1, admin: 2 };
     const before = rank[(live && live.callerTier) || 'open'] || 0;
     msg.textContent = 'Checking…';
-    rememberCallKey(pw);                 // store, then let /live judge the tier
-    await refreshLive();
-    const after = rank[(live && live.callerTier) || 'open'] || 0;
+    // JUDGED BEFORE IT IS STORED (review, 2026-11-15). This used to store
+    // whatever was typed, re-read /live, and on a miss call
+    // rememberCallKey('') — which forgot the code that was there BEFORE. A
+    // guest who mistyped the admin password was signed out of their own
+    // guest tier, and on a private line locked out of the phone. /live is
+    // asked about the typed key directly instead, so a key that buys nothing
+    // never reaches the jar: the code already stored, and the stored-at
+    // stamp the shared-machine expiry reads (shared.js rememberCallKey),
+    // stand exactly as they were. Putting the old code back by hand would
+    // have restarted that clock, which is a kiosk session renewed by typing
+    // a wrong password.
+    const after = rank[await tierOfKey(pw)] || 0;
     if (after > before) {
+      rememberCallKey(pw);
+      await refreshLive();
       input.value = ''; msg.textContent = '';
       $('guestGate').hidden = true;
       syncGateClass();
@@ -2752,10 +2848,19 @@
       // The ask menu and corner controls were already rebuilt by the
       // refreshLive above (paintLive rebuilds on a canAsk change).
     } else {
-      rememberCallKey('');               // a wrong code leaves nothing behind
-      await refreshLive();
+      // A wrong code leaves nothing behind — and takes nothing with it.
       msg.textContent = 'That code did not unlock anything — check it and try again.';
     }
+  }
+
+  // The tier a key WOULD buy, asked of /live without storing it. 'open' on
+  // any failure: a key nobody could check has unlocked nothing.
+  async function tierOfKey(key) {
+    try {
+      const r = await fetch('/live', { headers: { 'X-Call-Key': key } });
+      if (!r.ok) return 'open';
+      return (await r.json()).callerTier || 'open';
+    } catch (e) { return 'open'; }
   }
 
   function gateSubmit() {
@@ -3292,6 +3397,10 @@
     }
     renderSaid(node.querySelector('.said'), text);
     node.classList.toggle('interim', !final);
+    // The text line's DJ message, read out ONCE and whole, when it is
+    // finished — never the reveal on its way there (see say). Typed text
+    // only: on a voice call the voice has already said it.
+    if (final && who === 'dj' && chatOpen) say(djLabel() + ': ' + text.replace(/\|/g, ' '));
     lastByWho[who] = { node, text, at: Date.now() };
     followTranscript();
     while (capBox.children.length > 40) capBox.removeChild(capBox.firstChild);
@@ -3303,6 +3412,8 @@
   // otherwise has only the DJ's word that anything happened.
   function addSystemLine(icon, label, detail, force) {
     if (captionsMode === 'off' && !force) return;
+    // A receipt is the one line here a caller cannot hear for themselves.
+    say(label + (detail ? ' — ' + detail : ''));
     // In a chat, an action receipt belongs IN the transcript, styled apart —
     // never in the fading ticker. On a ticker-mode embed it used to flash up
     // over the page and vanish a few seconds later ("scheduled…" popping up
@@ -4484,6 +4595,18 @@
     pttOpen = false;
     const pttBar = $('pttBtn');
     if (pttBar) { pttBar.classList.remove('on'); pttBar.setAttribute('aria-pressed', 'false'); }
+    // A HOLD MUST NOT OUTLIVE ITS CALL (review, 2026-11-15). setOnAir(true)
+    // disables Mute and the talk bar, and the only thing that ever gave them
+    // back was setOnAir(false) — which a call that ENDS while the DJ is
+    // working the booth never reaches. djOnAir is reset by hand above, so
+    // the next call's setOnAir(false) sees no change and returns on its
+    // first line, and that caller got a dead Mute and a dead "Hold to talk"
+    // for the whole of a call nobody had put on hold. Given back here,
+    // where every call ends, and the bar repainted so its face stops saying
+    // "You're on hold".
+    if (pttBar) pttBar.disabled = false;
+    muteBtn.disabled = false;
+    paintPtt();
     $('meterYou').classList.remove('muted');
     setMicChip('live');
     // The captions box, when it has lines, hides this status line — so on a
@@ -4817,7 +4940,9 @@
       let msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
       if (msg.type === 'ready') {
         store.setItem('callinChat', msg.chat || '');
+        sayHeld = true;         // a replayed thread is history, not news
         (msg.turns || []).forEach((t) => chatSay(t.who === 'dj' ? 'dj' : 'you', t.text));
+        sayHeld = false;
         // A RESUMED thread goes behind the drawer rather than filling the box.
         // The chat id lives in localStorage so a browser can pick a
         // conversation back up, which is right — but it meant a refresh
@@ -4972,6 +5097,8 @@
   // with what sending will actually DO — a resolved track, not a guess — and
   // send executes exactly that record. The caller is the reviewer.
   let vmDraft = null, vmRec = null, vmClip = null, vmPlayer = null, vmBusy = false;
+  // The one object URL the review's playback holds — see vmStopPlayback.
+  let vmPlayUrl = '';
   // Set when a HOLD was released while the mic permission prompt still had
   // the start in flight — the recording honours the lift the moment it lands.
   let vmAbortStart = false;
@@ -5148,7 +5275,7 @@
             { method: 'DELETE', headers: keyHeaders() }).catch(() => {});
       vmDraft = null;
     }
-    if (vmPlayer) { vmPlayer.pause(); vmPlayer = null; }
+    vmStopPlayback();
     // Talk-over: pressing the bar mid-ring or mid-greeting answers it, like
     // the real machine — and a new take restarts the box's story.
     clearTimeout(vmRingTimer);
@@ -5439,7 +5566,7 @@
       try { r.ctx.close(); } catch (e) {}
       anYou = null;
     }
-    if (vmPlayer) { vmPlayer.pause(); vmPlayer = null; }
+    vmStopPlayback();
     if (vmGreet) { vmGreet.pause(); vmGreet = null; }
     if (vmDraft) {
       fetch('/voicemail/draft/' + vmDraft.id,
@@ -5469,6 +5596,22 @@
     setStatus(sent ? word('vm_sent', 'On its way to air') : '', '', sent);
     refreshLive();
     notifyHeight();
+  }
+
+  // WHOSE SPACE IS IT (review, 2026-11-15). Space is the hold on both talk
+  // bars, and both listen for it on the window. They stood down only for
+  // INPUT and TEXTAREA and then called preventDefault — so a keyboard user
+  // focused on Hang up, Mute or "Send to booth" who pressed Space, the key
+  // that ACTIVATES a focused button, opened the mic or started a take, and
+  // the button they were on never fired. The key belongs to whatever
+  // focused control would act on it. The bar itself is the one exception:
+  // Space on the focused bar IS the hold. One predicate, both listeners.
+  function spaceIsTheirs(e, bar) {
+    const t = e.target && e.target.closest
+      ? e.target.closest('input, textarea, select, button, a, '
+                         + '[role="button"], [contenteditable]')
+      : null;
+    return !!t && t !== bar;
   }
 
   // The Record button IS the talk bar, in the studio's costume — the
@@ -5525,8 +5668,7 @@
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'Space' || e.repeat || pressed) return;
       if (cardMode() !== 'vmstudio' || vmBusy) return;
-      const t = e.target;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      if (spaceIsTheirs(e, btn)) return;
       e.preventDefault();
       if (!vmDialed) { vmDial(); return; }   // space answers the door too
       pressed = true;
@@ -5542,11 +5684,42 @@
       release();
     });
   })();
+  // PLAY IS A TOGGLE, AND IT CLEANS UP AFTER ITSELF (review, 2026-11-15).
+  // Every press minted a fresh URL.createObjectURL(vmClip) and none was ever
+  // revoked, so a caller auditioning a take held another copy of the WAV per
+  // press for the life of the page. And the button never changed: it said
+  // "Play" while playing, and a second press restarted the clip instead of
+  // stopping it. One URL at a time, revoked however playback ends — the
+  // clip running out, Stop, a new take, send, cancel — and the button says
+  // which of the two a press will do.
+  function vmPaintPlay(playing) {
+    const b = $('vmPlayBtn');
+    b.setAttribute('aria-pressed', playing ? 'true' : 'false');
+    b.querySelector('.vico').textContent = playing ? '■' : '▶';
+    $('vmPlayWord').textContent = playing ? 'Stop' : 'Play';
+  }
+  function vmStopPlayback() {
+    if (vmPlayer) {
+      vmPlayer.onended = vmPlayer.onerror = null;
+      vmPlayer.pause();
+      vmPlayer = null;
+    }
+    if (vmPlayUrl) { URL.revokeObjectURL(vmPlayUrl); vmPlayUrl = ''; }
+    vmPaintPlay(false);
+  }
   $('vmPlayBtn').onclick = () => {
+    if (vmPlayer) { vmStopPlayback(); return; }    // playing: this press stops
     if (!vmClip) return;
-    if (vmPlayer) { vmPlayer.pause(); vmPlayer = null; }
-    vmPlayer = new Audio(URL.createObjectURL(vmClip));
-    vmPlayer.play().catch(() => {});
+    vmPlayUrl = URL.createObjectURL(vmClip);
+    const p = new Audio(vmPlayUrl);
+    vmPlayer = p;
+    // Only the player that is still THE player may end the playback: a
+    // stopped clip's play() promise rejects a beat later, and would
+    // otherwise tear down the take that was started in the meantime.
+    const over = () => { if (vmPlayer === p) vmStopPlayback(); };
+    p.onended = p.onerror = over;
+    vmPaintPlay(true);
+    p.play().catch(over);
   };
   $('vmRerecBtn').onclick = () => {
     if (vmBusy) return;
@@ -8934,19 +9107,26 @@
     bar.addEventListener('contextmenu', (e) => e.preventDefault());
 
     // Space is the hold, not the latch: down opens, up closes. Ignored while
-    // typing (the guest-code box is on this page) and without a call to talk
-    // on. keydown repeats while held, hence the `repeat` guard.
+    // the key belongs to something else — a box being typed in, a focused
+    // button (see spaceIsTheirs) — and without a call to talk on. keydown
+    // repeats while held, hence the `repeat` guard.
+    //
+    // The release answers to the PRESS, not to where focus is by then: only
+    // a Space this listener took is one it lets go of. Asking the target
+    // again on the way up would leave the mic open behind a caller who
+    // tabbed onto a button mid-sentence, and would swallow the keyup that
+    // fires the click on a button whose keydown was never ours.
+    let spaceHeld = false;
     addEventListener('keydown', (e) => {
       if (e.code !== 'Space' || e.repeat || !room || !pttOn()) return;
-      const t = e.target;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      if (spaceIsTheirs(e, bar)) return;
       e.preventDefault();
+      spaceHeld = true;
       if (!pttOpen) setMicOpen(true);
     });
     addEventListener('keyup', (e) => {
-      if (e.code !== 'Space' || !room || !pttOn()) return;
-      const t = e.target;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      if (e.code !== 'Space' || !spaceHeld) return;
+      spaceHeld = false;
       e.preventDefault();
       setMicOpen(false);
     });
@@ -8976,6 +9156,14 @@
     });
   }
 
+  // Before /live, not after it: the glyph (and the window's colour) are
+  // painted from what this browser already knows — the stored theme, the
+  // cached palette — by the same rule the first /live will use. They used to
+  // wait for that read, and until it landed the corner wore shared.js's
+  // boot glyph, which answered a different question; a card whose first
+  // /live fails never got the repaint at all (review, 2026-11-15).
+  paintThemeGlyph();
+  syncThemeColor();
   refreshLive();
   setInterval(() => { if (!room) refreshLive(); }, 20000);
 
