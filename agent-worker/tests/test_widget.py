@@ -5816,6 +5816,19 @@ class TestAHoldDoesNotOutliveItsCall(unittest.TestCase):
         self.assertIn("if (on === djOnAir) return;",
                       _body(self.js, "  function setOnAir(on) {")[:80])
 
+    def test_a_failed_connect_drops_the_hold_too(self):
+        # The connect-failure reset is not endCall. A caller who dials in
+        # mid-link is held before the greeting, so a room that joined, was
+        # held, and then failed on a blocked mic kept the hold: found driving
+        # the stub, where a failed connect left Mute disabled (2026-11-15).
+        js = widget_js()["call.js"]
+        reset = js.split("THE HOLD GOES WITH THE ATTEMPT")[1].split("room = null;")[0]
+        self.assertIn("djOnAir = false;", reset)
+        self.assertIn("clearTimeout(holdTimer);", reset)
+        self.assertIn("classList.remove('onair')", reset)
+        self.assertIn("bar.disabled = false;", reset)
+        self.assertIn("muteBtn.disabled = false;", reset)
+
 
 class TestAGuestKeepsTheirCodeAfterAWrongPassword(unittest.TestCase):
     """Sign-in used to store whatever was typed, ask /live what it bought,

@@ -4410,6 +4410,18 @@
       // press put it in, the chip stops describing an attempt that is over,
       // and the ticker's reserved two lines go with it.
       resumePlayer();
+      // THE HOLD GOES WITH THE ATTEMPT (review, 2026-11-15). This reset is
+      // not endCall, and a caller who dials in mid-link is held BEFORE the
+      // greeting — so a room that joined, was put on hold, and then failed
+      // on a blocked mic left djOnAir standing and Mute and the talk bar
+      // disabled. The next call's setOnAir(true) then saw no change, and its
+      // hold-expiry floor was never armed. The same giving-back endCall does.
+      // (The ringing latch is startCall's to clear, and it does.)
+      djOnAir = false;
+      clearTimeout(holdTimer); holdExpired = false; wasLiveBeforeHold = false;
+      document.querySelector('.card').classList.remove('onair');
+      { const bar = $('pttBtn'); if (bar) bar.disabled = false; }
+      if (muteBtn) muteBtn.disabled = false;
       setAgentState('idle');
       const tkr = $('ticker');
       if (tkr) { tkr.classList.remove('show'); tkr.hidden = true; }
