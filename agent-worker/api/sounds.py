@@ -13,6 +13,7 @@ from pathlib import Path
 
 from aiohttp import web
 
+import jsonstore
 import sounds as sound_assets
 from api.auth import _write_allowed
 from api.live_cache import _live_cache
@@ -166,8 +167,6 @@ async def handle_sound_meta(request: web.Request) -> web.Response:
     is what makes the shelf filterable like a soft sound pack."""
     if not _write_allowed(request):
         return refused(request)
-    import json
-
     try:
         body = await request.json()
     except Exception:
@@ -203,9 +202,12 @@ async def handle_sound_meta(request: web.Request) -> web.Response:
             entry.pop("suggests", None)
     if not entry:
         meta.pop(name, None)
-    META_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(META_PATH, "w", encoding="utf-8") as f:
-        json.dump(meta, f, indent=2)
+    # The store idiom rather than a bare open(): it sets the file's mode
+    # (a Synology share creates files with none, so the categories were
+    # unreadable — and silently reset — at the next restart) and it replaces
+    # atomically, so a crash mid-write cannot leave half a file (review,
+    # 2026-11-15).
+    jsonstore.write_atomic(META_PATH, meta, indent=2)
     return _cors(request, web.json_response({"ok": True}))
 
 

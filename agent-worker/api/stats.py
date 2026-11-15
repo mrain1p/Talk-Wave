@@ -27,6 +27,7 @@ from pathlib import Path
 
 from aiohttp import web
 
+import jsonstore
 from api.auth import _write_allowed
 from api.wire import _cors, refused
 from station import StationClient, describe
@@ -86,10 +87,14 @@ def _prune(now: float) -> None:
 
 def _save() -> None:
     try:
-        LISTENERS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = LISTENERS_PATH.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"samples": _samples}), encoding="utf-8")
-        os.replace(tmp, LISTENERS_PATH)
+        # Through the one store idiom, for the mode it sets. A bare
+        # write_text takes whatever the filesystem hands out, and a Synology
+        # share hands out 000: the sampler kept writing a file it could not
+        # read back, so the month of listener history was gone at the next
+        # restart (review, 2026-11-15). indent=None keeps the file the
+        # compact single line it was — it holds thousands of rows.
+        jsonstore.write_atomic(LISTENERS_PATH, {"samples": _samples},
+                               indent=None)
     except Exception as e:
         log.debug("could not persist listener buffer: %s", e)
 
