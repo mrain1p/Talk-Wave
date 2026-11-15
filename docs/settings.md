@@ -141,7 +141,7 @@ What a caller may trigger, and **which caller** — each row set to the least tr
 - **Find music by how it sounds** — two discovery reads: a "sounds like" search over a description, and "more like this" off the track on air. They match the analysed audio rather than words in a title, change nothing, and cost nothing against Actions per call. Browsing by mood, genre and era rides the library-search row instead.
 - **Say where listeners tune in from** — off by default. One line in the DJ's briefing, from the station's own last-24-hours audience rollup: the countries its listeners came from, so "where's everyone listening from?" gets a real answer. Only countries with at least three listeners are named, and never the sites or pages they came from. A read; needs the station admin login.
 - **Take a track back out of the queue** — off by default: the queue is shared, so it can pull a record somebody else asked for, which is why the station gives its own listeners no cancel.
-- **The three station-wide switches** — skip the current track, fire a programme beat, put a different show on air. These reach every listener.
+- **The three station-wide switches** — skip the current track, fire a programme beat, put a different show on air. These reach every listener. A programme beat also has to be on at the station: a segment you have switched off in SUB/WAVE, or one whose API key is missing or rejected, is not offered on a call, and a caller who asks for it is told it isn't on tonight.
 
 Rows that need the station admin credentials carry a **Station admin** badge, coral until the credentials are stored — including **un-like the track**, the operator's own curation heart, admin only.
 

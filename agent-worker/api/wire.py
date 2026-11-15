@@ -285,9 +285,13 @@ def _hint_an_unnamed_proxy(request: web.Request) -> None:
     2026-11-15). A private or loopback peer that SENDS X-Forwarded-For is
     what a reverse proxy looks like, so that is the moment to say it — naming
     the peer, because that address is the value to set.
+
+    A list that is set but does not cover the peer gets the same line: a
+    container that came back on a new address leaves yesterday's value naming
+    nobody, which is the blank case again with a setting that looks done.
     """
     global _proxy_hint_given
-    if _proxy_hint_given or _TRUSTED_PROXIES_RAW:
+    if _proxy_hint_given:
         return
     if not request.headers.get("X-Forwarded-For"):
         return
@@ -297,13 +301,16 @@ def _hint_an_unnamed_proxy(request: web.Request) -> None:
     _proxy_hint_given = True
     log.warning(
         "a request arrived from %s carrying X-Forwarded-For, and "
-        "CALLIN_TRUSTED_PROXIES is not set. If %s is your reverse proxy (the "
-        "bundled Caddy is one), every caller behind it shares ONE lockout "
-        "counter: a few wrong codes from anyone lock out everyone, the panel "
-        "included. Set CALLIN_TRUSTED_PROXIES=%s on the web service and "
-        "recreate it. If nothing of yours forwards requests from that "
-        "address, ignore this — the header is not believed.",
-        peer, peer, peer)
+        "CALLIN_TRUSTED_PROXIES %s. If %s is your reverse proxy (the bundled "
+        "Caddy is one), every caller behind it shares ONE lockout counter: a "
+        "few wrong codes from anyone lock out everyone, the panel included. "
+        "Set CALLIN_TRUSTED_PROXIES=%s on the web service and recreate it. "
+        "If nothing of yours forwards requests from that address, ignore "
+        "this — the header is not believed.",
+        peer,
+        (f"is {_TRUSTED_PROXIES_RAW!r}, which does not cover it"
+         if _TRUSTED_PROXIES_RAW else "is not set"),
+        peer, peer)
 
 
 class _SeenThroughTheProxy:

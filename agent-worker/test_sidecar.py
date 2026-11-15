@@ -53,6 +53,10 @@ from tests.test_settings import (  # noqa: F401
     TestTheFallbackBrainCarriesTheCallOnA402,
 )
 from tests.test_secrets_and_auth import (  # noqa: F401
+    TestTheBreakGlassKeyGetsPastALockout,
+    TestAVerifiedKeyIsHashedOnce,
+    TestLockoutRecordsAgeOutAndTheTableIsBounded,
+    TestEveryDataWriterGoesThroughTheStoreIdiom,
     TestAdminAuth,
     TestAnUnreadablePasswordStoreFailsClosed,
     TestFirstRunIsNotOpenToTheWeb,
@@ -62,6 +66,10 @@ from tests.test_secrets_and_auth import (  # noqa: F401
     TestWrittenFilesGetExplicitModes,
 )
 from tests.test_http import (  # noqa: F401
+    TestAProxyNobodyNamedIsSaidOnce,
+    TestTheAccessLogNamesTheCallerNotTheProxy,
+    TestCrossOriginUseIsAFrameAndOneGet,
+    TestTheEdgeHelpersHaveOneCopy,
     TestThePlayerRelayForwardsWhatItObserved,
     TestAMissingModelNamesTheOnesTheServerHas,
     TestAStandingOverrideIsVisibleAndClearable,
@@ -122,6 +130,7 @@ from tests.test_widget import (
     TestThumbsArePerDoor,
     TestEachSurfaceIsAnsweredDeliberately,
     TestPanelLoadsOnOpen,
+    TestTheLogViewerTellsTimeInTheReadersZone,
     TestEveryNotificationLeadsSomewhereReal,
     TestPanelMarkup,
     TestPushToTalkIsPerSurfaceAndOnByDefault,
@@ -456,6 +465,7 @@ from tests.test_station import (  # noqa: F401
     TestStationConfig,
     TestTheStationModelIsTheDJModelNotTheEmbedder,
     TestTheCardCacheHasOneHome,
+    TestAPictureTheStationLacksIsNotAskedForAgain,
     TestTheCardOnlyClaimsOnAirWithARealDJ,
     TestTheDJKnowsWhoIsInTheBoothAndWhatTheShowPlays,
     TestTheDJKnowsWhoIsListening,
@@ -466,6 +476,7 @@ from tests.test_station import (  # noqa: F401
     TestTuneIn,
 )
 from tests.test_webhooks import (  # noqa: F401
+    TestALoopbackReceiverIsNotRegistered,
     TestADevBootCannotStealTheLiveRegistration,
     TestAFailedProbeQuotesTheProvider,
     TestAProbeNamesOnlyWhatItSaw,
@@ -539,6 +550,7 @@ from tests.test_chat import (  # noqa: F401
     TestTheTypedBrainIsTheSameBrainInADifferentRegister,
 )
 from tests.test_docs import (  # noqa: F401
+    TestTheOperationsPagesSayWhatTheEdgeDoes,
     TestTheDocsKeepUpWithTheCode,
     TestTheDocsStayInThePresent,
 )

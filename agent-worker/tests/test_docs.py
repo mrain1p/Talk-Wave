@@ -279,6 +279,91 @@ class TestTheDocsKeepUpWithTheCode(unittest.TestCase):
                 "be satisfied — the stack would not start")
 
 
+class TestTheOperationsPagesSayWhatTheEdgeDoes(unittest.TestCase):
+    """Five places where the written material and the HTTP edge had come
+    apart, each found by review rather than by a reader being bitten
+    (2026-11-15). Mechanical like the class above: a thing is checked for
+    being SAID, next to the line of code that makes it true, so neither can
+    move without the other.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.page = {p.stem: p.read_text(encoding="utf-8")
+                    for p in sorted((REPO / "docs").glob("*.md"))}
+        cls.compose = (REPO / "docker-compose.yaml").read_text(encoding="utf-8")
+        cls.caddy = (REPO / "Caddyfile").read_text(encoding="utf-8")
+
+    def test_the_break_glass_promise_is_the_one_the_gate_keeps(self):
+        import inspect
+
+        from api import auth as api_auth
+
+        lockout = self.page["security"].split("### Lockout", 1)[1]
+        self.assertIn("`CALLIN_ADMIN_KEY` is always accepted", lockout)
+        self.assertIn("banned address", lockout)
+        # Said because it is true: the gate looks at the key first.
+        gate = inspect.getsource(api_auth._check_admin)
+        self.assertIn("if gate and not _break_glass(key):", gate)
+
+    def test_the_lockout_says_how_long_it_remembers(self):
+        from api import auth as api_auth
+
+        lockout = self.page["security"].split("### Lockout", 1)[1]
+        self.assertEqual(api_auth._AUTH_FORGET_SECS, 24 * 3600.0)
+        self.assertIn("for a day", lockout)
+        self.assertIn("until restart", lockout)
+
+    def test_a_proxy_in_front_is_a_documented_step(self):
+        # The variable is named where a deployer actually reads: the
+        # quickstart, the proxy section, the lockout section, and as a
+        # ready-to-uncomment line beside the service it belongs to.
+        for name in ("quickstart", "networking", "security"):
+            with self.subTest(page=name):
+                self.assertIn("CALLIN_TRUSTED_PROXIES", self.page[name])
+        web = self.compose.split("  talkwave-web:", 1)[1].split("\n  caddy:", 1)[0]
+        self.assertRegex(web, r"\n\s+# - CALLIN_TRUSTED_PROXIES=\S+")
+        # Commented OUT, on purpose: a guessed address shipped as a default
+        # would be trust nobody decided to give.
+        self.assertNotRegex(self.compose, r"\n\s+- CALLIN_TRUSTED_PROXIES=")
+
+    def test_the_log_line_and_the_docs_name_the_same_variable(self):
+        import inspect
+
+        from api import wire as api_wire
+
+        said = inspect.getsource(api_wire._hint_an_unnamed_proxy)
+        self.assertIn("Set CALLIN_TRUSTED_PROXIES=%s", said)
+        self.assertIn("says so once in its log", self.page["security"])
+
+    def test_the_webhook_is_not_sent_through_a_self_signed_door(self):
+        # The checklist said the station's webhook "can go through the proxy
+        # too". Through the bundled Caddy it cannot: that certificate is
+        # self-signed and the station refuses it.
+        self.assertNotIn("can go through the proxy too", self.page["security"])
+        if "tls internal" in self.caddy:
+            self.assertIn("self-signed", self.page["security"])
+            self.assertIn("certificate the station trusts", self.page["security"])
+        self.assertIn(":8100/hooks/station", self.compose)
+
+    def test_the_stations_segment_switches_are_described(self):
+        # The call line honours the station's /dj/skills gates; the docs had
+        # no trace of it.
+        import inspect
+
+        import station_config
+
+        self.assertIn("`GET /dj/skills`", self.page["the-call"])
+        self.assertIn("switched off tonight", self.page["the-call"])
+        self.assertIn("switched off in SUB/WAVE", self.page["settings"])
+        # The words the docs quote are the words the gate uses.
+        self.assertIn("switched off by the operator",
+                      inspect.getsource(station_config.skill_gate))
+        broadcast = (AGENT_WORKER / "call" / "tools" / "broadcast.py").read_text(
+            encoding="utf-8")
+        self.assertIn("segment switched off tonight", broadcast)
+
+
 class TestTheDocsStayInThePresent(unittest.TestCase):
     """The operator's rule (2026-08-24): the documentation describes the
     current state only. Version archaeology — "until 0.98.22", "closed at

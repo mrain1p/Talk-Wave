@@ -1038,6 +1038,151 @@ class TestTheCardCacheHasOneHome(unittest.TestCase):
         self.assertEqual(out[1:], [{"card": "built"}] * 7)
 
 
+class TestAPictureTheStationLacksIsNotAskedForAgain(unittest.TestCase):
+    """/avatar/{id} and /cover/{id} are public, and every miss was a station
+    request with an eight-second budget that nothing remembered — so one
+    client asking for random ids relayed a flood onto the station for as long
+    as it liked (review, 2026-11-15).
+
+    A miss is now remembered briefly, and the table of them is bounded by
+    REFUSING, not by forgetting: random ids are all different, so the only
+    thing that slows them is stopping. Hits are exactly as they were.
+    """
+
+    class _Station:
+        """httpx.AsyncClient, as much of it as the proxy uses."""
+
+        def __init__(self, have=()):
+            self.have = set(have)
+            self.asked = []
+
+        def __call__(self, **kw):
+            return self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url):
+            self.asked.append(url)
+            found = url.rsplit("/", 1)[-1] in self.have
+
+            class _Resp:
+                content = b"\x89PNG-bytes"
+                headers = {"content-type": "image/webp; charset=binary"}
+
+                def raise_for_status(self):
+                    if not found:
+                        raise RuntimeError("404 Not Found")
+
+            return _Resp()
+
+    def setUp(self):
+        import types
+        from unittest import mock
+
+        from api import art
+
+        self.art = art
+        art._misses.clear()
+        art._known.clear()
+        art._said_full_at = 0.0
+        self.addCleanup(art._misses.clear)
+        self.addCleanup(art._known.clear)
+        self.station = self._Station(have={"real-cover", "real-dj"})
+        patcher = mock.patch.object(
+            art, "httpx", types.SimpleNamespace(AsyncClient=self.station))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _cover(self, track_id):
+        import types
+
+        from aiohttp import web
+
+        try:
+            return asyncio.run(self.art.handle_cover(
+                types.SimpleNamespace(match_info={"track_id": track_id})))
+        except web.HTTPNotFound:
+            return None
+
+    def test_the_same_wrong_id_reaches_the_station_once(self):
+        for _ in range(5):
+            self.assertIsNone(self._cover("no-such-track"))
+        self.assertEqual(len(self.station.asked), 1)
+
+    def test_a_hit_is_served_exactly_as_it_was(self):
+        for _ in range(2):
+            resp = self._cover("real-cover")
+            self.assertEqual(resp.body, b"\x89PNG-bytes")
+            self.assertEqual(resp.content_type, "image/webp")
+            self.assertEqual(resp.headers["Cache-Control"], "public, max-age=86400")
+        # Not cached here: the browser holds a hit for a day, and the station
+        # is the one that knows when art changes.
+        self.assertEqual(len(self.station.asked), 2)
+
+    def test_random_ids_stop_reaching_the_station(self):
+        for i in range(self.art._MISS_MAX + 75):
+            self.assertIsNone(self._cover(f"random-{i}"))
+        self.assertEqual(
+            len(self.station.asked), self.art._MISS_MAX,
+            "every random id was still relayed to the station")
+        self.assertLessEqual(len(self.art._misses), self.art._MISS_MAX)
+
+    def test_real_art_is_still_served_while_somebody_guesses(self):
+        self.assertIsNotNone(self._cover("real-cover"))
+        for i in range(self.art._MISS_MAX + 10):
+            self._cover(f"random-{i}")
+        self.assertIsNotNone(
+            self._cover("real-cover"),
+            "a flood of wrong ids took the on-air cover down with it")
+
+    def test_a_miss_is_asked_again_once_it_has_aged_out(self):
+        self.assertIsNone(self._cover("late-arrival"))
+        self.station.have.add("late-arrival")
+        self.assertIsNone(self._cover("late-arrival"))
+        for url in self.art._misses:
+            self.art._misses[url] = 0.0
+        self.assertIsNotNone(self._cover("late-arrival"))
+        self.assertNotIn(
+            next(iter(self.station.asked)), self.art._misses)
+
+    def test_the_stop_eases_when_the_misses_age_out(self):
+        for i in range(self.art._MISS_MAX + 5):
+            self._cover(f"random-{i}")
+        before = len(self.station.asked)
+        for url in self.art._misses:
+            self.art._misses[url] = 0.0
+        self.assertIsNone(self._cover("one-more"))
+        self.assertEqual(len(self.station.asked), before + 1)
+
+    def test_the_avatar_route_shares_the_same_memory(self):
+        import types
+
+        from aiohttp import web
+
+        def avatar(persona_id):
+            try:
+                return asyncio.run(self.art.handle_avatar(
+                    types.SimpleNamespace(match_info={"persona_id": persona_id})))
+            except web.HTTPNotFound:
+                return None
+
+        resp = avatar("real-dj")
+        self.assertEqual(resp.headers["Cache-Control"], "public, max-age=300")
+        self.assertTrue(self.station.asked[-1].endswith("/persona-avatar/real-dj"))
+        for _ in range(3):
+            self.assertIsNone(avatar("nobody"))
+        self.assertEqual(len(self.station.asked), 2)
+
+    def test_an_id_still_cannot_walk_out_of_its_path_segment(self):
+        self._cover("../../schedule/override")
+        self.assertTrue(
+            self.station.asked[-1].endswith("/cover/..%2F..%2Fschedule%2Foverride"))
+
+
 class TestAFailedReadSaysWhyItFailed(unittest.TestCase):
     """`str(httpx.ReadTimeout())` is the empty string, and httpx raises its
     timeouts bare — so every station read failure on the operator's deployment

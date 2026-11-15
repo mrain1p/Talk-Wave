@@ -563,6 +563,78 @@ class TestPanelLoadsOnOpen(unittest.TestCase):
         self.assertIn("rememberCallKey('')", self.js)
 
 
+class TestTheLogViewerTellsTimeInTheReadersZone(unittest.TestCase):
+    """The panel's two viewers told the time in two zones.
+
+    A call record carries its UTC offset and is rendered in the reader's
+    zone. A log line carried `%H:%M:%S` in the CONTAINER's zone — UTC under
+    docker — with no date, so the same moment read hours apart depending on
+    which viewer you looked at, and a buffer that ran past midnight could not
+    say which day a line was from (review, 2026-11-15).
+
+    The ring now keeps the instant as well, and the log viewer paints it
+    through the call viewer's own formatter. No JS runner here, so the browser
+    half is read as source, like the rest of this file.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = (REPO / "web-widget" / "panel-viewers.js").read_text(
+            encoding="utf-8")
+        start = cls.js.index("function paintLogs()")
+        cls.paint = cls.js[start:cls.js.index("$('viewLogsBtn').onclick", start)]
+
+    def setUp(self):
+        import log_setup
+
+        log_setup.setup("tests", console=False)     # idempotent
+        log_setup.RECENT.clear()
+        self.log_setup = log_setup
+
+    def test_a_ring_entry_carries_the_instant_and_keeps_the_old_field(self):
+        import logging
+        import time
+
+        before = time.time()
+        logging.getLogger("callin.test").info("a line worth a timestamp")
+        after = time.time()
+        entry = self.log_setup.recent_records()[-1]
+        self.assertIsInstance(entry["ts"], float)
+        self.assertTrue(before - 1 <= entry["ts"] <= after + 1, entry)
+        # `t` stays: the flat lines and any older panel still read it.
+        self.assertRegex(entry["t"], r"^\d\d:\d\d:\d\d$")
+        self.assertTrue(self.log_setup.recent_lines()[-1].startswith(entry["t"]))
+
+    def test_the_instant_is_the_records_own_not_the_time_it_was_read(self):
+        import logging
+
+        record = logging.LogRecord("callin.test", logging.INFO, __file__, 1,
+                                   "from yesterday", None, None)
+        record.created = 1_700_000_000.25
+        self.log_setup._RingHandler().emit(record)
+        self.assertEqual(self.log_setup.recent_records()[-1]["ts"],
+                         1_700_000_000.25)
+
+    def test_the_viewer_paints_the_instant_through_the_call_viewers_formatter(self):
+        self.assertIn("new Date(r.ts * 1000)", self.paint)
+        self.assertIn("callTime(when.toISOString())", self.paint)
+        self.assertNotIn(
+            ".textContent = r.t || ''", self.paint,
+            "the log viewer is printing the server's wall clock again")
+
+    def test_an_older_server_with_no_instant_still_shows_its_time(self):
+        self.assertIn("(r.t || '')", self.paint)
+
+    def test_the_day_is_named_only_when_the_buffer_spans_more_than_one(self):
+        self.assertIn("spansDays", self.paint)
+        self.assertIn("logRecords[0]", self.paint)
+        self.assertIn("logRecords[logRecords.length - 1]", self.paint)
+        self.assertIn("if (spansDays && when && dayOf(when) !== lastDay)",
+                      self.paint)
+        # The full date and time of any one line is its tooltip either way.
+        self.assertIn("callTime(when.toISOString(), true)", self.paint)
+
+
 class TestWidgetServerContract(unittest.TestCase):
     """The widget is plain browser JS with no toolchain and no test harness of
     its own, so this is what guards it.

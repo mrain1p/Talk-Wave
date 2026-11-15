@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import time
 
-import httpx
 from aiohttp import web
 
 import admin_auth
@@ -267,8 +266,6 @@ def _for_this_caller(request: web.Request, payload: dict) -> dict:
     # the line is code-gated: since 0.10.66 Guest code and Anyone are one
     # choice apiece, so on an open line the code does not elevate and
     # offering it would be a lie. The admin password is a door in every mode.
-    import admin_auth
-
     # First-run: until an admin password (or the env break-glass) exists, the
     # CALL page offers to set one — same predicate as the panel's own nudge,
     # same trust model (an unconfigured box belongs to whoever reaches it
@@ -665,50 +662,3 @@ async def _build_live(request: web.Request) -> web.Response:
     finally:
         await station.aclose()
 
-
-async def handle_avatar(request: web.Request) -> web.StreamResponse:
-    """Proxy the station's persona avatar (it lives off /api, at
-    /persona-avatar/{id}) so the widget never has to reach the station
-    directly from the browser."""
-    # Quoted: this arrives from the browser, and an unescaped path segment can
-    # walk the request somewhere other than the avatar endpoint.
-    from urllib.parse import quote
-
-    persona_id = request.match_info["persona_id"]
-    root = settings_store.station_base_url()
-    try:
-        async with httpx.AsyncClient(timeout=8.0) as c:
-            r = await c.get(f"{root}/persona-avatar/{quote(persona_id, safe='')}")
-            r.raise_for_status()
-            return web.Response(
-                body=r.content,
-                content_type=r.headers.get("content-type", "image/png").split(";")[0],
-                headers={"Cache-Control": "public, max-age=300"},
-            )
-    except Exception as e:
-        log.info("avatar fetch failed for %s: %s", persona_id, describe(e))
-        raise web.HTTPNotFound()
-
-
-async def handle_cover(request: web.Request) -> web.StreamResponse:
-    """Proxy the station's album art (/cover/{id}) for the same reason the
-    avatar is proxied: the caller's browser may not be able to reach the
-    station at all, and behind TLS a plain-http image is blocked as mixed
-    content. A day, not five minutes: the station itself calls a song's art
-    immutable-at-the-edge."""
-    from urllib.parse import quote
-
-    track_id = request.match_info["track_id"]
-    root = settings_store.station_base_url()
-    try:
-        async with httpx.AsyncClient(timeout=8.0) as c:
-            r = await c.get(f"{root}/cover/{quote(track_id, safe='')}")
-            r.raise_for_status()
-            return web.Response(
-                body=r.content,
-                content_type=r.headers.get("content-type", "image/jpeg").split(";")[0],
-                headers={"Cache-Control": "public, max-age=86400"},
-            )
-    except Exception as e:
-        log.info("cover fetch failed for %s: %s", track_id, describe(e))
-        raise web.HTTPNotFound()

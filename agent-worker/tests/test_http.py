@@ -269,6 +269,43 @@ class TestHttpSurface(_TempStores):
 
         self.assertEqual(self._serve(check), 200)
 
+    def test_the_break_glass_key_opens_them_from_a_banned_address(self):
+        # The test above never ran under a ban, which is the one place the
+        # break-glass promise was false: every gate answered with the lockout
+        # reason before it looked at the key (review, 2026-11-15). Through the
+        # real server, from the address the test client actually arrives on.
+        async def check(client, ts):
+            from api import auth as api_auth
+
+            self.admin_auth.set_password("a-real-password")
+            api_auth.ADMIN_KEY = "break-glass"
+            api_auth._auth_state.clear()
+            try:
+                first = await client.get(
+                    "/settings", headers={"X-Admin-Key": "not-it"})
+                peer = next(iter(api_auth._auth_state))
+                api_auth._auth_state[peer].update(
+                    banned=True, strikes=api_auth._AUTH_STRIKES_TO_BAN)
+                stored = await client.get(
+                    "/settings", headers={"X-Admin-Key": "a-real-password"})
+                broke = await client.get(
+                    "/settings", headers={"X-Admin-Key": "break-glass"})
+                after = await client.get(
+                    "/settings", headers={"X-Admin-Key": "a-real-password"})
+                return (first.status, stored.status,
+                        (await stored.json())["error"], broke.status,
+                        after.status)
+            finally:
+                api_auth.ADMIN_KEY = ""
+                api_auth._auth_state.clear()
+
+        first, stored, why, broke, after = self._serve(check)
+        self.assertEqual(first, 401)
+        self.assertEqual(stored, 401, "a stored password walked through a ban")
+        self.assertIn("blocked", why)
+        self.assertEqual(broke, 200, "the break-glass key was refused under a ban")
+        self.assertEqual(after, 401, "using the break-glass key lifted the ban")
+
     def test_a_wrong_password_is_refused(self):
         async def check(client, ts):
             self.admin_auth.set_password("a-real-password")
@@ -771,6 +808,283 @@ class TestTheAuthLockoutKeyIsUnspoofable(unittest.TestCase):
 
     def test_a_public_peer_is_always_its_own_key(self):
         self.assertEqual(self._key("8.8.8.8", xff="10.0.0.1"), "8.8.8.8")
+
+
+class TestAProxyNobodyNamedIsSaidOnce(unittest.TestCase):
+    """Behind a reverse proxy with CALLIN_TRUSTED_PROXIES blank, every caller
+    is the proxy as far as the lockout can tell — and nothing said so.
+
+    The default is right and is not changed here: believing a forwarded
+    address from any private peer would let a LAN client choose its own
+    lockout bucket (TestTheAuthLockoutKeyIsUnspoofable). But the bundled
+    Caddy is exactly that shape, compose never set the variable, and the
+    cost — one person's wrong codes locking out everyone, the operator
+    included — arrived with no line in any log (review, 2026-11-15). So the
+    first request that LOOKS proxied says it, once, naming the peer.
+    """
+
+    def setUp(self):
+        from api import wire as api_wire
+
+        self.wire = api_wire
+        self._old = (api_wire._TRUSTED_PROXIES_RAW, api_wire._proxy_hint_given)
+        api_wire._TRUSTED_PROXIES_RAW = ""
+        api_wire._proxy_hint_given = False
+
+    def tearDown(self):
+        self.wire._TRUSTED_PROXIES_RAW, self.wire._proxy_hint_given = self._old
+
+    def _ask(self, peer, xff=None):
+        headers = {"X-Forwarded-For": xff} if xff else {}
+        return self.wire._auth_key(
+            types.SimpleNamespace(headers=headers, remote=peer))
+
+    def test_it_names_the_peer_and_the_exact_variable(self):
+        with self.assertLogs("callin.token", "WARNING") as seen:
+            self._ask("172.18.0.3", xff="203.0.113.9")
+        self.assertEqual(len(seen.output), 1)
+        self.assertIn("CALLIN_TRUSTED_PROXIES=172.18.0.3", seen.output[0])
+        self.assertIn("lockout", seen.output[0])
+
+    def test_it_is_said_once_per_process(self):
+        # It fires on a request, so a line that repeated would be a way for a
+        # stranger to fill the log.
+        with self.assertLogs("callin.token", "WARNING"):
+            self._ask("172.18.0.3", xff="203.0.113.9")
+        with self.assertNoLogs("callin.token", "WARNING"):
+            for i in range(20):
+                self._ask(f"172.18.0.{i}", xff="203.0.113.9")
+
+    def test_the_header_is_still_not_believed(self):
+        # The warning is advice. The trust decision is untouched.
+        with self.assertLogs("callin.token", "WARNING"):
+            self.assertEqual(self._ask("172.18.0.3", xff="203.0.113.9"),
+                             "172.18.0.3")
+
+    def test_nothing_is_said_when_there_is_nothing_to_say(self):
+        quiet = (
+            ("172.18.0.3", None),               # no forwarded header: no proxy
+            ("8.8.8.8", "203.0.113.9"),         # a public peer is just a client
+            (None, "203.0.113.9"),
+            ("not-an-address", "203.0.113.9"),
+        )
+        for peer, xff in quiet:
+            with self.subTest(peer=peer, xff=xff):
+                with self.assertNoLogs("callin.token", "WARNING"):
+                    self._ask(peer, xff=xff)
+                self.assertFalse(self.wire._proxy_hint_given)
+
+    def test_a_named_proxy_is_believed_and_nothing_is_said(self):
+        self.wire._TRUSTED_PROXIES_RAW = "172.18.0.3"
+        with self.assertNoLogs("callin.token", "WARNING"):
+            self.assertEqual(self._ask("172.18.0.3", xff="203.0.113.9"),
+                             "203.0.113.9")
+
+    def test_a_list_that_no_longer_covers_the_proxy_is_said_too(self):
+        # The proxy's container came back on a new address: the variable is
+        # set, looks done, and names nobody.
+        self.wire._TRUSTED_PROXIES_RAW = "172.18.0.3"
+        with self.assertLogs("callin.token", "WARNING") as seen:
+            self.assertEqual(self._ask("172.18.0.99", xff="203.0.113.9"),
+                             "172.18.0.99")
+        self.assertEqual(len(seen.output), 1)
+        self.assertIn("'172.18.0.3', which does not cover it", seen.output[0])
+        self.assertIn("CALLIN_TRUSTED_PROXIES=172.18.0.99", seen.output[0])
+
+
+class TestTheAccessLogNamesTheCallerNotTheProxy(unittest.TestCase):
+    """Behind a proxy every access line began with the proxy's address, so the
+    log could not say who made a request — while the lockout warnings beside
+    it named somebody else. `%a` now shows the address the lockout keys on:
+    the forwarded caller when CALLIN_TRUSTED_PROXIES vouches for the peer,
+    and the socket otherwise, because a header from an unnamed peer would let
+    a client write itself into the log as anyone (review, 2026-11-15)."""
+
+    def setUp(self):
+        import logging
+
+        from api import wire as api_wire
+
+        self.wire = api_wire
+        self._old = (api_wire._TRUSTED_PROXIES_RAW, api_wire._proxy_hint_given)
+        api_wire._proxy_hint_given = True       # not this class's subject
+        self.lines = []
+        outer = self
+
+        class _Keep(logging.Handler):
+            def emit(self, record):
+                outer.lines.append(record.getMessage())
+
+        self.logger = logging.Logger("access-under-test")
+        self.logger.addHandler(_Keep())
+
+    def tearDown(self):
+        self.wire._TRUSTED_PROXIES_RAW, self.wire._proxy_hint_given = self._old
+
+    def _line(self, peer, xff=None, trusted=""):
+        import token_server
+
+        self.wire._TRUSTED_PROXIES_RAW = trusted
+        request = types.SimpleNamespace(
+            headers={"X-Forwarded-For": xff} if xff else {}, remote=peer,
+            method="GET", path_qs="/settings",
+            version=types.SimpleNamespace(major=1, minor=1))
+        response = types.SimpleNamespace(status=200, body_length=512)
+        self.wire.ClientAccessLogger(
+            self.logger, token_server.ACCESS_LOG_FORMAT).log(request, response, 0.01)
+        return self.lines[-1]
+
+    def test_a_named_proxy_gives_way_to_the_caller_it_forwarded(self):
+        self.assertEqual(
+            self._line("172.18.0.3", xff="203.0.113.9", trusted="172.18.0.3"),
+            '203.0.113.9 "GET /settings HTTP/1.1" 200 512')
+
+    def test_an_unnamed_peer_cannot_write_itself_in_as_anyone(self):
+        self.assertEqual(
+            self._line("172.18.0.3", xff="203.0.113.9"),
+            '172.18.0.3 "GET /settings HTTP/1.1" 200 512')
+
+    def test_a_direct_caller_is_logged_as_before(self):
+        self.assertEqual(
+            self._line("192.168.1.50"),
+            '192.168.1.50 "GET /settings HTTP/1.1" 200 512')
+
+    def test_the_server_is_started_with_it(self):
+        import token_server
+
+        src = (REPO / "agent-worker" / "token_server.py").read_text(encoding="utf-8")
+        self.assertIn("access_log_class=wire.ClientAccessLogger", src)
+        self.assertIn("access_log_format=ACCESS_LOG_FORMAT", src)
+        self.assertIn("%a", token_server.ACCESS_LOG_FORMAT)
+
+
+class TestCrossOriginUseIsAFrameAndOneGet(_TempStores):
+    """What a page on another origin may send here, pinned so that changing it
+    is a decision.
+
+    The embed allowlist reads as if it made an allowed site an API client. It
+    does not: a preflighted request may carry `Content-Type` and be a POST,
+    and nothing else — so a browser will not let a cross-origin page send
+    X-Call-Key or X-Admin-Key at all. Embeds work because they are an iframe
+    onto this origin plus one simple `GET /live`. The comment and the docs
+    said less than that; these values are the fact (review, 2026-11-15).
+    Adding a key header would make every allowed origin somewhere the admin
+    password can be typed.
+    """
+
+    def _headers(self, origin):
+        from aiohttp import web
+
+        from api import wire as api_wire
+
+        import settings as settings_store
+
+        settings_store.save({"allowed_origins": "https://radio.example.com"})
+        resp = api_wire._cors(
+            types.SimpleNamespace(headers={"Origin": origin}),
+            web.Response(status=204))
+        return resp.headers
+
+    def test_the_grant_is_content_type_and_post_and_nothing_else(self):
+        h = self._headers("https://radio.example.com")
+        self.assertEqual(h["Access-Control-Allow-Origin"],
+                         "https://radio.example.com")
+        self.assertEqual(h["Access-Control-Allow-Headers"], "Content-Type")
+        self.assertEqual(h["Access-Control-Allow-Methods"], "POST, OPTIONS")
+
+    def test_no_key_header_is_ever_allowed_cross_origin(self):
+        from api import wire as api_wire
+
+        for header in ("X-Call-Key", "X-Admin-Key", "Authorization", "*"):
+            with self.subTest(header=header):
+                self.assertNotIn(header.lower(),
+                                 api_wire.CORS_ALLOW_HEADERS.lower())
+        self.assertNotIn("Access-Control-Allow-Credentials",
+                         self._headers("https://radio.example.com"))
+
+    def test_an_origin_nobody_allowed_gets_no_grant_at_all(self):
+        self.assertNotIn("Access-Control-Allow-Origin",
+                         self._headers("https://elsewhere.example"))
+
+    def test_the_embed_script_asks_for_nothing_the_grant_withholds(self):
+        # One simple GET, no custom headers: the only cross-origin request an
+        # embed makes. A second fetch, or a header on this one, would need
+        # the grant widened — which is the decision this class exists to force.
+        js = (REPO / "web-widget" / "embed.js").read_text(encoding="utf-8")
+        self.assertEqual(js.count("fetch("), 1)
+        self.assertIn('fetch(origin + "/live")', js)
+        self.assertNotIn("X-Call-Key", js)
+        self.assertNotIn("X-Admin-Key", js)
+
+    def test_the_embedding_page_says_the_same(self):
+        doc = (REPO / "docs" / "embedding.md").read_text(encoding="utf-8")
+        for said in ("`GET /live`", "`Content-Type`", "`X-Call-Key`",
+                     "`X-Admin-Key`"):
+            with self.subTest(said=said):
+                self.assertIn(said, doc)
+
+
+class TestTheEdgeHelpersHaveOneCopy(unittest.TestCase):
+    """Three things the HTTP edge had two spellings of (review, 2026-11-15):
+    which addresses are on our side of the router, how the station's listener
+    count is read, and an import. The second copy is always the one that is
+    wrong, and the address one was."""
+
+    def test_the_network_label_knows_what_ipaddress_knows(self):
+        from api.tokens import _network_of
+
+        # Read as off-network by the string prefixes this used to match on.
+        for ip in ("fc00::1", "fd12:3456::1", "fe80::1", "::1",
+                   "169.254.10.1", "[fd00::2]"):
+            with self.subTest(ip=ip):
+                self.assertEqual(_network_of(ip), "same network")
+
+    def test_a_string_that_only_looks_local_is_not(self):
+        from api.tokens import _network_of
+
+        # Read as SAME network by those prefixes: none of these is an address
+        # in a private range, they merely begin like one.
+        for ip in ("fdfoo", "10.evil.example", "192.168.evil.example",
+                   "127.attacker.example", "fe80", "172.abc"):
+            with self.subTest(ip=ip):
+                self.assertEqual(_network_of(ip), "off-network")
+
+    def test_carrier_nat_space_is_not_this_network(self):
+        # 100.64.0.0/10 is carrier-grade NAT (and what Tailscale hands out).
+        # `ipaddress` does not call it private and neither do we: the helper
+        # also decides whose X-Forwarded-For is believed by default, and
+        # "shared by strangers" is the honest reading of that range.
+        from api import wire as api_wire
+        from api.tokens import _network_of
+
+        self.assertEqual(_network_of("100.64.0.1"), "off-network")
+        self.assertFalse(api_wire.is_local_address("100.64.0.1"))
+        self.assertFalse(api_wire._peer_is_a_trusted_proxy("100.64.0.1"))
+
+    def test_the_label_and_the_trust_default_ask_the_same_helper(self):
+        from api import wire as api_wire
+
+        self.assertIs(api_wire.is_local_address("192.168.1.5"), True)
+        self.assertIs(api_wire.is_local_address("8.8.8.8"), False)
+        self.assertIsNone(api_wire.is_local_address("nonsense"))
+        self.assertIsNone(api_wire.is_local_address(""))
+        tokens = (REPO / "agent-worker" / "api" / "tokens.py").read_text(encoding="utf-8")
+        self.assertIn("is_local_address(ip)", tokens)
+        self.assertNotIn('ip.startswith(', tokens)
+
+    def test_the_pipeline_check_reads_listeners_through_the_one_reader(self):
+        import inspect
+
+        from api import diagnostics, stats
+
+        self.assertIs(diagnostics._listener_count, stats._listener_count)
+        src = inspect.getsource(diagnostics.handle_test_env)
+        self.assertIn("_listener_count(np", src)
+        self.assertNotIn('.get("current")', src)
+
+    def test_the_card_imports_the_password_store_once(self):
+        live = (REPO / "agent-worker" / "api" / "live.py").read_text(encoding="utf-8")
+        self.assertEqual(live.count("import admin_auth"), 1)
 
 
 class TestThePlayerRelayForwardsWhatItObserved(unittest.TestCase):

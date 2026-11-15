@@ -180,10 +180,16 @@ def _loopback_receiver(url: str) -> str | None:
     import settings as settings_store
 
     try:
-        host = urlsplit(url).hostname
+        parts = urlsplit(url)
+        host = parts.hostname
         station_host = urlsplit(settings_store.station_base_url()).hostname
     except ValueError:
         return None                 # malformed: the station's own validation
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        # Not a URL we can read a host out of. The station validates the
+        # address and says what is wrong with it in its own words; guessing
+        # "loopback" here would replace a precise refusal with a wrong one.
+        return None
     if not _is_loopback_host(host):
         return None
     if station_host and _is_loopback_host(station_host):
@@ -193,8 +199,8 @@ def _loopback_receiver(url: str) -> str | None:
                "builds CALLIN_HOOK_URL from it), or set CALLIN_HOOK_URL to an "
                "address the station can reach, then recreate the web service")
     else:
-        fix = ("this machine reported no LAN address — set CALLIN_HOOK_URL to "
-               f"http://<this machine's LAN address>:{PORT}/hooks/station")
+        fix = ("this machine reported no LAN address, so set CALLIN_HOOK_URL "
+               f"to http://<this machine's LAN address>:{PORT}/hooks/station")
     return (f"not registered: the receiver address {url} points at the "
             f"station's own machine, not this one, so its pushes would never "
             f"arrive — {fix}")

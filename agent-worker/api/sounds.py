@@ -124,6 +124,15 @@ def _sound_meta() -> dict:
         return {}
 
 
+def _save_sound_meta(meta: dict) -> None:
+    # The store idiom rather than a bare open(): it sets the file's mode (a
+    # Synology share creates files with none, so the categories were
+    # unreadable — and silently reset — at the next restart) and it replaces
+    # atomically, so a crash mid-write cannot leave half a file (review,
+    # 2026-11-15).
+    jsonstore.write_atomic(META_PATH, meta, indent=2)
+
+
 def _wav_secs(path: Path):
     import wave
 
@@ -202,12 +211,7 @@ async def handle_sound_meta(request: web.Request) -> web.Response:
             entry.pop("suggests", None)
     if not entry:
         meta.pop(name, None)
-    # The store idiom rather than a bare open(): it sets the file's mode
-    # (a Synology share creates files with none, so the categories were
-    # unreadable — and silently reset — at the next restart) and it replaces
-    # atomically, so a crash mid-write cannot leave half a file (review,
-    # 2026-11-15).
-    jsonstore.write_atomic(META_PATH, meta, indent=2)
+    _save_sound_meta(meta)
     return _cors(request, web.json_response({"ok": True}))
 
 

@@ -1065,14 +1065,22 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "receipt card lands. Crossed the ceiling when 0.10.65 added the "
             "card-routing cases; same subject-placement rule as the modules "
             "around it."),
-        "agent-worker/tests/test_secrets_and_auth.py": (619,
+        "agent-worker/tests/test_secrets_and_auth.py": (1138,
             "one subject, and the file says it in a line: something not "
             "leaving, or somebody not getting in. It grows a case per place a "
             "stored secret could travel, and those places are found one at a "
             "time — crossed the ceiling on the 2026-09-17 review pass, which "
             "found the panel's voice lookup handing a previewed host the "
             "stored TTS key. Same subject-placement rule as the modules "
-            "around it."),
+            "around it. RAISED to 1138 (2026-11-15) by the HTTP review: four "
+            "classes on the 'somebody not getting in' half, each a claim the "
+            "gates made and nothing checked — the break-glass key under a ban "
+            "(promised in three places, false in all of them), the "
+            "verified-key cache and the ways it must not outlive a password, "
+            "the lockout table ageing out without making a guess cheaper, and "
+            "the data writers that set no mode. They share one fixture "
+            "(_AuthGates: a temp store, an empty lockout table, an empty "
+            "cache), which is the seam a split would have to cut through."),
         "agent-worker/tests/test_voice.py": (790,
             "one subject: whether a speech backend can say the thing — "
             "discovery, sample rates, pace, and now the shipped adapter "
@@ -1561,9 +1569,17 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
                                       "(ASK_GROUPS, ASKS, NEVER) split from "
                                       "the runtime foundation; the crossing "
                                       "is zero in both directions"),
-        "web-widget/panel-viewers.js": (807, "the log viewer split from the "
+        # RAISED to 831 (2026-11-15): the log viewer paints the ring's epoch
+        # in the READER's zone, with the day as a heading once the buffer spans
+        # two — twenty-four lines, nine of them the note saying why the
+        # server's own `t` is no longer what is shown. It reaches the call
+        # viewer's callTime to do it, on purpose: two viewers telling the time
+        # in two zones was the defect, so one formatter is the fix, and the
+        # crossing is named below so the split takes it out with the seam.
+        "web-widget/panel-viewers.js": (831, "the log viewer split from the "
                                              "call viewer; they share only "
-                                             "Panel.afetch and showResult"),
+                                             "Panel.afetch, showResult and "
+                                             "the one clock, callTime"),
         # 0.10.113 pushed it over while rebuilding the duck: the pads were
         # collapsed into one constant and a measured voice.end was made to
         # beat our own estimate, both of which needed the reasoning written

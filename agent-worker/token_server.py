@@ -45,9 +45,8 @@ from api.hook_receiver import handle_hooks_recent, handle_station_hook
 from api.hooks import handle_hooks_test, keep_station_warm
 from api.auth import handle_guest_login, handle_set_password
 from api.guide import handle_guide
+from api.art import handle_avatar, handle_cover
 from api.live import (
-    handle_avatar,
-    handle_cover,
     handle_health,
     handle_live,
     handle_live_preview,

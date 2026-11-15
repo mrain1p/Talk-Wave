@@ -35,3 +35,5 @@ The settings gear is the one thing never offered here at any setting: an embed d
 A host page can also push its own palette *and fonts* into the card over `postMessage` — see `web-widget/HOST-STYLE-GUIDE.md` — which repaints in place without dropping a call.
 
 > **Any page you embed on can mint call tokens**, so treat an embed as publishing the phone. Set a guest code if that isn't what you want.
+
+**What a page on another origin can do, exactly.** An embed is a frame onto the call page plus one plain `GET /live` (how `embed.js` names who is on air before the frame opens). Everything a caller does — typing the code, signing in, the call — happens inside the frame, on this service's own origin. The allowlist does not turn your site into an API client: cross-origin requests may carry `Content-Type` and be a `POST`, and nothing else, so a script on your page cannot send a guest code or the admin password (`X-Call-Key`, `X-Admin-Key`) here, and no panel request works from another origin at any setting. If you want a keyed call from your own page, embed the frame; do not call the API.
