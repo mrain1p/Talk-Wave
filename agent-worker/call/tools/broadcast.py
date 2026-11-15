@@ -34,6 +34,7 @@ def build_on_air_tools(
     guard: OnAirGuard,
     guarded: bool = True,
     skills: list[str] | None = None,
+    switched_off: dict[str, str] | None = None,
 ) -> list:
     """On-air actions that keep the call and the broadcast from colliding.
 
@@ -164,7 +165,10 @@ def build_on_air_tools(
         # trigger honours NONE of that — it is documented as an operator
         # override and runs a skill even when it is switched off — so this is
         # the only place the operator's intent survives a caller asking.
+        # `switched_off` is what those gates dropped, name → why, so a model
+        # that names one anyway hears the real reason and stops.
         runnable = [str(s) for s in (skills or []) if str(s or "").strip()]
+        gated = {str(k): str(v) for k, v in (switched_off or {}).items()}
 
         @lk_llm.function_tool(name="subwave_run_skill")
         async def run_skill(name: str) -> str:
@@ -173,6 +177,15 @@ def build_on_air_tools(
             if actions.at_limit():
                 return actions.refusal()
             wanted = str(name or "").strip()
+            if wanted in gated and wanted not in runnable:
+                # The station's own gate, honoured HERE — `POST /dj/skill` is an
+                # operator override and would run a switched-off segment anyway.
+                return (
+                    f"The station has the {wanted} segment switched off tonight "
+                    f"({gated[wanted]}). Do NOT run it or try another name for "
+                    "the same thing — tell the caller plainly it isn't on tonight"
+                    + (f"; yours are: {', '.join(runnable)}." if runnable else ".")
+                )
             if runnable and wanted not in runnable:
                 # Refused HERE rather than at the station, which would have run
                 # it: the station's manual trigger ignores the enabled flag on

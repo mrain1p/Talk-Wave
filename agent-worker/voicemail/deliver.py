@@ -99,9 +99,15 @@ async def _triage(station, cfg: dict, text: str) -> tuple[str, str]:
     if cfg.get("allow_announcements"):
         allowed.append("air")
     if cfg.get("allow_skills"):
+        # The station's own gates first (station_config.runnable_skills):
+        # `POST /dj/skill` is an operator override, so a segment the operator
+        # switched off, or one missing its key, must never be on the list the
+        # model picks from — the same rule the live line applies.
         try:
+            from station_config import runnable_skills
+
             skills = [str(s.get("kind") or s.get("name") or "")
-                      for s in await station.list_skills()]
+                      for s in runnable_skills(await station.list_skills(), None)]
             skills = [s for s in skills if s]
         except Exception:                                     # noqa: BLE001
             skills = []

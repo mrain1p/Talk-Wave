@@ -638,7 +638,9 @@ async def handle_test_llm(request: web.Request) -> web.Response:
     )
 
     try:
-        model = build_llm(cfg, use_stored_key=may_send)
+        # fallback=False: a Test that quietly passed on the fallback leg
+        # would report the broken primary as working.
+        model = build_llm(cfg, use_stored_key=may_send, fallback=False)
 
         @lk_llm.function_tool
         async def request_song(song: str) -> str:
@@ -919,7 +921,7 @@ async def handle_speed_test(request: web.Request) -> web.Response:
 
         from call.providers import build_llm
 
-        model_obj = build_llm(cfg, use_stored_key=llm_key_ok)
+        model_obj = build_llm(cfg, use_stored_key=llm_key_ok, fallback=False)
         ctx = lk_llm.ChatContext.empty()
         # The prompt this stage measured two stages ago, and the tools the DJ
         # is given, because the caller pays for both on every turn. Sending
