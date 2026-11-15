@@ -1355,7 +1355,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # air guard down through disable() rather than the bare flag, and the
         # shutdown's hush beat is actually awaited. Both are comment, both in
         # the LIVE half, and neither moves the seam.
-        "agent-worker/call/session.py": (948, "the ringing half (prepare, "
+        # 951 at 0.99.56: the voice pick hands pick_speakable_voice the
+        # adapter's library-id pattern (Gemini's Extended Voice Library, SUB/WAVE
+        # #1761) — three lines in the ringing half, the seam untouched.
+        "agent-worker/call/session.py": (951, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -1464,9 +1467,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # read as if it were the live queue. They land on the
         # search-and-request side of the seam above, so the split is no
         # harder than it was; the late-match class has not moved.
-        "agent-worker/tests/test_music_tools.py": (857, "the late-match class "
-                                                        "split from the "
-                                                        "search-and-request "
+        # 838 at 0.99.56: the late-match class went to tests/test_late_match.py
+        # (the seam this row named), and the request receipt's `outcome` gained
+        # its two classes. The next seam is the one the module docstring draws:
+        # searches on one side, requests and what the caller is told on the other.
+        "agent-worker/tests/test_music_tools.py": (838, "the search classes "
+                                                        "split from the request "
                                                         "classes"),
         # 1122 (2026-09-17, review findings 7/8): two hush classes — a flip
         # the station never confirmed is finished rather than believed, and a

@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re as _re
 from pathlib import Path
 
 import httpx
@@ -212,7 +213,8 @@ async def available_voices(
         return []
 
 
-def pick_speakable_voice(wanted: str, available: list[str]) -> tuple[str, str]:
+def pick_speakable_voice(wanted: str, available: list[str],
+                         id_pattern: str | None = None) -> tuple[str, str]:
     """(voice to use, why it changed). An empty reason means it did not.
 
     The station tells us which voice each DJ uses ON AIR, and mirroring that is
@@ -225,12 +227,25 @@ def pick_speakable_voice(wanted: str, available: list[str]) -> tuple[str, str]:
 
     A voice the backend does not have is therefore not a reason to say nothing.
     It is a reason to say it in a different voice and to write down why.
+
+    `id_pattern` (the adapter's `voice_id_pattern`) names a SECOND id space
+    the backend speaks that it serves no list of: Gemini's Extended Voice
+    Library (SUB/WAVE #1761), ~2,000 voices addressed as `en-us-varo` beside
+    the thirty prebuilt names. Without it a persona the station voices from
+    the library fell to the first prebuilt voice, with a warning in the
+    record and the wrong DJ on the line.
     """
     wanted = str(wanted or "").strip()
     if not available:
         return wanted, ""            # lookup failed — not evidence of anything
     if wanted and wanted in available:
         return wanted, ""
+    if wanted and id_pattern:
+        try:
+            if _re.fullmatch(id_pattern, wanted):
+                return wanted, ""
+        except _re.error:
+            log.warning("adapter voice_id_pattern is not a regex: %r", id_pattern)
     fallback = available[0]
     if not wanted:
         return fallback, ""          # nothing asked for; nothing surprising
@@ -241,6 +256,20 @@ def pick_speakable_voice(wanted: str, available: list[str]) -> tuple[str, str]:
         f"Voice under Models & voice to choose deliberately, or point this at "
         f"the TTS server the station itself uses."
     )
+
+
+def voice_id_pattern(adapter_path: str | Path | None = None, mode: str = "") -> str | None:
+    """The adapter's `voice_id_pattern`, or None: the regex of a second voice-id
+    space the backend speaks but lists nowhere (Gemini's Extended Voice
+    Library, SUB/WAVE #1761). Read here so pick_speakable_voice's callers need
+    nothing but the adapter they already resolve; a missing or unreadable
+    adapter is simply "no second space"."""
+    try:
+        value = load_adapter(adapter_path, mode=mode).get("voice_id_pattern")
+    except Exception:                                             # noqa: BLE001
+        return None
+    value = str(value or "").strip()
+    return value or None
 
 
 def resolve_adapter(value: str | None) -> str | None:

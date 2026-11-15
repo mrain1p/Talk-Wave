@@ -33,6 +33,34 @@ class TestAVoiceTheBackendCannotSpeakIsNotSilence(unittest.TestCase):
     reason to say it differently and write down why.
     """
 
+    def test_a_gemini_library_voice_is_kept_not_demoted_to_kore(self):
+        # SUB/WAVE #1761: a persona may wear one of Google's ~2,000 Extended
+        # Voice Library voices (`en-us-varo`), sent in the same field as a
+        # prebuilt name. The adapter lists only the thirty prebuilt names, so
+        # until 0.99.56 such a DJ fell to the first of them — Kore — with a
+        # warning nobody hears and the wrong voice on every call.
+        from tts_adapter import (load_adapter, pick_speakable_voice,
+                                 resolve_adapter, voice_id_pattern)
+
+        path = resolve_adapter("google-gemini-cloud.json")
+        voices = load_adapter(path)["voices"]
+        pattern = voice_id_pattern(path)
+        self.assertTrue(pattern)
+        self.assertEqual(("en-us-varo", ""),
+                         pick_speakable_voice("en-us-varo", voices, id_pattern=pattern))
+        self.assertEqual(("en-gb-sydney-2", ""),
+                         pick_speakable_voice("en-gb-sydney-2", voices, id_pattern=pattern))
+        # A prebuilt name is untouched, and an id from another engine's space
+        # still falls to the first prebuilt voice with the reason written down.
+        self.assertEqual(("Puck", ""), pick_speakable_voice("Puck", voices, id_pattern=pattern))
+        voice, why = pick_speakable_voice("bf_isabella", voices, id_pattern=pattern)
+        self.assertEqual("Kore", voice)
+        self.assertIn("bf_isabella", why)
+        # And no pattern is the old behaviour exactly.
+        self.assertEqual("Kore", pick_speakable_voice("en-us-varo", voices)[0])
+        # Other adapters declare no second id space.
+        self.assertIsNone(voice_id_pattern(resolve_adapter("openai-cloud.json")))
+
     def test_the_station_voice_is_kept_when_the_backend_has_it(self):
         from tts_adapter import pick_speakable_voice
 

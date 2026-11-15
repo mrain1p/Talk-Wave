@@ -1532,7 +1532,7 @@ class TestTheSoundbiteAirsWithReceipts(unittest.TestCase):
                 super().__init__()
                 self.skipped = 0
 
-            async def skip_track(self):
+            async def skip_track(self, expect_id=None):
                 self.skipped += 1
                 return {"ok": True}
 

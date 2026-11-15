@@ -1,6 +1,6 @@
 {
-  "sha": "9d39316c5609323db537c1f559721a388390a34b",
-  "date": "2026-10-04T22:45:09Z",
+  "sha": "f0340220b6e9ff792c6f5543f76094bf1ff05886",
+  "date": "2026-11-13T10:39:01Z",
   "drifted": 0,
   "catalog": [
     "DELETE /dj/queue/block/:p",
@@ -16,6 +16,7 @@
     "GET /listen.pls",
     "GET /listeners",
     "GET /listeners/connections",
+    "GET /lyrics/current",
     "GET /now-playing",
     "GET /personas",
     "GET /request/:p",

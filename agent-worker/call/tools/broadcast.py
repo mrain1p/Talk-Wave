@@ -287,8 +287,32 @@ def build_on_air_tools(
             something you are queueing."""
             if actions.at_limit():
                 return actions.refusal()
-            result = await station.skip_track()
+            # Targeted (SUB/WAVE #2023): name the track the caller is hearing,
+            # so a song that ended between their ask and this call is not
+            # answered by cutting the NEXT one — or the ident — short. A
+            # station without the id, or an older station, gets the bare skip.
+            try:
+                on_air = ((await station.now_playing()) or {}).get("nowPlaying") or {}
+                expect = str(on_air.get("subsonic_id") or "").strip() or None
+            except Exception:                                   # noqa: BLE001
+                expect = None
+            result = await station.skip_track(expect_id=expect)
             if not result.get("ok"):
+                reason = str(result.get("reason") or "")
+                if reason == "track-changed":
+                    actions.denied("refused", str(result.get("error") or reason))
+                    return ("Nothing was skipped: that track had ALREADY ended "
+                            "on its own and the next one is playing. Tell the "
+                            "caller it moved on by itself — do not say you "
+                            "skipped it, and do not skip again unless they ask "
+                            "about what is on NOW.")
+                if reason in ("jingle-on-air", "bed-on-air", "break-on-air"):
+                    actions.denied("refused", str(result.get("error") or reason))
+                    return ("Nothing was skipped: the song is over and the "
+                            "station is in its own break after it (a jingle, a "
+                            "bed or a pause-and-talk), which a skip does not "
+                            "cut. Tell the caller the track is done and the "
+                            "next one is on its way — do not claim a skip.")
                 return actions.station_refused(result, "That didn't skip")
             actions.note("skip", "current track")
             # No hold: skipping makes no speech of its own, so the DJ can keep

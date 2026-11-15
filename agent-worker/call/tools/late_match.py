@@ -69,10 +69,11 @@ async def _surface_late_match(
     does, the record says so — a request whose title never surfaced is the
     thing an operator reads the transcript to find.
     """
-    from .music import _fmt_track, _when_it_plays, read_receipt
+    from .music import _fmt_track, _when_it_plays, outcome_note, read_receipt
 
     track: dict = {}
     position = None
+    note = ""
     # Did the station SETTLE this request, or merely never answer? Both end
     # with no track to announce and they are not the same fact: a settled
     # request is not a problem line for the operator to go hunting.
@@ -100,6 +101,10 @@ async def _surface_late_match(
             # added — _when_it_plays declines to guess on a null position and
             # the line below reads "lined up", which stays true either way.
             track, position = t, pos
+            # 'substituted' / 'cooldown' change what is true about the pick
+            # (music.outcome_note); the late note must carry it too, or the
+            # stand-in is announced as the caller's own request.
+            note = outcome_note(st)
             break
 
     if not track:
@@ -146,7 +151,9 @@ async def _surface_late_match(
         await session.generate_reply(
             user_input=(
                 f"[The station has just resolved the earlier request: it "
-                f"matched {_fmt_track(track)}. {_when_it_plays(position)}]"
+                f"matched {_fmt_track(track)}. "
+                + (note + " " if note else "")
+                + f"{_when_it_plays(position)}]"
             ),
             instructions=(
                 "Pass the station's pick on to the caller — one short line in "

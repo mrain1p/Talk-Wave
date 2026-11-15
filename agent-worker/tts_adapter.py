@@ -58,6 +58,7 @@ from tts_voices import (  # noqa: F401 — re-exported; see the module docstring
     parse_voice_list,
     pick_speakable_voice,
     resolve_adapter,
+    voice_id_pattern,
 )
 
 log = logging.getLogger("callin.agent")

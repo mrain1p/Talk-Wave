@@ -138,6 +138,11 @@ ACTION_TIMEOUT = 45.0
 # because a caller is waiting on the answer.
 LIBRARY_TIMEOUT = 15.0
 
+# How long /lyrics/current is given to finish a lookup it says is `pending`
+# (SUB/WAVE 1.28): one re-ask after each wait, in order. Short on purpose — a
+# caller is holding — and the last answer is returned as-is, flag included.
+LYRICS_PENDING_WAITS = (0.8, 1.2)
+
 # POST /library/blocklist/check takes at most this many rows a call
 # (routes/library.ts BLOCK_CHECK_MAX).
 BLOCK_CHECK_MAX = 500
@@ -972,15 +977,34 @@ class StationClient:
         So the failure branch is now MARKED. `unavailable` means we do not
         know anything about this track's lyrics; an absent `unavailable` with
         empty `lines` means the station answered and holds none.
+
+        **`pending: true` is a third fact** (SUB/WAVE 1.28, #2082): the station
+        has no lyrics on file yet and a lookup (LRCLIB) is running, "ask again
+        shortly". It arrives with empty `lines`, so until 0.99.56 it read as
+        the no-lyrics answer above — the one case where "none indexed" was
+        said about a track the station was about to have the words for. The
+        read now waits and asks again a couple of times (LYRICS_PENDING_WAITS,
+        ~2s all told — a caller is on the line); an answer still pending after
+        that is returned WITH the flag, for the tool to name as a lookup in
+        progress rather than an empty index.
         """
         try:
-            r = await self._client.get("/lyrics/current")
-            r.raise_for_status()
-            d = r.json()
-            return d if isinstance(d, dict) else {}
+            d = await self._lyrics_read()
+            for wait in LYRICS_PENDING_WAITS:
+                if not d.get("pending"):
+                    break
+                await asyncio.sleep(wait)
+                d = await self._lyrics_read()
+            return d
         except Exception as e:
             log.info("lyrics unavailable (%s)", describe(e))
             return {"unavailable": describe(e)}
+
+    async def _lyrics_read(self) -> dict:
+        r = await self._client.get("/lyrics/current")
+        r.raise_for_status()
+        d = r.json()
+        return d if isinstance(d, dict) else {}
 
     @staticmethod
     def _guest_credit_words(body: dict, hit: dict) -> str:
@@ -1438,13 +1462,31 @@ class StationClient:
             log.warning("skill %s failed: %s", name, describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
-    async def skip_track(self) -> dict:
+    # SUB/WAVE's own words for a targeted skip it would not do (#2023,
+    # broadcast/skip-policy.ts SKIP_REFUSAL_MESSAGES), relayed as given.
+    SKIP_REFUSALS = {
+        "track-changed": "that track is no longer on air — nothing skipped",
+        "jingle-on-air": "a jingle is on air, about to air or just ended — nothing skipped",
+        "bed-on-air": "a bed is on air after that track — nothing skipped",
+        "break-on-air": "a pause-and-talk break is on air after that track — nothing skipped",
+    }
+
+    async def skip_track(self, expect_id: str | None = None) -> dict:
         """Force-end whatever is playing. Admin-only, and station-wide.
 
         The station's own API calls this an operator override and notes there
         is deliberately no listener-facing skip. Exposing it to a caller is
         therefore a decision the operator makes about their own station, which
         is why the setting is off by default and capped per call.
+
+        `expect_id` is the on-air track's `subsonic_id` (SUB/WAVE 1.2x, #2023):
+        with it the skip lands only if THAT track is still the one on air, and
+        the station answers 409 with a `reason` — track-changed, jingle-on-air,
+        bed-on-air, break-on-air — and skips nothing. A caller's "skip this"
+        names the song they are hearing; by the time the model acts, the song
+        may have ended on its own, and a bare skip then cut the NEXT one, or
+        the ident, with the DJ reporting a clean skip. The 409 comes back as
+        `ok: False` with the station's own reason and words.
         """
         from station_config import admin_credentials
 
@@ -1454,9 +1496,17 @@ class StationClient:
         try:
             r = await self._client.post(
                 "/dj/skip",
+                json={"expectId": expect_id} if expect_id else None,
                 auth=httpx.BasicAuth(user, password),
                 timeout=ACTION_TIMEOUT,
             )
+            if r.status_code == 409 and expect_id:
+                body = _body(r)
+                reason = str(body.get("reason") or "track-changed")
+                return {"ok": False, "reason": reason,
+                        "error": str(body.get("error")
+                                     or self.SKIP_REFUSALS.get(reason)
+                                     or "the station would not skip that")}
             r.raise_for_status()
             return {"ok": True, **_body(r)}
         except Exception as e:
