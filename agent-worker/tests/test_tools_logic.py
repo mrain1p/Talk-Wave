@@ -1388,6 +1388,186 @@ class TestOnlyThisDJsSegmentsCanBeRun(unittest.TestCase):
         self.assertIn("no segments to run", out)
 
 
+class TestTheStationsOwnSkillGatesHoldOnTheCallLine(unittest.TestCase):
+    """SUB/WAVE 1.32's `GET /dj/skills` rows say for themselves whether a
+    segment may run tonight: `enabled` is the operator's switch, `ready` is
+    whether it can run as configured, and a skill that `requiresKey` says what
+    is wrong with the key in `keyProblem`. `POST /dj/skill` honours none of
+    that — it is an operator override. So the call line reads the rows the
+    station actually sends (the live 1.32.0 field names, `kind` not `name`)
+    and refuses on this side: in the prompt, in the tool, and on the
+    answering machine. Post-1.0 pass, 2026-11-15.
+    """
+
+    LIVE_ROWS = [
+        {"kind": "weather", "label": "Weather", "enabled": True, "ready": True,
+         "requiresKey": True, "keyProblem": None, "cohosts": False,
+         "cooldownMs": 1800000, "hasTool": False, "toolPending": False,
+         "hint": "", "description": "Local weather", "tags": ["weather"]},
+        {"kind": "news", "label": "News", "enabled": False, "ready": True,
+         "requiresKey": False, "keyProblem": None, "cohosts": False,
+         "cooldownMs": 3600000, "hasTool": False, "toolPending": False,
+         "hint": "", "description": "Headlines", "tags": ["news"]},
+        {"kind": "web-search", "label": "Search", "enabled": True,
+         "ready": False, "requiresKey": True, "keyProblem": "missing",
+         "cohosts": False, "cooldownMs": 0, "hasTool": True,
+         "toolPending": False, "hint": "", "description": "", "tags": []},
+        {"kind": "storytime", "label": "Story", "enabled": True, "ready": True,
+         "requiresKey": False, "keyProblem": None, "cohosts": False,
+         "cooldownMs": 0, "hasTool": False, "toolPending": False,
+         "hint": "", "description": "", "tags": []},
+    ]
+
+    @staticmethod
+    def _names(rows, assigned=None):
+        from station_config import runnable_skills
+
+        return [str(s.get("kind") or s.get("name"))
+                for s in runnable_skills(rows, assigned)]
+
+    def _tools(self, rows):
+        """The run-skill tool built the way session.prepare builds it: the
+        narrowed names AND the gated ones, both off the same raw catalogue."""
+        from call.actions import CallActions
+        from call.air import OnAirGuard
+        from call.tools.broadcast import build_on_air_tools
+        from station_config import withheld_skills
+
+        class _Station:
+            def __init__(self):
+                self.ran = []
+
+            async def run_skill(self, name):
+                self.ran.append(name)           # this IS `POST /dj/skill`
+                return {"ok": True, "spoken": "..."}
+
+        station = _Station()
+        tools = {t.info.name: t for t in build_on_air_tools(
+            {"allow_skills": True}, station, CallActions(5),
+            OnAirGuard(station, {}), guarded=False,
+            skills=self._names(rows), switched_off=withheld_skills(rows))}
+        return station, tools["subwave_run_skill"]
+
+    def test_the_live_rows_narrow_to_what_the_station_would_pick_itself(self):
+        self.assertEqual(self._names(self.LIVE_ROWS), ["weather", "storytime"])
+
+    def test_a_key_problem_without_a_ready_flag_still_withholds(self):
+        rows = [{"kind": "news", "label": "News", "enabled": True,
+                 "requiresKey": True, "keyProblem": "missing"}]
+        self.assertEqual(self._names(rows), [])
+
+    def test_a_key_that_is_fine_is_not_read_as_a_problem(self):
+        # `requiresKey: true` alone is a fact about the skill, not a fault.
+        rows = [{"kind": "weather", "enabled": True, "ready": True,
+                 "requiresKey": True, "keyProblem": None}]
+        self.assertEqual(self._names(rows), ["weather"])
+
+    def test_an_older_station_without_the_fields_keeps_every_segment(self):
+        # Absent is runnable: a station older than these fields sends none of
+        # them, and reading absent as "off" would silence its whole show.
+        rows = [{"kind": "weather", "label": "Weather"}, {"name": "news"}]
+        self.assertEqual(self._names(rows), ["weather", "news"])
+
+    def test_the_dropped_rows_are_named_with_the_reason(self):
+        from station_config import withheld_skills
+
+        held = withheld_skills(self.LIVE_ROWS)
+        self.assertEqual(set(held), {"news", "web-search"})
+        self.assertIn("switched off", held["news"])
+        self.assertIn("key", held["web-search"])
+        self.assertIn("missing", held["web-search"])     # the station's word
+
+    def test_the_briefing_never_mentions_a_gated_segment(self):
+        from brain.briefing import _fmt_skills
+        from station_config import runnable_skills
+
+        text = _fmt_skills(runnable_skills(self.LIVE_ROWS, None))
+        self.assertIn("weather", text)
+        self.assertNotIn("news", text)
+        self.assertNotIn("web-search", text)
+
+    def test_a_switched_off_segment_never_reaches_post_dj_skill(self):
+        # The one that matters. The model names "news" anyway — a caller asked
+        # for the headlines — and the tool answers that the station has it
+        # switched off tonight. The station is never asked, because asked, it
+        # would have run it.
+        import asyncio
+
+        station, run = self._tools(self.LIVE_ROWS)
+        out = asyncio.run(run(name="news"))
+
+        self.assertEqual(station.ran, [])
+        self.assertIn("switched off tonight", out)
+        self.assertIn("weather", out)              # offers what IS on
+        self.assertNotIn("not a segment you can run", out)
+
+    def test_a_segment_missing_its_key_is_refused_before_the_station(self):
+        import asyncio
+
+        station, run = self._tools(self.LIVE_ROWS)
+        out = asyncio.run(run(name="web-search"))
+
+        self.assertEqual(station.ran, [])
+        self.assertIn("switched off tonight", out)
+        self.assertIn("API key", out)
+
+    def test_a_runnable_segment_still_runs(self):
+        # The gate must not take the working ones with it.
+        import asyncio
+
+        station, run = self._tools(self.LIVE_ROWS)
+        asyncio.run(run(name="weather"))
+        self.assertEqual(station.ran, ["weather"])
+
+    def test_the_answering_machine_picks_from_the_same_narrowed_list(self):
+        # voicemail._triage builds its "one of:" list straight off
+        # station.list_skills(); a switched-off segment there was a voicemail
+        # running what no caller could.
+        import asyncio
+
+        from call import providers
+        from voicemail import deliver as vm
+
+        rows = self.LIVE_ROWS
+
+        class _Station:
+            async def list_skills(self):
+                return rows
+
+        class _LLM:
+            async def aclose(self):
+                pass
+
+        seen = {}
+
+        async def fake_stream(model, ctx, **kw):
+            seen["prompt"] = " ".join(
+                str(getattr(m, "content", m)) for m in ctx.items)
+            return seen["verdict"], []
+
+        old_build, old_stream = providers.build_llm, providers.stream_reply
+        providers.build_llm = lambda cfg, **k: _LLM()
+        providers.stream_reply = fake_stream
+        try:
+            seen["verdict"] = '{"action": "skill", "name": "news"}'
+            held = asyncio.run(vm._triage(
+                _Station(), {"allow_skills": True}, "do the news"))
+            seen["verdict"] = '{"action": "skill", "name": "weather"}'
+            ran = asyncio.run(vm._triage(
+                _Station(), {"allow_skills": True}, "weather please"))
+        finally:
+            providers.build_llm, providers.stream_reply = old_build, old_stream
+
+        # A model that names the switched-off one is held, not obeyed; the
+        # working one still goes through.
+        self.assertEqual(held, ("hold", ""))
+        self.assertEqual(ran, ("skill", "weather"))
+        offered = seen["prompt"].split("one of:")[-1]
+        self.assertIn("weather", offered)
+        self.assertNotIn("news", offered)
+        self.assertNotIn("web-search", offered)
+
+
 class TestOneRequestCannotTakeTwoQueueSlots(unittest.TestCase):
     """Four queue entries for two records, on a real call.
 

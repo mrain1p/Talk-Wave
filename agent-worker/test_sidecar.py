@@ -50,6 +50,8 @@ from tests.test_settings import (  # noqa: F401
     TestTheCountAndHeartShipOn,
     TestTheOnAirLetterRidesTheRoomName,
     TestTheOnAirQuickKillsShipOpen,
+    TestTheFallbackBrainShipsOff,
+    TestTheFallbackBrainCarriesTheCallOnA402,
 )
 from tests.test_secrets_and_auth import (  # noqa: F401
     TestAdminAuth,
@@ -159,6 +161,8 @@ from tests.test_widget import (
     TestTheStylesheetParsesToTheEnd,
     TestTheUrlRowsOnlyExistInUrlMode,
     TestTheCardOffersTheCountAndTheHeart,
+    TestAShowHasALinkOfItsOwn,
+    TestSigningOutAsksFirst,
 )
 from tests.test_caller_tiers import (  # noqa: F401
     TestTheLadderLivesInOnePlace,
@@ -435,6 +439,7 @@ from tests.test_station import (  # noqa: F401
 )
 from tests.test_tools_logic import (  # noqa: F401
     TestOnlyThisDJsSegmentsCanBeRun,
+    TestTheStationsOwnSkillGatesHoldOnTheCallLine,
     TestASkipNamesTheTrackTheCallerHeard,
 )
 from tests.test_speech_filter import (  # noqa: F401

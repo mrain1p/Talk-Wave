@@ -3102,7 +3102,24 @@
 
   // Signing out only forgets the password on THIS browser — the panel
   // itself stays protected everywhere.
+  // ARE YOU SURE first (operator, 2026-11-15): the button sits in a row
+  // of ordinary actions and signs this browser out of BOTH surfaces.
   $('logoutBtn').onclick = () => {
+    const ask = $('signoutAsk');
+    if (!ask) return signOutHere();
+    ask.hidden = false;
+    $('signoutNo').focus();
+  };
+  if ($('signoutAsk')) {
+    const close = () => { $('signoutAsk').hidden = true; };
+    $('signoutYes').onclick = signOutHere;
+    $('signoutNo').onclick = close;
+    $('signoutAsk').onmousedown = (e) => { if (e.target === $('signoutAsk')) close(); };
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !$('signoutAsk').hidden) close();
+    });
+  }
+  function signOutHere() {
     // Both credentials, not just the panel one. They are stored separately
     // because they buy different things, but "sign out" means signed out —
     // clearing only the admin key left the phone still open on a deployment
@@ -3116,7 +3133,7 @@
     localStorage.removeItem('callinAdminKey');
     rememberCallKey('');
     location.reload();
-  };
+  }
 
   async function setGuest(code) {
     const out = $('guestResult');

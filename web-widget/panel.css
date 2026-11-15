@@ -710,6 +710,12 @@
     padding: 12px 16px; border-top: 1px solid var(--line);
     background: color-mix(in srgb, var(--pine) 55%, transparent);
   }
+  /* The sign-out question borrows the sheet: narrower, the answers at the
+     right the way a question's buttons sit, and the quiet one first so the
+     filled one is the act. */
+  .oledbox.signoutbox { width: min(420px, 100%); }
+  .signouttext { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--text); }
+  .oledfoot.signoutfoot { justify-content: flex-end; gap: 8px; }
 
   .oladdinput {
     margin-right: 16px; font: 13.5px inherit; padding: 8px 10px;
