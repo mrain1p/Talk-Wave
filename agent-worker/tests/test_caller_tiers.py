@@ -157,7 +157,8 @@ class TestUpgradingKeepsTheStationExactlyAsItWas(_TempStores):
         self.assertIs(cfg["allow_requests"], True)
         self.assertIs(cfg["allow_library_search"], True)
         for field in ("allow_exact_queue", "allow_announcements", "allow_skills",
-                      "allow_skip_track", "allow_dj_segment", "allow_takeover"):
+                      "allow_skip_track", "allow_dj_segment", "allow_takeover",
+                      "allow_steer"):
             with self.subTest(field=field):
                 self.assertIs(cfg[field], False)
 

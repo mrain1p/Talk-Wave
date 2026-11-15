@@ -1079,11 +1079,13 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
             "contracts. Crossed the ceiling when 0.9.122 added vendor "
             "adapters and their guards; same subject-placement rule as the "
             "three above."),
-        "agent-worker/tests/test_station.py": (1698,
+        "agent-worker/tests/test_station.py": (2443,
             "one subject: what the station says, and what the card and the "
             "DJ say about it. Crossed the ceiling when 0.10.91 pinned "
             "refusals naming their blocklist rule; same subject-placement "
-            "rule as the modules around it."),
+            "rule as the modules around it. 2443 at 1.0.0: the lyrics pending "
+            "re-ask, the targeted skip, the steer client and the leanings "
+            "mirror each pinned what the station says — the same subject."),
         "agent-worker/tests/test_webhooks.py": (1295,
             "one subject: the station's pushes — registering for them, "
             "proving one arrived, and what a verified push may steer. "
@@ -1208,7 +1210,9 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # they now sit beside — and conduct.py came back under the ceiling
         # by the same move. The seam recorded below is untouched: they are
         # rule builders, and they landed with the rule builders.
-        "agent-worker/brain/tool_rules.py": (782, "the declarations at the top "
+        # 798 at 1.0.0: the steer bullet (SUB/WAVE 1.31) and its off-list line
+        # — a rule builder and a declaration, each on its own side of the seam.
+        "agent-worker/brain/tool_rules.py": (798, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
         # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —
@@ -1358,7 +1362,9 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 951 at 0.99.56: the voice pick hands pick_speakable_voice the
         # adapter's library-id pattern (Gemini's Extended Voice Library, SUB/WAVE
         # #1761) — three lines in the ringing half, the seam untouched.
-        "agent-worker/call/session.py": (951, "the ringing half (prepare, "
+        # 953 at 1.0.0: the DJ's musical leanings ride the same cached /settings
+        # read into build_system_prompt — two lines in the ringing half.
+        "agent-worker/call/session.py": (953, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -1547,7 +1553,8 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 758 at 0.99.54: one ASKS example for allow_listener_countries —
         # TestTheAskMenuOffersEveryPermission requires one for every tiered
         # permission, and it lands in the copy table the split moves out.
-        "web-widget/shared.js": (758, "the caller-facing copy tables "
+        # 762 at 1.0.0: two steer rows in ASKS (set one, lift one), copy table only.
+        "web-widget/shared.js": (762, "the caller-facing copy tables "
                                       "(ASK_GROUPS, ASKS, NEVER) split from "
                                       "the runtime foundation; the crossing "
                                       "is zero in both directions"),
@@ -2159,7 +2166,7 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         "agent-worker/scripted_call.py::main": (36, "harness — arg/lever dispatch"),
         "agent-worker/scripted_call.py::grade_scenario": (33, "harness — grading"),
         # Batch 1 — platform hubs
-        "agent-worker/settings.py::_migrate": (33, "Batch 1 — settings migration ladder"),
+        "agent-worker/settings.py::_migrate": (35, "Batch 1 — settings migration ladder; +2 1.0.0: rev 7 stamps allow_steer off on stores that predate it, one rung like every power before it"),
         # Batch 2 — the api edge
         # Was handle_live at 55. The single-flight (2026-09-17) left the
         # cache read and the lock in handle_live and moved the assembler into
@@ -2208,7 +2215,7 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         # Batch 5 — the brain
         "agent-worker/brain/briefing.py::_fmt_now_playing": (32, "Batch 5 — now-playing formatter"),
         "agent-worker/brain/assemble.py::build_system_prompt": (29, "Batch 5 — prompt assembler entry; +1 2026-09-01: the persona id, so the booth window can tell our own lines from a co-host's; +1 2026-09-07: the live show resolved before the skills are narrowed, so a co-hosted segment (#1534) is only offered when somebody else is in the booth"),
-        "agent-worker/brain/tool_rules.py::_tools": (28, "Batch 5 — the prompt god-function; +1 2026-08-31: the tool_speakfirst gate, so chat can drop the dead-air rule"),
+        "agent-worker/brain/tool_rules.py::_tools": (30, "Batch 5 — the prompt god-function; +1 2026-08-31: the tool_speakfirst gate, so chat can drop the dead-air rule; +2 1.0.0: the steer bullet rides its switch like every other action"),
         # Batch 6 — chat / onair / openlines / voicemail
         "agent-worker/voicemail/capture.py::answer": (45, "Batch 6 — voicemail answer pipeline"),
         # 41 (2026-08-31): the "directions" source branch — a random targeted

@@ -350,6 +350,23 @@ TOOLS: tuple[Tool, ...] = (
          "about a genre.",
          needs_station_admin=True),
 
+    Tool("subwave_steer", "allow_steer", LOCAL,
+         "Leans what the station picks and says for a while, from a sentence "
+         "or one of the operator's playlists.",
+         "Station admin credentials required, and a station on SUB/WAVE 1.31 "
+         "or later (an older one answers plainly that it can't). OFF by "
+         "default: a takeover's reach — everyone, for 15–720 minutes or until "
+         "the schedule changes, outliving the call — without a named DJ to "
+         "attribute it to, and starting one ENDS a running takeover by the "
+         "station's own rule. Opens with five picked tracks at the end of the "
+         "record playing.",
+         needs_station_admin=True),
+    Tool("subwave_clear_steer", "allow_steer", LOCAL,
+         "Lifts a steer early and pulls its un-aired opening tracks.",
+         "Same switch as the steer, deliberately: a caller who can end the "
+         "operator's own steer is making a station-wide change too.",
+         needs_station_admin=True),
+
     # --- never on a call line ---------------------------------------------
     Tool("subwave_refresh_playlist", NEVER, NONE,
          "Rebuilds the fallback auto-playlist for the current mood.",

@@ -633,3 +633,185 @@ class TestAShowIsReachableHoweverItIsSpelled(unittest.TestCase):
 
     def test_the_overlook_still_answers_to_its_own_head(self):
         self.assertEqual(match_show(self.SHOWS, "overlook")["id"], "s2")
+
+
+class _SteerStation(_Station):
+    """A station with SUB/WAVE 1.31's steer — or without it, which is the case
+    that matters most for an operator whose station lags a release."""
+
+    LISTS = [
+        {"id": "pl-poke", "name": "Pokemon", "songCount": 144},
+        {"id": "pl-drop", "name": "The Vertical Drop: Melodic Heights", "songCount": 25},
+        {"id": "pl-chill", "name": "Sunday chill", "songCount": 40},
+        {"id": "pl-chill2", "name": "Monday chill", "songCount": 12},
+    ]
+
+    def __init__(self, ok: bool = True, error: str = "", unsupported: bool = False,
+                 override=None, running=None, lists=None) -> None:
+        super().__init__(ok=ok, error=error)
+        self.unsupported = unsupported
+        self._override = override
+        self.running = running
+        self.lists = self.LISTS if lists is None else lists
+        self.steered = None
+        self.cleared_steer = False
+
+    async def schedule(self) -> dict:
+        d = {"shows": list(self.SHOWS)}
+        if self._override is not None:
+            d["override"] = self._override
+        return d
+
+    async def playlists(self):
+        return None if self.lists is None else list(self.lists)
+
+    async def steer(self, prompt="", playlist_id=None, minutes=60, until="fixed"):
+        self.steered = {"prompt": prompt, "playlist_id": playlist_id,
+                        "minutes": minutes, "until": until}
+        if self.unsupported:
+            return {"ok": False, "unsupported": True,
+                    "error": "this station's software has no steer yet"}
+        if not self.ok:
+            return {"ok": False, "error": self.error}
+        return {"ok": True, "steer": {"prompt": prompt}, "queued": 5, "skipped": []}
+
+    async def steer_status(self):
+        return {"steer": self.running, "budgetMode": "normal", "queued": []}
+
+    async def clear_steer(self):
+        self.cleared_steer = True
+        if self.unsupported:
+            return {"ok": False, "unsupported": True,
+                    "error": "this station's software has no steer yet"}
+        return {"ok": True, "steer": None, "removed": 3, "kept": 1}
+
+
+def _steer_tools(station, limit: int = 5):
+    actions = CallActions(limit)
+    built = build_on_air_tools(
+        {"allow_steer": True}, station, actions, _Guard(), guarded=False)
+    return {t.info.name: t for t in built}, actions
+
+
+class TestSteeringTheStation(unittest.TestCase):
+    """SUB/WAVE 1.31's steer: a sentence or a playlist leans what the whole
+    station picks and says for a bounded window. A takeover's reach without a
+    named DJ to attribute it to — and the ask a caller makes most naturally
+    of all ("something more upbeat for the next hour"), which with no tool the
+    DJ answered with one song and called the station steered."""
+
+    def test_it_rides_its_own_switch(self):
+        built = build_on_air_tools({"allow_takeover": True}, _SteerStation(),
+                                   CallActions(5), _Guard(), guarded=False)
+        self.assertNotIn("subwave_steer", {t.info.name for t in built})
+        tools, _ = _steer_tools(_SteerStation())
+        self.assertIn("subwave_steer", tools)
+        self.assertIn("subwave_clear_steer", tools)
+
+    def test_a_direction_becomes_a_fixed_window_in_the_callers_words(self):
+        station = _SteerStation()
+        tools, actions = _steer_tools(station)
+        out = asyncio.run(tools["subwave_steer"](direction="something  more upbeat"))
+        self.assertEqual(station.steered["prompt"], "something more upbeat")
+        self.assertEqual(station.steered["minutes"], 60)
+        self.assertEqual(station.steered["until"], "fixed")
+        self.assertIsNone(station.steered["playlist_id"])
+        self.assertIn("Done", out)
+        self.assertIn("60 minutes", out)
+        # It outlives the call, lands at the boundary, and is a receipt.
+        self.assertIn("keeps running after this call", out)
+        self.assertIn("end of the record", out)
+        self.assertEqual(1, actions.count)
+
+    def test_the_window_is_clamped_and_said_out_loud(self):
+        station = _SteerStation()
+        tools, _ = _steer_tools(station)
+        out = asyncio.run(tools["subwave_steer"](direction="mellow", minutes=5000))
+        self.assertEqual(station.steered["minutes"], StationClient.STEER_MAX_MINUTES)
+        self.assertIn(str(StationClient.STEER_MAX_MINUTES), out)
+        self.assertIn("Say the real number", out)
+
+    def test_until_the_schedule_changes_sends_no_minutes(self):
+        station = _SteerStation()
+        tools, _ = _steer_tools(station)
+        out = asyncio.run(tools["subwave_steer"](direction="90s hip hop",
+                                                 until_schedule=True, minutes=30))
+        self.assertEqual(station.steered["until"], "schedule-change")
+        self.assertIn("until the schedule would have changed", out)
+
+    def test_a_named_playlist_resolves_to_its_id(self):
+        station = _SteerStation()
+        tools, _ = _steer_tools(station)
+        out = asyncio.run(tools["subwave_steer"](playlist="the pokemon one"))
+        self.assertEqual(station.steered["playlist_id"], "pl-poke")
+        self.assertEqual(station.steered["prompt"], "")
+        self.assertIn("Pokemon", out)
+
+    def test_an_unknown_or_ambiguous_playlist_steers_nothing(self):
+        station = _SteerStation()
+        tools, actions = _steer_tools(station)
+        out = asyncio.run(tools["subwave_steer"](playlist="road trip"))
+        self.assertIsNone(station.steered)
+        self.assertIn("No playlist called", out)
+        self.assertIn("Pokemon", out)
+        out = asyncio.run(tools["subwave_steer"](playlist="chill"))
+        self.assertIsNone(station.steered)
+        self.assertIn("More than one playlist", out)
+        self.assertIn("NOTHING steered", out)
+        self.assertEqual(0, actions.count)
+
+    def test_nothing_to_steer_by_asks_rather_than_steering_nothing(self):
+        station = _SteerStation()
+        tools, _ = _steer_tools(station)
+        out = asyncio.run(tools["subwave_steer"](direction="   "))
+        self.assertIsNone(station.steered)
+        self.assertIn("Ask the caller", out)
+
+    def test_a_station_without_the_control_is_not_reported_as_a_failure(self):
+        tools, actions = _steer_tools(_SteerStation(unsupported=True))
+        out = asyncio.run(tools["subwave_steer"](direction="upbeat"))
+        self.assertIn("doesn't have a steer", out)
+        self.assertIn("do NOT retry", out)
+        self.assertIn("do NOT improvise", out)
+        self.assertEqual(0, actions.count)
+
+    def test_a_refusal_is_the_stations_own_sentence(self):
+        tools, _ = _steer_tools(_SteerStation(
+            ok=False, error="nothing in the library is eligible under this steer right now"))
+        out = asyncio.run(tools["subwave_steer"](direction="Mongolian throat singing"))
+        self.assertIn("nothing in the library is eligible", out)
+        self.assertIn("do not claim it worked", out)
+
+    def test_a_running_takeover_is_said_to_have_ended(self):
+        # routes/steer.ts: starting a steer clears a takeover. The caller
+        # asked for "more upbeat", not for the show change that comes with it.
+        station = _SteerStation(override={"showId": "s-late", "expiresAt": 1})
+        tools, _ = _steer_tools(station)
+        out = asyncio.run(tools["subwave_steer"](direction="upbeat"))
+        self.assertIn("ENDED the show takeover", out)
+        out = asyncio.run(_steer_tools(_SteerStation())[0]["subwave_steer"](direction="upbeat"))
+        self.assertNotIn("ENDED", out)
+
+
+class TestLiftingASteer(unittest.TestCase):
+    """The undo rides the same switch, says when there is nothing to lift, and
+    never mistakes a pinned SHOW for a steer."""
+
+    def test_nothing_running_says_so(self):
+        station = _SteerStation(running=None)
+        tools, actions = _steer_tools(station)
+        out = asyncio.run(tools["subwave_clear_steer"]())
+        self.assertFalse(station.cleared_steer)
+        self.assertIn("no steer to lift", out)
+        self.assertIn("subwave_cancel_takeover", out)
+        self.assertEqual(0, actions.count)
+
+    def test_a_running_steer_is_lifted_with_its_opening_tracks(self):
+        station = _SteerStation(running={"prompt": "upbeat", "startedAt": 1})
+        tools, actions = _steer_tools(station)
+        out = asyncio.run(tools["subwave_clear_steer"]())
+        self.assertTrue(station.cleared_steer)
+        self.assertIn("steer is off", out)
+        self.assertIn("3 of its opening tracks", out)
+        self.assertIn("end of the current record", out)
+        self.assertEqual(1, actions.count)

@@ -451,6 +451,8 @@ class CallSession:
             # All off the same cached /settings read — free here.
             track_floor=await self.station_cfg.track_floor(),
             talk_between_tracks=await self.station_cfg.talk_between_tracks_only(),
+            music_lean=await self.station_cfg.music_lean(
+                str(self.persona.get("id") or "")),
             pause_talk=await self.station_cfg.pause_talk_seconds(
                 str(live_show.get("id", ""))),
         )

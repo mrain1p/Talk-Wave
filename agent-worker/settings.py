@@ -228,6 +228,11 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # allowed to play for a bounded window. Admin, and it needs a station new
     # enough to have the control at all (upstream #1404).
     "allow_genre_lock":   (None, "admin"),
+    # SUB/WAVE 1.31's steer: lean what the station picks and says for a
+    # bounded window from a sentence ("more upbeat for the next hour") or
+    # one of the operator's playlists. A takeover's reach — everyone, and
+    # it outlives the call — without a named DJ to attribute it to. Admin.
+    "allow_steer":        (None, "admin"),
     # The only PERMANENT thing on a call line. Everything else here is over
     # when the window lapses or the record ends; a never-play entry outlives
     # the call, the show and the operator's memory of the call, and nothing
@@ -1189,7 +1194,7 @@ def _lay_data_skeleton(data_dir) -> None:
 # lands); save() marks every store it writes with THIS ceiling, which is
 # what tells a store that merely never set a field apart from one written
 # before the field's default moved.
-STORE_REV = 6
+STORE_REV = 7
 
 
 def _migrate(stored: dict) -> dict:
@@ -1277,6 +1282,13 @@ def _migrate(stored: dict) -> dict:
     if _coerce(stored.get("_rev"), 1) < 6:
         if "allow_album_queue" not in stored:
             stored["allow_album_queue"] = TIER_OFF
+    # 1.0.0: the steer (SUB/WAVE 1.31). A POWER with a takeover's reach — one
+    # sentence leans everything the station plays for up to twelve hours and
+    # keeps running after the caller hangs up — so the 0.9.61 rule applies:
+    # stamped off for every store that predates it, granted from the panel.
+    if _coerce(stored.get("_rev"), 1) < 7:
+        if "allow_steer" not in stored:
+            stored["allow_steer"] = TIER_OFF
     # 0.10.92: receipt placement stopped being chat-only — action_cards now
     # covers calls, texts and voicemail. A stored chat-era answer becomes the
     # operator's answer for every door; a store that never set it follows the

@@ -55,6 +55,7 @@ TIERED_PERMISSIONS = (
     "allow_dj_segment",
     "allow_takeover",
     "allow_genre_lock",
+    "allow_steer",
     "allow_never_play",
 )
 

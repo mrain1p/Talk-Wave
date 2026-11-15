@@ -336,6 +336,8 @@ from tests.test_music_tools import (  # noqa: F401
 )
 from tests.test_takeover import (  # noqa: F401
     TestAMissSaysWhatItDidFind,
+    TestSteeringTheStation,
+    TestLiftingASteer,
     TestAShowIsReachableHoweverItIsSpelled,
     TestADJsNameResolvesToTheirShow,
     TestTheDJDoesNotBlameTheWeatherForItsOwnMiss,
@@ -347,6 +349,7 @@ from tests.test_takeover import (  # noqa: F401
 )
 from tests.test_brain import (  # noqa: F401
     TestAnotherHostsLinesAreNotOurs,
+    TestTheDJIsToldItsMusicalLeanings,
     TestTheDJKnowsWhenTheBroadcastIsNotNormal,
     TestTheLastCallersBusinessStaysOutOfTheBriefing,
     TestTheDJIsToldItsOwnLanguage,
@@ -417,6 +420,8 @@ from tests.test_takeover import (  # noqa: F401
 )
 from tests.test_station import (  # noqa: F401
     TestTheGuideShapesTheStationsWeek,
+    TestASteerIsPostedAsTheStationSpellsIt,
+    TestTheDJsLeaningsAreMirrored,
     TestAPendingLyricsLookupIsAskedAgain,
     TestATargetedSkipNamesItsRefusal,
     TestTheSpeechReadFollowsTheLogOffThePublicState,

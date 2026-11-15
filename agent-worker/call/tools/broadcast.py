@@ -578,6 +578,10 @@ def build_on_air_tools(
 
         tools.append(clear_genre_lock)
 
+    # SUB/WAVE 1.31's steer — its own module, one file under the ceiling here.
+    from .steer import build_steer_tools
+    tools.extend(build_steer_tools(cfg, station, actions))
+
     return tools
 
 

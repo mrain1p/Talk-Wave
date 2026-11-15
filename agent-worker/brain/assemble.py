@@ -55,6 +55,34 @@ async def _station_switches(speak_clock, track_floor, talk_between_tracks,
             0 if pause_talk is None else pause_talk)
 
 
+async def _lean_block(persona: dict, music_lean: str | None) -> str:
+    """The station's Musical Leanings field (#1678) as one prompt block, or "".
+
+    What this DJ reaches for when picking, mirrored so the call DJ and the
+    booth lean the same way when a caller leaves the choice to them. Admin-only
+    on the station, so the call path passes it from its cached /settings read;
+    the preview and chat paths read it once here. Empty says nothing — most
+    personas leave it blank, and a sentence about having no leanings would
+    ride every turn.
+    """
+    if music_lean is None:
+        from station_config import StationConfig
+
+        sc = StationConfig()
+        try:
+            music_lean = await sc.music_lean(str(persona.get("id") or ""))
+        except Exception:                                     # noqa: BLE001
+            music_lean = ""
+        finally:
+            await sc.aclose()
+    lean = clip(demojibake(str(music_lean or "").strip()), CARD_BUDGET)
+    if not lean:
+        return ""
+    return (f"\nYour musical leanings, as the station has them: {lean}\n"
+            "Reach for these when a caller leaves the pick to you; a clear ask "
+            "for something else wins.\n")
+
+
 async def build_system_prompt(
     station: StationClient, persona: dict, snapshot: dict | None = None,
     cfg: dict | None = None, mode: str = "call",
@@ -62,6 +90,7 @@ async def build_system_prompt(
     track_floor: int | None = None,
     talk_between_tracks: bool | None = None,
     pause_talk: int | None = None,
+    music_lean: str | None = None,
 ) -> str:
     """`cfg` must be the settings ALREADY RESOLVED for this caller's tier.
 
@@ -159,6 +188,7 @@ async def build_system_prompt(
         f"\nYou work in {dj_language} — that is the language you open in and "
         "come back to. Match a caller who brings another one.\n"
     ) if dj_language else ""
+    lean_block = await _lean_block(persona, music_lean)
     show_name = clip(demojibake(show.get("name", "")), NAME_BUDGET)
     show_card = clip(show.get("topic", ""), CARD_BUDGET)
 
@@ -237,7 +267,7 @@ async def build_system_prompt(
 
 # Who you are
 {dj_card}
-{language_block}{show_block}{style_block}
+{language_block}{lean_block}{show_block}{style_block}
 # What's happening on the station right now
 {facts}
 {open_block}

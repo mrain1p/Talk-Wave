@@ -2331,3 +2331,113 @@ class TestATargetedSkipNamesItsRefusal(unittest.TestCase):
         got, _ = self._skip(409, {"reason": "bed-on-air"})
         self.assertFalse(got["ok"])
         self.assertIn("nothing skipped", got["error"])
+
+
+class TestASteerIsPostedAsTheStationSpellsIt(unittest.TestCase):
+    """`POST /steer` (SUB/WAVE 1.31, schemas/steer.ts): `until` 'fixed' wants
+    `minutes` and 'schedule-change' refuses it; the prompt is ≤500 characters;
+    refusals are the station's own sentence; and a station older than 1.31
+    has no route, which is a capability gap, not a failure."""
+
+    def _call(self, method, status, body, **kw):
+        import httpx
+        from unittest import mock
+
+        import station as station_mod
+
+        seen = {}
+
+        def handler(request):
+            seen["method"] = request.method
+            seen["path"] = request.url.path
+            seen["body"] = json.loads(request.content) if request.content else None
+            return httpx.Response(status, json=body)
+
+        async def run():
+            client = station_mod.StationClient(base_url="http://station")
+            client._client = httpx.AsyncClient(
+                base_url="http://station", transport=httpx.MockTransport(handler))
+            try:
+                with mock.patch("station_config.admin_credentials",
+                                return_value=("admin", "pw")):
+                    return await getattr(client, method)(**kw)
+            finally:
+                await client.aclose()
+
+        return asyncio.run(run()), seen
+
+    def test_a_fixed_steer_carries_minutes_and_a_collapsed_prompt(self):
+        got, seen = self._call("steer", 200, {"steer": {}, "queued": 5},
+                               prompt="  more   upbeat\n please ", minutes=90)
+        self.assertEqual(("POST", "/steer"), (seen["method"], seen["path"]))
+        self.assertEqual(seen["body"], {"prompt": "more upbeat please", "playlistId": None,
+                                        "startNow": False, "introduce": False,
+                                        "until": "fixed", "minutes": 90})
+        self.assertTrue(got["ok"])
+        self.assertEqual(5, got["queued"])
+
+    def test_until_the_schedule_changes_sends_no_minutes(self):
+        _, seen = self._call("steer", 200, {"steer": {}}, prompt="jazz",
+                             until="schedule-change", minutes=90)
+        self.assertEqual("schedule-change", seen["body"]["until"])
+        self.assertNotIn("minutes", seen["body"])
+
+    def test_the_prompt_is_capped_at_the_stations_limit(self):
+        _, seen = self._call("steer", 200, {"steer": {}}, prompt="x" * 900)
+        self.assertEqual(500, len(seen["body"]["prompt"]))
+
+    def test_a_playlist_alone_is_enough_and_nothing_is_not(self):
+        _, seen = self._call("steer", 200, {"steer": {}}, playlist_id="pl-1")
+        self.assertEqual("pl-1", seen["body"]["playlistId"])
+        got, seen = self._call("steer", 200, {"steer": {}})
+        self.assertFalse(got["ok"])
+        self.assertNotIn("path", seen)
+
+    def test_refusals_are_the_stations_own_words(self):
+        for status in (400, 404, 409, 502):
+            got, _ = self._call("steer", status, {"error": f"said {status}"},
+                                prompt="x", playlist_id="pl-1")
+            self.assertFalse(got["ok"], status)
+            self.assertEqual(f"said {status}", got["error"])
+            self.assertNotIn("unsupported", got)
+
+    def test_an_older_station_without_the_route_is_unsupported(self):
+        got, _ = self._call("steer", 404, {"error": "Not found"}, prompt="x")
+        self.assertFalse(got["ok"])
+        self.assertTrue(got["unsupported"])
+
+    def test_clearing_is_a_delete_that_reports_what_it_pulled(self):
+        got, seen = self._call("clear_steer", 200, {"steer": None, "removed": 2, "kept": 0})
+        self.assertEqual(("DELETE", "/steer"), (seen["method"], seen["path"]))
+        self.assertTrue(got["ok"])
+        self.assertEqual(2, got["removed"])
+
+    def test_status_is_a_read_that_fails_to_nothing(self):
+        got, seen = self._call("steer_status", 200, {"steer": None, "budgetMode": "normal", "queued": []})
+        self.assertEqual("GET", seen["method"])
+        self.assertIsNone(got["steer"])
+        got, _ = self._call("steer_status", 500, {"error": "boom"})
+        self.assertEqual({}, got)
+
+
+class TestTheDJsLeaningsAreMirrored(unittest.TestCase):
+    """SUB/WAVE's Musical Leanings field (#1678) lives on the admin persona
+    record, not on the public /dj read, and the call DJ had never seen it —
+    so a caller who left the pick to the DJ got a different taste on the
+    phone from the one in the booth."""
+
+    def test_reads_the_nested_roster_and_blank_means_nothing(self):
+        import station_config
+
+        payload = {"values": {"personas": [
+            {"id": "p_g", "name": "G Money", "musicLean": "  golden-era  boom bap,\n a little G-funk "},
+            {"id": "p_f", "name": "Francesca", "musicLean": ""},
+            {"id": "p_n", "name": "Nobody"},
+        ]}}
+        self.assertEqual("golden-era boom bap, a little G-funk",
+                         station_config._music_lean_from(payload, "p_g"))
+        self.assertEqual("", station_config._music_lean_from(payload, "p_f"))
+        self.assertEqual("", station_config._music_lean_from(payload, "p_n"))
+        self.assertEqual("", station_config._music_lean_from(payload, "p_missing"))
+        self.assertEqual("", station_config._music_lean_from(payload, ""))
+        self.assertEqual("", station_config._music_lean_from({}, "p_g"))

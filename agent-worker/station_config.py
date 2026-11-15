@@ -309,6 +309,26 @@ def _persona_skills_from(settings: dict, persona_id: str) -> list[str] | None:
     return None
 
 
+def _music_lean_from(settings: dict, persona_id: str) -> str:
+    """A persona's musical leanings — `personas[].musicLean` (SUB/WAVE #1678,
+    the Musical Leanings field the station's own picker reads) — or "".
+
+    Admin-only: the public `/dj` and `/personas` reads carry name, tagline
+    and soul but not this, so without station credentials it is simply
+    unknown and the prompt says nothing. Free text, capped on the station at
+    PERSONA_MUSIC_LEAN_MAX; clipped again where it is interpolated.
+    """
+    if not persona_id:
+        return ""
+    for roster in _persona_rosters(settings):
+        for persona in roster:
+            if not isinstance(persona, dict) or persona.get("id") != persona_id:
+                continue
+            lean = persona.get("musicLean")
+            return " ".join(str(lean).split()) if isinstance(lean, str) else ""
+    return ""
+
+
 def runnable_skills(catalogue: list[dict],
                     assigned: list[str] | None,
                     has_guests: bool = True) -> list[dict]:
@@ -470,6 +490,15 @@ class StationConfig:
         if not station:
             return None
         return _persona_skills_from(station, persona_id)
+
+    async def music_lean(self, persona_id: str) -> str:
+        """The on-air DJ's musical leanings, mirrored from the station's own
+        persona record so the call DJ leans the same way the booth does.
+        Rides the cached `/settings` read; "" when unknown or unset."""
+        station = await self.settings()
+        if not station:
+            return ""
+        return _music_lean_from(station, persona_id)
 
     async def persona_voices(self) -> dict[str, str]:
         """persona_id -> voice id, mirrored from the station when possible."""

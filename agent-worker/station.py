@@ -2219,6 +2219,107 @@ class StationClient:
             log.warning("genre lock failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
+    # The station's steer window (schemas/steer.ts: STEER_MIN_MINUTES /
+    # STEER_MAX_MINUTES, restated from the takeover's) and its prompt cap.
+    STEER_MIN_MINUTES = 15
+    STEER_MAX_MINUTES = 720
+    STEER_PROMPT_MAX = 500
+
+    async def steer(self, prompt: str = "", playlist_id: str | None = None,
+                    minutes: int = 60, until: str = "fixed") -> dict:
+        """Lean what the station picks and says for a while — SUB/WAVE 1.31's
+        steer (`POST /steer`, routes/steer.ts). Admin-only.
+
+        A steer is a sentence (`prompt`, ≤500 chars) and/or one of the
+        operator's playlists (`playlist_id`), for `until`: 'fixed' minutes
+        (15–720) or 'schedule-change' (the next grid boundary; `minutes` is
+        then refused by the station, so it is not sent). The station works
+        out five opening tracks with one picker call and queues exactly those;
+        the rest of the window leans every later pick and talk break. It lands
+        at the end of the record playing, like a takeover — and **starting a
+        steer ends a running takeover**, by the station's own rule.
+
+        Refusals come back as the station's sentence with `ok: False`: 409
+        when nothing in the library is eligible or there is no room before
+        the window ends, 404 for a playlist that resolves to no tracks, 400
+        for a body the schema refuses. A station older than 1.31 has no route
+        and answers 404 too; that one is `unsupported`, the same posture as
+        the genre lock, so the DJ says it can't rather than retrying.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        text = " ".join(str(prompt or "").split())[:self.STEER_PROMPT_MAX]
+        if not text and not playlist_id:
+            return {"ok": False, "error": "nothing to steer by"}
+        body: dict = {"prompt": text, "playlistId": playlist_id or None,
+                      "startNow": False, "introduce": False}
+        if until == "schedule-change":
+            body["until"] = "schedule-change"
+        else:
+            body["until"] = "fixed"
+            body["minutes"] = int(minutes)
+        try:
+            r = await self._client.post(
+                "/steer", json=body,
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            if r.status_code == 404 and not playlist_id:
+                return {"ok": False, "unsupported": True,
+                        "error": "this station's software has no steer yet"}
+            if r.status_code in (400, 404, 409, 502):
+                return {"ok": False, "error": _body(r).get("error")
+                        or "the station refused the steer"}
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("steer slow to confirm (%s) — treating as set", e)
+                return {"ok": True, "unconfirmed": True}
+            log.warning("steer failed: %s", describe(e))
+            return {"ok": False, "error": str(e)[:120]}
+
+    async def steer_status(self) -> dict:
+        """`GET /steer`: the running steer (or null), the budget mode and the
+        opening tracks still to air. Admin-only; {} when unreadable."""
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {}
+        try:
+            r = await self._client.get(
+                "/steer", auth=httpx.BasicAuth(user, password))
+            r.raise_for_status()
+            return _body(r)
+        except Exception as e:
+            log.info("steer status unavailable: %s", describe(e))
+            return {}
+
+    async def clear_steer(self) -> dict:
+        """`DELETE /steer`: end a steer early and pull its un-aired opening
+        tracks. Idempotent on the station's side — clearing nothing is fine."""
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        try:
+            r = await self._client.delete(
+                "/steer", auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT)
+            if r.status_code == 404:
+                return {"ok": False, "unsupported": True,
+                        "error": "this station's software has no steer yet"}
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            log.warning("steer clear failed: %s", describe(e))
+            return {"ok": False, "error": str(e)[:120]}
+
     async def active_show(self, now_playing: dict | None = None,
                           schedule: dict | None = None) -> dict:
         """The show currently on air, with its `topic` (the Show Card).

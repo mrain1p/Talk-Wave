@@ -41,6 +41,11 @@ OFF_LIST: tuple[tuple[str, str], ...] = (
         # bullet's absence and the no-miming floor, which is what the list is
         # for; revisit when upstream #1404 ships.
         ("allow_never_play", "ban a record from the station"),
+        # The steer (SUB/WAVE 1.31) is the thing a caller asks for most
+        # naturally of all — "more upbeat for the next hour" — and with no
+        # tool and no sentence the DJ answers it with one song and calls the
+        # station steered. One record is a request; this is the whole station.
+        ("allow_steer", "steer the whole station's picks for a stretch"),
         # 2026-08-22: album_queue is `guest`, an OPEN caller asked for a mix,
         # and the DJ — no tool, no sentence — invented "it's been a bit
         # stubborn with the queue". Nothing was stubborn; a setting withheld
@@ -660,6 +665,17 @@ Use your tools mid-conversation, the way a DJ works while talking:
   wanting one jazz record is a request, not a lock. Some stations don't have
   this control at all; if yours says so, say it plainly and don't pin a show
   instead to fake it.""")
+    if cfg.get("allow_steer") and on("tool_actions"):
+        parts.append("""- **Steer the station for a stretch** — "something more upbeat for the next
+  hour", "90s hip hop till the next show", "run the Pokemon playlist for a
+  bit". That leans what EVERYONE hears and what you say between records until
+  the window lapses, and it keeps running after they hang up. Only when they
+  have asked for a STRETCH of the station: wanting one upbeat record is a
+  request, not a steer. Pass the lean in their own words (subwave_steer;
+  subwave_clear_steer lifts one early). Starting a steer ends any show
+  takeover that is running — say so if one is. An older station has no
+  steer at all; if yours says so, say it plainly and offer a request
+  instead.""")
     if cfg.get("allow_skip_track") and on("tool_actions"):
         # Written because the prompt said NOTHING about this when it was on.
         # Measured with tools/prompt_report.py on 2026-08-14: flipping
