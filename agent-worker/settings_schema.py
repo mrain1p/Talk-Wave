@@ -545,7 +545,8 @@ SCHEMA: dict[str, dict] = {
              "three."),
     "allow_never_play": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Ban a track for good", alias="block ban blocklist",
-        help="Puts the track playing now on the station's never-play list: "
+        help="Puts the track playing now, or one the caller names, on the "
+             "station's never-play list: "
              "out of the queue and the fallback playlist, never selected "
              "again. The only PERMANENT caller action; nothing airs to say it "
              "happened. The same switch LIFTS a ban, including yours."),

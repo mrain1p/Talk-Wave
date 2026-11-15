@@ -23,6 +23,7 @@ The settings gear is the one thing never offered here at any setting: an embed d
 |---|---|
 | `data-theme="light\|dark\|inherit"` | The widget *starts* on this theme — `inherit` matches the host page's background (resolved before the frame loads, since a cross-origin frame can't see its parent) — but the viewer's toggle still works and their choice is remembered. The toggle cycles light → dark → the station's show colours (when the panel has them on offer) → match the page. Omit for OS preference |
 | `data-lock-theme="true"` | Pin `data-theme` outright and remove the toggle, for a page that needs one look |
+| `data-skin="<name>"` | Start the card in one of the experimental skins (the names in **Players → Surface → Skin**). Lowercase letters, digits and hyphens; anything else, or `default`, is ignored |
 | `data-captions="ticker\|full\|off"` | Embeds default to `ticker` — latest line only, fading, so the widget stays short |
 | `data-height="260px"` | Frame height for tight layouts |
 | `data-compact="false"` | Full card instead of the compact one |

@@ -14,6 +14,7 @@ api/               the HTTP surface, one module per job
   auth.py          the two gates: ADMIN (panel) and GUEST (the phone)
   tokens.py        /token, /call-ended, and the ceilings on minting
   live.py          the call card's payload; live_cache.py is what stales it
+  art.py           /avatar and /cover, and remembering what the station lacks
   sounds.py        ring/pickup/hold/hangup, bundled and uploaded
   widget.py        serving web-widget/, and how long a browser may keep it
   settings.py      the settings API (the store itself is ../settings.py)
