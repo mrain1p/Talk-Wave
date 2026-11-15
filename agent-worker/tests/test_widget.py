@@ -5552,6 +5552,20 @@ class TestAShowHasALinkOfItsOwn(unittest.TestCase):
         self.assertEqual(order, sorted(order))
         self.assertIn("say('Link copied', 'done')", share)
 
+    def test_the_button_is_an_icon_and_says_nothing(self):
+        # "i dont need it to say share. i just need the share icon" (operator,
+        # 2026-11-15). No text node: the words live in the label, and the
+        # glyph itself becomes a tick while the link is on the clipboard.
+        share = self.js.split("function shareRow(show) {")[1].split(
+            "function guideBody(")[0]
+        self.assertNotIn("textContent", share)
+        self.assertIn("b.setAttribute('aria-label', label);", share)
+        self.assertIn("cls === 'done' ? SHARE_DONE : SHARE_MARK", share)
+        self.assertIn("const SHARE_ASK = 'Copy a link to this show';", self.js)
+        rule = self.css.split("  .card .gdshare {")[1].split("}")[0]
+        self.assertIn("width: 28px; height: 24px;", rule)
+        self.assertNotIn("font:", rule)
+
     def test_arriving_on_the_link_opens_the_guide_on_that_show(self):
         self.assertIn("let guideWanted = showFromHash();", self.js)
         # On the first good /live, after the operator's starting face — the

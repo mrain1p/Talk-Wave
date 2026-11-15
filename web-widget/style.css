@@ -5147,19 +5147,18 @@
   .card .gdtake.done { color: var(--coral); border-color: var(--coral); }
   .card .gdtake.back.done { color: var(--cool); border-color: var(--cool); }
   .card .gdtake.bad { color: var(--amber); border-color: var(--amber); }
-  /* THE SHARE CONTROL on an open show (operator, 2026-11-15). Quiet chrome,
+  /* THE SHARE CONTROL on an open show (operator, 2026-11-15): an icon and
+     no word, the corner controls' own 13px glyph in a 28px box. Quiet chrome,
      not coral: copying a link moves nothing on the station's side. Cool
      once it has copied — the reader's own act, done. */
   .card .gdtools { display: flex; justify-content: flex-end; margin: 0 0 8px; }
   .card .gdshare {
-    flex: none; height: 24px; min-height: 0; margin: 0; padding: 0 8px;
-    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    flex: none; width: 28px; height: 24px; min-height: 0; margin: 0; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
     background: transparent; border: 1px solid var(--edge); border-radius: 0;
     color: var(--sage); cursor: pointer;
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em;
-    text-transform: var(--skin-label-case); white-space: nowrap;
   }
-  .card .gdshare svg { width: 11px; height: 11px; flex: none; }
+  .card .gdshare svg { width: 13px; height: 13px; flex: none; }
   .card .gdshare:hover:not(:disabled) {
     background: transparent; border-color: var(--hairline); color: var(--alpenglow);
   }

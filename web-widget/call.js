@@ -7699,33 +7699,40 @@
   // THE WAY TO POINT SOMEBODY AT THIS SHOW: a button that copies the link
   // showLink builds. In the open body, first and right-aligned, so the row
   // leads with its own share control the way a page does — not in the head,
-  // where every collapsed row would wear one. Copies with the clipboard API,
-  // falls back to the old select-and-copy where that is refused (a plain
-  // http LAN address), and offers the system share sheet as a last resort.
+  // where every collapsed row would wear one. AN ICON AND NO WORD (operator,
+  // 2026-11-15: "i dont need it to say share. i just need the share icon"):
+  // the glyph is the three-node share mark, it becomes a tick for a moment
+  // once the link is on the clipboard, and the words live in the label a
+  // screen reader and a hover read. Copies with the clipboard API, falls
+  // back to the old select-and-copy where that is refused (a plain http LAN
+  // address), and offers the system share sheet as a last resort.
+  const SHARE_MARK = 'M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z'
+    + 'M18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.6 13.5l6.8 4M15.4 6.5l-6.8 4';
+  const SHARE_DONE = 'M5 12.5l4.5 4.5L19 7.5';
+  const SHARE_ASK = 'Copy a link to this show';
   function shareRow(show) {
     const ns = 'http://www.w3.org/2000/svg';
     const row = document.createElement('div'); row.className = 'gdtools';
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'gdshare';
-    b.title = 'Copy a link that opens the guide on this show';
     const svg = document.createElementNS(ns, 'svg');
     svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none');
-    svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2.2');
+    svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2');
     svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
     svg.setAttribute('aria-hidden', 'true');
     const path = document.createElementNS(ns, 'path');
-    path.setAttribute('d', 'M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7');
     svg.appendChild(path);
-    const word = document.createElement('span'); word.textContent = 'Share';
-    b.append(svg, word);
+    b.appendChild(svg);
     let back = 0;
-    const say = (text, cls) => {
-      word.textContent = text;
+    const say = (label, cls) => {
+      b.title = label; b.setAttribute('aria-label', label);
+      path.setAttribute('d', cls === 'done' ? SHARE_DONE : SHARE_MARK);
       b.classList.remove('done', 'bad');
       if (cls) b.classList.add(cls);
       clearTimeout(back);
-      if (text !== 'Share') back = setTimeout(() => say('Share'), 1800);
+      if (cls) back = setTimeout(() => say(SHARE_ASK), 1800);
     };
+    say(SHARE_ASK);
     b.onclick = async (e) => {
       e.stopPropagation();                  // the row is a button too
       const url = showLink(show.id);
@@ -7747,7 +7754,7 @@
         try { await navigator.share({ title: show.title || show.name, url }); return; }
         catch (err) { /* dismissed */ }
       }
-      say("Couldn't copy", 'bad');
+      say("Couldn't copy the link", 'bad');
     };
     row.appendChild(b);
     return row;
