@@ -432,6 +432,7 @@ from tests.test_station import (  # noqa: F401
 )
 from tests.test_tools_logic import (  # noqa: F401
     TestOnlyThisDJsSegmentsCanBeRun,
+    TestTheStationsOwnSkillGatesHoldOnTheCallLine,
     TestASkipNamesTheTrackTheCallerHeard,
 )
 from tests.test_speech_filter import (  # noqa: F401

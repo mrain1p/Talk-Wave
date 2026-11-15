@@ -184,6 +184,7 @@ class CallSession:
         # The segments THIS DJ may run, narrowed in prepare(). Empty until then,
         # and empty is honest: with no station read there is nothing to offer.
         self.skills: list[str] = []
+        self.switched_off: dict[str, str] = {}
         self.voice = ""
         self.instructions = ""
         self.session: AgentSession | None = None
@@ -410,16 +411,15 @@ class CallSession:
             .get("bufferSeconds"))
 
         # The catalogue the station returned is every skill it HAS. Narrow it to
-        # what this DJ may actually run before it reaches either the prompt or
-        # the tool — the station's manual trigger is an operator override that
-        # ignores its own enabled flag, so an un-narrowed list is a caller
-        # running segments the operator switched off. Both consumers read the
-        # same filtered list, because a prompt and a tool that disagree about
-        # what exists is how the DJ ends up offering something it is then
-        # refused. Rides the /settings read persona_voices just warmed.
+        # what this DJ may run before it reaches the prompt or the tool — the
+        # station's manual trigger is an operator override that ignores its own
+        # enabled flag. Both read the same filtered list, and the tool is told
+        # what was withheld and why, so a prompt and a tool never disagree about
+        # what exists. Rides the /settings read persona_voices just warmed.
         if snap.get("skills"):
-            from station_config import runnable_skills
+            from station_config import runnable_skills, withheld_skills
 
+            self.switched_off = withheld_skills(snap["skills"])
             assigned = await self.station_cfg.persona_skills(
                 str(self.persona.get("id") or ""))
             # Co-hosted segments need a second voice in the booth (#1534);
@@ -550,7 +550,7 @@ class CallSession:
         guarded = bool(self.cfg.get("avoid_on_air_overlap"))
         local = build_on_air_tools(
             self.cfg, self.station, self.actions, self.air, guarded=guarded,
-            skills=self.skills,
+            skills=self.skills, switched_off=self.switched_off,
         )
         # Same reason as the hang-up tool below: the session doesn't exist yet,
         # so the late-match announcer is handed a way to read it later.

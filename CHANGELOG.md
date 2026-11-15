@@ -4,6 +4,10 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+- **The call DJ honours the station's own segment switches.** SUB/WAVE's `GET /dj/skills` says for each segment whether the operator has it on and whether it is ready to run (a skill that needs an API key says what is wrong with the key). The station's manual trigger ignores both, so the call line now reads those fields the way the live station sends them, keeps a switched-off or key-less segment out of the DJ's briefing and off the answering machine's list, and when the DJ names one anyway the tool answers that the station has that segment switched off tonight instead of running it. An older station that sends none of these fields keeps every segment, as before.
+
 ## 1.0.0
 
 Talk Wave 1.0: the call DJ keeps up with SUB/WAVE 1.32, can steer the whole station from the phone, and leans the way the booth does.
