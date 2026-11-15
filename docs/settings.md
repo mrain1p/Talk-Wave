@@ -344,7 +344,7 @@ The DJ block, per surface: the DJ photo with its **shape** right under it (round
 
 ### Call status wording
 
-Every call-state string in one place, in call order — Ringing, Answering, Connecting, Connected — waiting, On the line, Recording, Line closed, Message only, Call ended.
+Every call-state string in one place, in call order — Answering, Connecting, Connected — waiting, On the line, Recording, Line closed, Message only, Call ended.
 
 Overridable in the station's own voice, with `{station}` `{dj}` `{show}` `{track}` `{tagline}` filled live. **Focus a field and the preview card's line box shows that state** — your typed words, or the built-in default — until you click away. Also here: whether the transcript names the DJ.
 

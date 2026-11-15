@@ -132,12 +132,14 @@
       <div class="panelbar">
         <a class="gear" href="/" title="Back to the call page"
            aria-label="Back to the call page">&#8592;</a>
-        <!-- The icon is the cycle's NEXT stop (shared.js THEME_ICONS), and
-             three of the four stops don't say "theme" on their own — the
-             operator hunted this masthead for a theme control while the
-             button sat here wearing the follow-the-device monitor
-             (0.10.78). The word makes it findable; panelPaintGlyph keeps
-             the label when it swaps the icon. -->
+        <!-- The icon is the theme you are ON (shared.js THEME_ICONS; the
+             title says where a tap goes), and three of the four stops
+             don't say "theme" on their own — the operator hunted this
+             masthead for a theme control while the button sat here wearing
+             the follow-the-device monitor (0.10.78). The word makes it
+             findable; panelPaintGlyph keeps the label when it swaps the
+             icon. This said "the cycle's NEXT stop" until the review of
+             2026-11-15; the painter stopped previewing on 2026-09-01. -->
         <button class="gear" id="themeBtn" title="Theme"
                 aria-label="Change the theme"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.4v2.5M12 19.1v2.5M2.4 12h2.5M19.1 12h2.5M5.1 5.1l1.8 1.8M17.1 17.1l1.8 1.8M18.9 5.1l-1.8 1.8M6.9 17.1l-1.8 1.8"/></svg><span class="glabel">Theme</span></button>
         <button class="gear signout" id="dashLogoutBtn" hidden
@@ -2143,10 +2145,6 @@
           <code>{track}</code> <code>{tagline}</code> fill live, and an empty
           or unknown one simply disappears. Focus a field to see that state
           on the preview card.</p>
-        <div class="row" data-spot="line">
-          <label for="word_ringing">Ringing</label>
-          <input type="text" id="word_ringing" />
-        </div>
         <div class="row" data-spot="line">
           <label for="word_answering">Answering</label>
           <input type="text" id="word_answering" />

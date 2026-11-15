@@ -1096,6 +1096,89 @@ class TestAnUpgradeClosesNoDoorAndHandsOutNoPower(_TempStores):
         self.assertEqual("after", settings_store.load()["action_cards"])
 
 
+class TestTheRingingWordingIsGoneAndAnOldStoreStillLoads(_TempStores):
+    """`word_ringing` reworded the Call button's "Ringing…" — a phase the card
+    lost when Hang up took the button's place at the press. Nothing in the
+    widget had asked for it since, so the panel offered a box that changed
+    nothing, under help describing a state no caller sees (review,
+    2026-11-15).
+
+    A setting lives in five places, so removing one is five removals; and a
+    settings.json written while the box still existed has to go on loading.
+    It was removed, not replaced, so there is nothing for _migrate to
+    translate and no STORE_REV to bump — load() walks FIELDS, which is what
+    makes a retired key inert. That is the claim the store tests pin."""
+
+    RETIRED = "word_ringing"
+
+    def _write_store(self, data: dict) -> None:
+        settings_store.SETTINGS_PATH.write_text(
+            json.dumps(data), encoding="utf-8")
+
+    def test_it_is_declared_in_none_of_its_places(self):
+        self.assertNotIn(self.RETIRED, settings_store.FIELDS)
+        self.assertNotIn(self.RETIRED, settings_store.SCHEMA)
+        panel = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+        self.assertNotIn(self.RETIRED, panel,
+                         "the panel still draws a box for a retired setting")
+        look = (AGENT_WORKER / "api" / "look.py").read_text(encoding="utf-8")
+        self.assertNotIn(self.RETIRED, look,
+                         "/live still ships a wording nothing reads")
+
+    def test_nothing_in_the_widget_reads_it(self):
+        # The reason it could go. If a Ringing phase ever comes back to the
+        # card, this fails and the setting comes back WITH its reader.
+        for path in sorted((REPO / "web-widget").glob("*.js")):
+            src = path.read_text(encoding="utf-8")
+            with self.subTest(file=path.name):
+                self.assertNotIn(self.RETIRED, src)
+                self.assertIsNone(
+                    re.search(r"""word\(\s*['"]ringing['"]""", src),
+                    f"{path.name} reads a 'ringing' wording that /live no "
+                    "longer sends — it would always show the built-in")
+
+    def test_a_store_that_still_carries_it_loads_without_a_word(self):
+        self._write_store({self.RETIRED: "Brrring…",
+                           "word_answering": "Picking up…",
+                           "_rev": settings_store.STORE_REV})
+        with self.assertNoLogs("callin.settings", level="WARNING"):
+            cfg = settings_store.load()
+            raw = settings_store.stored_only()
+        self.assertNotIn(self.RETIRED, cfg)
+        self.assertNotIn(self.RETIRED, raw)
+        # Its neighbours in the same file are untouched by its leaving.
+        self.assertEqual("Picking up…", cfg["word_answering"])
+
+    def test_the_old_value_never_reaches_the_card(self):
+        from api.look import look_payload
+
+        self._write_store({self.RETIRED: "Brrring…",
+                           "word_answering": "Picking up…"})
+        wording = look_payload(settings_store.load())["wording"]
+        self.assertEqual({"answering": "Picking up…"}, wording)
+        # Nor through the panel preview's unsaved patch, which hands
+        # look_payload a dict that never went through load().
+        patched = dict(settings_store.load(), **{self.RETIRED: "Brrring…"})
+        self.assertNotIn("ringing", look_payload(patched)["wording"])
+
+    def test_a_save_from_a_stale_tab_is_ignored_and_the_file_keeps_its_copy(self):
+        # A panel tab left open across the upgrade still has the box and
+        # will post it. save() drops a key FIELDS does not declare; and the
+        # copy already in the file is left where it is, so a rollback to the
+        # build that had the setting reads its own value back.
+        self._write_store({self.RETIRED: "Brrring…"})
+        with self.assertNoLogs("callin.settings", level="WARNING"):
+            self.assertIsNone(settings_store.complain(
+                {self.RETIRED: "Ring ring", "word_answering": "Picking up…"}))
+            cfg = settings_store.save(
+                {self.RETIRED: "Ring ring", "word_answering": "Picking up…"})
+        self.assertNotIn(self.RETIRED, cfg)
+        self.assertEqual("Picking up…", cfg["word_answering"])
+        on_disk = json.loads(
+            settings_store.SETTINGS_PATH.read_text(encoding="utf-8"))
+        self.assertEqual("Brrring…", on_disk[self.RETIRED])
+
+
 class TestTheStationPlayerShipsOff(_TempStores):
     """A gesture surface appearing on every deployed card unasked is the
     0.9.61 shape again — and without a public https tune_in_url the player
