@@ -106,18 +106,26 @@ async def build_action_tools(cfg: dict, station):
     # guard for exactly this reason).
     guard = OnAirGuard(station, {"avoid_on_air_overlap": False})
     skills = []
+    switched_off = {}
     if cfg.get("allow_skills"):
+        # Narrowed by the station's own gates the way the live line narrows
+        # (station_config.runnable_skills): a staged segment the operator
+        # switched off would otherwise replay straight into `POST /dj/skill`.
         try:
+            from station_config import runnable_skills, withheld_skills
+
+            rows = await station.list_skills()
+            switched_off = withheld_skills(rows)
             skills = [s for s in (str(x.get("kind") or x.get("name") or "")
-                                  for x in await station.list_skills()) if s]
+                                  for x in runnable_skills(rows, None)) if s]
         except Exception:                                     # noqa: BLE001
-            skills = []
+            skills, switched_off = [], {}
     tools = (
         build_library_tools(cfg, station, actions)
         + build_discovery_tools(cfg, station, actions)
         + build_curation_tools(cfg, station, actions)
         + build_on_air_tools(cfg, station, actions, guard, guarded=False,
-                             skills=skills)
+                             skills=skills, switched_off=switched_off)
     )
     return tools, actions
 
