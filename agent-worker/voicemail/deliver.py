@@ -218,9 +218,16 @@ async def deliver(station, cfg: dict, text: str, persona_name: str,
             # Without it a caller who left a message queuing a track is told,
             # on ringing back, that nothing was queued — the per-call evasion
             # call/daylog.py was built to kill (Casino night, 2026-08-26).
+            #
+            # A NEUTRAL label, never `text` (review, 2026-11-15): `text` is
+            # the caller's own transcribed message, and the day-log is read
+            # back to LATER callers under a no-caller-content contract
+            # (call/daylog.py). The live request wrapper has noted a neutral
+            # label since the 2026-08-28 security sitting; this path still
+            # stored the words — a dedication naming a person among them.
             from call import daylog
 
-            daylog.note("request", text, tier=tier)
+            daylog.note("request", "a voicemail song request", tier=tier)
             return f"sent as a request — {note}"
         except Exception as e:                                # noqa: BLE001
             # The station refusing is a real outcome, not a crash: the

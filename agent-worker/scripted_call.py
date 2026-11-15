@@ -785,10 +785,12 @@ def muzzle_the_station() -> None:
 # muzzled run. The names are pinned by hand anyway: if a write ever becomes
 # MCP-served, it stays off this list and fails closed rather than firing on
 # air mid-drill.
+# subwave_request_status left this list at the 2026-11-15 review: it is a
+# LOCAL wrapper on every line now (it reads the call's own last request id),
+# and the harness reaches it through the faked StationClient.request_status.
 MCP_READS = (
     "subwave_health", "subwave_now_playing", "subwave_station_state",
-    "subwave_schedule", "subwave_session", "subwave_request_status",
-    "subwave_list_skills",
+    "subwave_schedule", "subwave_session", "subwave_list_skills",
 )
 
 

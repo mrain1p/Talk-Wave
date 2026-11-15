@@ -272,7 +272,13 @@ def build_on_air_tools(
                 return actions.station_refused(result, "That segment didn't fire")
             actions.note("segment", type)
             secs = speaking_secs(result.get("spoken"), 30)
-            guard.mark_on_air(secs, spoken=result.get("spoken") or "")
+            if result.get("unconfirmed"):
+                # The announce/run_skill rule, missed here (review,
+                # 2026-11-15): unconfirmed means the beat has NOT aired yet,
+                # so a countdown from this return expires before it starts.
+                guard.mark_pending_air(result.get("spoken") or "")
+            else:
+                guard.mark_on_air(secs, spoken=result.get("spoken") or "")
             return after_action(
                 f"The {type} beat", waited, result.get("unconfirmed"), secs)
 

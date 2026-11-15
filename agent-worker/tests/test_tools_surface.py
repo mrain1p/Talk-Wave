@@ -856,9 +856,6 @@ class TestTheTwoMouthsShareOneSurface(unittest.TestCase):
         "subwave_health":
             "liveness probe — a dead station fails the chat's own tools "
             "visibly, which is the same information",
-        "subwave_schedule":
-            "the prompt briefing already carries the schedule to both "
-            "mouths",
         "subwave_session":
             "the on-air transcript feed; no typed exchange has needed it "
             "yet",

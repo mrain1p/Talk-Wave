@@ -569,8 +569,6 @@ class TestAnAnsweredRequestIsNotAQueuedOne(unittest.TestCase):
         self.assertEqual(spawned, [], "a late-match poller was started")
 
     def test_the_status_read_does_not_call_it_pruned(self):
-        from unittest import mock
-
         from call.tools import reads
 
         answered = self.ANSWERED
@@ -579,11 +577,7 @@ class TestAnAnsweredRequestIsNotAQueuedOne(unittest.TestCase):
             async def request_status(self, rid):
                 return dict(answered)
 
-        with mock.patch.object(reads, "library_search_needs_mcp",
-                               lambda: False):
-            built = reads.build_read_tools(
-                {"allow_requests": True}, _Station(), None)
-        tool = {t.info.name: t for t in built}["subwave_request_status"]
+        tool = reads.request_status_tool(_Station(), None)
         out = asyncio.run(tool(requestId="r1"))
         self.assertIn("queued NOTHING", out)
         self.assertIn("Nothing in the crates fits that one", out)

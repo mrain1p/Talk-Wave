@@ -126,8 +126,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     #
     # Reads are always on and are not listed here at all.
     "allow_requests":     (None, "open"),
-    # Requests are irreversible — the station has no cancel endpoint — so the
-    # cheap protection is confirming the track before it's submitted.
+    # A request is hard to take back — the station's cancel (DELETE
+    # /dj/queue/:id, our subwave_cancel_queued_track) sits behind
+    # allow_cancel_queue, off by default, and refuses once the track is on its
+    # way to air — so the cheap protection is confirming before it's submitted.
     "confirm_requests":   (None, True),
     # A mood ("something fun") is enough to act on, and the station's picker
     # resolves it — but sending it straight through means the caller never got

@@ -842,17 +842,16 @@ class TestTheTextLineCanSeeTheStation(unittest.TestCase):
         self.assertEqual(self._build(_St(), creds=False), {})
 
     def _build_with_requests(self, station, actions=None):
-        from unittest import mock
-
+        # The status read is its own builder since the 2026-11-15 review —
+        # served locally on EVERY line, not only where MCP is absent — so
+        # these build it directly. Where it is built, and that it is built
+        # once, is TestTheCallersOwnRequestIsCheckableOnEveryLine's claim.
         from call.tools import reads
 
-        with mock.patch.object(reads, "library_search_needs_mcp",
-                               return_value=False):
-            built = reads.build_read_tools(
-                {"allow_requests": True}, station, actions)
-        return {t.info.name: t for t in built}
+        tool = reads.request_status_tool(station, actions)
+        return {tool.info.name: tool}
 
-    def test_request_status_rides_the_requests_gate(self):
+    def test_request_status_is_not_one_of_the_mcp_absent_twins(self):
         class _St:
             pass
 
@@ -1120,7 +1119,7 @@ class TestAnActionReceiptPointsForward(unittest.TestCase):
         self.assertIn("leave something real in the air", out)
 
     def test_a_submitted_request_leaves_its_id_on_the_ledger(self):
-        # For the request_status twin: "did my request go in?" needs an id
+        # For subwave_request_status: "did my request go in?" needs an id
         # the model was never shown. See CallActions.last_request_id.
         from unittest import mock
 

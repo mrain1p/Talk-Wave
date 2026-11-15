@@ -622,7 +622,14 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                 # cleaned one does, submit the cleaned one — the station's
                 # own resolver trips on the same matcher and substitutes a
                 # different song rather than failing.
-                if not await station.search_library(request):
+                #
+                # None is a TIMEOUT, not a miss (review, 2026-11-15): `not
+                # None` is truthy, so a search that never answered bought a
+                # SECOND search, and two library timeouts could pass in
+                # silence before the request was even posted. No answer is
+                # no verdict — their words go to the station as given.
+                first = await station.search_library(request)
+                if first is not None and not first:
                     cleaned = request[:idx] + " " + request[idx + 4:]
                     if await station.search_library(cleaned):
                         text = cleaned
@@ -692,7 +699,7 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             # track on air as though it were spinning, minutes before it was.
             rid = res.get("requestId") or res.get("id")
             if rid:
-                # For the request_status twin: "did my request go in?" needs
+                # For subwave_request_status: "did my request go in?" needs
                 # an id the model was never shown. See CallActions.
                 actions.last_request_id = str(rid)
                 await asyncio.sleep(_INLINE_POLL_SECS)
@@ -789,6 +796,14 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             )
 
         tools.append(request_song)
+        # Its follow-up, on every line that takes requests (review,
+        # 2026-11-15): the status read answers for THIS call's last request
+        # with no id from the model, which is the only way it can — the
+        # returns above keep ids out on purpose. Function-local import:
+        # reads.py borrows this module's receipt reader.
+        from .reads import request_status_tool
+
+        tools.append(request_status_tool(station, actions))
 
     if bulk_queue:
         tools += build_album_tools(station, actions)

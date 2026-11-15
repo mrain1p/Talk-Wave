@@ -166,9 +166,9 @@ class CallActions:
         # when a caller usually changes their mind. See _target_to_unlike.
         self.last_liked: tuple[str, dict] | None = None
         # The id of the last request THIS call submitted, so the local
-        # subwave_request_status twin (call/tools/reads.py) can answer "did
-        # my request go in?" without the model ever having been shown an id
-        # — the request wrapper keeps ids out of its return on purpose.
+        # subwave_request_status wrapper (call/tools/reads.py) can answer
+        # "did my request go in?" without the model ever having been shown
+        # an id — the request wrapper keeps ids out of its return on purpose.
         self.last_request_id = ""
         # Whether the "call limit reached" card has gone out. Once per call:
         # the 2026-08-19 chat hit the cap four times in twenty seconds, and
