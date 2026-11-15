@@ -190,7 +190,8 @@ class TestCallStructure(unittest.TestCase):
 
         src = inspect.getsource(self.CallSession)
         for hook in ("station.aclose", "station_cfg.aclose", "air.watch",
-                     "attach_error_recovery", "attach_heard_logging",
+                     "attach_error_recovery", "attach_brain_fallback",
+                     "attach_heard_logging",
                      "attach_idle_watch", "attach_time_limit", "_on_shutdown"):
             self.assertIn(hook, src, hook)
 

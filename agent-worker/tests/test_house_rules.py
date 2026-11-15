@@ -1364,7 +1364,10 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # #1761) — three lines in the ringing half, the seam untouched.
         # 953 at 1.0.0: the DJ's musical leanings ride the same cached /settings
         # read into build_system_prompt — two lines in the ringing half.
-        "agent-worker/call/session.py": (953, "the ringing half (prepare, "
+        # 954 post-1.0: the fallback brain's record hook is attached with the
+        # other behaviours — one line in the live half, the hook itself in
+        # lifecycle.py where the rest of them live.
+        "agent-worker/call/session.py": (954, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),
@@ -2188,7 +2191,9 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         # connected, because the constructor's own publish happens before
         # ctx.connect() and is swallowed, leaving a held caller with no chip.
         "agent-worker/call/air.py::OnAirGuard.watch": (48, "Batch 3 — the on-air watch loop"),
-        "agent-worker/call/providers.py::build_llm": (34, "Batch 3 — multi-provider LLM constructor"),
+        # build_llm until the fallback brain landed post-1.0: the same
+        # constructor, renamed, now building both legs through one body.
+        "agent-worker/call/providers.py::_build_one": (34, "Batch 3 — multi-provider LLM constructor"),
         # air_verdict._push_verdict was here at 26; Batch 3 folded its three
         # speaking_secs copies into AirVerdict._spoken_secs, dropping it under
         # the ceiling — row removed, per the ratchet.
