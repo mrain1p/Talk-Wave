@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 import re
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -1557,3 +1558,301 @@ class TestTheTierLadderIsOneCopy(unittest.TestCase):
         # docstring would be false.
         src = (AGENT_WORKER / "caller_tiers.py").read_text(encoding="utf-8")
         self.assertNotIn("import settings", src)
+
+
+class TestTheFallbackBrainShipsOff(_TempStores):
+    """The net under the brain (post-1.0), and the first rule of a new
+    setting: blank is the default, and blank means exactly what every
+    deployment had — one provider, no net. A store from before the setting
+    existed and a store that never set it both resolve to no fallback, and
+    build_llm hands back the bare primary, the same object type it always
+    did, so nothing downstream sees a wrapper it did not ask for.
+
+    # Six days of calls (2026-11-09 to -15) each died on the same 402,
+    # "prepayment credits are depleted", with no second leg to fall to while
+    # the station beside them talked on its own llm.fallback. That gap is what
+    # these settings close, and these tests are what keep the close honest.
+    """
+
+    def test_blank_by_default_and_blank_for_an_old_store(self):
+        self.assertEqual(settings_store.FIELDS["llm_fallback_provider"][1], "")
+        self.assertEqual(settings_store.FIELDS["llm_fallback_model"][1], "")
+        cfg = settings_store.load()
+        self.assertEqual(cfg["llm_fallback_provider"], "")
+        self.assertEqual(cfg["llm_fallback_model"], "")
+        # A pre-1.0 store: keys, no _rev. Still no net — no migration stamps
+        # one in, because none existed to preserve.
+        settings_store.SETTINGS_PATH.write_text(
+            json.dumps({"llm_provider": "google"}), encoding="utf-8")
+        self.assertEqual(settings_store.load()["llm_fallback_provider"], "")
+
+    def test_stored_beats_env_beats_default_and_blank_falls_through(self):
+        os.environ["LLM_FALLBACK_PROVIDER"] = "ollama"
+        os.environ["LLM_FALLBACK_MODEL"] = "gemma4:12b"
+        try:
+            cfg = settings_store.load()
+            self.assertEqual(cfg["llm_fallback_provider"], "ollama")
+            self.assertEqual(cfg["llm_fallback_model"], "gemma4:12b")
+            settings_store.save({"llm_fallback_provider": "openai",
+                                 "llm_fallback_model": "gpt-4.1-mini"})
+            cfg = settings_store.load()
+            self.assertEqual(cfg["llm_fallback_provider"], "openai")
+            self.assertEqual(cfg["llm_fallback_model"], "gpt-4.1-mini")
+            # Clearing in the panel is how an operator goes back to the layer
+            # below — never a stored "".
+            settings_store.save({"llm_fallback_provider": "",
+                                 "llm_fallback_model": ""})
+            cfg = settings_store.load()
+            self.assertEqual(cfg["llm_fallback_provider"], "ollama")
+            self.assertEqual(cfg["llm_fallback_model"], "gemma4:12b")
+        finally:
+            del os.environ["LLM_FALLBACK_PROVIDER"]
+            del os.environ["LLM_FALLBACK_MODEL"]
+
+    def test_with_no_fallback_the_primary_is_handed_back_bare(self):
+        from call.providers import FallbackLLM, build_llm
+
+        model = build_llm({"llm_provider": "ollama", "llm_model": "x",
+                           "llm_fallback_provider": ""})
+        self.assertNotIsInstance(model, FallbackLLM)
+
+    def test_the_fallback_dropdown_offers_every_provider_and_off_first(self):
+        # Static, unlike the primary's key-gated list: the net is usually a
+        # keyless box of the operator's own, and a dropdown that hid Ollama
+        # until a cloud key was entered would hide the one pick that matters.
+        choices = settings_store.STATIC_CHOICES["llm_fallback_provider"]
+        self.assertEqual(choices[0][0], "")
+        self.assertEqual([c[0] for c in choices[1:]],
+                         list(settings_store.LLM_PROVIDER_KEY))
+        for value, label in choices[1:]:
+            self.assertEqual(label, settings_store.LLM_PROVIDER_LABELS[value])
+
+
+class TestTheFallbackBrainCarriesTheCallOnA402(_TempStores):
+    """The switch itself, against fakes — never the network. A primary that
+    refuses outright is left for the fallback, in the SAME turn, and the
+    caller hears the fallback's reply; a merely slow primary is not swapped
+    (llm_pace owns that), and once switched the call stays switched."""
+
+    def _ctx(self):
+        from livekit.agents import llm as lk_llm
+
+        ctx = lk_llm.ChatContext.empty()
+        ctx.add_message(role="user", content="hello?")
+        return ctx
+
+    def _leg(self, *, says="", raises=None, label="leg"):
+        """A fake LLM whose every chat() either speaks `says` or raises."""
+        from livekit.agents import llm as lk_llm
+
+        calls = []
+
+        class Stream(lk_llm.LLMStream):
+            async def _run(self):
+                calls.append(1)
+                if raises is not None:
+                    raise raises
+                self._event_ch.send_nowait(lk_llm.ChatChunk(
+                    id="r1", delta=lk_llm.ChoiceDelta(role="assistant",
+                                                       content=says)))
+
+        class Leg(lk_llm.LLM):
+            def __init__(self):
+                super().__init__()
+                self._label = label
+                self.calls = calls
+
+            @property
+            def model(self):
+                return label
+
+            @property
+            def provider(self):
+                return label
+
+            def chat(self, *, chat_ctx, tools=None, conn_options=None, **_):
+                # No retries in the fake: a retryable error would otherwise
+                # cost the test the SDK's three two-second sleeps, and the
+                # retry loop is the SDK's to test, not ours.
+                from livekit.agents.types import APIConnectOptions
+
+                return Stream(self, chat_ctx=chat_ctx, tools=tools or [],
+                              conn_options=APIConnectOptions(max_retry=0))
+
+        return Leg()
+
+    async def _reply(self, model):
+        from call.providers import stream_reply
+
+        content, _calls = await stream_reply(model, self._ctx())
+        return content
+
+    def _run(self, coro):
+        return asyncio.run(coro)
+
+    def _depleted(self):
+        from livekit.agents._exceptions import APIStatusError
+
+        return APIStatusError("prepayment credits are depleted", status_code=402)
+
+    def test_a_402_on_the_primary_is_answered_by_the_fallback(self):
+        from call.providers import FallbackLLM
+
+        primary = self._leg(raises=self._depleted(), label="google")
+        second = self._leg(says="Evening, you're on the air.", label="ollama")
+        brain = FallbackLLM(primary, second,
+                            names=("google/gemini", "ollama/gemma4:12b"))
+        switches = []
+        brain.on("fallback", switches.append)
+
+        async def go():
+            first = await self._reply(brain)
+            again = await self._reply(brain)
+            return first, again
+
+        first, again = self._run(go())
+        self.assertEqual(first, "Evening, you're on the air.")
+        self.assertTrue(brain.switched)
+        self.assertEqual(len(switches), 1, "one switch, said once")
+        self.assertIn("google/gemini", switches[0].in_plain_words())
+        self.assertIn("ollama/gemma4:12b", switches[0].in_plain_words())
+        self.assertIn("402", switches[0].in_plain_words())
+        # Sticky: the next turn does not knock on the dead door again.
+        self.assertEqual(again, "Evening, you're on the air.")
+        self.assertEqual(len(primary.calls), 1)
+        self.assertEqual(len(second.calls), 2)
+        self.assertEqual(brain.provider, "ollama")
+
+    def test_a_slow_primary_is_not_swapped(self):
+        # Slow is a model choice and llm_pace's business; the help text says
+        # the fallback is not used for it, so the code must agree.
+        from livekit.agents._exceptions import APITimeoutError
+
+        from call.providers import FallbackLLM
+
+        primary = self._leg(raises=APITimeoutError("30s, no first token"),
+                            label="locca")
+        second = self._leg(says="should not be heard", label="ollama")
+        brain = FallbackLLM(primary, second)
+        with self.assertRaises(APITimeoutError):
+            self._run(self._reply(brain))
+        self.assertFalse(brain.switched)
+        self.assertEqual(second.calls, [])
+
+    def test_the_statuses_that_switch_and_the_ones_that_do_not(self):
+        from livekit.agents._exceptions import (
+            APIConnectionError, APIStatusError, APITimeoutError,
+        )
+
+        from call.providers import needs_fallback
+
+        for code in (401, 402, 403):
+            self.assertTrue(needs_fallback(APIStatusError("x", status_code=code)),
+                            code)
+        for code in (400, 404, 429, 500, 503):
+            self.assertFalse(needs_fallback(APIStatusError("x", status_code=code)),
+                             code)
+        # A host that cannot be reached at all is an outage; a timeout is a
+        # slow model — including the SDK's "after N attempts" wrapper, whose
+        # cause is what tells the two apart.
+        self.assertTrue(needs_fallback(APIConnectionError("refused")))
+        self.assertFalse(needs_fallback(APITimeoutError()))
+        wrapped = APIConnectionError("failed after 4 attempts")
+        wrapped.__cause__ = APITimeoutError()
+        self.assertFalse(needs_fallback(wrapped))
+        wrapped.__cause__ = APIStatusError("x", status_code=503)
+        self.assertFalse(needs_fallback(wrapped))
+        self.assertFalse(needs_fallback(ValueError("not an API error")))
+
+    def test_the_absorbed_error_does_not_reach_the_session_but_others_do(self):
+        # The AgentSession listens on the wrapper. The 402 the switch eats
+        # must not arrive there (it would cost the caller the apology line
+        # over a reply the fallback is producing); a plain failure must.
+        from livekit.agents import llm as lk_llm
+        from livekit.agents._exceptions import APIStatusError
+
+        from call.providers import FallbackLLM
+
+        primary = self._leg(raises=self._depleted())
+        second = self._leg(says="ok")
+        brain = FallbackLLM(primary, second)
+        heard = []
+        brain.on("error", heard.append)
+        self._run(self._reply(brain))
+        self.assertEqual(heard, [])
+        # Now the fallback itself breaks with something the net is not for.
+        broken = FallbackLLM(self._leg(raises=APIStatusError("bad request",
+                                                              status_code=400)),
+                             self._leg(says="never"))
+        heard2 = []
+        broken.on("error", heard2.append)
+        with self.assertRaises(APIStatusError):
+            self._run(self._reply(broken))
+        self.assertTrue(heard2)
+        self.assertIsInstance(heard2[0], lk_llm.LLMError)
+        self.assertFalse(broken.switched)
+
+    def test_the_call_record_names_the_leg_that_carried_it(self):
+        # The one place the switch is written down — the session hears no
+        # error for it, by design, so the record line is the whole trail.
+        from call import lifecycle
+        from call.providers import FallbackLLM
+        from call.record import CallRecord
+
+        brain = FallbackLLM(self._leg(raises=self._depleted()),
+                            self._leg(says="carried"),
+                            names=("google/gemini", "ollama/gemma4:12b"))
+        rec = CallRecord("callin-x", {"id": "p", "name": "P"},
+                         {"llm_provider": "google", "llm_model": "gemini"})
+        lifecycle.attach_brain_fallback(types.SimpleNamespace(llm=brain), rec)
+        self._run(self._reply(brain))
+        problems = [p["what"] for p in rec.data["problems"]]
+        self.assertEqual(len(problems), 1)
+        self.assertIn("ollama/gemma4:12b", problems[0])
+        self.assertIn("carried the call", problems[0])
+        self.assertEqual(rec.data["setup"]["llmCarriedBy"], "ollama/gemma4:12b")
+        # A plain provider has nothing to hear, and no record (a failure
+        # during prepare) must not raise into the call.
+        lifecycle.attach_brain_fallback(
+            types.SimpleNamespace(llm=self._leg(says="plain")), rec)
+        bare = FallbackLLM(self._leg(raises=self._depleted()),
+                           self._leg(says="carried"))
+        lifecycle.attach_brain_fallback(types.SimpleNamespace(llm=bare), None)
+        self._run(self._reply(bare))
+        self.assertEqual(len(rec.data["problems"]), 1)
+
+    def test_build_llm_wires_the_net_from_the_settings(self):
+        # The real builder, both legs, against providers that need no key
+        # and no network to CONSTRUCT. The fallback's endpoint is its own:
+        # the primary's llm_base_url names the primary's server.
+        from call.providers import FallbackLLM, build_llm, fallback_cfg
+
+        cfg = {"llm_provider": "openai-compatible", "llm_model": "qwen",
+               "llm_base_url": "http://10.0.0.5:8080/v1",
+               "llm_fallback_provider": "ollama",
+               "llm_fallback_model": "gemma4:12b"}
+        self.assertEqual(fallback_cfg(cfg)["llm_base_url"], "")
+        self.assertEqual(fallback_cfg(cfg)["llm_model"], "gemma4:12b")
+        brain = build_llm(cfg)
+        self.assertIsInstance(brain, FallbackLLM)
+        self.assertEqual(brain.primary_name, "openai-compatible/qwen")
+        self.assertEqual(brain.fallback_name, "ollama/gemma4:12b")
+        self.assertIn("10.0.0.5:8080", str(brain._primary._client.base_url))
+        self.assertNotIn("10.0.0.5", str(brain._fallback._client.base_url))
+        # Same provider on both legs: the endpoint IS shared.
+        same = dict(cfg, llm_fallback_provider="openai-compatible",
+                    llm_fallback_model="smaller")
+        self.assertEqual(fallback_cfg(same)["llm_base_url"],
+                         "http://10.0.0.5:8080/v1")
+        # The panel's Test button asks for the primary alone.
+        self.assertNotIsInstance(build_llm(cfg, fallback=False), FallbackLLM)
+
+    def test_a_fallback_that_cannot_be_built_leaves_the_primary_standing(self):
+        # openai-compatible with no endpoint refuses to build; that must cost
+        # a warning, not the call.
+        from call.providers import FallbackLLM, build_llm
+
+        brain = build_llm({"llm_provider": "ollama", "llm_model": "x",
+                           "llm_fallback_provider": "openai-compatible",
+                           "llm_fallback_model": ""})
+        self.assertNotIsInstance(brain, FallbackLLM)

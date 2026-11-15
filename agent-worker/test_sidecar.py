@@ -49,6 +49,8 @@ from tests.test_settings import (  # noqa: F401
     TestTheCountAndHeartShipOn,
     TestTheOnAirLetterRidesTheRoomName,
     TestTheOnAirQuickKillsShipOpen,
+    TestTheFallbackBrainShipsOff,
+    TestTheFallbackBrainCarriesTheCallOnA402,
 )
 from tests.test_secrets_and_auth import (  # noqa: F401
     TestAdminAuth,

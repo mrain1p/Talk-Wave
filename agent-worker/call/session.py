@@ -777,6 +777,7 @@ class CallSession:
 
         lifecycle.attach_close_reason(session, self.ended)
         lifecycle.attach_error_recovery(session, self.record, self.think)
+        lifecycle.attach_brain_fallback(session, self.record)
         lifecycle.attach_think_pace(session, self.think)
         lifecycle.attach_first_word(session, self.record)
         lifecycle.attach_turn_commit(ctx, session, pacing=self.pacing)

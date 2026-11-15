@@ -4,6 +4,10 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+- **A fallback brain, off by default.** Under Brains, a *Fallback provider* and *Fallback model* (the station's own `llm.fallback`, mirrored). When the primary provider refuses a request outright — billing lapsed, a key revoked, nothing answering — the call switches to the fallback for the rest of the call and the caller hears a reply instead of the apology line. The call record notes which brain carried the call. Any provider the primary can be, Ollama on your own box included; a slow model is not a reason to switch, and the Test button still tests the primary alone. Leave both blank and nothing changes. Prompted by six days of calls (9–15 November) that each died on the same depleted-credits 402 while the station beside them kept talking on its own fallback.
+
 ## 1.0.0
 
 Talk Wave 1.0: the call DJ keeps up with SUB/WAVE 1.32, can steer the whole station from the phone, and leans the way the booth does.

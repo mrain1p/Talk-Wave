@@ -91,6 +91,7 @@ The LLM that thinks: provider, model, endpoint, temperature, and the provider AP
 
 - **Only providers you hold a key for are listed.** Ollama, an OpenAI-compatible server and the station's locca always appear, since they need none — and they lead the list, because a fresh install can actually pick them.
 - Keys are stored server-side and never shown back. There is no separate Connections section.
+- **Fallback provider / model** — off by default. The station's own `llm.fallback`, mirrored: when the primary refuses a request outright (billing lapsed, key revoked, nothing answering at the address) the call carries on with this provider for the rest of the call, and the call record says which brain carried it. Any provider the primary can be; Ollama or locca on your own box need no key. Not for slow replies — a model that is merely slow is a model choice, see below. The Test button checks the primary only, so prove a fallback model by setting it as the primary first.
 
 Which models actually carry a call: [what to run](models.md).
 
