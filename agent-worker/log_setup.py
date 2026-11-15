@@ -66,7 +66,16 @@ class _RingHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
             RECENT.append({
+                # The container's wall clock, no date: kept because the flat
+                # lines and any older panel still read it.
                 "t": time.strftime("%H:%M:%S", time.localtime(record.created)),
+                # The instant itself. `t` alone put the log viewer in the
+                # container's zone (UTC under docker) with no day on it, while
+                # the call records beside it carry an offset and are rendered
+                # in the reader's zone — so one moment read hours apart in the
+                # two viewers, and a ring spanning midnight could not say
+                # which day a line was from (review, 2026-11-15).
+                "ts": round(record.created, 3),
                 "level": record.levelname,
                 "logger": record.name,
                 # Formatted here: the arguments are only interpolated on

@@ -16,7 +16,9 @@ different from each other; set_guest_password refuses a match.
 
 Recovery, in order of preference:
   1. Set CALLIN_ADMIN_KEY in the environment — it is always accepted
-     alongside the stored admin password (break-glass override).
+     alongside the stored admin password (break-glass override), including
+     from an address the lockout has shut out: api/auth.py compares it before
+     the lockout is consulted. The stored passwords get no such pass.
   2. Delete data/admin-auth.json and restart — back to first-run open mode.
 IP bans from failed attempts live in memory: restarting the app clears them.
 """
@@ -30,6 +32,7 @@ import logging
 import os
 import secrets
 import threading
+import time
 from pathlib import Path
 
 log = logging.getLogger("callin.auth")
@@ -99,17 +102,96 @@ def _slot(data: dict, scope: str) -> dict:
     return data
 
 
+# --- the verified-key cache ---------------------------------------------------
+# One PBKDF2 at 240k iterations is ~100 ms on a NAS CPU, and it ran on the
+# event loop for EVERY keyed request: the panel's own fetches, a signed-in
+# caller's 20-second /live poll, and — because /live is public — any junk
+# X-Call-Key a stranger cared to repeat. The whole single-threaded server
+# stood still for each one (review, 2026-11-15).
+#
+# So a verdict is remembered, briefly, and these are the rules that keep that
+# honest:
+#
+#   * The cache key is an HMAC over the STORED RECORD (salt, hash, iterations)
+#     and the presented password, under a secret minted per process. The
+#     password itself is never kept, and a verdict is bound to the record it
+#     was reached against — a changed password is a new salt, so the old
+#     verdict is simply unreachable. A hit cannot outlive a password change
+#     even when the file is replaced behind our back, because the record is
+#     still read from disk on every check.
+#   * Every writer below calls forget_verified() anyway. Belt and braces: the
+#     binding above is what makes it correct, this is what makes it obvious.
+#   * Right and wrong answers live in separate, bounded tables, so a flood of
+#     junk keys can fill the wrong-answer table and never push a signed-in
+#     operator's verdict out of the other.
+#   * CALLIN_ADMIN_KEY is compared in api/auth.py before this is ever asked,
+#     so the break-glass key is never in here to be cached wrongly.
+#
+# The lockout is untouched: api/auth.py still counts every wrong attempt. This
+# only stops the same question costing a hash each time it is asked.
+_VERIFIED_TTL = 300.0
+# Longer than the widget's 20-second poll, or a browser holding a stale code
+# would be re-hashed on every other one.
+_REFUTED_TTL = 120.0
+_VERIFIED_MAX = 64
+_REFUTED_MAX = 512
+_CACHE_SECRET = secrets.token_bytes(32)
+_verified: dict[bytes, float] = {}    # cache key -> monotonic forget-at
+_refuted: dict[bytes, float] = {}
+
+
+def _cache_key(record: dict, password: str) -> bytes:
+    material = "\x00".join((
+        str(record.get("salt")), str(record.get("hash")),
+        str(record.get("iterations", _ITERATIONS)), password,
+    ))
+    return hmac.new(_CACHE_SECRET, material.encode("utf-8", "surrogatepass"),
+                    hashlib.sha256).digest()
+
+
+def _remember(table: dict[bytes, float], key: bytes, until: float,
+              limit: int, now: float) -> None:
+    if key not in table and len(table) >= limit:
+        for stale in [k for k, t in table.items() if t <= now]:
+            del table[stale]
+        while len(table) >= limit:
+            del table[next(iter(table))]        # oldest first: dicts keep order
+    table[key] = until
+
+
+def forget_verified() -> None:
+    """Drop every remembered verdict. Called whenever a password or guest code
+    is set, changed or cleared."""
+    _verified.clear()
+    _refuted.clear()
+
+
+def _derive(password: str, salt: str, iterations: int) -> str:
+    """The expensive part, on its own so a test can count how often it runs."""
+    return hashlib.pbkdf2_hmac(
+        "sha256", password.encode(), bytes.fromhex(salt), iterations).hex()
+
+
 def _check(record: dict, password: str) -> bool:
     if not (password and record.get("hash") and record.get("salt")):
         return False
     try:
-        calc = hashlib.pbkdf2_hmac(
-            "sha256", password.encode(), bytes.fromhex(record["salt"]),
-            int(record.get("iterations", _ITERATIONS)),
-        )
-        return hmac.compare_digest(calc.hex(), record["hash"])
+        key = _cache_key(record, password)
+        now = time.monotonic()
+        if _verified.get(key, 0.0) > now:
+            return True
+        if _refuted.get(key, 0.0) > now:
+            return False
+        calc = _derive(password, record["salt"],
+                       int(record.get("iterations", _ITERATIONS)))
+        ok = hmac.compare_digest(calc, record["hash"])
     except (ValueError, TypeError):
         return False
+    if ok:
+        _remember(_verified, key, now + _VERIFIED_TTL, _VERIFIED_MAX, now)
+    else:
+        _remember(_refuted, key, now + _REFUTED_TTL, _REFUTED_MAX, now)
+    return ok
 
 
 def _hash(password: str) -> dict:
@@ -182,6 +264,7 @@ def set_password(password: str) -> None:
             raise ValueError("the admin password must differ from the guest password")
         data.update(_hash(password))
         _write(data)
+        forget_verified()
     log.info("admin password updated")
 
 
@@ -195,6 +278,7 @@ def set_guest_password(password: str) -> None:
             raise ValueError("the guest password must differ from the admin password")
         data["guest"] = _hash(password)
         _write(data)
+        forget_verified()
     log.info("guest password updated")
 
 
@@ -203,4 +287,5 @@ def clear_guest_password() -> None:
         data = _read()
         data.pop("guest", None)
         _write(data)
+        forget_verified()
     log.info("guest password cleared — the call line is open again")

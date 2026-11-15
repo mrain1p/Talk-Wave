@@ -33,21 +33,66 @@ ADMIN_KEY = os.environ.get("CALLIN_ADMIN_KEY", "")
 # 5 wrong passwords from one address -> 5-minute cooldown; a second full
 # round of failures bans the address until the app restarts. In-memory on
 # purpose: `docker restart` (or any redeploy) is the un-ban, and setting
-# CALLIN_ADMIN_KEY in the environment is the break-glass password.
+# CALLIN_ADMIN_KEY in the environment is the break-glass password — the one
+# credential that is compared BEFORE this gate, so it works from a locked-out
+# address too (see _break_glass).
 _AUTH_MAX_FAILS = 5
 _AUTH_COOLDOWN_SECS = 300.0
 _AUTH_STRIKES_TO_BAN = 2
-_auth_state: dict[str, dict] = {}   # ip -> {fails, strikes, cooldown_until, banned}
+# The table used to keep one entry per failing address for the life of the
+# process: nothing but a success ever removed one, so a scan from many
+# addresses grew it without bound, and a strike earned in March still counted
+# toward a ban in June (review, 2026-11-15). Two limits, neither of which
+# makes guessing cheaper inside a window:
+#
+#   * a record nobody has failed against for a day is forgotten. Measured from
+#     the LAST failure, so a slow steady guesser never ages out, and every
+#     rule above applies unchanged to anything that happens within the day.
+#     A BAN is exempt — "until the app restarts" is the documented promise.
+#   * the table holds at most _AUTH_TABLE_MAX addresses. When it is full the
+#     stale records go first, then the one that failed longest ago, a banned
+#     one only when nothing else is left. Reaching that takes thousands of
+#     distinct addresses, and an attacker with those was never slowed by a
+#     per-address counter in the first place.
+_AUTH_FORGET_SECS = 24 * 3600.0
+_AUTH_TABLE_MAX = 4096
+# ip -> {fails, strikes, cooldown_until, banned, last}
+_auth_state: dict[str, dict] = {}
 
 
 def _auth_configured() -> bool:
     return bool(ADMIN_KEY) or admin_auth.is_set()
 
 
+def _auth_stale(st: dict, now: float) -> bool:
+    """Whether a lockout record has aged out. Never true of a ban, and never
+    of a record with no timestamp — unknown age is not old age."""
+    if st.get("banned"):
+        return False
+    last = st.get("last")
+    return last is not None and now - last > _AUTH_FORGET_SECS
+
+
+def _auth_make_room(now: float) -> None:
+    """Keep the table under its ceiling before a NEW address is recorded."""
+    if len(_auth_state) < _AUTH_TABLE_MAX:
+        return
+    for key in [k for k, st in _auth_state.items() if _auth_stale(st, now)]:
+        del _auth_state[key]
+    while len(_auth_state) >= _AUTH_TABLE_MAX:
+        oldest = min(_auth_state, key=lambda k: (
+            bool(_auth_state[k].get("banned")),
+            _auth_state[k].get("last") or 0.0))
+        del _auth_state[oldest]
+
+
 def _auth_gate(ip: str) -> str | None:
     """A reason this address may not even ATTEMPT a password, or None."""
     st = _auth_state.get(ip)
     if not st:
+        return None
+    if _auth_stale(st, time.time()):
+        _auth_state.pop(ip, None)
         return None
     if st.get("banned"):
         return ("too many failed attempts — this address is blocked until "
@@ -62,7 +107,15 @@ def _auth_fail(ip: str, noun: str = "password") -> str:
     """Record a wrong password; returns the caller-facing message. `noun` so a
     caller who mistypes the door code isn't told about a "password" they were
     never given."""
-    st = _auth_state.setdefault(ip, {"fails": 0, "strikes": 0})
+    now = time.time()
+    st = _auth_state.get(ip)
+    if st is not None and _auth_stale(st, now):
+        st = None                       # aged out: this failure starts afresh
+    if st is None:
+        _auth_state.pop(ip, None)
+        _auth_make_room(now)
+        st = _auth_state[ip] = {"fails": 0, "strikes": 0}
+    st["last"] = now
     st["fails"] += 1
     if st["fails"] >= _AUTH_MAX_FAILS:
         st["fails"] = 0
@@ -83,11 +136,34 @@ def _auth_clear(ip: str) -> None:
     _auth_state.pop(ip, None)
 
 
+def _break_glass(key: str) -> bool:
+    """Whether this is the ENVIRONMENT break-glass key, and nothing else.
+
+    The one credential that gets past a lockout. admin_auth.py, the comment
+    above and docs/security.md all promised "CALLIN_ADMIN_KEY is always
+    accepted", and every gate returned the lockout reason before the key was
+    even looked at — so the operator who had set a recovery key was refused
+    with it from the very address that needed recovering (review, 2026-11-15).
+
+    Only the environment key: a STORED password stays behind the lockout, or
+    the lockout would protect nothing. Constant-time, and on bytes — str
+    compare_digest raises on a non-ASCII character, which a header can carry.
+    Using it does not lift the lockout for anything else: a ban stands until
+    the restart it was promised to last for.
+    """
+    if not (key and ADMIN_KEY):
+        return False
+    return hmac.compare_digest(key.encode("utf-8", "surrogatepass"),
+                               ADMIN_KEY.encode("utf-8", "surrogatepass"))
+
+
 def _key_valid(key: str) -> bool:
     if not key:
         return False
-    if ADMIN_KEY and hmac.compare_digest(key, ADMIN_KEY):
+    if _break_glass(key):
         return True
+    # Remembered briefly once verified — see the cache in admin_auth.py. The
+    # break-glass key never reaches it.
     return admin_auth.verify(key)
 
 
@@ -97,14 +173,17 @@ def _check_admin(request: web.Request) -> bool:
     # The lockout bucket must be unspoofable — see _auth_key. _caller_key
     # (walkable X-Forwarded-For) is fine for pacing, not for a throttle.
     ip = _auth_key(request)
+    key = request.headers.get("X-Admin-Key", "")
     gate = _auth_gate(ip)
-    if gate:
+    # The break-glass key is looked at BEFORE the lockout says no — see
+    # _break_glass. Everything else stops here, as it always did.
+    if gate and not _break_glass(key):
         request["auth_error"] = gate
         request["auth_required"] = True
         return False
-    key = request.headers.get("X-Admin-Key", "")
     if _key_valid(key):
-        _auth_clear(ip)
+        if not gate:
+            _auth_clear(ip)
         return True
     # A store that exists but will not open makes every password wrong, and
     # "wrong password" sends the operator hunting for the wrong thing. Say what
@@ -165,7 +244,10 @@ def _guest_check(key: str, ip: str) -> str | None:
 
     bucket = "guest:" + ip
     gate = _auth_gate(bucket)
-    if gate:
+    # "CALLIN_ADMIN_KEY is always accepted" covers this door too: the
+    # break-glass key rings the phone from a locked-out address. A guest code
+    # or a stored admin password does not (review, 2026-11-15).
+    if gate and not _break_glass(key):
         return gate
     if key:
         # Admin is accepted in guest mode so an operator carries one password;
@@ -173,7 +255,8 @@ def _guest_check(key: str, ip: str) -> str | None:
         ok = _key_valid(key) if mode == "admin" else (
             admin_auth.verify_guest(key) or _key_valid(key))
         if ok:
-            _auth_clear(bucket)
+            if not gate:
+                _auth_clear(bucket)
             return None
     return _auth_fail(bucket, "code") if key else "code required"
 
@@ -379,17 +462,21 @@ async def handle_set_password(request: web.Request) -> web.Response:
         # in front of the admin password was decorative for anyone the peer-trust
         # rule accepts, which by default is the whole LAN.
         ip = _auth_key(request)
-        gate = _auth_gate(ip)
-        if gate:
-            return _cors(request, web.json_response(
-                {"error": gate, "authRequired": True}, status=401))
         current = str((body or {}).get("current")
                       or request.headers.get("X-Admin-Key", ""))
+        gate = _auth_gate(ip)
+        # Same order as _check_admin: the break-glass key is the way to set a
+        # new password from an address that has locked itself out, which is
+        # the recovery it exists for (review, 2026-11-15).
+        if gate and not _break_glass(current):
+            return _cors(request, web.json_response(
+                {"error": gate, "authRequired": True}, status=401))
         if not _key_valid(current):
             err = _auth_fail(ip) if current else "current password required"
             return _cors(request, web.json_response(
                 {"error": err, "authRequired": True}, status=401))
-        _auth_clear(ip)
+        if not gate:
+            _auth_clear(ip)
     elif not _write_allowed(request):
         return refused(request)
 

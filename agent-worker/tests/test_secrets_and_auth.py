@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 import tempfile
+import time
 import types
 import unittest
 from pathlib import Path
@@ -531,6 +532,524 @@ class TestWrittenFilesGetExplicitModes(_TempStores):
             self.assertTrue(written[0].stat().st_mode & 0o400)
         finally:
             record.CALLS_DIR = old
+
+    def _as_a_share_that_hands_out_no_mode(self, write):
+        """Run a writer the way a Synology share treats it: every new file
+        arrives with mode 000 unless the writer sets one itself."""
+        old = os.umask(0o777)
+        try:
+            write()
+        finally:
+            os.umask(old)
+
+    def test_the_webhook_secret_stays_owner_only(self):
+        # hook-secret.json IS the credential the receiver checks a push
+        # against, and it was written 0644 — readable by every account on the
+        # box — beside two stores that were 0600 (review, 2026-11-15).
+        from api import hook_receiver
+
+        hook_receiver._store_hook_secret("Bearer abc")
+        self.assertEqual(
+            hook_receiver._secret_path().stat().st_mode & 0o777, 0o600)
+
+    def test_the_listener_history_is_readable_by_its_owner(self):
+        from api import stats
+
+        self._as_a_share_that_hands_out_no_mode(
+            lambda: stats.record_sample(3, now=1000.0))
+        mode = stats.LISTENERS_PATH.stat().st_mode & 0o777
+        self.assertTrue(mode & 0o400, f"listeners.json came out {mode:03o}")
+        self.assertTrue(mode & 0o200, f"listeners.json is not writable: {mode:03o}")
+
+    def test_the_sound_categories_are_readable_by_their_owner(self):
+        from unittest import mock
+
+        from api import sounds as api_sounds
+
+        path = Path(self._tmp.name) / "sound-meta.json"
+        with mock.patch.object(api_sounds, "META_PATH", path):
+            self._as_a_share_that_hands_out_no_mode(
+                lambda: api_sounds._save_sound_meta({"ring.wav": {"category": "x"}}))
+        mode = path.stat().st_mode & 0o777
+        self.assertTrue(mode & 0o400, f"sound-meta.json came out {mode:03o}")
+
+
+class _AuthGates(_TempStores):
+    """A password store in a temp dir, an empty lockout table, an empty
+    verdict cache, and no break-glass key unless the test sets one."""
+
+    class _Req(dict):
+        """Enough of a request for the gates: headers, a peer, a body, and the
+        dict slot a gate leaves its caller-facing reason on."""
+
+        def __init__(self, key="", ip="203.0.113.9", body=None):
+            super().__init__()
+            self.headers = {"X-Admin-Key": key} if key else {}
+            self.remote = ip
+            self.host = "box.local"
+            self._body = body or {}
+
+        async def json(self):
+            return self._body
+
+    IP = "203.0.113.9"
+
+    def setUp(self):
+        super().setUp()
+        import admin_auth
+        from api import auth as api_auth
+
+        self.admin_auth, self.auth = admin_auth, api_auth
+        self._old_auth_path = admin_auth.AUTH_PATH
+        admin_auth.AUTH_PATH = Path(self._tmp.name) / "admin-auth.json"
+        self._old_admin_key = api_auth.ADMIN_KEY
+        api_auth.ADMIN_KEY = ""
+        api_auth._auth_state.clear()
+        admin_auth.forget_verified()
+        # How MANY rounds a hash takes is not what any of these classes is
+        # about, and at the real figure each stored password costs a tenth of
+        # a second or more — these tests set dozens. The record carries its
+        # own iteration count, so a cheap one verifies exactly the same way.
+        self._old_iterations = admin_auth._ITERATIONS
+        admin_auth._ITERATIONS = 1_000
+
+    def tearDown(self):
+        self.auth._auth_state.clear()
+        self.auth.ADMIN_KEY = self._old_admin_key
+        self.admin_auth.AUTH_PATH = self._old_auth_path
+        self.admin_auth._ITERATIONS = self._old_iterations
+        self.admin_auth.forget_verified()
+        super().tearDown()
+
+    def _ban(self, bucket):
+        """Two full rounds of wrong passwords, the way an address earns it."""
+        for _ in range(self.auth._AUTH_MAX_FAILS):
+            self.auth._auth_fail(bucket)
+        self.auth._auth_state[bucket]["cooldown_until"] = 0
+        for _ in range(self.auth._AUTH_MAX_FAILS):
+            self.auth._auth_fail(bucket)
+        self.assertIn("blocked", self.auth._auth_gate(bucket) or "")
+
+
+class TestTheBreakGlassKeyGetsPastALockout(_AuthGates):
+    """`CALLIN_ADMIN_KEY` is the recovery for a locked-out address, and it did
+    not work from one.
+
+    admin_auth.py, the comment over the lockout and docs/security.md all said
+    the environment key is "always accepted". Every gate returned the lockout
+    reason BEFORE looking at the key, so the one address that needed the
+    recovery was the one address refused it — and the only test of the key
+    (test_the_break_glass_key_opens_them_again) never ran under a ban, so the
+    promise was never once checked where it mattered (review, 2026-11-15).
+
+    The other half is as load-bearing: ONLY the environment key passes. A
+    stored password that walked through a ban would make the ban decorative.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.admin_auth.set_password("the-real-password")
+        self.auth.ADMIN_KEY = "break-glass-key"
+
+    def test_the_panel_opens_to_it_from_a_banned_address(self):
+        self._ban(self.IP)
+        self.assertTrue(self.auth._check_admin(self._Req("break-glass-key")))
+
+    def test_the_stored_password_is_still_shut_out(self):
+        self._ban(self.IP)
+        req = self._Req("the-real-password")
+        self.assertFalse(
+            self.auth._check_admin(req),
+            "a stored password walked through a ban — the lockout protects "
+            "nothing if the thing being guessed is exempt from it")
+        self.assertIn("blocked", req["auth_error"])
+
+    def test_using_it_does_not_lift_the_ban(self):
+        # Behind a proxy nobody named, the operator and the guesser share an
+        # address. A break-glass request that cleared the record would hand
+        # the guesser a fresh ten tries every time the operator's panel polled.
+        self._ban(self.IP)
+        self.assertTrue(self.auth._check_admin(self._Req("break-glass-key")))
+        self.assertIn("blocked", self.auth._auth_gate(self.IP))
+        self.assertFalse(self.auth._check_admin(self._Req("the-real-password")))
+
+    def test_it_works_through_a_cooldown_too(self):
+        for _ in range(self.auth._AUTH_MAX_FAILS):
+            self.auth._auth_fail(self.IP)
+        self.assertIn("try again", self.auth._auth_gate(self.IP))
+        self.assertTrue(self.auth._check_admin(self._Req("break-glass-key")))
+        self.assertFalse(self.auth._check_admin(self._Req("the-real-password")))
+        self.assertIn("try again", self.auth._auth_gate(self.IP))
+
+    def test_a_near_miss_is_refused_like_anything_else(self):
+        self._ban(self.IP)
+        for wrong in ("break-glass-ke", "break-glass-key ", "BREAK-GLASS-KEY", ""):
+            with self.subTest(key=wrong):
+                self.assertFalse(self.auth._check_admin(self._Req(wrong)))
+
+    def test_a_key_that_is_not_ascii_is_wrong_not_a_crash(self):
+        # compare_digest on two strs raises for a non-ASCII character, and a
+        # header can carry one — that was a 500 from the login prompt.
+        self.assertFalse(self.auth._check_admin(self._Req("brèak-gläss-kéy")))
+        self.auth.ADMIN_KEY = "clé-de-secours"
+        self.assertTrue(self.auth._check_admin(self._Req("clé-de-secours")))
+
+    def test_no_environment_key_means_nothing_passes_the_gate(self):
+        self.auth.ADMIN_KEY = ""
+        self._ban(self.IP)
+        for key in ("", "break-glass-key", "the-real-password"):
+            with self.subTest(key=key):
+                self.assertFalse(self.auth._break_glass(key))
+                self.assertFalse(self.auth._check_admin(self._Req(key)))
+
+    def _change_password(self, current):
+        resp = asyncio.run(self.auth.handle_set_password(self._Req(
+            body={"current": current, "new": "a-brand-new-password"})))
+        return resp.status
+
+    def test_the_password_can_be_reset_with_it_from_a_banned_address(self):
+        # The recovery it exists for: forgot the password, fumbled it into a
+        # ban, and the environment key is the way to set a new one.
+        self._ban(self.IP)
+        self.assertEqual(self._change_password("the-real-password"), 401)
+        self.assertTrue(self.admin_auth.verify("the-real-password"))
+        self.assertEqual(self._change_password("break-glass-key"), 200)
+        self.assertTrue(self.admin_auth.verify("a-brand-new-password"))
+
+    def test_the_phone_rings_for_it_from_a_locked_out_address(self):
+        self.admin_auth.set_guest_password("door-code")
+        settings_store.save({"front_access": "guest"})
+        self._ban("guest:" + self.IP)
+        for stored in ("door-code", "the-real-password"):
+            with self.subTest(key=stored):
+                self.assertIn("blocked",
+                              self.auth._guest_check(stored, self.IP) or "")
+        self.assertIsNone(self.auth._guest_check("break-glass-key", self.IP))
+        self.assertIn("blocked", self.auth._auth_gate("guest:" + self.IP))
+
+
+class TestAVerifiedKeyIsHashedOnce(_AuthGates):
+    """One PBKDF2 per question, not one per request.
+
+    Every keyed request — the panel's own fetches, a signed-in caller's
+    20-second /live poll — ran 240,000 iterations on the event loop, about a
+    tenth of a second on a NAS CPU, and /live is public: anyone could repeat a
+    junk X-Call-Key and hold the single-threaded server still for each one
+    (review, 2026-11-15). A verdict is now remembered briefly.
+
+    Most of this class is about what the memory must NOT do: keep a password,
+    outlive a password change, or let a flood of wrong keys evict a right one.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+
+        patcher = mock.patch.object(
+            self.admin_auth, "_derive", wraps=self.admin_auth._derive)
+        self.derive = patcher.start()
+        self.addCleanup(patcher.stop)
+        self.admin_auth.set_password("the-real-password")
+        self.admin_auth.forget_verified()
+        self.derive.reset_mock()
+
+    def test_the_right_password_costs_one_hash(self):
+        for _ in range(6):
+            self.assertTrue(self.admin_auth.verify("the-real-password"))
+        self.assertEqual(self.derive.call_count, 1)
+
+    def test_a_repeated_wrong_key_costs_nothing_more(self):
+        for _ in range(6):
+            self.assertFalse(self.admin_auth.verify("junk-key"))
+        self.assertEqual(self.derive.call_count, 1)
+
+    def test_the_public_tier_lookup_stops_hashing_a_repeated_junk_key(self):
+        # /live asks tier_for_key on every poll, of whatever X-Call-Key came.
+        self.admin_auth.set_guest_password("door-code")
+        self.admin_auth.forget_verified()
+        self.derive.reset_mock()
+        self.assertEqual(self.auth.tier_for_key("junk-key"), "open")
+        first = self.derive.call_count
+        self.assertGreaterEqual(first, 1)
+        for _ in range(10):
+            self.assertEqual(self.auth.tier_for_key("junk-key"), "open")
+        self.assertEqual(self.derive.call_count, first)
+        # And the tiers themselves are what they were.
+        self.assertEqual(self.auth.tier_for_key("the-real-password"), "admin")
+        self.assertEqual(self.auth.tier_for_key("the-real-password"), "admin")
+
+    def test_a_hit_does_not_outlive_a_password_change(self):
+        self.assertTrue(self.admin_auth.verify("the-real-password"))
+        self.admin_auth.set_password("a-second-password")
+        self.assertFalse(
+            self.admin_auth.verify("the-real-password"),
+            "the OLD password was still accepted after it was changed")
+        self.assertTrue(self.admin_auth.verify("a-second-password"))
+
+    def test_a_refusal_does_not_outlive_a_password_change_either(self):
+        # The other direction: a password that was wrong a minute ago and has
+        # just been SET must not be refused out of memory.
+        self.assertFalse(self.admin_auth.verify("a-second-password"))
+        self.admin_auth.set_password("a-second-password")
+        self.assertTrue(self.admin_auth.verify("a-second-password"))
+
+    def test_a_hit_does_not_outlive_the_file_changing_behind_our_back(self):
+        # No writer of ours ran, so nothing called forget_verified(): the
+        # verdict is bound to the stored record, and the record is new.
+        self.assertTrue(self.admin_auth.verify("the-real-password"))
+        self.admin_auth.AUTH_PATH.write_text(
+            json.dumps(self.admin_auth._hash("set-by-another-process")),
+            encoding="utf-8")
+        self.assertFalse(self.admin_auth.verify("the-real-password"))
+        self.assertTrue(self.admin_auth.verify("set-by-another-process"))
+        self.admin_auth.AUTH_PATH.unlink()
+        self.assertFalse(self.admin_auth.verify("set-by-another-process"))
+
+    def test_every_writer_forgets_what_was_remembered(self):
+        writers = (
+            lambda: self.admin_auth.set_guest_password("door-code"),
+            lambda: self.admin_auth.clear_guest_password(),
+            lambda: self.admin_auth.set_password("a-second-password"),
+        )
+        for write in writers:
+            self.admin_auth.verify("the-real-password")
+            self.admin_auth.verify("junk-key")
+            write()
+            self.assertEqual(
+                (self.admin_auth._verified, self.admin_auth._refuted), ({}, {}))
+
+    def test_a_cleared_guest_code_stops_working_at_once(self):
+        self.admin_auth.set_guest_password("door-code")
+        self.assertTrue(self.admin_auth.verify_guest("door-code"))
+        self.admin_auth.clear_guest_password()
+        self.assertFalse(self.admin_auth.verify_guest("door-code"))
+
+    def test_the_password_itself_is_never_kept(self):
+        self.admin_auth.verify("the-real-password")
+        self.admin_auth.verify("junk-key")
+        kept = list(self.admin_auth._verified) + list(self.admin_auth._refuted)
+        self.assertTrue(kept)
+        for key in kept:
+            self.assertIsInstance(key, bytes)
+            self.assertEqual(len(key), 32)
+            for secret in (b"the-real-password", b"junk-key"):
+                self.assertNotIn(secret, key)
+        # Keyed under a per-process secret, so the entry is not a plain hash
+        # of the password that could be tested offline against a wordlist.
+        import hashlib
+
+        self.assertNotIn(hashlib.sha256(b"the-real-password").digest(), kept)
+
+    def test_a_verdict_is_forgotten_when_its_time_is_up(self):
+        self.assertTrue(self.admin_auth.verify("the-real-password"))
+        for key in self.admin_auth._verified:
+            self.admin_auth._verified[key] = 0.0
+        self.assertTrue(self.admin_auth.verify("the-real-password"))
+        self.assertEqual(self.derive.call_count, 2)
+
+    def test_a_flood_of_junk_cannot_push_a_real_verdict_out(self):
+        self.assertTrue(self.admin_auth.verify("the-real-password"))
+        self.derive.reset_mock()
+        # From here a real derivation never matches, so the only way the
+        # right password can still read True is the remembered verdict.
+        self.derive.side_effect = lambda *a, **k: "00"
+        for i in range(self.admin_auth._REFUTED_MAX + 60):
+            self.assertFalse(self.admin_auth.verify(f"junk-{i}"))
+        self.assertLessEqual(len(self.admin_auth._refuted),
+                             self.admin_auth._REFUTED_MAX)
+        self.assertTrue(self.admin_auth.verify("the-real-password"))
+
+    def test_the_tables_are_bounded(self):
+        self.derive.side_effect = lambda *a, **k: "00"
+        for i in range(self.admin_auth._REFUTED_MAX * 2):
+            self.admin_auth.verify(f"junk-{i}")
+        self.assertEqual(len(self.admin_auth._refuted),
+                         self.admin_auth._REFUTED_MAX)
+        self.assertLessEqual(self.admin_auth._VERIFIED_MAX, 256)
+
+    def test_the_break_glass_key_is_never_remembered(self):
+        # It is compared in api/auth.py and never reaches the cache — so
+        # taking it out of the environment takes it away at once.
+        self.auth.ADMIN_KEY = "break-glass-key"
+        self.admin_auth.forget_verified()
+        self.assertTrue(self.auth._key_valid("break-glass-key"))
+        self.assertEqual(self.admin_auth._verified, {})
+        self.auth.ADMIN_KEY = ""
+        self.assertFalse(self.auth._key_valid("break-glass-key"))
+
+    def test_the_lockout_still_counts_every_wrong_attempt(self):
+        # The cache answers the hash, not the door: the same wrong password
+        # five times is five strikes, exactly as before.
+        said = []
+        for _ in range(self.auth._AUTH_MAX_FAILS):
+            req = self._Req("the-same-wrong-one")
+            self.assertFalse(self.auth._check_admin(req))
+            said.append(req["auth_error"])
+        self.assertIn("4 tries left", said[0])
+        self.assertIn("too many failed attempts", said[-1])
+        self.assertEqual(self.derive.call_count, 1)
+
+
+class TestLockoutRecordsAgeOutAndTheTableIsBounded(_AuthGates):
+    """The lockout table kept one entry per failing address for the life of
+    the process, and a strike never expired.
+
+    Nothing but a successful login removed a record, so a scan from many
+    addresses grew memory without limit, and a cooldown earned months ago
+    still counted as the first of the two rounds that ban (review,
+    2026-11-15). Records now age out a day after the LAST failure and the
+    table has a ceiling — and the tests that matter most are the ones showing
+    neither makes guessing cheaper inside the day.
+    """
+
+    def _round(self, bucket):
+        said = ""
+        for _ in range(self.auth._AUTH_MAX_FAILS):
+            said = self.auth._auth_fail(bucket)
+        return said
+
+    def _age(self, bucket, secs):
+        st = self.auth._auth_state[bucket]
+        st["last"] -= secs
+        st["cooldown_until"] = 0
+
+    def test_a_strike_is_forgotten_a_day_after_the_last_failure(self):
+        self.assertIn("try again", self._round(self.IP))
+        self._age(self.IP, self.auth._AUTH_FORGET_SECS + 1)
+        self.assertIsNone(self.auth._auth_gate(self.IP))
+        self.assertNotIn(self.IP, self.auth._auth_state)
+        # So the next round is a FIRST round: a cooldown, not a ban.
+        self.assertIn("try again", self._round(self.IP))
+        self.assertFalse(self.auth._auth_state[self.IP].get("banned"))
+
+    def test_inside_the_day_nothing_is_forgiven(self):
+        self.assertIn("try again", self._round(self.IP))
+        self._age(self.IP, self.auth._AUTH_FORGET_SECS - 60)
+        self.assertIn("blocked until the app restarts", self._round(self.IP))
+
+    def test_every_failure_restarts_the_clock(self):
+        # Measured from the LAST failure, so one guess every 23 hours never
+        # ages a record out from under itself.
+        self.auth._auth_fail(self.IP)
+        self._age(self.IP, self.auth._AUTH_FORGET_SECS - 60)
+        self.auth._auth_fail(self.IP)
+        st = self.auth._auth_state[self.IP]
+        self.assertEqual(st["fails"], 2)
+        self.assertLess(time.time() - st["last"], 5)
+
+    def test_a_ban_does_not_age_out(self):
+        self._ban(self.IP)
+        self.auth._auth_state[self.IP]["last"] -= self.auth._AUTH_FORGET_SECS * 30
+        self.assertIn("blocked", self.auth._auth_gate(self.IP))
+
+    def test_a_scan_from_many_addresses_cannot_grow_the_table(self):
+        from unittest import mock
+
+        with mock.patch.object(self.auth, "_AUTH_TABLE_MAX", 40):
+            for i in range(400):
+                self.auth._auth_fail(f"198.51.100.{i}")
+            self.assertEqual(len(self.auth._auth_state), 40)
+        self.assertLessEqual(self.auth._AUTH_TABLE_MAX, 10_000)
+
+    def test_a_full_table_drops_the_stale_then_the_oldest_and_a_ban_last(self):
+        from unittest import mock
+
+        now = time.time()
+        self.auth._auth_state.update({
+            "banned": {"fails": 0, "strikes": 2, "banned": True, "last": now - 900},
+            "stale": {"fails": 1, "strikes": 0,
+                      "last": now - self.auth._AUTH_FORGET_SECS - 5},
+            "older": {"fails": 2, "strikes": 0, "last": now - 600},
+            "newer": {"fails": 3, "strikes": 1, "last": now - 10},
+        })
+        with mock.patch.object(self.auth, "_AUTH_TABLE_MAX", 4):
+            self.auth._auth_fail("first-newcomer")
+            self.assertNotIn("stale", self.auth._auth_state)
+            self.assertEqual(len(self.auth._auth_state), 4)
+            self.auth._auth_fail("second-newcomer")
+            self.assertNotIn("older", self.auth._auth_state)
+            # The address with a strike against it kept its strike...
+            self.assertEqual(self.auth._auth_state["newer"]["strikes"], 1)
+            # ...and the ban outlived everything that was not one.
+            self.assertIn("banned", self.auth._auth_state)
+
+    def test_an_address_already_in_the_table_never_evicts_anyone(self):
+        from unittest import mock
+
+        with mock.patch.object(self.auth, "_AUTH_TABLE_MAX", 3):
+            for name in ("a", "b", "c"):
+                self.auth._auth_fail(name)
+            self.auth._auth_fail("a")
+            self.assertEqual(sorted(self.auth._auth_state), ["a", "b", "c"])
+
+
+class TestEveryDataWriterGoesThroughTheStoreIdiom(_TempStores):
+    """The three writers under data/ that did not ask for a mode now do.
+
+    TestWrittenFilesGetExplicitModes below checks the bits themselves, and
+    only where the bits exist (POSIX). This is the half that runs everywhere:
+    each writer hands its file to jsonstore.write_atomic — the one place the
+    mode is set — and the webhook secret asks for owner-only (review,
+    2026-11-15).
+    """
+
+    def _written(self, act):
+        from unittest import mock
+
+        import jsonstore
+
+        with mock.patch.object(jsonstore, "write_atomic",
+                               wraps=jsonstore.write_atomic) as spy:
+            act()
+        self.assertEqual(spy.call_count, 1, "the writer bypassed the idiom")
+        return spy.call_args
+
+    def test_the_webhook_secret_is_written_owner_only(self):
+        from api import hook_receiver
+
+        call = self._written(
+            lambda: hook_receiver._store_hook_secret("Bearer abc"))
+        self.assertEqual(call.args[0], hook_receiver._secret_path())
+        self.assertEqual(
+            call.kwargs.get("file_mode"), 0o600,
+            "hook-secret.json is a credential — whoever reads it can forge a "
+            "push the receiver accepts")
+        self.assertEqual(hook_receiver._load_hook_secret(), "Bearer abc")
+
+    def test_the_listener_history_is_written_through_it(self):
+        from api import stats
+
+        call = self._written(lambda: stats.record_sample(3, now=1000.0))
+        self.assertEqual(call.args[0], stats.LISTENERS_PATH)
+        # One compact line, as it always was: a month is thousands of rows.
+        self.assertEqual(len(stats.LISTENERS_PATH.read_text("utf-8").splitlines()), 1)
+        stats._samples, stats._loaded = [], False
+        stats._load()
+        self.assertEqual(stats._samples, [{"t": 1000, "n": 3}])
+
+    def test_the_sound_categories_are_written_through_it(self):
+        from unittest import mock
+
+        from api import sounds as api_sounds
+
+        path = Path(self._tmp.name) / "sound-meta.json"
+        with mock.patch.object(api_sounds, "META_PATH", path):
+            call = self._written(lambda: api_sounds._save_sound_meta(
+                {"ring.wav": {"category": "bells"}}))
+            self.assertEqual(call.args[0], path)
+            self.assertEqual(api_sounds._sound_meta(),
+                             {"ring.wav": {"category": "bells"}})
+        self.assertFalse(path.with_name(path.name + ".tmp").exists())
+
+    def test_no_writer_under_api_opens_a_data_file_bare(self):
+        # The shape the three had in common: a bare open(..., "w") or
+        # write_text on a path under data/. Uploaded audio is bytes, not a
+        # store, and is the one writer this leaves alone.
+        for name in ("stats.py", "sounds.py", "hook_receiver.py"):
+            src = (AGENT_WORKER / "api" / name).read_text(encoding="utf-8")
+            with self.subTest(module=name):
+                self.assertNotIn(".write_text(", src)
+                self.assertNotIn('"w", encoding', src)
 
 
 class TestFrontDoorPolicy(_TempStores):

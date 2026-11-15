@@ -23,6 +23,7 @@ from aiohttp import web
 
 import jsonstore
 from api.auth import _write_allowed
+from api.env import PORT
 from api.live_cache import _LIVE_BUST_FLOOR, _live_cache
 from api.wire import _cors, refused
 
@@ -71,7 +72,12 @@ def _load_hook_secret() -> str:
 
 def _store_hook_secret(value: str) -> None:
     try:
-        jsonstore.write_atomic(_secret_path(), {"authHeader": value})
+        # Owner-only, like secrets.json and admin-auth.json. This file IS the
+        # credential — whoever can read it can forge a push the receiver
+        # accepts — and it was being written with write_atomic's 0644 default,
+        # readable by every account on the box (review, 2026-11-15).
+        jsonstore.write_atomic(_secret_path(), {"authHeader": value},
+                               file_mode=0o600)
     except Exception as e:                                    # noqa: BLE001
         # The receiver checks against this file, so an unwritable file means
         # verification quietly stays OFF — the old, open behaviour — while the
@@ -113,6 +119,91 @@ _hook_state: dict = {
     "received": 0,
     "detail": "not attempted",
 }
+
+
+# --- where the station is told to push ---------------------------------------
+# Moved here from api/hooks.py with the loopback check below (review,
+# 2026-11-15): the address belongs to the receiver, and hooks.py is on the
+# size ledger with a seam that this is not part of.
+def _lan_ip() -> str:
+    """The address the NAS can reach this box on — NOT localhost."""
+    import socket
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except Exception:
+        return "127.0.0.1"
+    finally:
+        s.close()
+
+
+def _receiver_url() -> str:
+    return os.environ.get("CALLIN_HOOK_URL") or f"http://{_lan_ip()}:{PORT}/hooks/station"
+
+
+def _is_loopback_host(host: str | None) -> bool:
+    """localhost, a *.localhost name, 127.x, ::1 or the unspecified address —
+    anything that means "this machine" to whoever resolves it."""
+    import ipaddress
+
+    host = (host or "").strip().strip("[]").lower().rstrip(".")
+    if not host:
+        return True                 # no host at all reaches nobody either
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return False                # a real name: the station's to resolve
+    return bool(addr.is_loopback or addr.is_unspecified)
+
+
+def _loopback_receiver(url: str) -> str | None:
+    """Why this receiver address cannot be registered, or None when it can.
+
+    A webhook URL is dialled BY THE STATION, so `localhost` in it means the
+    station's own machine, not ours. It got there two quiet ways: compose
+    derives CALLIN_HOOK_URL from HOST_IP, and a blank HOST_IP becomes
+    `http://localhost:8100/hooks/station`; and _lan_ip() falls back to
+    127.0.0.1 on a box with no route yet. Either was written into the
+    station's row as if it were fine — "registered", no push ever arriving,
+    and the station posting every event at itself (review, 2026-11-15).
+
+    One exception, because it can genuinely work: a station we ourselves
+    reach on a loopback address shares this machine, and localhost may mean
+    the same place to both of us. That is not ours to refuse.
+    """
+    from urllib.parse import urlsplit
+
+    import settings as settings_store
+
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+        station_host = urlsplit(settings_store.station_base_url()).hostname
+    except ValueError:
+        return None                 # malformed: the station's own validation
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        # Not a URL we can read a host out of. The station validates the
+        # address and says what is wrong with it in its own words; guessing
+        # "loopback" here would replace a precise refusal with a wrong one.
+        return None
+    if not _is_loopback_host(host):
+        return None
+    if station_host and _is_loopback_host(station_host):
+        return None
+    if os.environ.get("CALLIN_HOOK_URL"):
+        fix = ("set HOST_IP in .env to this machine's LAN address (compose "
+               "builds CALLIN_HOOK_URL from it), or set CALLIN_HOOK_URL to an "
+               "address the station can reach, then recreate the web service")
+    else:
+        fix = ("this machine reported no LAN address, so set CALLIN_HOOK_URL "
+               f"to http://<this machine's LAN address>:{PORT}/hooks/station")
+    return (f"not registered: the receiver address {url} points at the "
+            f"station's own machine, not this one, so its pushes would never "
+            f"arrive — {fix}")
 
 
 

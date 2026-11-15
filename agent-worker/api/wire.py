@@ -12,6 +12,7 @@ import logging
 import os
 
 from aiohttp import web
+from aiohttp.web_log import AccessLogger
 
 log = logging.getLogger("callin.token")
 
@@ -76,6 +77,31 @@ def origin_allowed(request: web.Request) -> bool:
     return origin.split("://", 1)[-1] == host
 
 
+# WHAT A PAGE ON ANOTHER ORIGIN CAN ACTUALLY DO, said plainly because the
+# allowlist above reads as if it granted more (review, 2026-11-15).
+#
+# The two values below are the whole grant: a preflighted request may carry
+# `Content-Type` and be a POST. Neither X-Call-Key nor X-Admin-Key is on the
+# list, so a browser will not let a cross-origin page send a guest code or an
+# admin password to this service AT ALL — no keyed call, no panel request, no
+# GET with a custom header. What an allowed origin's own script gets is:
+#
+#   * a "simple" GET with no custom headers and a readable answer — in
+#     practice `GET /live`, which is what embed.js asks to name who is on air
+#     before the frame is opened;
+#   * an unkeyed JSON POST, i.e. /token on a line that is open to anyone.
+#
+# Everything else an embed does — typing the code, signing in, the call
+# itself — happens INSIDE the iframe, which is this service's own origin and
+# never touches CORS. That is the supported shape: an embed is a frame onto
+# `/` plus one simple GET, not a cross-origin API client. Adding a key header
+# here would turn every allowed origin into somewhere the admin password may
+# be typed, so the values are pinned (TestCrossOriginUseIsAFrameAndOneGet):
+# changing them is a decision, not a tidy-up.
+CORS_ALLOW_HEADERS = "Content-Type"
+CORS_ALLOW_METHODS = "POST, OPTIONS"
+
+
 def _cors(request: web.Request, resp: web.StreamResponse) -> web.StreamResponse:
     origin = request.headers.get("Origin", "")
     allowed = allowed_origins()
@@ -83,8 +109,8 @@ def _cors(request: web.Request, resp: web.StreamResponse) -> web.StreamResponse:
         resp.headers["Access-Control-Allow-Origin"] = origin or "*"
     elif origin in allowed:
         resp.headers["Access-Control-Allow-Origin"] = origin
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = CORS_ALLOW_HEADERS
+    resp.headers["Access-Control-Allow-Methods"] = CORS_ALLOW_METHODS
     return resp
 
 
@@ -115,6 +141,32 @@ async def handle_options(request: web.Request) -> web.Response:
     return _cors(request, web.Response(status=204))
 
 
+def is_local_address(peer: str | None) -> bool | None:
+    """Loopback or private: True. A public address: False. Not an address at
+    all: None.
+
+    The one spelling of "is this peer on our side of the router". The mint
+    log's same-network label (api/tokens._network_of) had its own, by string
+    prefix, and the prefixes missed things `ipaddress` knows — an IPv6 unique
+    local address outside `fd…`, IPv4 link-local — so the two could describe
+    one caller two ways (review, 2026-11-15).
+
+    100.64.0.0/10 (carrier-grade NAT, and what Tailscale hands out) is
+    deliberately NOT local here: `ipaddress` does not call it private, and
+    this answer feeds a trust decision below, where "shared by strangers" is
+    the honest reading of that range.
+    """
+    import ipaddress
+
+    if not peer:
+        return None
+    try:
+        addr = ipaddress.ip_address(peer.strip().strip("[]"))
+    except ValueError:
+        return None
+    return bool(addr.is_loopback or addr.is_private)
+
+
 # Which immediate peers are allowed to speak for someone else — that is, whose
 # X-Forwarded-For we believe. Comma-separated addresses or CIDRs.
 #
@@ -135,7 +187,7 @@ def _peer_is_a_trusted_proxy(peer: str | None) -> bool:
     except ValueError:
         return False
     if not _TRUSTED_PROXIES_RAW:
-        return addr.is_loopback or addr.is_private
+        return bool(is_local_address(peer))
     for entry in _TRUSTED_PROXIES_RAW.split(","):
         entry = entry.strip()
         if not entry:
@@ -211,4 +263,88 @@ def _auth_key(request: web.Request) -> str:
     """
     if _TRUSTED_PROXIES_RAW and _peer_is_a_trusted_proxy(request.remote):
         return _caller_key(request)
+    _hint_an_unnamed_proxy(request)
     return (request.remote or "unknown")
+
+
+# Said once per process, then never again: this fires on a request, and a line
+# a stranger can make us print on demand is a way to fill the log.
+_proxy_hint_given = False
+
+
+def _hint_an_unnamed_proxy(request: web.Request) -> None:
+    """Warn that the lockout is keyed on a proxy's address, the first time it
+    visibly is.
+
+    The default trust is right and stays as it is — believing a forwarded
+    address from any private peer would let a LAN client pick its own lockout
+    bucket. But the cost of the safe default was silent: behind the bundled
+    Caddy with CALLIN_TRUSTED_PROXIES blank, every caller is the proxy as far
+    as the lockout can tell, so one person's wrong codes lock out everybody,
+    the operator included, and nothing anywhere said why (review,
+    2026-11-15). A private or loopback peer that SENDS X-Forwarded-For is
+    what a reverse proxy looks like, so that is the moment to say it — naming
+    the peer, because that address is the value to set.
+
+    A list that is set but does not cover the peer gets the same line: a
+    container that came back on a new address leaves yesterday's value naming
+    nobody, which is the blank case again with a setting that looks done.
+    """
+    global _proxy_hint_given
+    if _proxy_hint_given:
+        return
+    if not request.headers.get("X-Forwarded-For"):
+        return
+    peer = request.remote
+    if not is_local_address(peer):
+        return
+    _proxy_hint_given = True
+    log.warning(
+        "a request arrived from %s carrying X-Forwarded-For, and "
+        "CALLIN_TRUSTED_PROXIES %s. If %s is your reverse proxy (the bundled "
+        "Caddy is one), every caller behind it shares ONE lockout counter: a "
+        "few wrong codes from anyone lock out everyone, the panel included. "
+        "Set CALLIN_TRUSTED_PROXIES=%s on the web service and recreate it. "
+        "If nothing of yours forwards requests from that address, ignore "
+        "this — the header is not believed.",
+        peer,
+        (f"is {_TRUSTED_PROXIES_RAW!r}, which does not cover it"
+         if _TRUSTED_PROXIES_RAW else "is not set"),
+        peer, peer)
+
+
+class _SeenThroughTheProxy:
+    """A request whose `remote` is the caller rather than the proxy, for the
+    access log's `%a` and nothing else."""
+
+    __slots__ = ("_request", "remote")
+
+    def __init__(self, request, remote: str) -> None:
+        self._request = request
+        self.remote = remote
+
+    def __getattr__(self, name: str):
+        return getattr(self._request, name)
+
+
+class ClientAccessLogger(AccessLogger):
+    """The access log, naming the caller instead of the proxy in front of them.
+
+    aiohttp's `%a` is the socket peer, so behind a reverse proxy every line
+    began with the proxy's own address and the log could not say who a
+    request came from — while the lockout warnings beside it ("auth: 203.0…
+    banned") named somebody else entirely. This shows the address the
+    lockout keys on (_auth_key): the forwarded caller when
+    CALLIN_TRUSTED_PROXIES vouches for the peer, the socket otherwise. A
+    header from an unnamed peer is not believed here either, or a client
+    could write itself into the log as anyone (review, 2026-11-15).
+    """
+
+    def log(self, request, response, time: float) -> None:
+        try:
+            client = _auth_key(request)
+            if client and client != request.remote:
+                request = _SeenThroughTheProxy(request, client)
+        except Exception:                                     # noqa: BLE001
+            pass                    # an access line is never worth a 500
+        super().log(request, response, time)

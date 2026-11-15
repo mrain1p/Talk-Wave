@@ -22,7 +22,6 @@ from aiohttp import web
 
 import settings as settings_store
 from api.auth import _write_allowed
-from api.env import PORT
 from api.wire import _cors, refused
 from log_setup import describe
 from api.hook_receiver import (  # noqa: F401  (shared state, one-way; the
@@ -35,7 +34,9 @@ from api.hook_receiver import (  # noqa: F401  (shared state, one-way; the
     _hook_events,
     _hook_state,
     _load_hook_secret,
+    _loopback_receiver,
     _mint_hook_secret,
+    _receiver_url,
     _secret_path,
     _store_hook_secret,
     handle_hooks_recent,
@@ -84,24 +85,6 @@ _MAX_ATTEMPTS = 5
 # out `/state` reads during a live call. A button that takes a few seconds
 # longer is cheaper than a row that reports a network fault there isn't one.
 _DELIVERY_WAIT = 8.0
-
-def _lan_ip() -> str:
-    """The address the NAS can reach this box on — NOT localhost."""
-    import socket
-
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
-    except Exception:
-        return "127.0.0.1"
-    finally:
-        s.close()
-
-
-def _receiver_url() -> str:
-    return os.environ.get("CALLIN_HOOK_URL") or f"http://{_lan_ip()}:{PORT}/hooks/station"
-
 
 def _admin_client(user: str, password: str) -> httpx.AsyncClient:
     """A client for the station's admin API, pointed at the station we are
@@ -296,14 +279,9 @@ def register_enabled() -> bool:
         "0", "false", "off", "no")
 
 
-async def register_station_webhook() -> None:
-    """Register our receiver with the station, idempotently.
-
-    The write shape is `{"webhooks": [...]}` — the whole list, replaced
-    atomically. It is the only shape there has ever been: the handler reads
-    `req.body.webhooks` and nothing else, so the flat `{"url", "events"}` this
-    used to try first was accepted with a 200 and quietly changed nothing.
-    """
+def _ready_to_register() -> tuple[str, str, str] | None:
+    """(user, password, receiver url) when a registration may be attempted;
+    None when it may not, with the reason left in the panel's hooks row."""
     from station_config import admin_credentials
 
     if not register_enabled():
@@ -313,14 +291,37 @@ async def register_station_webhook() -> None:
             "registration is switched off on this instance "
             "(CALLIN_HOOK_REGISTER=0) — it will not claim the station's "
             "push address, and the air guard runs on the 4s poll"))
-        return
-
+        return None
     user, password = admin_credentials()
     if not (user and password):
         _hook_state["detail"] = "no admin credentials"
-        return
-
+        return None
     url = _receiver_url()
+    unreachable = _loopback_receiver(url)
+    if unreachable:
+        # Refused before the station is asked (review, 2026-11-15). A
+        # configured address stays wrong until it is changed, so that stands
+        # down at once; a derived one may be a network not up yet, and gets
+        # the few goes a station that is merely down gets.
+        _hook_state.update(registered=False, url=url, id=HOOK_ID)
+        _stand_down(unreachable,
+                    permanent=bool(os.environ.get("CALLIN_HOOK_URL")))
+        return None
+    return user, password, url
+
+
+async def register_station_webhook() -> None:
+    """Register our receiver with the station, idempotently.
+
+    The write shape is `{"webhooks": [...]}` — the whole list, replaced
+    atomically. It is the only shape there has ever been: the handler reads
+    `req.body.webhooks` and nothing else, so the flat `{"url", "events"}` this
+    used to try first was accepted with a 200 and quietly changed nothing.
+    """
+    ready = _ready_to_register()
+    if not ready:
+        return
+    user, password, url = ready
     station = settings_store.station_base_url()
     _hook_state.update(url=url, id=HOOK_ID)
 

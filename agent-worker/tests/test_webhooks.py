@@ -10,7 +10,8 @@ import json
 import os
 import unittest
 
-from tests.support import _TempStores
+import settings as settings_store
+from tests.support import REPO, _TempStores
 
 
 class _FakeResponse:
@@ -205,6 +206,121 @@ class TestOurWebhookRowKeepsItsIdentity(_StationWebhooks):
         self.register(station)
         self.assertEqual(len(station.rows), 1, station.rows)
         self.assertEqual(station.rows[0]["id"], self.hooks.HOOK_ID)
+
+
+class TestALoopbackReceiverIsNotRegistered(_StationWebhooks):
+    """A webhook address is dialled BY THE STATION, so `localhost` in it is
+    the station's own machine.
+
+    It got there quietly two ways: compose builds CALLIN_HOOK_URL from HOST_IP
+    and a blank HOST_IP makes `http://localhost:8100/hooks/station`, and the
+    derived address falls back to 127.0.0.1 on a box with no route yet. Either
+    was written into the station's row as if it were fine — "registered", no
+    push ever arriving, the station posting every event at itself (review,
+    2026-11-15). Now the row is not written and the hooks row says what to set.
+    """
+
+    def setUp(self):
+        super().setUp()
+        # A station somewhere else on the network — the ordinary deployment.
+        settings_store.save({"station_base_url": "http://192.0.2.50:7700/api"})
+
+    def _register_at(self, url):
+        os.environ["CALLIN_HOOK_URL"] = url
+        return self.register(_FakeStation())
+
+    def test_a_localhost_address_is_refused_and_says_what_to_set(self):
+        station = self._register_at("http://localhost:8100/hooks/station")
+        self.assertEqual(station.writes, [], "a loopback receiver was registered")
+        state = self.hooks._hook_state
+        self.assertFalse(state["registered"])
+        self.assertIn("http://localhost:8100/hooks/station", state["detail"])
+        self.assertIn("HOST_IP", state["detail"])
+        self.assertIn("CALLIN_HOOK_URL", state["detail"])
+
+    def test_every_spelling_of_this_machine_is_caught(self):
+        for url in ("http://127.0.0.1:8100/hooks/station",
+                    "http://127.8.9.1:8100/hooks/station",
+                    "http://[::1]:8100/hooks/station",
+                    "http://0.0.0.0:8100/hooks/station",
+                    "http://LocalHost.:8100/hooks/station",
+                    "http://web.localhost:8100/hooks/station",
+                    "http://:8100/hooks/station"):
+            with self.subTest(url=url):
+                self.hooks._hook_state.update(registered=False, detail="")
+                self.hooks._hook_state.pop("gave_up", None)
+                station = self._register_at(url)
+                self.assertEqual(station.writes, [])
+                self.assertIn("not registered", self.hooks._hook_state["detail"])
+
+    def test_a_configured_address_stands_down_at_once(self):
+        # It stays wrong until somebody changes it, so the warm tick must not
+        # come back to it every 45 seconds.
+        self._register_at("http://localhost:8100/hooks/station")
+        self.assertTrue(self.hooks._hook_state.get("gave_up"))
+        self.assertFalse(self.hooks._registration_due())
+
+    def test_a_derived_address_gets_a_few_goes_first(self):
+        # No CALLIN_HOOK_URL: the address came from this machine's own route,
+        # and "no route yet" at boot is a thing that fixes itself.
+        from unittest import mock
+
+        from api import hook_receiver
+
+        os.environ.pop("CALLIN_HOOK_URL", None)
+        with mock.patch.object(hook_receiver, "_lan_ip", lambda: "127.0.0.1"):
+            station = self.register(_FakeStation())
+            self.assertEqual(station.writes, [])
+            self.assertFalse(self.hooks._hook_state.get("gave_up"))
+            self.assertTrue(self.hooks._registration_due())
+            self.assertIn("set CALLIN_HOOK_URL", self.hooks._hook_state["detail"])
+            for _ in range(self.hooks._MAX_ATTEMPTS):
+                self.register(_FakeStation())
+            self.assertTrue(self.hooks._hook_state.get("gave_up"))
+        # And when the network turns up, the same call registers.
+        with mock.patch.object(hook_receiver, "_lan_ip", lambda: "192.0.2.7"):
+            self.hooks._hook_state.pop("gave_up", None)
+            station = self.register(_FakeStation())
+        self.assertEqual(len(station.writes), 1)
+        self.assertTrue(self.hooks._hook_state["registered"])
+
+    def test_a_row_that_was_good_is_no_longer_called_registered(self):
+        self._register_at("http://192.0.2.7:8100/hooks/station")
+        self.assertTrue(self.hooks._hook_state["registered"])
+        self._register_at("http://localhost:8100/hooks/station")
+        self.assertFalse(self.hooks._hook_state["registered"])
+
+    def test_a_station_on_this_machine_may_be_told_localhost(self):
+        # The one case it can work: we reach the station on loopback too, so
+        # localhost may mean the same place to both of us.
+        settings_store.save({"station_base_url": "http://127.0.0.1:7700/api"})
+        station = self._register_at("http://localhost:8100/hooks/station")
+        self.assertEqual(len(station.writes), 1)
+        self.assertTrue(self.hooks._hook_state["registered"])
+
+    def test_a_real_address_or_a_real_name_registers_as_before(self):
+        for url in ("http://192.168.1.10:8100/hooks/station",
+                    "https://call.example.com/hooks/station",
+                    "http://talkwave-web:8100/hooks/station"):
+            with self.subTest(url=url):
+                station = self._register_at(url)
+                self.assertEqual(len(station.writes), 1)
+                self.assertEqual(station.rows[-1]["url"], url)
+
+    def test_an_address_that_is_not_a_url_is_left_for_the_station_to_refuse(self):
+        # No scheme means no host to judge. The station validates the address
+        # and names the fault itself; calling it "loopback" would be a guess.
+        for url in ("192.168.1.10:8100/hooks/station", "hooks/station"):
+            with self.subTest(url=url):
+                station = self._register_at(url)
+                self.assertEqual(len(station.writes), 1)
+
+    def test_the_shipped_compose_is_the_shape_this_catches(self):
+        # The default is what makes the fix necessary; if compose stops
+        # deriving a localhost address, this class's docstring is out of date.
+        compose = (REPO / "docker-compose.yaml").read_text(encoding="utf-8")
+        self.assertIn("CALLIN_HOOK_URL=http://${HOST_IP:-localhost}:8100/hooks/station",
+                      compose)
 
 
 class TestOtherWebhookRowsSurviveOurRegistration(_StationWebhooks):
