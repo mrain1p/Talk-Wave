@@ -796,7 +796,13 @@
     // their photograph. Three ways of saying it is not three times as clear.
     // The doors are still WORKED OUT above, because the headline is derived
     // from them — a line nobody can use is closed however the switch is set.
-    const anyLive = ways.some((w) => w[1]);
+    // …and never open with the booth empty. This board was only ever painted
+    // on air, so nothing here had to ask; now that the off-air card repaints
+    // it too (see paintOffAir), a text line or a machine that still answers
+    // must not put LINES ARE OPEN — and an example of what to ask the DJ —
+    // under "Nobody on air". The doors that do work off air are the buttons
+    // an inch below (review, 2026-11-15).
+    const anyLive = onAir && ways.some((w) => w[1]);
     const head = anyLive ? 'Lines are open'
       : paused ? 'Lines are closed' : 'Nobody in the booth';
     box.innerHTML = '';
@@ -1953,44 +1959,51 @@
   }
 
   function paintOffAir(reason) {
+    const offline = reason === 'offline';
     $('eyebrow').className = 'eyebrow off';
-    $('eyebrowText').textContent = reason === 'offline' ? 'Station offline' : 'Off air';
+    $('eyebrowText').textContent = offline ? 'Station offline' : 'Off air';
     // No count on a quiet or unreachable station — a number next to "Off
     // air" would be counting nobody.
     $('eyebrowListeners').hidden = true;
-    $('djName').textContent = reason === 'offline' ? 'Unreachable' : 'Nobody on air';
+    $('djName').textContent = offline ? 'Unreachable' : 'Nobody on air';
     $('djShow').textContent = '';
-    $('djTagline').textContent = reason === 'offline'
+    $('djTagline').textContent = offline
       ? 'Cannot reach the station.' : 'No DJ is live right now.';
     paintMarquee($('npTrack'), '');
     // …and the clock with it. A rail counting up under "Nobody on air" is the
     // card insisting a record is playing while it says the station is dark.
     npStart = 0; npLength = 0; paintNowPlaying();
     $('djAvatar').classList.add('hidden');
-    // Off air is exactly what the answering machine is for — but not
-    // offline: an unreachable station cannot take delivery either. And not
-    // paused: the kill switch closes the machine along with the booth, so
-    // a paused off-air line says closed rather than offering the recorder.
-    const flags = shown || live || {};
-    const paused = !!flags.callsPaused;
-    // An un-set-up line has no machine either — the server refuses the
-    // voicemail mint along with everything else until a password exists.
-    const unset = !!flags.needsSetup;
-    const vmButton = vmPolicy() !== 'never' && reason !== 'offline' && !paused
-      && !unset && !!(framed ? flags.embedVmBtn : flags.vmBtn);
-    $('vmBtn').hidden = !vmButton || !!room;
-    callBtn.dataset.vm = '';
-    if (reason !== 'offline' && !paused && !unset
-        && vmPolicy() !== 'never' && !room && !vmButton) {
-      callBtn.disabled = false;
-      callBtn.dataset.vm = '1';
-      callBtn.textContent = 'Leave a message';
-      return;
-    }
-    callBtn.disabled = true;
-    callBtn.textContent = unset && reason !== 'offline' ? 'Line not set up'
-      : paused && reason !== 'offline' ? word('closed', 'Line closed')
-      : reason === 'offline' ? 'Station offline' : 'Nobody to call';
+    // A WHOLE PAINT, NOT THE TOP THIRD OF ONE (review, 2026-11-15). This
+    // stopped at the identity lines and two buttons, and paintLive returns
+    // the moment it has run — so a card left open through a show ending kept
+    // everything the on-air paint had drawn below them: the last DJ's
+    // initials in the ring, ON THE STATION over an empty title, a heart for
+    // a record that had stopped, the ON AIR | OFF AIR switch and its stage,
+    // Text the booth, and LINES ARE OPEN with an example of what to ask.
+    // Every band the on-air paint touches is answered here, by the same
+    // painters, so the two cannot drift again.
+    if ($('djMono')) $('djMono').classList.add('hidden');
+    const band = document.querySelector('.stationrow');
+    if (band) band.hidden = true;
+    showWhenLoaded($('npArt'), '');
+    paintCardHeart({ cardLike: false });
+    // The doors come from the ONE painter the on-air card uses, told the
+    // booth is empty. The copy that used to live here wrote "Leave a
+    // message" as bare text, so the operator's wording and word/icon choice
+    // were ignored exactly when the machine is the only door; and it asked
+    // neither whether the line wants a code nor whether this caller's tier
+    // reaches the machine, so a gated line offered a door the mint refuses.
+    // `shown`, not the payload a failed poll never delivered: an outage
+    // paints from the last truth with the two facts that changed.
+    const d = Object.assign({}, shown || live || {},
+                            { onAir: false, reachable: !offline });
+    if (!room) paintIdleButtons(d);
+    // The gate, too: a private line is private off air, and the code is what
+    // opens the machine on one.
+    paintGuestGate();
+    updateMicHelp();
+    paintIdleLine(d);
   }
 
   // The idle card's buttons, painted from one place — the 20s poll AND the
@@ -2010,6 +2023,17 @@
 
   function paintIdleButtons(d) {
     if (room) return;
+    // OFF AIR IS A STATE OF THESE BUTTONS, NOT A SECOND PAINTER (review,
+    // 2026-11-15). paintOffAir used to keep its own copy of the door rules,
+    // and the copy had drifted: no setBtn, no wording, no door code, no
+    // tier. Both stations now arrive here — the on-air card with the /live
+    // payload, the off-air card with the same payload saying nobody is in —
+    // and the refusal paths, which always called this whatever was on air,
+    // stop repainting an on-air row over an empty booth. `=== false`, so a
+    // payload that does not say (an older server, a card that has not read
+    // /live yet) paints exactly as it always did.
+    const offline = d.reachable === false;
+    const offAir = offline || d.onAir === false;
     // First-run: the server refuses every mint until an admin password
     // exists (0.10.78), so every door here is honestly dead — one disabled
     // button, and the setup ask above it says what opens the line.
@@ -2019,7 +2043,7 @@
       callBtn.hidden = false;
       callBtn.disabled = true;
       callBtn.dataset.vm = '';
-      callBtn.textContent = 'Line not set up';
+      callBtn.textContent = offline ? 'Station offline' : 'Line not set up';
       return;
     }
     const needsCode = !!d.guestRequired && !callKey();
@@ -2057,9 +2081,12 @@
     // "several times it wouldn't let me" (operator, signed out on their own
     // phone, 2026-08-18). `mine` is per-request truth from /live; absent
     // means an older server, which keeps the old behaviour.
+    // …and never with the booth empty: the door probe answers for the mixer,
+    // not for whether a show is on, and a route to a broadcast nobody is
+    // making is not a route.
     const onAirHere = (callsLive || vmGoesLive)
       && !lineClosedNow && !needsCode && !vmOnly
-      && oaDoors.mine !== false;
+      && oaDoors.mine !== false && !offAir;
     if (!onAirHere) onAirPick = false;
     // The 4c word switch (design handoff, 2026-08-17): route is the single
     // source of truth, and the segment, the stage frame, the stage message
@@ -2082,7 +2109,9 @@
     // The operator can put the machine on the card as its own button,
     // per surface. With the button up, Call never morphs — two clear
     // doors beat one door with a changing sign.
-    const vmButton = machineOn && !lineClosedNow
+    // Off air is exactly what the machine is for — but not offline: an
+    // unreachable station cannot take delivery either.
+    const vmButton = machineOn && !lineClosedNow && !offline
       && !!(framed ? d.embedVmBtn : d.vmBtn) && !needsCode
       && d.voicemailMine !== false;
     $('vmBtn').hidden = !vmButton;
@@ -2093,7 +2122,11 @@
     // The text line's door, same rules as the machine's: the kill switch
     // outranks it, the door code gates it, and it is per-surface. Never
     // hidden mid-chat — the input row is the conversation.
-    const chatButton = !!d.chatEnabled && !lineClosedNow
+    // And not off air. The server would still open the socket, but there is
+    // no DJ in the booth to text — offering it under "Nobody on air" needs a
+    // decision on the server about who answers, not a button (review,
+    // 2026-11-15).
+    const chatButton = !!d.chatEnabled && !lineClosedNow && !offAir
       && !!(framed ? d.embedChatBtn : d.chatBtn) && !needsCode
       && d.chatMine !== false;
     if ($('chatBtn')) {
@@ -2107,13 +2140,19 @@
     // every repaint, which is where every other word on the card is decided.
     const sendBtn = $('chatSendBtn');
     if (sendBtn) sendBtn.textContent = word('send', 'Send');
-    if (lineClosedNow) {
+    if (offline) {
+      // Nothing answers, the machine included, whatever the switches say.
+      callBtn.disabled = true;
+      callBtn.textContent = 'Station offline';
+    } else if (lineClosedNow) {
       // A closed line is a deliberate state, not a fault: one disabled
       // button, and the status line under the card says the booth is not
       // taking calls — before asking for a code that would open nothing.
       callBtn.disabled = true;
       callBtn.textContent = word('closed', 'Line closed');
-    } else if (needsCode) {
+    } else if (needsCode && (!offAir || machineOn)) {
+      // Off air the code is only worth asking for when the machine is
+      // behind it; otherwise the honest word is the one further down.
       callBtn.disabled = true;
       callBtn.textContent = 'Enter the code';
     } else if (vmOnly && vmButton) {
@@ -2121,13 +2160,18 @@
       // Call button here can only ring out into a refusal — which is
       // exactly what the operator watched happen.
       callBtn.hidden = true;
-    } else if (vmHere && !vmButton) {
+    } else if (vmHere && !vmButton && !(offAir && d.voicemailMine === false)) {
+      // (Off air, a caller whose tier does not reach the machine is not
+      // shown its door — the mint would refuse them.)
       callBtn.disabled = false;
       callBtn.dataset.vm = '1';
       setBtn(callBtn, 'vm', 'mail',
              onAirHere && onAirPick && vmGoesLive
                ? word('vm_button_live', 'Record for air')
                : word('vm_button', 'Leave a message'));
+    } else if (offAir) {
+      callBtn.disabled = true;
+      callBtn.textContent = 'Nobody to call';
     } else {
       callBtn.disabled = false;
       // The route re-labels and re-dresses the one door rather than adding
@@ -2144,6 +2188,44 @@
                : onAirHere ? word('call_offair', 'Call the booth')
                : callLabel());
     }
+  }
+
+  // What the line box says while nobody is on it: the sentence, then the
+  // board. Lifted out of paintLive so the off-air card says the same things
+  // from the same place — it used to return before reaching them, and a
+  // stale "Station responding slowly" or LINES ARE OPEN stayed up for as
+  // long as the station was quiet (review, 2026-11-15).
+  //
+  // Several station reads in a row have failed server-side: the card
+  // still paints from cache, but the operator should see it's limping
+  // rather than discovering thin prompts later.
+  // `!inConversation()` and not just `!room`: the soundbite studio holds
+  // no room, so the poll blanked its instruction line 20s in and painted
+  // the idle board over a caller mid-take (operator's screenshot,
+  // 2026-08-17). The studio's own status writes are not the poll's to
+  // overwrite.
+  function paintIdleLine(d) {
+    if (room || inConversation()) return;
+    if (d.degraded) {
+      setStatus('Station responding slowly — some info may be stale', 'connecting');
+    } else if (lineClosedNow) {
+      // A closed line explains itself in a sentence, not just a dead
+      // button — "Line closed" alone left callers wondering whose fault
+      // it was. Deliberate state, quiet colour, never 'error'.
+      setStatus("The booth isn't taking calls at the moment", '');
+    } else if (!statusHeld) {
+      // A voicemail-only line SAYS so under the card. `message_only` has
+      // a schema entry, a panel field, a /live slot and a preview in the
+      // panel, and nothing on the card had ever read it — the operator
+      // could write their wording for the state and watch it land
+      // nowhere (2026-09-17).
+      //
+      // The !statusHeld guard is the other half of the same line: this
+      // is the setStatus('') that used to wipe 'Call ended' one poll
+      // after it was written.
+      setStatus(vmOnlyNow ? word('message_only', 'Message only') : '');
+    }
+    paintBoard(d);
   }
 
   // When /live last answered. A phone throttles background timers to
@@ -2491,36 +2573,9 @@
       paintGuestGate();
       updateMicHelp();
 
-      // Several station reads in a row have failed server-side: the card
-      // still paints from cache, but the operator should see it's limping
-      // rather than discovering thin prompts later.
-      // `!inConversation()` and not just `!room`: the soundbite studio holds
-      // no room, so the poll blanked its instruction line 20s in and painted
-      // the idle board over a caller mid-take (operator's screenshot,
-      // 2026-08-17). The studio's own status writes are not the poll's to
-      // overwrite.
-      if (!room && !inConversation()) {
-        if (d.degraded) {
-          setStatus('Station responding slowly — some info may be stale', 'connecting');
-        } else if (lineClosedNow) {
-          // A closed line explains itself in a sentence, not just a dead
-          // button — "Line closed" alone left callers wondering whose fault
-          // it was. Deliberate state, quiet colour, never 'error'.
-          setStatus("The booth isn't taking calls at the moment", '');
-        } else if (!statusHeld) {
-          // A voicemail-only line SAYS so under the card. `message_only` has
-          // a schema entry, a panel field, a /live slot and a preview in the
-          // panel, and nothing on the card had ever read it — the operator
-          // could write their wording for the state and watch it land
-          // nowhere (2026-09-17).
-          //
-          // The !statusHeld guard is the other half of the same line: this
-          // is the setStatus('') that used to wipe 'Call ended' one poll
-          // after it was written.
-          setStatus(vmOnlyNow ? word('message_only', 'Message only') : '');
-        }
-        paintBoard(d);
-      }
+      // The sentence and the board — see paintIdleLine, which the off-air
+      // card shares.
+      paintIdleLine(d);
     } catch (e) {
       // A repaint that throws must not take the poll down with it — the next
       // one would never be scheduled and the card would be frozen on
