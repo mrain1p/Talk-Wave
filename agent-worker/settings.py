@@ -781,7 +781,13 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "call_button_mode":      (None, "default"),
     # The card's fixed strings, blank = the built-in. All of them take
     # {station}, {dj}, {show}, {track} and {tagline}, filled live.
-    "word_ringing":          (None, ""),
+    #
+    # word_ringing is gone (review, 2026-11-15): the card lost its Ringing
+    # phase when Hang up replaced the Call button at the press, so nothing
+    # had read the override since and the panel was offering a box that did
+    # nothing. A store that still carries the key needs no migration — load()
+    # walks FIELDS, so a retired key is simply never read, and it stays in
+    # the file untouched for a rollback.
     "word_answering":        (None, ""),
     "word_online":           (None, ""),
     "word_recording":        (None, ""),

@@ -285,11 +285,10 @@ def look_payload(cfg: dict, persona_name: str = "") -> dict:
         # the widget, so a blank costs nothing on the wire.
         "wording": {
             k[len("word_"):]: str(cfg.get(k) or "")
-            for k in ("word_ringing", "word_answering", "word_online",
-                      "word_recording", "word_hangup", "word_vm_button",
-                      "word_ptt", "word_closed", "word_message_only",
-                      "word_send", "word_connecting", "word_waiting",
-                      "word_ended")
+            for k in ("word_answering", "word_online", "word_recording",
+                      "word_hangup", "word_vm_button", "word_ptt",
+                      "word_closed", "word_message_only", "word_send",
+                      "word_connecting", "word_waiting", "word_ended")
             if cfg.get(k)
         },
         # Whether the transcript labels the DJ's lines with their name.

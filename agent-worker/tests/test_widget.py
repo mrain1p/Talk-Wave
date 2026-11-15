@@ -257,6 +257,101 @@ class TestPanelMarkup(unittest.TestCase):
         self.assertFalse(strays, f"settings in an unknown group: {strays}")
 
 
+class TestEveryLineHasATileThatIsPainted(unittest.TestCase):
+    """The dashboard's Lines row pairs each door with a tile for the traffic
+    it produced. The Text line's tile shipped with markup and no painter: it
+    read "—" for ever and docs/dashboard.md documented the dash, while the
+    chats themselves were being counted on the Calls tile, whose filter was
+    "not a voicemail" (review, 2026-11-15)."""
+
+    def setUp(self):
+        html = (REPO / "web-widget" / "panel.html").read_text(encoding="utf-8")
+        js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        row = html.split('<div class="doorrow">')[1].split(
+            "<!-- The Live-on-air cluster")[0]
+        self.tiles = re.findall(r'class="tile" id="(tile\w+)"', row)
+        self.painter = js.split("async function paintNightTile()")[1].split(
+            "\n  function tile(")[0]
+        self.ok, self.failed = self.painter.split("} catch (e) {")
+
+    def test_the_scan_found_the_three_lines(self):
+        self.assertEqual(["tileCalls", "tileVm", "tileChat"], self.tiles)
+
+    def test_every_tile_is_painted_signed_in_and_signed_out(self):
+        for tile in self.tiles:
+            with self.subTest(tile=tile):
+                self.assertIn(f"'{tile}'", self.ok,
+                              f"{tile} is never painted from the records")
+                self.assertIn(f"tile('{tile}', '\\u2014'", self.failed,
+                              f"{tile} keeps a stale count when the read fails")
+
+    def test_every_tile_jumps_somewhere(self):
+        for tile in self.tiles:
+            with self.subTest(tile=tile):
+                self.assertRegex(self.ok, rf"\$\('{tile}'\)\.onclick = jumpTo\w+;")
+        # The chats are filed with the calls, so they open the same viewer.
+        self.assertIn("$('tileChat').onclick = jumpToRecords;", self.ok)
+
+    def test_a_chat_is_counted_as_a_chat_and_not_as_a_call_too(self):
+        # No fetch of its own: the same /calls read the other two tiles use.
+        self.assertEqual(1, self.painter.count("afetch("))
+        self.assertIn("calls.filter((c) => c.kind === 'chat')", self.ok)
+        lives = self.ok.split("const lives = ")[1].split(";")[0]
+        self.assertIn("c.kind !== 'chat'", lives,
+                      "the Calls tile still counts the text exchanges")
+        self.assertIn("c.kind !== 'voicemail'", lives)
+
+    def test_the_docs_no_longer_describe_a_dash(self):
+        doc = (REPO / "docs" / "dashboard.md").read_text(encoding="utf-8")
+        row = next(line for line in doc.splitlines()
+                   if line.startswith("| **Text line**"))
+        self.assertNotRegex(row, r"\|\s*—\s*\|\s*$")
+        self.assertIn("text exchanges", row)
+
+
+class TestThePanelThemeButtonSaysWhatItDoesAndUsesTheSharedJar(unittest.TestCase):
+    """Two small disagreements on one button (review, 2026-11-15). The markup
+    comment said the icon is the cycle's NEXT stop, two months after the
+    painter was changed to show the theme you are ON — the next reader would
+    have "fixed" the painter back. And the cycle read and wrote
+    `localStorage.` by hand beside shared.js's probed `store`, which boots
+    the theme from the same key: its first read runs while panel.js is still
+    loading, so where storage is refused it throws and nothing after it in
+    the file is bound."""
+
+    def setUp(self):
+        self.html = (REPO / "web-widget" / "panel.html").read_text(
+            encoding="utf-8")
+        self.js = (REPO / "web-widget" / "panel.js").read_text(encoding="utf-8")
+        region = self.js.split("// ------------------------------------------------------- theme cycle")[1]
+        self.cycle = region.split("// ----------------------------------------------------- settings search")[0]
+
+    def test_the_markup_comment_agrees_with_the_painter(self):
+        comment = self.html.split('id="themeBtn"')[0].rsplit("<!--", 1)[1]
+        self.assertIn("the theme you are ON", comment)
+        self.assertNotIn("The icon is the cycle's NEXT stop", comment)
+        # What the comment now describes: the glyph is looked up by `here`.
+        self.assertRegex(self.cycle, r"'': THEME_ICONS\.device \}\[here\]\)")
+
+    def test_the_cycle_never_touches_storage_bare_handed(self):
+        code = re.sub(r"//[^\n]*", "", self.cycle)
+        self.assertGreater(code.count("'callinTheme'"), 3,
+                           "the scan lost the theme cycle")
+        for jar in ("localStorage", "sessionStorage"):
+            with self.subTest(jar=jar):
+                self.assertNotIn(jar, code)
+        self.assertEqual(code.count("'callinTheme'"),
+                         len(re.findall(r"\bstore\.(?:get|set|remove)Item\("
+                                        r"'callinTheme'", code)))
+
+    def test_the_jar_is_the_one_shared_js_publishes(self):
+        taken = self.js.split("} = window.Callin;")[0].split("const {")[1]
+        self.assertRegex(taken, r"\bstore\b")
+        shared = (REPO / "web-widget" / "shared.js").read_text(encoding="utf-8")
+        self.assertIn("const store = safeStorage('localStorage');", shared)
+        self.assertRegex(shared.split("  return {")[-1], r"\bstore\b")
+
+
 class TestPanelLoadsOnOpen(unittest.TestCase):
     """Opening the panel must actually fetch the settings.
 
