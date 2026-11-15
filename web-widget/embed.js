@@ -55,16 +55,29 @@
   }
 
   /**
+   * A host's data-skin, as the name the frame will take. Read the way
+   * shared.js applySkin reads it — trimmed, lowercased, "" and "default" both
+   * meaning the shipped card — plus a shape check, because this one travels
+   * in a URL and ends up as an attribute on the widget's own <html>. Anything
+   * that is not a plain skin name is dropped rather than passed on.
+   */
+  function skinName(raw) {
+    var name = String(raw || "").trim().toLowerCase();
+    return /^[a-z0-9][a-z0-9-]{0,31}$/.test(name) && name !== "default" ? name : "";
+  }
+
+  /**
    * The frame both modes share. One factory, because the microphone allow
    * attribute and the transparent backdrop are load-bearing and were about
    * to exist in two places.
    */
-  function makeIframe(origin, compact, theme, lockTheme, captions) {
+  function makeIframe(origin, compact, theme, lockTheme, captions, skin) {
     var iframe = document.createElement("iframe");
     iframe.src = origin + "/?compact=" + (compact ? "1" : "0")
       + (theme ? (lockTheme ? "&theme=" : "&themeDefault=")
                  + encodeURIComponent(theme) : "")
-      + (captions ? "&captions=" + encodeURIComponent(captions) : "");
+      + (captions ? "&captions=" + encodeURIComponent(captions) : "")
+      + (skin ? "&skin=" + encodeURIComponent(skin) : "");
     iframe.setAttribute("allow", "microphone");
     iframe.setAttribute("title", "Call the SUB/WAVE DJ");
     iframe.style.border = "none";
@@ -92,7 +105,7 @@
    * The trigger reads /live so it says who answers, or that the line is closed,
    * before it is pressed.
    */
-  function mountPanel(el, origin, compact, theme, lockTheme, captions, shape) {
+  function mountPanel(el, origin, compact, theme, lockTheme, captions, shape, skin) {
     var left = el.getAttribute("data-position") === "left";
     var isModal = shape === "button";
     var isDock = shape === "dock";
@@ -182,7 +195,7 @@
     }
 
     function makeAndWire() {
-      iframe = makeIframe(origin, compact, theme, lockTheme, captions);
+      iframe = makeIframe(origin, compact, theme, lockTheme, captions, skin);
       applyHeight();
       panel.appendChild(iframe);
       // A modal has a backdrop but no visible trigger behind it, so it carries
@@ -257,19 +270,45 @@
     // What the trigger promises follows the line's real state, so a closed
     // booth never dangles a button that can only refuse. Same resolution order
     // the card uses, reduced to the few words a pill has room for.
+    //
+    // It used to read the pause switch and the machine and nothing else, so
+    // it said "Call the DJ" over a card that opens on "Nobody on air", on
+    // "Station offline", or on a box asking for a code (review, 2026-11-15).
+    // `=== false` on the two station facts: a server too old to send them
+    // paints exactly the pill it always did.
+    function triggerState(d) {
+      var w = d.wording || {};
+      var machineOn = (d.voicemailWhen || "never") !== "never";
+      var closed = !!d.callsPaused || (d.liveCalls === false && !machineOn);
+      var vmOnly = machineOn && (d.voicemailWhen === "always" || d.liveCalls === false);
+      var leave = "📞 " + (w.vm_button || "Leave a message");
+      if (d.reachable === false) return { dead: true, text: "Station offline" };
+      if (closed) return { dead: true, text: w.closed || "Line closed" };
+      // The pill cannot know whether this browser already holds the code —
+      // that is stored inside the frame's origin — so it says the one thing
+      // true either way, and stays pressable: the card is where a code goes.
+      if (d.guestRequired) return { dead: false, text: "🔒 Private line" };
+      // Off air the machine is the only door, and only for a caller whose
+      // tier reaches it; with no door at all the card has nothing to offer.
+      if (d.onAir === false) {
+        return machineOn && d.voicemailMine !== false
+          ? { dead: false, text: leave }
+          : { dead: true, text: "Nobody on air" };
+      }
+      return { dead: false, text: vmOnly ? leave : "📞 " + (d.callLabel || "Call the DJ") };
+    }
+
     function paintTrigger() {
       fetch(origin + "/live").then(function (r) { return r.json(); })
         .then(function (d) {
-          var machineOn = (d.voicemailWhen || "never") !== "never";
-          var closed = !!d.callsPaused || (d.liveCalls === false && !machineOn);
-          var vmOnly = machineOn && (d.voicemailWhen === "always" || d.liveCalls === false);
-          trigger.disabled = closed;
-          s.opacity = closed ? ".6" : "";
-          trigger.textContent = closed
-            ? ((d.wording && d.wording.closed) || "Line closed")
-            : vmOnly
-            ? "📞 " + ((d.wording && d.wording.vm_button) || "Leave a message")
-            : "📞 " + (d.callLabel || "Call the DJ");
+          var st = triggerState(d);
+          // Never disabled once the frame exists: the trigger is also the
+          // only way back to a collapsed panel, and that panel may be holding
+          // a call that a show ending (or the operator pausing) must not
+          // strand out of reach of its own Hang up.
+          trigger.disabled = st.dead && !iframe;
+          s.opacity = st.dead ? ".6" : "";
+          trigger.textContent = st.text;
         }).catch(function () { /* keep the last label */ });
     }
     paintTrigger();
@@ -317,6 +356,13 @@
     // only the latest spoken line, fading after a few seconds — so the
     // widget stays short wherever it's dropped.
     var captions = el.getAttribute("data-captions") || "";
+    // data-skin="<name>" dresses the card in one of the widget's skins from
+    // its first frame, as ?skin= — the way data-theme has always travelled.
+    // shared.js has said an embed can carry the host's data-skin since the
+    // skins shipped, and nothing here ever read the attribute (review,
+    // 2026-11-15). A host that sets it has decided: the operator's own skin
+    // setting no longer applies to that frame.
+    var skin = skinName(el.getAttribute("data-skin"));
     // data-height="260px" overrides the frame height for tight layouts.
     var height = el.getAttribute("data-height") || "";
 
@@ -325,11 +371,11 @@
     // the inline card. Everything below this line is the inline card.
     var mode = el.getAttribute("data-mode") || "";
     if (mode === "launcher" || mode === "dock" || mode === "button") {
-      mountPanel(el, origin, compact, theme, lockTheme, captions, mode);
+      mountPanel(el, origin, compact, theme, lockTheme, captions, mode, skin);
       return;
     }
 
-    var iframe = makeIframe(origin, compact, theme, lockTheme, captions);
+    var iframe = makeIframe(origin, compact, theme, lockTheme, captions, skin);
     // An iframe is inline by default, which leaves a few px of baseline gap
     // under it (makeIframe sets display:block) — restoring the frame to its
     // CONTAINER's height once compounded 3px per open-and-close of the ask

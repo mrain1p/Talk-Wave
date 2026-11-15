@@ -158,15 +158,15 @@ window.Callin = (function () {
       } catch (e) { /* a corrupt cache costs one more flash, never a broken card */ }
     }
     const btn = document.getElementById('themeBtn');
-    // The glyph is the DESTINATION, not the state: a sun on a dark card
-    // ("tap for light"), a moon on a light one. The operator found the old
-    // half-circle unreadable as a control, and they were right \u2014 and later
-    // found the \u2600 glyph reading as a star, which is why these are drawn
-    // (THEME_ICONS above) rather than typed.
+    // The glyph is the theme you are ON, read off the stored choice \u2014 the
+    // rule both pages' own cycles repaint by (paintThemeGlyph, panelPaintGlyph).
+    // It drew the DESTINATION here, so the button changed its meaning when
+    // the page's script took over (review, 2026-11-15). Drawn, not typed: the
+    // \u2600 glyph read as a star (THEME_ICONS above).
     const glyph = () => {
-      const now = document.documentElement.getAttribute('data-theme')
-        || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-      if (btn) btn.innerHTML = now === 'dark' ? THEME_ICONS.light : THEME_ICONS.dark;
+      const on = store.getItem('callinTheme') || '';
+      if (btn) btn.innerHTML = ['light', 'dark', 'station'].includes(on)
+        ? THEME_ICONS[on] : THEME_ICONS.device;
     };
     glyph();
     if (!btn || forced) return;

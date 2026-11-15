@@ -17,7 +17,9 @@
      chrome in it, which is what a phone should look like. sw.js says what is
      and is not cached, and it is deliberately very little.
      Two theme-colors: the installed window's own furniture follows the same
-     light/dark the card does, rather than always being the dark one. -->
+     light/dark the card does, rather than always being the dark one. These
+     are the FIRST FRAME only: call.js (syncThemeColor) rewrites both from the
+     card's real background whenever a theme or a station palette applies. -->
 <link rel="manifest" href="/manifest.webmanifest" />
 <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)" />
 <meta name="theme-color" content="#f6f5f3" media="(prefers-color-scheme: light)" />
@@ -363,7 +365,7 @@
           <button id="vmSendBtn" type="button">Send&nbsp;to&nbsp;booth&nbsp;➤</button>
           <!-- Icon over word, so a third of a narrow card never truncates a
                verb — "RER…" reached the operator's phone. -->
-          <button id="vmPlayBtn" type="button"><span class="vico" aria-hidden="true">▶</span>Play</button>
+          <button id="vmPlayBtn" type="button" aria-pressed="false"><span class="vico" aria-hidden="true">▶</span><span id="vmPlayWord">Play</span></button>
           <button id="vmRerecBtn" type="button"><span class="vico" aria-hidden="true">↺</span>Rerecord</button>
           <button id="vmCancelBtn" type="button"><span class="vico" aria-hidden="true">✕</span>Cancel</button>
         </div>
@@ -551,6 +553,13 @@
     </div>
     <nav class="facebar" id="faceBar" hidden aria-label="Cards"><span class="faceind" id="faceInd" aria-hidden="true"></span><button type="button" class="face on" id="facePhone" aria-current="true">Phone</button><button type="button" class="face" id="facePlayer" hidden aria-current="false">Player</button><button type="button" class="face" id="faceGuide" hidden aria-current="false">Guide</button></nav>
   </div>
+  <!-- What the card SAYS, for a screen reader: the one live region on the
+       page. call.js copies the status line, the refusals, the receipts and
+       the text line's finished messages into it (see say). Off screen and
+       always rendered — the visible lines are display:none while empty, and
+       a region that is not rendered when its text arrives is not announced.
+       role="log": each new line is read once, never the whole box again. -->
+  <div class="srsay" id="srSay" role="log" aria-live="polite"></div>
 
 <script src="/shared.js"></script>
 <script src="/call.js"></script>

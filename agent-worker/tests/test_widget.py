@@ -2841,11 +2841,16 @@ class TestTheKillSwitchOutranksEveryDoor(unittest.TestCase):
         self.assertIn("The booth isn't taking calls at the moment", self.js)
 
     def test_a_paused_line_never_offers_the_machine(self):
-        # Both idle painters: the on-air card's buttons and the off-air card.
+        # ONE painter since the 2026-11-15 review: the off-air card hands its
+        # doors to paintIdleButtons instead of keeping a copy of the rules, so
+        # the kill switch is asked in one place for both.
         self.assertIn("machineOn && !lineClosedNow", self.js)
         off_air = self.js.split("function paintOffAir")[1]
         off_air = off_air[:off_air.index("function paintIdleButtons")]
-        self.assertIn("!paused", off_air)
+        self.assertIn("if (!room) paintIdleButtons(d);", off_air)
+        closed = self.js.split("function paintIdleButtons")[1].split(
+            "lineClosedNow = ")[1][:140]
+        self.assertIn("d.callsPaused", closed)
 
     def test_the_panel_greys_the_mode_cards_while_paused(self):
         self.assertIn("$(id).disabled = paused", self.panel)
@@ -5765,3 +5770,506 @@ class TestSigningOutAsksFirst(unittest.TestCase):
         self.assertIn("$('dashLogoutBtn').onclick = () => $('logoutBtn').click();",
                       self.panel_js)
 
+
+def _body(src: str, head: str, end: str = "\n  }\n") -> str:
+    """One function out of a widget script: from its opening line to the
+    first line that closes it at the same indent. Text, not a parse — there
+    is no JS toolchain here — so the head is the whole opening line."""
+    return src.split(head)[1].split(end)[0]
+
+
+def _code(src: str) -> str:
+    """The same text with its `//` comment lines taken out. The comments in
+    these files quote the code they replaced, deliberately, and a check that
+    something is GONE must not find it in the sentence saying why."""
+    return "\n".join(line for line in src.splitlines()
+                     if not line.strip().startswith("//"))
+
+
+class TestAHoldDoesNotOutliveItsCall(unittest.TestCase):
+    """setOnAir(true) disables Mute and the talk bar while the DJ has the
+    station mic, and only setOnAir(false) ever gave them back. A call that
+    ENDS mid-hold never reaches it: endCall resets djOnAir by hand, so the
+    next call's all-clear sees no change and returns on its first line —
+    and that caller had a dead Mute and a dead "Hold to talk" for a call
+    nobody had put on hold (review, 2026-11-15)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = widget_js()["call.js"]
+        cls.end = _code(_body(cls.js, "  function endCall(remote) {"))
+
+    def test_ending_a_call_gives_both_controls_back(self):
+        self.assertIn("if (pttBar) pttBar.disabled = false;", self.end)
+        self.assertIn("muteBtn.disabled = false;", self.end)
+
+    def test_the_bar_stops_saying_on_hold(self):
+        # paintPtt reads djOnAir for the bar's face, so it has to run AFTER
+        # the reset — before it, the bar would be repainted "You're on hold".
+        self.assertLess(self.end.index("djOnAir = false; djHasSpoken = false;"),
+                        self.end.index("paintPtt();"))
+
+    def test_the_next_calls_all_clear_is_why_endcall_has_to(self):
+        # The early return is right — it is what keeps a repeated attribute
+        # from replaying the hold — and it is exactly why the restore cannot
+        # be left to the next call.
+        self.assertIn("if (on === djOnAir) return;",
+                      _body(self.js, "  function setOnAir(on) {")[:80])
+
+
+class TestAGuestKeepsTheirCodeAfterAWrongPassword(unittest.TestCase):
+    """Sign-in used to store whatever was typed, ask /live what it bought,
+    and on a miss call rememberCallKey('') — forgetting the code that was
+    there BEFORE. A guest who mistyped the admin password lost their guest
+    tier, and on a private line the phone with it (review, 2026-11-15)."""
+
+    @classmethod
+    def setUpClass(cls):
+        js = widget_js()
+        cls.js, cls.shared = js["call.js"], js["shared.js"]
+        cls.signin = _code(_body(cls.js, "  async function submitSignin() {"))
+
+    def test_a_miss_forgets_nothing(self):
+        self.assertNotIn("rememberCallKey('')", self.signin)
+
+    def test_the_typed_key_is_judged_before_it_is_stored(self):
+        self.assertEqual(self.signin.count("rememberCallKey("), 1)
+        store = self.signin.index("rememberCallKey(pw);")
+        self.assertLess(self.signin.index("await tierOfKey(pw)"), store)
+        self.assertLess(self.signin.index("if (after > before) {"), store)
+
+    def test_the_question_is_asked_without_touching_the_jar(self):
+        probe = _body(self.js, "  async function tierOfKey(key) {")
+        self.assertIn("fetch('/live', { headers: { 'X-Call-Key': key } })", probe)
+        self.assertNotIn("rememberCallKey", probe)
+        self.assertNotIn("store.", probe)
+        # A key nobody could check has unlocked nothing.
+        self.assertIn("catch (e) { return 'open'; }", probe)
+
+    def test_putting_the_old_code_back_would_have_restarted_its_clock(self):
+        # Why the fix is "never store it" rather than "store, then restore":
+        # the one writer stamps NOW on every write, and that stamp is what
+        # the shared-machine expiry reads. Restoring by hand would renew a
+        # kiosk session every time somebody typed a wrong password.
+        remember = _body(self.shared, "  function rememberCallKey(code) {")
+        self.assertIn("store.setItem(CALL_KEY_AT, String(Date.now()));", remember)
+
+
+class TestTheOffAirCardIsAWholePaint(unittest.TestCase):
+    """paintOffAir stopped at the identity lines and two buttons, and
+    paintLive returns the moment it has run — so a card left open through a
+    show ending kept the route switch and its stage, Text the booth, a heart
+    for a record that had stopped, ON THE STATION over an empty title and
+    LINES ARE OPEN with an example of what to ask. Its own copy of the door
+    rules wrote "Leave a message" as bare text and asked for neither the
+    door code nor the caller's tier (review, 2026-11-15)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = widget_js()["call.js"]
+        cls.off = _code(_body(cls.js, "  function paintOffAir(reason) {"))
+        cls.doors = _code(_body(cls.js, "  function paintIdleButtons(d) {"))
+
+    def test_every_band_the_on_air_paint_draws_is_answered(self):
+        for line in ("$('djMono').classList.add('hidden');",
+                     "if (band) band.hidden = true;",
+                     "showWhenLoaded($('npArt'), '');",
+                     "paintCardHeart({ cardLike: false });",
+                     "paintGuestGate();",
+                     "paintIdleLine(d);"):
+            with self.subTest(line=line):
+                self.assertIn(line, self.off)
+
+    def test_the_doors_come_from_the_one_painter(self):
+        self.assertIn("if (!room) paintIdleButtons(d);", self.off)
+        self.assertIn("{ onAir: false, reachable: !offline }", self.off)
+        # No second copy of the rules, and no bare label behind setBtn's back.
+        self.assertNotIn("callBtn.", self.off)
+        self.assertNotIn("'Leave a message'", self.off)
+        self.assertNotIn("$('vmBtn')", self.off)
+
+    def test_an_older_payload_paints_as_it_always_did(self):
+        # `=== false`: a server that does not send the two facts, or a card
+        # that has not read /live yet, must not be painted as an empty booth.
+        self.assertIn("const offline = d.reachable === false;", self.doors)
+        self.assertIn("const offAir = offline || d.onAir === false;", self.doors)
+
+    def test_the_route_and_the_text_line_come_down_with_the_show(self):
+        self.assertIn("&& oaDoors.mine !== false && !offAir;", self.doors)
+        self.assertIn("const chatButton = !!d.chatEnabled && !lineClosedNow && !offAir",
+                      self.doors)
+
+    def test_the_machine_keeps_the_operators_words_and_its_gates(self):
+        button = self.doors.split("const vmButton =")[1].split(";")[0]
+        for gate in ("!offline", "!needsCode", "d.voicemailMine !== false"):
+            with self.subTest(gate=gate):
+                self.assertIn(gate, button)
+        self.assertIn("} else if (vmHere && !vmButton "
+                      "&& !(offAir && d.voicemailMine === false)) {", self.doors)
+        morph = self.doors.split("} else if (vmHere && !vmButton")[1].split(
+            "} else if (offAir) {")[0]
+        self.assertIn("setBtn(callBtn, 'vm', 'mail',", morph)
+        self.assertIn("word('vm_button', 'Leave a message')", morph)
+
+    def test_an_empty_booth_says_so_on_the_button(self):
+        self.assertIn("callBtn.textContent = 'Nobody to call';", self.doors)
+        # Offline outranks every switch: nothing answers, the machine included.
+        self.assertLess(self.doors.index("if (offline) {"),
+                        self.doors.index("} else if (lineClosedNow) {"))
+        # And a code is only asked for off air when the machine is behind it.
+        self.assertIn("} else if (needsCode && (!offAir || machineOn)) {", self.doors)
+
+    def test_the_board_never_says_open_over_an_empty_booth(self):
+        board = self.js.split("function paintBoard")[1].split("function buildStage")[0]
+        self.assertIn("const anyLive = onAir && ways.some((w) => w[1]);", board)
+
+    def test_both_cards_say_their_sentence_from_one_place(self):
+        line = _body(self.js, "  function paintIdleLine(d) {")
+        self.assertIn("if (room || inConversation()) return;", line)
+        self.assertIn("paintBoard(d);", line)
+        self.assertIn("paintIdleLine(d);",
+                      _code(_body(self.js, "  function paintLive(d, first) {")))
+
+
+class TestSpaceBelongsToTheButtonThatHasFocus(unittest.TestCase):
+    """Space is the hold on both talk bars, heard on the window. Both
+    listeners stood down only for INPUT and TEXTAREA and then called
+    preventDefault — so a keyboard user focused on Hang up, Mute or "Send to
+    booth" who pressed Space opened the mic or started a take, and the
+    button never fired (review, 2026-11-15)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = widget_js()["call.js"]
+        cls.theirs = _body(cls.js, "  function spaceIsTheirs(e, bar) {")
+        cls.ptt = _code(_body(cls.js, "  (function bindPtt() {", "\n  })();\n"))
+        cls.studio = _code(_body(cls.js, "  (function bindVmRec() {", "\n  })();\n"))
+
+    def test_a_focused_control_keeps_its_key(self):
+        for what in ("input", "textarea", "select", "button", "a, ",
+                     '[role="button"]'):
+            with self.subTest(control=what):
+                self.assertIn(what, self.theirs)
+
+    def test_the_bar_itself_is_still_the_hold(self):
+        self.assertIn("return !!t && t !== bar;", self.theirs)
+
+    def test_both_listeners_ask_the_one_question(self):
+        self.assertIn("if (spaceIsTheirs(e, bar)) return;", self.ptt)
+        self.assertIn("if (spaceIsTheirs(e, btn)) return;", self.studio)
+        self.assertNotIn("t.tagName === 'INPUT'", _code(self.js))
+
+    def test_the_key_is_not_taken_before_it_is_asked_for(self):
+        for name, block in (("call", self.ptt), ("studio", self.studio)):
+            with self.subTest(surface=name):
+                down = block.split("addEventListener('keydown', (e) => {")[1]
+                self.assertLess(down.index("spaceIsTheirs"),
+                                down.index("e.preventDefault();"))
+
+    def test_a_release_answers_to_the_press_not_to_where_focus_went(self):
+        # Asking the target again on the way up would leave the mic open
+        # behind a caller who tabbed onto a button mid-sentence.
+        up = self.ptt.split("addEventListener('keyup', (e) => {")[1].split("});")[0]
+        self.assertIn("if (e.code !== 'Space' || !spaceHeld) return;", up)
+        self.assertNotIn("spaceIsTheirs", up)
+        self.assertIn("setMicOpen(false);", up)
+
+
+class TestTheCardSpeaksToAScreenReader(unittest.TestCase):
+    """index.html had no live region at all: "No answer", "That code is not
+    right" and "your request went in" were printed and never said. One
+    polite region now, off screen — and deliberately NOT the transcript,
+    which the smooth reveal rewrites a dozen times a sentence (review,
+    2026-11-15)."""
+
+    MIRRORED = ("statusText", "guestMsg", "setupPwMsg", "plReqMsg", "plOpFlash")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = widget_js()["call.js"]
+        cls.html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+
+    def test_the_page_has_one_polite_region(self):
+        self.assertIn('<div class="srsay" id="srSay" role="log" '
+                      'aria-live="polite"></div>', self.html)
+        self.assertEqual(self.html.count("aria-live="), 1)
+
+    def test_the_region_is_clipped_never_hidden(self):
+        # A region that is not rendered when its text arrives is not
+        # announced — which is why the visible lines cannot be it: each is
+        # display:none while empty.
+        rule = self.css.split("  .srsay {")[1].split("}")[0]
+        self.assertIn("clip-path: inset(50%)", rule)
+        self.assertNotIn("display", rule)
+        self.assertNotIn("visibility", rule)
+        # Pinned to the corner, so it cannot add a pixel to the page or to
+        # the height an embed reports.
+        self.assertIn("position: absolute; top: 0; left: 0;", rule)
+        self.assertIn("  #status:has(#statusText:empty) { display: none; }", self.css)
+
+    def test_the_cards_own_lines_are_mirrored_into_it(self):
+        wired = "[" + ", ".join(f"'{i}'" for i in self.MIRRORED) + "].forEach((id) => {"
+        self.assertIn(wired, self.js)
+        for el in self.MIRRORED:
+            with self.subTest(el=el):
+                self.assertIn(f'id="{el}"', self.html)
+
+    def test_a_line_the_poll_rewrites_is_said_once(self):
+        mirror = self.js.split("['statusText', 'guestMsg'")[1][:1000]
+        self.assertIn("if (now === was) return;", mirror)
+
+    def test_the_transcript_is_never_the_region(self):
+        for el in ("captions", "ticker"):
+            with self.subTest(el=el):
+                tag = re.search(rf'<div[^>]*id="{el}"[^>]*>', self.html).group(0)
+                self.assertNotIn("aria-live", tag)
+                self.assertNotIn("role=", tag)
+                self.assertNotIn(f"'{el}'", self.js.split(
+                    "['statusText', 'guestMsg'")[1][:120])
+        # …and the reveal itself says nothing on its way to the whole line.
+        self.assertNotIn("say(", _body(self.js, "  function smoothTo(el, text) {"))
+
+    def test_a_finished_text_is_read_once_and_whole(self):
+        add = _body(self.js, "  function addCaption(id, who, text, final, force) {")
+        # Typed text only: on a voice call the DJ's voice has already said
+        # it, and a reader repeating it would talk into the open microphone.
+        self.assertIn("if (final && who === 'dj' && chatOpen) say(", add)
+
+    def test_a_receipt_is_read_out(self):
+        line = _body(self.js, "  function addSystemLine(icon, label, detail, force) {")
+        self.assertIn("say(label + (detail ? ' — ' + detail : ''));", line)
+
+    def test_a_resumed_chat_is_not_read_back(self):
+        hold = self.js.index("sayHeld = true;")
+        replay = self.js.index("(msg.turns || []).forEach(")
+        self.assertLess(hold, replay)
+        self.assertLess(replay, self.js.index("sayHeld = false;", replay))
+        self.assertIn("if (!sayBox || !t || sayHeld || previewMode) return;", self.js)
+
+
+class TestTheInstalledWindowWearsTheCardsColour(unittest.TestCase):
+    """index.html ships two theme-color metas keyed on the OS scheme and
+    nothing rewrote them: the installed app's title bar stayed OS-dark over
+    a card the viewer had turned light, and never took a station palette
+    (review, 2026-11-15)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = widget_js()["call.js"]
+        cls.html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        cls.sync = _body(cls.js, "  function syncThemeColor() {")
+
+    def test_the_colour_is_read_back_from_the_page(self):
+        # Not worked out from the choice: theme, skin and palette reach the
+        # background by three routes, and the computed colour cannot disagree
+        # with what is on screen.
+        self.assertIn("getComputedStyle(document.body).backgroundColor", self.sync)
+
+    def test_both_metas_get_it(self):
+        self.assertEqual(self.html.count('<meta name="theme-color"'), 2)
+        self.assertIn("document.querySelectorAll('meta[name=\"theme-color\"]')",
+                      self.sync)
+
+    def test_every_route_a_colour_arrives_by_ends_in_it(self):
+        for head in ("  function applyThemeChoice(choice) {",
+                     "  function applyTokens(tokens) {"):
+            with self.subTest(route=head.strip()):
+                self.assertIn("syncThemeColor();", _body(self.js, head))
+        # The operator's configured theme and skin, on the first /live…
+        first = _code(_body(self.js, "  function paintLive(d, first) {"))
+        self.assertLess(first.index("applyConfiguredTheme(d.theme, d.stationTheme);"),
+                        first.index("syncThemeColor();"))
+        # …the cached palette, before it…
+        self.assertIn("  paintThemeGlyph();\n  syncThemeColor();\n  refreshLive();\n",
+                      self.js)
+        # …and the OS flipping under "follow the device".
+        self.assertIn("osScheme.addEventListener('change', syncThemeColor);", self.js)
+
+    def test_a_frame_and_a_see_through_page_are_left_alone(self):
+        self.assertIn("if (framed) return;", self.sync)
+        self.assertIn(r"/^rgba\(.*,\s*0\)$/.test(bg)", self.sync)
+
+
+class TestTheLauncherPillKnowsWhatTheCardWillSay(unittest.TestCase):
+    """The embed's trigger read the pause switch and the machine and nothing
+    else, so it said "Call the DJ" over a card that opens on "Nobody on
+    air", on "Station offline", or on a box asking for a code (review,
+    2026-11-15)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.embed = (REPO / "web-widget" / "embed.js").read_text(encoding="utf-8")
+        cls.state = _code(_body(cls.embed, "    function triggerState(d) {",
+                                "\n    }\n"))
+
+    def test_it_reads_the_three_facts_it_was_missing(self):
+        for fact in ("d.reachable === false", "d.onAir === false",
+                     "d.guestRequired"):
+            with self.subTest(fact=fact):
+                self.assertIn(fact, self.state)
+
+    def test_it_resolves_in_the_cards_order(self):
+        order = [self.state.index(s) for s in (
+            "if (d.reachable === false)", "if (closed)",
+            "if (d.guestRequired)", "if (d.onAir === false)")]
+        self.assertEqual(order, sorted(order))
+
+    def test_off_air_the_machine_is_the_only_door(self):
+        self.assertIn("return machineOn && d.voicemailMine !== false", self.state)
+        self.assertIn('{ dead: true, text: "Nobody on air" }', self.state)
+        self.assertIn('{ dead: true, text: "Station offline" }', self.state)
+
+    def test_a_private_line_says_so_and_stays_pressable(self):
+        # The pill cannot see a code stored inside the frame's origin, so it
+        # says the one thing true either way — and the card is where a code
+        # goes, so it must still open.
+        self.assertIn('if (d.guestRequired) return { dead: false, '
+                      'text: "🔒 Private line" };', self.state)
+
+    def test_a_dead_pill_never_strands_a_call(self):
+        # The trigger is also the only way back to a collapsed panel, and a
+        # show can end while that panel is holding a call.
+        self.assertIn("trigger.disabled = st.dead && !iframe;", self.embed)
+
+
+class TestStudioPlaybackStopsAndCleansUp(unittest.TestCase):
+    """The review's Play minted a fresh object URL per press and revoked
+    none, said "Play" while playing, and restarted the clip on a second
+    press instead of stopping it (review, 2026-11-15)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = widget_js()["call.js"]
+        cls.html = (REPO / "web-widget" / "index.html").read_text(encoding="utf-8")
+        cls.stop = _body(cls.js, "  function vmStopPlayback() {")
+        cls.press = _code(_body(cls.js, "  $('vmPlayBtn').onclick = () => {",
+                                "\n  };\n"))
+
+    def test_one_url_at_a_time_and_it_is_given_back(self):
+        self.assertEqual(_code(self.js).count("URL.createObjectURL(vmClip)"), 1)
+        self.assertIn("vmPlayUrl = URL.createObjectURL(vmClip);", self.press)
+        self.assertIn("if (vmPlayUrl) { URL.revokeObjectURL(vmPlayUrl); "
+                      "vmPlayUrl = ''; }", self.stop)
+
+    def test_a_second_press_stops_rather_than_restarts(self):
+        self.assertLess(
+            self.press.index("if (vmPlayer) { vmStopPlayback(); return; }"),
+            self.press.index("URL.createObjectURL(vmClip)"))
+
+    def test_the_button_says_which_of_the_two_it_will_do(self):
+        paint = _body(self.js, "  function vmPaintPlay(playing) {")
+        self.assertIn("$('vmPlayWord').textContent = playing ? 'Stop' : 'Play';", paint)
+        self.assertIn("b.setAttribute('aria-pressed', playing ? 'true' : 'false');",
+                      paint)
+        self.assertIn('<button id="vmPlayBtn" type="button" aria-pressed="false">',
+                      self.html)
+        self.assertIn('<span id="vmPlayWord">Play</span>', self.html)
+
+    def test_every_way_playback_ends_goes_through_the_one_stop(self):
+        # The clip running out, a new take, send and cancel.
+        self.assertIn("p.onended = p.onerror = over;", self.press)
+        for head in ("  async function vmStartRec() {",
+                     "  function vmCloseStudio(sent) {"):
+            with self.subTest(path=head.strip()):
+                self.assertIn("vmStopPlayback();", _body(self.js, head))
+        self.assertNotIn("vmPlayer.pause(); vmPlayer = null; }", _code(self.js))
+
+    def test_a_stopped_clip_cannot_end_the_next_one(self):
+        # pause() rejects the old clip's play() promise a beat LATER — by
+        # which time a second press may have started the take again.
+        self.assertIn("const over = () => { if (vmPlayer === p) vmStopPlayback(); };",
+                      self.press)
+        self.assertIn("p.play().catch(over);", self.press)
+
+
+class TestAnEmbedCarriesItsHostsSkin(unittest.TestCase):
+    """shared.js has said since the skins shipped that ?skin= is there for
+    "an embed carrying the host's data-skin" — and embed.js never read the
+    attribute (review, 2026-11-15). Wired the way data-theme travels."""
+
+    SHAPE = r"^[a-z0-9][a-z0-9-]{0,31}$"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.embed = (REPO / "web-widget" / "embed.js").read_text(encoding="utf-8")
+        cls.js = widget_js()
+
+    def test_the_attribute_is_read_and_travels_in_the_url(self):
+        self.assertIn('var skin = skinName(el.getAttribute("data-skin"));', self.embed)
+        self.assertIn('+ (skin ? "&skin=" + encodeURIComponent(skin) : "");',
+                      self.embed)
+
+    def test_every_frame_shape_gets_it(self):
+        # The factory's own signature, the inline card, and the panel shapes.
+        self.assertEqual(self.embed.count(
+            "makeIframe(origin, compact, theme, lockTheme, captions, skin)"), 3)
+        self.assertNotIn("makeIframe(origin, compact, theme, lockTheme, captions)",
+                         self.embed)
+        self.assertIn("mountPanel(el, origin, compact, theme, lockTheme, captions, "
+                      "mode, skin);", self.embed)
+
+    def test_only_a_plain_skin_name_is_passed_on(self):
+        name = _body(self.embed, "  function skinName(raw) {")
+        # Read the way applySkin reads it, plus a shape check — this one
+        # travels in a URL and lands as an attribute on the widget's <html>.
+        self.assertIn('String(raw || "").trim().toLowerCase()', name)
+        self.assertIn("/" + self.SHAPE + "/.test(name)", name)
+        self.assertIn('name !== "default"', name)
+        apply = _body(self.js["shared.js"], "  function applySkin(name) {")
+        self.assertIn("String(name || '').trim().toLowerCase()", apply)
+        self.assertIn("clean === 'default'", apply)
+
+    def test_every_skin_that_ships_fits_the_shape(self):
+        skins = (REPO / "web-widget" / "skins.css").read_text(encoding="utf-8")
+        names = set(re.findall(r'data-skin="([^"]+)"', skins))
+        self.assertGreater(len(names), 10)
+        for skin in sorted(names):
+            with self.subTest(skin=skin):
+                self.assertRegex(skin, self.SHAPE)
+
+    def test_the_frame_treats_it_as_decided(self):
+        self.assertIn("const skinForced = !!params.get('skin');", self.js["shared.js"])
+        self.assertIn("if (!skinForced) applySkin(d.skin);", self.js["call.js"])
+
+
+class TestTheThemeGlyphMeansOneThingFromTheFirstFrame(unittest.TestCase):
+    """shared.js drew the theme button's DESTINATION at boot; call.js
+    repaints it as the theme you are ON once /live lands. Same button, two
+    meanings, a read apart — and a card whose first /live failed kept the
+    first one for good (review, 2026-11-15). "The theme you are on" is the
+    rule, on both pages, from the first frame."""
+
+    @classmethod
+    def setUpClass(cls):
+        js = widget_js()
+        cls.js, cls.shared, cls.panel = js["call.js"], js["shared.js"], js["panel.js"]
+        boot = _body(cls.shared, "  (function theme() {", "\n  })();\n")
+        cls.glyph = boot.split("const glyph = () => {")[1].split("\n    };\n")[0]
+
+    def test_boot_draws_the_theme_you_are_on(self):
+        self.assertIn("const on = store.getItem('callinTheme') || '';", self.glyph)
+        self.assertIn("THEME_ICONS[on] : THEME_ICONS.device", self.glyph)
+        # Not the old question — which way a tap would go.
+        self.assertNotIn("prefers-color-scheme", self.glyph)
+        self.assertNotIn("? THEME_ICONS.light : THEME_ICONS.dark", self.shared)
+
+    def test_a_stored_value_can_only_pick_a_drawing(self):
+        self.assertIn("['light', 'dark', 'station'].includes(on)", self.glyph)
+
+    def test_both_pages_repaint_by_the_same_rule(self):
+        self.assertIn("btn.innerHTML = G[here];",
+                      _body(self.js, "  function paintThemeGlyph() {"))
+        self.assertIn("'': THEME_ICONS.device }[here])",
+                      _body(self.panel, "  function panelPaintGlyph() {"))
+
+    def test_the_card_does_not_wait_for_live_to_say_it(self):
+        self.assertIn("  paintThemeGlyph();\n  syncThemeColor();\n  refreshLive();\n",
+                      self.js)
+
+    def test_a_stored_station_pick_is_the_current_theme_before_live(self):
+        # Otherwise the boot paint draws the device monitor and /live swaps
+        # it for the mast: the same flip, one stop further round the cycle.
+        self.assertIn("|| (!live && store.getItem('callinTheme') === 'station')) "
+                      "opts.push('station');",
+                      _body(self.js, "  function themeOptions() {"))
