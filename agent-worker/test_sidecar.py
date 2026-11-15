@@ -264,6 +264,7 @@ from tests.test_call_flow import (  # noqa: F401
 from tests.test_tools_surface import (  # noqa: F401
     TestTheBuildersAndTheRegistryAgreeGateByGate,
     TestABlindCallGetsTheChatsEyes,
+    TestTheCallersOwnRequestIsCheckableOnEveryLine,
     TestARefusalIsACardTheDJCannotSpin,
     TestActionsAllHaveAReceipt,
     TestTheCapAnnouncesItselfAsACard,
@@ -280,6 +281,10 @@ from tests.test_tools_logic import (  # noqa: F401
     TestATrackAlreadyWaitingIsOfferedNotReAdded,
     TestARefusedRequestNamesWhatDidNotHappen,
     TestTheTextLineCanSeeTheStation,
+    TestALineWithoutMcpCanReadTheSchedule,
+    TestTheTextLineHearsHowManyAreListening,
+    TestATimedOutPreflightIsNotAMiss,
+    TestAnUnconfirmedBeatDoesNotStartAClock,
     TestAnActionReceiptPointsForward,
     TestAnUnconfirmedDeliveryDoesNotStartAClock,
     TestEveryStationRefusalShowsTheCallerACard,
@@ -333,6 +338,7 @@ from tests.test_withheld import (  # noqa: F401
     TestRetuneFollowsTheSettings,
     TestTheMinaCallGetsCardAndTruth,
     TestThePatternsCannotDriftFromTheOffList,
+    TestTheStationWideAsksAreCardedToo,
 )
 from tests.test_late_match import (  # noqa: F401
     TestALateMatchStillReachesTheCaller,
@@ -369,6 +375,9 @@ from tests.test_brain import (  # noqa: F401
     TestTheDJIsToldItsMusicalLeanings,
     TestTheDJKnowsWhenTheBroadcastIsNotNormal,
     TestTheLastCallersBusinessStaysOutOfTheBriefing,
+    TestTheNextCallsProcessStillKnowsWhatWeAired,
+    TestTheQueueLineSaysItIsFromPickup,
+    TestThePromptHandsItsSegmentsToTheTool,
     TestTheDJIsToldItsOwnLanguage,
     TestTheDJKnowsTheStationsShows,
     TestACallerCanBeToldNothingIsKept,
@@ -384,6 +393,8 @@ from tests.test_brain import (  # noqa: F401
 from tests.test_chat import (  # noqa: F401
     TestALieAfterARefusalNeverReachesTheScreen,
     TestTheTextLineIsNotBlind,
+    TestTheTextLineCanRunTheSegmentsItsPromptLists,
+    TestTheScheduleTableIsTrueToWhatTheLineCanRead,
     TestTheTextLineWritesDownWhatWentWrong,
     TestToolResultsGoBackAsText,
     TestAProviderFailureIsVisibleToTheOperator,
@@ -393,6 +404,7 @@ from tests.test_chat import (  # noqa: F401
 )
 from tests.test_conduct import (  # noqa: F401
     TestANamesakeIsNotTheSong,
+    TestTheBoothLogRowRidesNoSearchSwitch,
     TestASpokenMixIsNotAMix,
     TestATurnAfterAnActionKeepsTheCallMoving,
     TestTheBrainReviewTierOneRules,
@@ -429,6 +441,7 @@ from tests.test_discovery import (  # noqa: F401
 )
 from tests.test_curation import (  # noqa: F401
     TestBanningARecordIsTheOnePermanentThing,
+    TestACallerCanNameTheRecordToBan,
     TestLikingTheTrackOnAir,
 )
 from tests.test_takeover import (  # noqa: F401
@@ -518,6 +531,8 @@ from tests.test_voicemail import (  # noqa: F401
     TestAMessageIsNeverLost,
     TestAnAnonymousMessageGetsNoMoreThanAnAnonymousCaller,
     TestAVoicemailRequestIsVisibleWhenTheCallerRingsBack,
+    TestAVoicemailRequestLeavesNoCallerWordsInTheDayLog,
+    TestTheApprovalLineNamesTheRecordABanIsFor,
     TestAVoicemailIsACallEntryToo,
     TestTheStudioWearsTheSameSoundDial,
     TestEachPersonaCanHaveItsOwnLine,

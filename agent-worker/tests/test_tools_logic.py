@@ -842,17 +842,16 @@ class TestTheTextLineCanSeeTheStation(unittest.TestCase):
         self.assertEqual(self._build(_St(), creds=False), {})
 
     def _build_with_requests(self, station, actions=None):
-        from unittest import mock
-
+        # The status read is its own builder since the 2026-11-15 review —
+        # served locally on EVERY line, not only where MCP is absent — so
+        # these build it directly. Where it is built, and that it is built
+        # once, is TestTheCallersOwnRequestIsCheckableOnEveryLine's claim.
         from call.tools import reads
 
-        with mock.patch.object(reads, "library_search_needs_mcp",
-                               return_value=False):
-            built = reads.build_read_tools(
-                {"allow_requests": True}, station, actions)
-        return {t.info.name: t for t in built}
+        tool = reads.request_status_tool(station, actions)
+        return {tool.info.name: tool}
 
-    def test_request_status_rides_the_requests_gate(self):
+    def test_request_status_is_not_one_of_the_mcp_absent_twins(self):
         class _St:
             pass
 
@@ -1120,7 +1119,7 @@ class TestAnActionReceiptPointsForward(unittest.TestCase):
         self.assertIn("leave something real in the air", out)
 
     def test_a_submitted_request_leaves_its_id_on_the_ledger(self):
-        # For the request_status twin: "did my request go in?" needs an id
+        # For subwave_request_status: "did my request go in?" needs an id
         # the model was never shown. See CallActions.last_request_id.
         from unittest import mock
 
@@ -2422,3 +2421,289 @@ class TestASkipNamesTheTrackTheCallerHeard(unittest.TestCase):
         out, _, _ = self._skip({"ok": False, "error": "the station is rate limited"})
         self.assertIn("That didn't skip", out)
         self.assertIn("rate limited", out)
+
+
+class TestALineWithoutMcpCanReadTheSchedule(unittest.TestCase):
+    """Review, 2026-11-15. The local read twins covered now-playing, the
+    queue and a request's status — and not the schedule. So the text line
+    (which never has MCP) and a call whose MCP handshake failed could not
+    answer "what's on tonight", "when is The Overlook on" or "who's after
+    this"; the chat conduct even scripted "I don't have the running order in
+    front of me". `subwave_schedule` is a twin now, over the same public
+    /schedule the briefing's roster comes from."""
+
+    # The station's own shape: days keyed "0".."6" with 0 the Sunday, one
+    # show id an hour (read against the operator's station for api/guide.py).
+    DAY = ["grave"] * 6 + ["indigo"] * 12 + ["grave"] * 6
+    MONDAY = DAY[:20] + ["over", "over"] + DAY[22:]
+    SCHEDULE = {
+        "timezone": "Europe/London",
+        "personas": [{"id": "wade", "name": "Wade"},
+                     {"id": "rosie", "name": "Rosie"}],
+        "shows": [
+            {"id": "grave", "name": "The Graveyard Shift", "personaId": "wade"},
+            {"id": "indigo", "name": "The Indigo Mile", "personaId": "rosie"},
+            {"id": "over", "name": "The Overlook", "personaId": "wade"},
+        ],
+        "schedule": dict.fromkeys("023456", DAY) | {"1": MONDAY},
+    }
+
+    @staticmethod
+    def _sunday_evening():
+        from datetime import datetime
+
+        return datetime(2026, 11, 15, 21, 30)      # a Sunday
+
+    def _order(self, **kw):
+        from call.tools.reads import running_order
+
+        return running_order(self.SCHEDULE, self._sunday_evening(),
+                             "Europe/London", **kw)
+
+    def _build(self, station, creds=True):
+        from unittest import mock
+
+        from call.tools import reads
+
+        with mock.patch.object(reads, "library_search_needs_mcp",
+                               return_value=not creds):
+            return {t.info.name: t
+                    for t in reads.build_read_tools({}, station)}
+
+    def test_the_twin_is_built_with_the_other_reads(self):
+        class _St:
+            pass
+
+        self.assertIn("subwave_schedule", self._build(_St()))
+        # Same condition as its siblings: nothing builds uncredentialed.
+        self.assertEqual(self._build(_St(), creds=False), {})
+
+    def test_whats_on_tonight_is_today_and_tomorrow_on_the_stations_clock(self):
+        out = self._order()
+        self.assertIn("it is Sunday, 21:30", out)
+        self.assertIn("Europe/London", out)
+        self.assertIn("18:00-00:00 The Graveyard Shift (with Wade)", out)
+        self.assertIn("06:00-18:00 The Indigo Mile (with Rosie)", out)
+        # Tomorrow rides along, so "what's on after midnight" has an answer.
+        self.assertIn("Monday: ", out)
+        self.assertIn("20:00-22:00 The Overlook (with Wade)", out)
+        self.assertNotIn("Tuesday", out)
+
+    def test_whos_after_this_reads_off_the_hour(self):
+        from call.tools.reads import running_order
+        from datetime import datetime
+
+        out = running_order(self.SCHEDULE, datetime(2026, 11, 15, 9, 5))
+        self.assertIn("On the grid now: The Indigo Mile (with Rosie), "
+                      "until 18:00.", out)
+        self.assertIn("Next on the grid today: The Graveyard Shift "
+                      "(with Wade) at 18:00.", out)
+
+    def test_when_is_a_show_on_lists_its_slots_and_no_others(self):
+        out = self._order(show="the overlook")
+        self.assertIn("Monday 20:00-22:00", out)
+        self.assertNotIn("Sunday 2", out)
+        self.assertNotIn("Graveyard", out)
+
+    def test_a_show_with_no_slot_gets_no_invented_time(self):
+        out = self._order(show="Donovan's Pub")
+        self.assertIn("Nothing on the grid answers", out)
+        self.assertIn("Do not invent a time", out)
+        # The real names ride along, so the next ask is not another guess.
+        self.assertIn("The Overlook", out)
+
+    def test_another_day_is_one_line(self):
+        out = self._order(day="monday")
+        self.assertIn("Monday: ", out)
+        self.assertNotIn("Sunday: ", out)
+        # Not today, so no "on the grid now".
+        self.assertNotIn("On the grid now", out)
+        self.assertIn("not a day", self._order(day="smarch"))
+
+    def test_the_grid_is_never_passed_off_as_what_is_on_air(self):
+        # A takeover or a steer puts something else on: the read says so
+        # every time, because a quoted slot is the one thing a caller checks.
+        for out in (self._order(), self._order(show="overlook"),
+                    self._order(day="tomorrow")):
+            self.assertIn("what is SCHEDULED", out)
+            self.assertIn("never this", out)
+
+    def test_no_grid_is_said_plainly_not_filled_in(self):
+        from call.tools.reads import running_order
+
+        for raw in ({}, {"shows": self.SCHEDULE["shows"]},
+                    {"schedule": {"0": "not a day"}}):
+            out = running_order(raw, self._sunday_evening())
+            self.assertIn("do not guess a slot", out)
+            self.assertNotIn("00:00", out)
+
+    def test_the_tool_reads_the_stations_public_schedule(self):
+        sched = self.SCHEDULE
+
+        class _St:
+            def __init__(self):
+                self.reads = 0
+
+            async def schedule(self):
+                self.reads += 1
+                return dict(sched)
+
+        st = _St()
+        out = asyncio.run(self._build(st)["subwave_schedule"](
+            show="indigo mile"))
+        self.assertEqual(st.reads, 1)
+        self.assertIn("Station time", out)
+        self.assertIn("06:00-18:00", out)
+
+    def test_an_unknown_zone_falls_back_to_this_machines_clock(self):
+        from call.tools.reads import _station_now
+
+        when, zone = _station_now({"timezone": "Not/AZone"})
+        self.assertEqual(zone, "")
+        self.assertIsNotNone(when.tzinfo)
+
+
+class TestTheTextLineHearsHowManyAreListening(unittest.TestCase):
+    """Review, 2026-11-15. The MCP now-playing tool and the briefing both
+    carry the listener count; the local twin returned the track and nothing
+    else, so "is anyone even listening?" had a live answer on the phone and
+    none on the text line."""
+
+    def _now(self, payload):
+        from unittest import mock
+
+        from call.tools import reads
+
+        class _St:
+            async def now_playing(self):
+                return dict(payload)
+
+        with mock.patch.object(reads, "library_search_needs_mcp",
+                               return_value=False):
+            built = reads.build_read_tools({}, _St())
+        tool = {t.info.name: t for t in built}["subwave_now_playing"]
+        return asyncio.run(tool())
+
+    TRACK = {"title": "Stardust", "artist": "Dinah Washington"}
+
+    def test_the_count_rides_the_read_in_the_shape_the_station_sends(self):
+        out = self._now({"nowPlaying": self.TRACK,
+                         "listeners": {"current": 4, "peak": 9}})
+        self.assertIn("Stardust", out)
+        self.assertIn("4 listeners tuned in right now", out)
+        out = self._now({"nowPlaying": self.TRACK,
+                         "context": {"listeners": {"count": 1}}})
+        self.assertIn("1 listener tuned in right now", out)
+
+    def test_an_empty_room_is_said_and_a_missing_count_is_not_invented(self):
+        out = self._now({"nowPlaying": self.TRACK, "listeners": 0})
+        self.assertIn("Nobody else is tuned in", out)
+        out = self._now({"nowPlaying": self.TRACK})
+        self.assertNotIn("tuned in", out)
+        self.assertNotIn("listener", out)
+
+
+class TestATimedOutPreflightIsNotAMiss(unittest.TestCase):
+    """Review, 2026-11-15. The request pre-flight searched the caller's
+    phrase and, on a MISS, searched it again with the "by" stripped.
+    `search_library` answers None when the read itself failed — and `not
+    None` is truthy, so a timeout was treated as a miss and bought a second
+    search: two library timeouts of silence before the request was even
+    posted. No answer is no verdict."""
+
+    ASK = "Let It Be by The Beatles"
+
+    def _request(self, answers):
+        from unittest import mock
+
+        from call.actions import CallActions
+        from call.tools import music
+
+        class _Station:
+            def __init__(self):
+                self.searched, self.submitted = [], []
+
+            async def search_library(self, q, *a, **k):
+                self.searched.append(q)
+                return answers.pop(0)
+
+            async def submit_request(self, text, requester):
+                self.submitted.append(text)
+                return {}
+
+        station = _Station()
+        with mock.patch.object(music, "library_search_needs_mcp",
+                               lambda: False):
+            tools = music.build_library_tools(
+                {"allow_requests": True, "allow_library_search": True},
+                station, CallActions(9))
+        tool = next(t for t in tools if t.info.name == "subwave_request_song")
+        asyncio.run(tool(request=self.ASK))
+        return station
+
+    def test_a_search_that_never_answered_is_not_run_twice(self):
+        station = self._request([None])
+        self.assertEqual(station.searched, [self.ASK])
+        # And their words go to the station exactly as given.
+        self.assertEqual(station.submitted, [self.ASK])
+
+    def test_a_real_miss_still_tries_the_cleaned_phrase(self):
+        station = self._request([[], [{"title": "Let It Be"}]])
+        self.assertEqual(station.searched,
+                         [self.ASK, "Let It Be The Beatles"])
+        self.assertEqual(station.submitted, ["Let It Be The Beatles"])
+
+    def test_a_hit_needs_no_second_look(self):
+        station = self._request([[{"title": "Let It Be"}]])
+        self.assertEqual(station.searched, [self.ASK])
+        self.assertEqual(station.submitted, [self.ASK])
+
+
+class TestAnUnconfirmedBeatDoesNotStartAClock(unittest.TestCase):
+    """Review, 2026-11-15. The announcement and the segment both hold the
+    floor until the station's log shows a slow-to-confirm delivery; the
+    programme beat (`subwave_dj_segment`) started the sized countdown
+    regardless, so on a slow station the hold expired before the beat aired
+    and the DJ talked over its own station ID — the Ash overlap, on the one
+    tool that had missed the fix."""
+
+    def _beat(self, result):
+        from call.actions import CallActions
+        from call.tools.broadcast import build_on_air_tools
+
+        class _Station:
+            async def dj_segment(self, kind):
+                return dict(result)
+
+        guard = TestAnUnconfirmedDeliveryDoesNotStartAClock._Guard()
+        built = build_on_air_tools(
+            {"allow_dj_segment": True}, _Station(), CallActions(5), guard,
+            guarded=True)
+        tools = {t.info.name: t for t in built}
+        out = asyncio.run(tools["subwave_dj_segment"](type="station-id"))
+        return guard, out
+
+    def test_a_confirmed_beat_gets_the_sized_hold(self):
+        guard, out = self._beat({"ok": True, "spoken": "This is Indigo FM."})
+        self.assertEqual(guard.on_air_calls, ["This is Indigo FM."])
+        self.assertEqual(guard.pending_calls, [])
+        self.assertIn("seconds", out)
+
+    def test_a_slow_confirmation_gets_the_pending_hold_and_no_number(self):
+        guard, out = self._beat({"ok": True, "unconfirmed": True})
+        self.assertEqual(guard.on_air_calls, [])
+        self.assertEqual(guard.pending_calls, [""])
+        self.assertNotIn("seconds", out)
+        self.assertIn("slow to confirm", out)
+
+    def test_all_three_air_tools_share_the_one_rule(self):
+        # The defect was a third copy without the branch. One helper now:
+        # nothing in the builder marks the air on its own.
+        import inspect
+
+        from call.tools import broadcast
+
+        src = inspect.getsource(broadcast.build_on_air_tools)
+        self.assertEqual(src.count("guard.mark_on_air("), 1)
+        self.assertEqual(src.count("guard.mark_pending_air("), 1)
+        self.assertEqual(src.count("hold_the_floor(result, secs"), 3)

@@ -856,9 +856,6 @@ class TestTheTwoMouthsShareOneSurface(unittest.TestCase):
         "subwave_health":
             "liveness probe — a dead station fails the chat's own tools "
             "visibly, which is the same information",
-        "subwave_schedule":
-            "the prompt briefing already carries the schedule to both "
-            "mouths",
         "subwave_session":
             "the on-air transcript feed; no typed exchange has needed it "
             "yet",
@@ -1039,3 +1036,118 @@ class TestTheBuildersAndTheRegistryAgreeGateByGate(unittest.TestCase):
         free = {"subwave_booth_log", "subwave_current_lyrics"}
         self.assertEqual(self._surface({}), free)
         self.assertEqual(self._listed({}), free)
+
+
+class TestTheCallersOwnRequestIsCheckableOnEveryLine(unittest.TestCase):
+    """Review, 2026-11-15. `subwave_request_status` was an MCP row, so on
+    every ordinary call the DJ was handed the station's raw tool — which
+    needs a request id — while the request wrapper deliberately never shows
+    the model one. The local wrapper that reads the call's own last id
+    existed, but only as a twin for a call whose MCP handshake had FAILED.
+    So "did my request go in?" on a healthy line was answered with a guessed
+    id or a mimed look. The row is LOCAL now and the wrapper is built beside
+    the request tool on every line: one name, one server, no id needed."""
+
+    CFG = {"allow_requests": "open"}
+
+    @staticmethod
+    def _library(cfg, creds=True, station=None, actions=None):
+        from unittest import mock
+
+        from call.actions import CallActions
+        from call.tools import music
+
+        with mock.patch.object(music, "library_search_needs_mcp",
+                               return_value=not creds):
+            return music.build_library_tools(
+                cfg, station, actions or CallActions(9))
+
+    def test_the_status_read_is_ours_not_the_mcp_servers(self):
+        from call.tools import registry
+
+        self.assertEqual(registry.BY_NAME["subwave_request_status"].served,
+                         registry.LOCAL)
+        # With or without station credentials: GET /request/:id is public.
+        for creds in (True, False):
+            self.assertNotIn(
+                "subwave_request_status",
+                registry.mcp_allowlist(self.CFG, local_search_available=creds))
+            self.assertIn(
+                "subwave_request_status",
+                registry.local_tool_names(self.CFG,
+                                          local_search_available=creds))
+
+    def test_it_is_built_wherever_requests_are_and_nowhere_else(self):
+        for creds in (True, False):
+            names = [t.info.name for t in self._library(self.CFG, creds)]
+            self.assertIn("subwave_request_song", names)
+            self.assertEqual(names.count("subwave_request_status"), 1)
+        # The refusal text that points at it rides the same switch, so it
+        # can never name a tool the line has not got.
+        self.assertNotIn("subwave_request_status",
+                         [t.info.name for t in self._library({})])
+
+    def test_no_line_is_handed_one_name_twice(self):
+        from unittest import mock
+
+        from call.tools import reads, registry
+
+        everything = {t.gate: "open" for t in registry.TOOLS
+                      if t.gate not in (registry.READ, registry.NEVER,
+                                        "single_lookup_tool")}
+        # A healthy call: the MCP allowlist beside our own wrappers.
+        for creds in (True, False):
+            over_mcp = registry.mcp_allowlist(
+                everything, local_search_available=creds)
+            ours = registry.local_tool_names(
+                everything, local_search_available=creds)
+            self.assertEqual(sorted(set(over_mcp) & set(ours)), [])
+        # The text line, and a call whose MCP failed: the read twins beside
+        # the library tools.
+        with mock.patch.object(reads, "library_search_needs_mcp",
+                               return_value=False):
+            twins = [t.info.name
+                     for t in reads.build_read_tools(self.CFG, None)]
+        names = twins + [t.info.name for t in self._library(self.CFG)]
+        self.assertEqual(len(names), len(set(names)),
+                         f"a name is served twice on the text line: {names}")
+        self.assertNotIn("subwave_request_status", twins)
+
+    def test_did_my_request_go_in_needs_no_id_from_the_model(self):
+        from unittest import mock
+
+        from call.tools import music
+
+        class _Station:
+            def __init__(self):
+                self.asked = []
+
+            async def submit_request(self, text, requester):
+                return {"requestId": "r42"}
+
+            async def request_status(self, rid):
+                self.asked.append(rid)
+                return {"track": {"title": "Dreams",
+                                  "artist": "Fleetwood Mac"},
+                        "queuePosition": 2}
+
+        station = _Station()
+        with mock.patch.object(music, "_INLINE_POLL_SECS", 0):
+            tools = {t.info.name: t
+                     for t in self._library(self.CFG, station=station)}
+            said = asyncio.run(tools["subwave_request_song"](request="Dreams"))
+            # The id never reaches the model — which is exactly why the
+            # status read has to find it for itself.
+            self.assertNotIn("r42", said)
+            out = asyncio.run(tools["subwave_request_status"]())
+        self.assertEqual(station.asked[-1], "r42")
+        self.assertIn("Dreams", out)
+        self.assertIn("not playing yet", out)
+
+    def test_the_drill_no_longer_expects_it_over_mcp(self):
+        # scripted_call.py pins the MCP reads by hand; a name left there
+        # after the row went LOCAL would read as "served over MCP" to
+        # whoever opens the harness next.
+        src = (AGENT_WORKER / "scripted_call.py").read_text(encoding="utf-8")
+        pinned = src.split("MCP_READS = (", 1)[1].split(")", 1)[0]
+        self.assertNotIn("subwave_request_status", pinned)

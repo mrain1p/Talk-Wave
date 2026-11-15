@@ -334,8 +334,11 @@ class ChatSession:
         station = StationClient()
         try:
             persona = await self.dj(station)
+            # Filled by the prompt build with the SAME narrowed segments it
+            # printed, so run_skill and the briefing cannot disagree.
+            gates: dict = {}
             prompt = await build_system_prompt(station, persona, cfg=cfg,
-                                               mode="chat")
+                                               mode="chat", gates=gates)
 
             if self.actions is None:
                 self.actions = CallActions(
@@ -357,7 +360,7 @@ class ChatSession:
                 build_library_tools(cfg, station, actions) + \
                 build_discovery_tools(cfg, station, actions) + \
                 build_curation_tools(cfg, station, actions) + \
-                build_on_air_tools(cfg, station, actions, guard, guarded=False)
+                build_on_air_tools(cfg, station, actions, guard, False, **gates)
             # Built last and off the list itself, so it can only ever route to
             # what the settings already allowed — see call/tools/finding.py.
             tools = apply_finder_dispatch(cfg, tools)

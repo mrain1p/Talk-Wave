@@ -66,7 +66,13 @@ _LABELS = {
     "subwave_skip_track": lambda a: "Skip the track playing now (everyone hears the cut)",
     "subwave_like_track": lambda a: "Like the track playing now",
     "subwave_unlike_track": lambda a: "Un-like the track playing now",
-    "subwave_never_play_track": lambda a: "Never play the current track again",
+    # Names the record when the message did (review, 2026-11-15): the ban
+    # takes a title now, and "the current track" on the approval line for a
+    # ban of something else is a receipt for the wrong record.
+    "subwave_never_play_track": lambda a: (
+        f"Never play “{a.get('title') or a.get('artist')}” again"
+        if a.get("title") or a.get("artist")
+        else "Never play the current track again"),
     "subwave_allow_track_again": lambda a: "Take the current track off the never-play list",
     "subwave_cancel_takeover": lambda a: "Cancel the show takeover — back to the schedule",
     "subwave_clear_genre_lock": lambda a: "Lift the genre lock",

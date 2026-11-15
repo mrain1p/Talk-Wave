@@ -337,17 +337,31 @@ def _fmt_recent(state: dict, limit: int) -> str:
     return "Just played: " + ", ".join(played) + "." if played else ""
 
 
-def _fmt_upcoming(state: dict, limit: int) -> str:
-    """What's queued next, so the DJ can answer "what's coming up?" without
-    guessing — and won't request something already on its way."""
+def _fmt_upcoming(state: dict, limit: int, live_read: bool = True) -> str:
+    """What was queued next when the briefing was read — so the DJ won't
+    request something already on its way, and knows where to look for NOW."""
     if limit <= 0:
         return ""
     queued = _tracks(state.get("upcoming") or state.get("queue") or [], limit)
+    if not queued:
+        return ""
     # Frozen at pickup like the now-playing line above, and staler than it: a
-    # queue that was two deep at connect is empty ten minutes later. "Was"
-    # keeps the sentence true and leaves the tools as the answer to "what's
-    # coming up NOW", which is what the DJ should reach for anyway.
-    return "Coming up after that: " + ", ".join(queued) + "." if queued else ""
+    # queue that was two deep at connect is empty ten minutes later, and
+    # unlike the track nothing refreshes it mid-call (call/air.py re-stages
+    # the current record only). The comment here used to promise a "was" the
+    # sentence did not have — it read "Coming up after that: …", present
+    # tense, and the DJ repeated a ten-minute-old queue as what's next
+    # (review, 2026-11-15). The wording carries the tense now, and names the
+    # live read only on a line that has one: `live_read` is False where no
+    # subwave_station_state was built (brain.assemble._live_queue_read).
+    line = ("Next in the queue WHEN THIS BRIEFING WAS READ: "
+            + ", ".join(queued) + ". A call's briefing is read once, at "
+            "pickup, and the queue moves on under it")
+    if live_read:
+        return (line + " — for \"what's next\" NOW, read "
+                "subwave_station_state rather than repeating this.")
+    return (line + ", and this line has no live queue read — so offer it as "
+            "how things stood when they got through, not as what is next.")
 
 
 def _fmt_stream_health(state: dict) -> str:
@@ -586,7 +600,8 @@ async def station_context(station, cfg: dict, snap: dict, show: dict,
                           speak_clock: bool = True, persona_id: str = "",
                           track_floor: int = 0,
                           talk_between_tracks: bool = False,
-                          pause_talk: int = 0) -> str:
+                          pause_talk: int = 0,
+                          live_queue_read: bool = True) -> str:
     """Everything true about the station right now, as prompt text.
 
     Every read is already in the SNAPSHOT — including the schedule — so this
@@ -612,7 +627,8 @@ async def station_context(station, cfg: dict, snap: dict, show: dict,
         # end of the record. Per show, so it rides the live show's id.
         _fmt_pause_talk(pause_talk),
         _fmt_recent(snap["state"], int(cfg.get("context_recent_tracks", 3))),
-        _fmt_upcoming(snap["state"], int(cfg.get("context_upcoming", 2))),
+        _fmt_upcoming(snap["state"], int(cfg.get("context_upcoming", 2)),
+                      live_read=live_queue_read),
         # Nothing on a normal night — see _fmt_stream_health.
         _fmt_stream_health(snap["state"]),
         _fmt_booth(snap["session"], int(cfg.get("context_booth_lines", 4)),

@@ -103,6 +103,18 @@ def build_on_air_tools(
             "them and pick the conversation up where you left it."
         )
 
+    def hold_the_floor(result: dict, secs: int, spoken: str) -> None:
+        """Close the reply gate for what the station is about to say. An
+        UNCONFIRMED delivery was accepted but had not aired when the station
+        answered, so a countdown from here measures the wrong thing (the Ash
+        call's hold expired before the delivery began): it holds until the
+        station's log shows it. One helper since the review of 2026-11-15 —
+        dj_segment kept its own copy, without the pending branch."""
+        if result.get("unconfirmed"):
+            guard.mark_pending_air(spoken)
+        else:
+            guard.mark_on_air(secs, spoken=spoken)
+
     tools = []
 
     if cfg.get("allow_announcements"):
@@ -135,14 +147,7 @@ def build_on_air_tools(
             # the original for a conservative hold.
             aired = booth_spoken_text(spoken)
             secs = speaking_secs(aired or spoken, 25)
-            if result.get("unconfirmed"):
-                # The station accepted it but had not aired it when it
-                # answered, so a countdown from HERE measures the wrong thing
-                # — the Ash call's hold expired before the delivery started.
-                # Hold until the station's log shows it instead.
-                guard.mark_pending_air(spoken)
-            else:
-                guard.mark_on_air(secs, spoken=spoken)
+            hold_the_floor(result, secs, spoken)
             out = after_action(
                 "Your announcement", waited, result.get("unconfirmed"), secs)
             if aired != spoken:
@@ -248,13 +253,7 @@ def build_on_air_tools(
             # voice on the broadcast. 60s is the fallback when the station
             # doesn't tell us what it said.
             secs = speaking_secs(result.get("spoken"), 60)
-            if result.get("unconfirmed"):
-                # Same shape as the announcement: unconfirmed means the clock
-                # cannot start here. Segments are the case that made the
-                # station slow in the first place.
-                guard.mark_pending_air(result.get("spoken") or "")
-            else:
-                guard.mark_on_air(secs, spoken=result.get("spoken") or "")
+            hold_the_floor(result, secs, result.get("spoken") or "")
             return after_action(
                 f"The {name} segment", waited, result.get("unconfirmed"), secs)
 
@@ -285,7 +284,7 @@ def build_on_air_tools(
                 return actions.station_refused(result, "That segment didn't fire")
             actions.note("segment", type)
             secs = speaking_secs(result.get("spoken"), 30)
-            guard.mark_on_air(secs, spoken=result.get("spoken") or "")
+            hold_the_floor(result, secs, result.get("spoken") or "")
             return after_action(
                 f"The {type} beat", waited, result.get("unconfirmed"), secs)
 

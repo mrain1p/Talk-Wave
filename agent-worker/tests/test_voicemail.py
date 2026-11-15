@@ -350,7 +350,10 @@ class TestAVoicemailRequestIsVisibleWhenTheCallerRingsBack(_VmDirs):
                                           "trace for the caller who rings back")
         self.assertEqual("request", entries[0]["kind"])
         self.assertEqual("guest", entries[0]["tier"])
-        self.assertIn("Bowie", entries[0]["what"])
+        # A neutral label since the 2026-11-15 review — this used to assert
+        # the caller's own words ("Bowie") were stored, which is the breach
+        # TestAVoicemailRequestLeavesNoCallerWordsInTheDayLog now pins shut.
+        self.assertEqual("a voicemail song request", entries[0]["what"])
 
     def test_a_refused_request_writes_nothing(self):
         from call import daylog
@@ -1749,3 +1752,77 @@ class TestTheStudioWearsTheSameSoundDial(unittest.TestCase):
         call = src.split("vm_master.master(", 1)[1][:220]
         self.assertIn('cfg.get("on_air_caller_sound")', call,
                       "the studio stopped reading the caller-sound dial")
+
+
+class TestAVoicemailRequestLeavesNoCallerWordsInTheDayLog(_VmDirs):
+    """Review, 2026-11-15. The day-log is read back to LATER callers under a
+    no-caller-content contract (call/daylog.py: station-side labels only),
+    and the live request wrapper has noted a neutral label since the
+    2026-08-28 security sitting. The voicemail path still wrote the caller's
+    transcribed message as the label — a dedication naming a person, read to
+    whoever rang next and asked what the booth had been up to."""
+
+    SECRET = "play something for my sister June in Fresno, she just lost Dad"
+
+    def setUp(self):
+        super().setUp()
+        import os
+
+        self._old_daylog = os.environ.get("DAYLOG_PATH")
+        os.environ["DAYLOG_PATH"] = str(self.tmp / "day-log.json")
+
+    def tearDown(self):
+        import os
+
+        if self._old_daylog is None:
+            os.environ.pop("DAYLOG_PATH", None)
+        else:
+            os.environ["DAYLOG_PATH"] = self._old_daylog
+        super().tearDown()
+
+    def _deliver(self):
+        from call import daylog
+
+        station = _FakeStation()
+        asyncio.run(self.deliver.deliver(
+            station, {"voicemail_destination": "request"},
+            self.SECRET, "Danny", tier="open"))
+        return station, daylog
+
+    def test_the_ledger_line_carries_none_of_the_message(self):
+        _station, daylog = self._deliver()
+        entries = daylog.recent()
+        self.assertEqual(1, len(entries))
+        for word in ("June", "Fresno", "sister", "Dad"):
+            self.assertNotIn(word, entries[0]["what"])
+            # And not in what the DJ is read, either.
+            self.assertNotIn(word, daylog.as_lines())
+        self.assertEqual("a voicemail song request", entries[0]["what"])
+
+    def test_the_station_still_gets_the_callers_own_words(self):
+        # The label is neutral; the REQUEST is not — the station's picker
+        # matches on what the caller actually said.
+        station, _daylog = self._deliver()
+        self.assertEqual(station.requests, [self.SECRET])
+
+
+class TestTheApprovalLineNamesTheRecordABanIsFor(unittest.TestCase):
+    """Review, 2026-11-15. The never-play tool takes a title now, and the
+    voicemail studio's approval line for it read "Never play the current
+    track again" whatever the message asked for — a receipt for the wrong
+    record, shown to the caller before they press send."""
+
+    def test_a_named_ban_is_labelled_with_its_name(self):
+        from voicemail.preview import _label_for
+
+        self.assertIn("Africa", _label_for("subwave_never_play_track",
+                                           {"title": "Africa"}))
+        self.assertIn("Toto", _label_for("subwave_never_play_track",
+                                         {"artist": "Toto"}))
+
+    def test_an_unnamed_ban_is_still_the_current_track(self):
+        from voicemail.preview import _label_for
+
+        for args in ({}, {"title": "", "artist": ""}):
+            self.assertEqual(_label_for("subwave_never_play_track", args),
+                             "Never play the current track again")
