@@ -1086,3 +1086,44 @@ class TestTheDJIsToldWhenTheShowPausesForTalk(unittest.TestCase):
         self.assertIn("sign-off after the call waits for the gap", line)
         self.assertIn("Announcements from this line still go straight", line)
         self.assertEqual(briefing._fmt_talk_window(False), "")
+
+
+class TestTheDJIsToldItsMusicalLeanings(_TempStores):
+    """The station's Musical Leanings field reaches the DJ's eyes, under WHO
+    YOU ARE beside the language line, and only when the station set one —
+    most personas leave it blank, and a sentence about having none would ride
+    every turn."""
+
+    def _build(self, persona, lean) -> str:
+        import asyncio
+
+        from station import StationClient
+
+        snapshot = {"dj": {}, "personas": [], "now_playing": {},
+                    "state": {}, "session": {}, "schedule": {}}
+
+        async def build() -> str:
+            station = StationClient()
+            try:
+                return await brain.build_system_prompt(
+                    station, persona, snapshot=snapshot, music_lean=lean)
+            finally:
+                await station.aclose()
+
+        return asyncio.run(build())
+
+    def test_leanings_land_under_who_you_are(self):
+        text = self._build({"id": "p_g", "name": "G Money", "soul": "A soul."},
+                           "golden-era boom bap, a little G-funk")
+        self.assertIn("Your musical leanings, as the station has them: "
+                      "golden-era boom bap, a little G-funk", text)
+        self.assertIn("a clear ask for something else wins", text)
+        who = text.index("# Who you are")
+        facts = text.index("# What's happening on the station")
+        at = text.index("Your musical leanings")
+        self.assertLess(who, at)
+        self.assertLess(at, facts)
+
+    def test_no_leanings_means_no_sentence(self):
+        text = self._build({"id": "p_f", "name": "Francesca", "soul": "A soul."}, "")
+        self.assertNotIn("musical leanings", text)

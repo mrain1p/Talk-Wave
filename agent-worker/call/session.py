@@ -40,7 +40,7 @@ from log_setup import describe
 import station_config as station_config_mod
 from station import StationClient
 from station_config import StationConfig
-from tts_adapter import available_voices, pick_speakable_voice, resolve_adapter
+from tts_adapter import available_voices, pick_speakable_voice, voice_id_pattern, resolve_adapter
 
 from onair import hush
 from onair.relay import CallRelay, on_air_window_secs
@@ -451,6 +451,8 @@ class CallSession:
             # All off the same cached /settings read — free here.
             track_floor=await self.station_cfg.track_floor(),
             talk_between_tracks=await self.station_cfg.talk_between_tracks_only(),
+            music_lean=await self.station_cfg.music_lean(
+                str(self.persona.get("id") or "")),
             pause_talk=await self.station_cfg.pause_talk_seconds(
                 str(live_show.get("id", ""))),
         )
@@ -470,7 +472,10 @@ class CallSession:
         # backend does not have used to mean a call where the DJ never spoke
         # at all, with a green pipeline check, because that check tests the
         # CONFIGURED voice and never the one the on-air persona resolves to.
-        self.voice, why = pick_speakable_voice(self.voice, speakable)
+        self.voice, why = pick_speakable_voice(
+            self.voice, speakable, id_pattern=voice_id_pattern(
+                resolve_adapter(self.cfg.get("tts_adapter")),
+                mode=str(self.cfg.get("tts_mode", ""))))
         if why:
             log.warning("%s", why)
             self.record.problem(why)

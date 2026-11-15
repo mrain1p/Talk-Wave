@@ -4,6 +4,17 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 1.0.0
+
+Talk Wave 1.0: the call DJ keeps up with SUB/WAVE 1.32, can steer the whole station from the phone, and leans the way the booth does.
+
+- **Steer the station from the phone.** A new permission, *Steer the station for a while* (off by default, admin), lets a caller lean what the whole station picks and says: "something more upbeat for the next hour", "90s hip hop till the next show", or one of your playlists for a stretch. It is SUB/WAVE 1.31's own steer, so it opens with five picked tracks at the end of the record playing, runs 15 minutes to 12 hours or until the schedule changes, and lets go by itself. The DJ says plainly that it ends a running takeover, and can lift a steer early. An older station is told it hasn't got one.
+- **The call DJ leans the way the booth does.** A persona's Musical Leanings from the station's own settings now reach the call DJ, so "play something you'd pick" gets the same taste on the phone as on air. Nothing is added for a DJ whose leanings are blank.
+- **A skip names the track the caller is hearing.** The skip now carries the on-air track's id, so when that song has already ended by the time the DJ acts the station skips nothing and says so, and the DJ tells the caller it moved on by itself instead of cutting the next record, or the station ident, short and reporting a clean skip. Works on SUB/WAVE 1.2x and later; an older station gets the plain skip it always had.
+- **A stand-in is introduced as one.** When the station could not find exactly what was asked for and queued its nearest, the DJ now says so and names the pick instead of presenting it as the caller's song. A record the station is resting because it played recently is no longer described as already lined up.
+- **Gemini voice-library DJs keep their voice on calls.** A persona the station voices from Google's extended voice library (an id like `en-us-varo`) used to fall back to Kore on every call; the Google adapter now accepts those ids alongside the thirty prebuilt names.
+- **Lyrics that are still being looked up are no longer "none on file".** A station on SUB/WAVE 1.28 or later fetches missing lyrics from LRCLIB and says so while it works. The call DJ now waits a moment and asks again, and if the lookup is still running it tells the caller the words are on their way instead of saying the station has none.
+
 ## 0.99.55
 
 The on-air overlap guard can hear the booth again on a station past SUB/WAVE 1.21.

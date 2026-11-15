@@ -6,6 +6,7 @@ Split out of test_sidecar.py; see tests/__init__.py.
 from __future__ import annotations
 
 import asyncio
+import json
 import unittest
 import brain
 from brain import briefing, conduct
@@ -2204,3 +2205,239 @@ class TestTheShowThatPausesForTalk(unittest.TestCase):
 
     def test_an_unreadable_station_is_zero(self):
         self.assertEqual(self._read({"defaults": {}}, "s_long"), 0)
+
+
+class TestAPendingLyricsLookupIsAskedAgain(unittest.TestCase):
+    """SUB/WAVE 1.28 (#2082) made /lyrics/current real: a track the music
+    server has no sheet for comes back `pending: true` with empty `lines`
+    while LRCLIB is asked, "ask again shortly". The client waits and re-asks
+    a bounded number of times, and an answer still pending after that is
+    handed on WITH the flag — never flattened into the empty-index answer."""
+
+    def _client(self, answers):
+        import httpx
+
+        import station as station_mod
+
+        asked = []
+
+        def handler(request):
+            asked.append(request.url.path)
+            body = answers[min(len(asked) - 1, len(answers) - 1)]
+            return httpx.Response(200, json=body)
+
+        client = station_mod.StationClient(base_url="http://station")
+        client._client = httpx.AsyncClient(
+            base_url="http://station", transport=httpx.MockTransport(handler))
+        return client, asked
+
+    def _read(self, answers):
+        import station as station_mod
+        from unittest import mock
+
+        client, asked = self._client(answers)
+
+        async def run():
+            try:
+                return await client.current_lyrics()
+            finally:
+                await client.aclose()
+
+        # No real sleeping in the suite; the WAITS tuple is the knob.
+        with mock.patch.object(station_mod, "LYRICS_PENDING_WAITS", (0, 0)):
+            return asyncio.run(run()), asked
+
+    def test_a_pending_answer_is_asked_again_until_the_lines_arrive(self):
+        pending = {"songId": "a1", "pending": True, "lines": [], "source": None}
+        sheet = {"songId": "a1", "pending": False, "source": "lrclib",
+                 "lines": [{"startMs": 1000, "text": "first line"}]}
+        got, asked = self._read([pending, sheet])
+        self.assertEqual(asked, ["/lyrics/current", "/lyrics/current"])
+        self.assertEqual("first line", got["lines"][0]["text"])
+        self.assertFalse(got.get("pending"))
+
+    def test_still_pending_after_the_waits_keeps_its_flag(self):
+        # 1 ask + one per wait, then stop: a caller is holding, and the tool
+        # names a lookup in progress from the flag we hand it.
+        pending = {"songId": "a1", "pending": True, "lines": []}
+        got, asked = self._read([pending])
+        self.assertEqual(3, len(asked))
+        self.assertTrue(got["pending"])
+        self.assertNotIn("unavailable", got)
+
+    def test_a_settled_answer_is_asked_once(self):
+        got, asked = self._read([{"songId": "a1", "pending": False, "lines": []}])
+        self.assertEqual(1, len(asked))
+        self.assertEqual([], got["lines"])
+
+
+class TestATargetedSkipNamesItsRefusal(unittest.TestCase):
+    """SUB/WAVE #2023 made /dj/skip targetable: `expectId` is the on-air
+    track as the caller saw it, and a 409 with a `reason` means the station
+    skipped NOTHING because that track is no longer what is on air (it ended
+    by itself, or a jingle, bed or break is running after it). Before this
+    the client sent no body, so a caller's "skip this" that landed a few
+    seconds late cut the NEXT record — and the DJ reported a clean skip."""
+
+    def _skip(self, status, body, expect_id="t2"):
+        import httpx
+        from unittest import mock
+
+        import station as station_mod
+
+        seen = {}
+
+        def handler(request):
+            seen["path"] = request.url.path
+            seen["body"] = json.loads(request.content) if request.content else None
+            return httpx.Response(status, json=body)
+
+        async def run():
+            client = station_mod.StationClient(base_url="http://station")
+            client._client = httpx.AsyncClient(
+                base_url="http://station", transport=httpx.MockTransport(handler))
+            try:
+                with mock.patch("station_config.admin_credentials",
+                                return_value=("admin", "pw")):
+                    return await client.skip_track(expect_id=expect_id)
+            finally:
+                await client.aclose()
+
+        return asyncio.run(run()), seen
+
+    def test_the_on_air_id_rides_the_body(self):
+        got, seen = self._skip(200, {"ok": True})
+        self.assertEqual("/dj/skip", seen["path"])
+        self.assertEqual({"expectId": "t2"}, seen["body"])
+        self.assertTrue(got["ok"])
+
+    def test_no_id_means_the_bare_skip_it_always_was(self):
+        # An older station, or a booth with no library track on air: the
+        # route took no body before #2023 and must keep working without one.
+        got, seen = self._skip(200, {"ok": True}, expect_id=None)
+        self.assertIsNone(seen["body"])
+        self.assertTrue(got["ok"])
+
+    def test_a_409_is_a_refusal_with_the_stations_reason_and_words(self):
+        for reason in ("track-changed", "jingle-on-air", "bed-on-air", "break-on-air"):
+            msg = f"station words for {reason}"
+            got, _ = self._skip(409, {"error": msg, "reason": reason,
+                                      "onAirId": "t3"})
+            self.assertFalse(got["ok"], reason)
+            self.assertEqual(reason, got["reason"])
+            self.assertEqual(msg, got["error"])
+
+    def test_a_409_without_words_still_says_nothing_skipped(self):
+        got, _ = self._skip(409, {"reason": "bed-on-air"})
+        self.assertFalse(got["ok"])
+        self.assertIn("nothing skipped", got["error"])
+
+
+class TestASteerIsPostedAsTheStationSpellsIt(unittest.TestCase):
+    """`POST /steer` (SUB/WAVE 1.31, schemas/steer.ts): `until` 'fixed' wants
+    `minutes` and 'schedule-change' refuses it; the prompt is ≤500 characters;
+    refusals are the station's own sentence; and a station older than 1.31
+    has no route, which is a capability gap, not a failure."""
+
+    def _call(self, method, status, body, **kw):
+        import httpx
+        from unittest import mock
+
+        import station as station_mod
+
+        seen = {}
+
+        def handler(request):
+            seen["method"] = request.method
+            seen["path"] = request.url.path
+            seen["body"] = json.loads(request.content) if request.content else None
+            return httpx.Response(status, json=body)
+
+        async def run():
+            client = station_mod.StationClient(base_url="http://station")
+            client._client = httpx.AsyncClient(
+                base_url="http://station", transport=httpx.MockTransport(handler))
+            try:
+                with mock.patch("station_config.admin_credentials",
+                                return_value=("admin", "pw")):
+                    return await getattr(client, method)(**kw)
+            finally:
+                await client.aclose()
+
+        return asyncio.run(run()), seen
+
+    def test_a_fixed_steer_carries_minutes_and_a_collapsed_prompt(self):
+        got, seen = self._call("steer", 200, {"steer": {}, "queued": 5},
+                               prompt="  more   upbeat\n please ", minutes=90)
+        self.assertEqual(("POST", "/steer"), (seen["method"], seen["path"]))
+        self.assertEqual(seen["body"], {"prompt": "more upbeat please", "playlistId": None,
+                                        "startNow": False, "introduce": False,
+                                        "until": "fixed", "minutes": 90})
+        self.assertTrue(got["ok"])
+        self.assertEqual(5, got["queued"])
+
+    def test_until_the_schedule_changes_sends_no_minutes(self):
+        _, seen = self._call("steer", 200, {"steer": {}}, prompt="jazz",
+                             until="schedule-change", minutes=90)
+        self.assertEqual("schedule-change", seen["body"]["until"])
+        self.assertNotIn("minutes", seen["body"])
+
+    def test_the_prompt_is_capped_at_the_stations_limit(self):
+        _, seen = self._call("steer", 200, {"steer": {}}, prompt="x" * 900)
+        self.assertEqual(500, len(seen["body"]["prompt"]))
+
+    def test_a_playlist_alone_is_enough_and_nothing_is_not(self):
+        _, seen = self._call("steer", 200, {"steer": {}}, playlist_id="pl-1")
+        self.assertEqual("pl-1", seen["body"]["playlistId"])
+        got, seen = self._call("steer", 200, {"steer": {}})
+        self.assertFalse(got["ok"])
+        self.assertNotIn("path", seen)
+
+    def test_refusals_are_the_stations_own_words(self):
+        for status in (400, 404, 409, 502):
+            got, _ = self._call("steer", status, {"error": f"said {status}"},
+                                prompt="x", playlist_id="pl-1")
+            self.assertFalse(got["ok"], status)
+            self.assertEqual(f"said {status}", got["error"])
+            self.assertNotIn("unsupported", got)
+
+    def test_an_older_station_without_the_route_is_unsupported(self):
+        got, _ = self._call("steer", 404, {"error": "Not found"}, prompt="x")
+        self.assertFalse(got["ok"])
+        self.assertTrue(got["unsupported"])
+
+    def test_clearing_is_a_delete_that_reports_what_it_pulled(self):
+        got, seen = self._call("clear_steer", 200, {"steer": None, "removed": 2, "kept": 0})
+        self.assertEqual(("DELETE", "/steer"), (seen["method"], seen["path"]))
+        self.assertTrue(got["ok"])
+        self.assertEqual(2, got["removed"])
+
+    def test_status_is_a_read_that_fails_to_nothing(self):
+        got, seen = self._call("steer_status", 200, {"steer": None, "budgetMode": "normal", "queued": []})
+        self.assertEqual("GET", seen["method"])
+        self.assertIsNone(got["steer"])
+        got, _ = self._call("steer_status", 500, {"error": "boom"})
+        self.assertEqual({}, got)
+
+
+class TestTheDJsLeaningsAreMirrored(unittest.TestCase):
+    """SUB/WAVE's Musical Leanings field (#1678) lives on the admin persona
+    record, not on the public /dj read, and the call DJ had never seen it —
+    so a caller who left the pick to the DJ got a different taste on the
+    phone from the one in the booth."""
+
+    def test_reads_the_nested_roster_and_blank_means_nothing(self):
+        import station_config
+
+        payload = {"values": {"personas": [
+            {"id": "p_g", "name": "G Money", "musicLean": "  golden-era  boom bap,\n a little G-funk "},
+            {"id": "p_f", "name": "Francesca", "musicLean": ""},
+            {"id": "p_n", "name": "Nobody"},
+        ]}}
+        self.assertEqual("golden-era boom bap, a little G-funk",
+                         station_config._music_lean_from(payload, "p_g"))
+        self.assertEqual("", station_config._music_lean_from(payload, "p_f"))
+        self.assertEqual("", station_config._music_lean_from(payload, "p_n"))
+        self.assertEqual("", station_config._music_lean_from(payload, "p_missing"))
+        self.assertEqual("", station_config._music_lean_from(payload, ""))
+        self.assertEqual("", station_config._music_lean_from({}, "p_g"))

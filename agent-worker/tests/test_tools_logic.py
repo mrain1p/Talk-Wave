@@ -2173,3 +2173,72 @@ class TestABulkRefusalReadsAsOne(unittest.TestCase):
             "Pulled 3 track(s) out of the queue. They will not play.",
         ):
             self.assertFalse(spoken_rules.reads_as_a_refusal(line), line)
+
+class TestASkipNamesTheTrackTheCallerHeard(unittest.TestCase):
+    """The skip tool sends the on-air track's id with the skip (SUB/WAVE
+    #2023), and when the station answers that the track is no longer on air
+    the DJ is told nothing was skipped — not handed a refusal to apologise
+    for, and never a "done" for a cut that did not happen. On air this is the
+    difference between "that one ended on its own" and the next record, or
+    the station ident, being cut mid-way for a request that was already
+    moot."""
+
+    class _Station:
+        def __init__(self, result):
+            self.result = result
+            self.asked = []
+
+        async def now_playing(self):
+            return {"nowPlaying": {"title": "Dreams", "artist": "Fleetwood Mac",
+                                   "subsonic_id": "t2"}}
+
+        async def skip_track(self, expect_id=None):
+            self.asked.append(expect_id)
+            return dict(self.result)
+
+    class _Guard:
+        async def wait_until_clear(self, timeout=None):
+            return 0.0
+
+        def mark_on_air(self, *a, **k):
+            pass
+
+    def _skip(self, result):
+        from call.actions import CallActions
+        from call.tools.broadcast import build_on_air_tools
+
+        station = self._Station(result)
+        actions = CallActions(9)
+        built = build_on_air_tools({"allow_skip_track": True}, station, actions,
+                                   self._Guard(), guarded=True)
+        tool = next(t for t in built if t.info.name == "subwave_skip_track")
+        return asyncio.run(tool()), station, actions
+
+    def test_the_skip_carries_the_on_air_id(self):
+        out, station, actions = self._skip({"ok": True})
+        self.assertEqual(["t2"], station.asked)
+        self.assertIn("Done", out)
+        self.assertEqual(1, actions.count)
+
+    def test_a_track_that_already_ended_is_not_reported_skipped(self):
+        out, _, actions = self._skip({"ok": False, "reason": "track-changed",
+                                      "error": "that track is no longer on air — nothing skipped"})
+        self.assertIn("Nothing was skipped", out)
+        self.assertIn("ALREADY ended", out)
+        self.assertIn("do not say you skipped it", out)
+        self.assertNotIn("Done", out)
+        # Nothing happened, so nothing is counted; the caller still sees why.
+        self.assertEqual(0, actions.count)
+        self.assertTrue(any(kind == "refused" for kind, _ in actions._denied))
+
+    def test_a_break_after_the_track_is_not_a_failed_skip(self):
+        for reason in ("jingle-on-air", "bed-on-air", "break-on-air"):
+            out, _, _ = self._skip({"ok": False, "reason": reason,
+                                    "error": f"{reason} — nothing skipped"})
+            self.assertIn("Nothing was skipped", out, reason)
+            self.assertIn("do not claim a skip", out, reason)
+
+    def test_any_other_refusal_is_still_the_stations_words(self):
+        out, _, _ = self._skip({"ok": False, "error": "the station is rate limited"})
+        self.assertIn("That didn't skip", out)
+        self.assertIn("rate limited", out)

@@ -591,6 +591,10 @@ window.Callin = (function () {
       why: 'Cancels a show takeover early and hands the schedule back — same permission as setting one.' },
     { group: 'show', need: 'allow_genre_lock', say: '“Keep it to jazz for the next couple of hours.”',
       why: 'Holds the whole station to a genre for a bounded window, then it lifts by itself. Needs a station with the genre-lock control.' },
+    { group: 'show', need: 'allow_steer', say: '“Something more upbeat for the next hour.”',
+      why: 'Steers what the whole station picks and says for a bounded window — from the end of this record, then it lets go by itself. Needs SUB/WAVE 1.31 or later.' },
+    { group: 'show', need: 'allow_steer', say: '“You can stop steering it now.”',
+      why: 'Lifts a steer early — same permission as setting one.' },
     { group: 'show', need: 'allow_never_play', say: '“Never play this one again.”',
       why: 'Bans the current record from the station permanently — it leaves the queue and is never picked again. The same permission can lift a ban.' },
     // --- leave a message ---

@@ -238,6 +238,26 @@ class TestCurrentLyricsAreARead(unittest.TestCase):
                       "the station holds no lyrics"):
             self.assertNotIn(claim, out.lower())
 
+    def test_a_lookup_still_running_is_not_an_empty_index(self):
+        # SUB/WAVE 1.28 answers `pending: true` with empty `lines` while it
+        # fetches the words from LRCLIB. Through 0.99.55 that was the
+        # no-lyrics branch above — "none on file" said about a track the
+        # station had the sheet for half a minute later. A lookup in progress
+        # claims nothing about the index and nothing about the music.
+        out = asyncio.run(self._tool({"pending": True, "lines": [],
+                                      "source": "lrclib"})())
+        self.assertIn("STILL LOOKING UP", out)
+        self.assertIn("call this tool again", out)
+        self.assertIn("do not call it an instrumental", out.lower())
+        for claim in ("holds no lyrics", "no lyrics on file", "none are indexed"):
+            self.assertNotIn(claim, out.lower())
+        # And a pending flag beside REAL lines is just lines — the station
+        # may have the music server's sheet while LRCLIB still runs.
+        out = asyncio.run(self._tool({"pending": True,
+                                      "lines": [{"text": "first line"}]})())
+        self.assertIn("first line", out)
+        self.assertNotIn("STILL LOOKING", out)
+
     def test_lines_come_back_and_a_full_sheet_is_capped(self):
         # Prompt budget: the sheet is paid for on every later turn, so a long
         # one is cut at ~2000 characters with an honest count of the rest.
@@ -316,138 +336,6 @@ class TestWhatsNewInTheLibrary(unittest.TestCase):
         tool = next(t for t in tools if t.info.name == "subwave_recent_tracks")
         out = asyncio.run(tool())
         self.assertIn("don't invent", out)
-
-
-class TestALateMatchStillReachesTheCaller(unittest.TestCase):
-    """The station's resolver can land after the request tool has already
-    answered. Observed on a real call (2026-08-08): the station matched
-    "Spiders" by Moby some time after the tool's inline look, so the DJ said
-    "something is lined up" and could not name it — the caller had to ask.
-    The tool now answers immediately and a background task keeps asking, so
-    the DJ can volunteer the pick when it lands."""
-
-    def _bits(self, statuses, dj_history=()):
-        """A station that answers request_status from a script, a session that
-        records what the DJ is told to say, and a record that keeps receipts."""
-
-        class _Station:
-            def __init__(self):
-                self.calls = 0
-
-            async def request_status(self, rid):
-                i = min(self.calls, len(statuses) - 1)
-                self.calls += 1
-                return statuses[i]
-
-        class _Item:
-            def __init__(self, role, content):
-                self.role, self.content = role, content
-
-        class _Session:
-            agent_state = "listening"
-            user_state = "idle"
-            history = type("H", (), {
-                "items": [_Item("assistant", t) for t in dj_history]})()
-
-            def __init__(self):
-                self.said = []
-
-            async def generate_reply(self, **kw):
-                self.said.append(kw)
-
-        class _Record:
-            def __init__(self):
-                self.problems, self.receipts = [], []
-
-            def problem(self, what):
-                self.problems.append(what)
-
-            def tool(self, name, result=""):
-                self.receipts.append((name, result))
-
-        return _Station(), _Session(), _Record()
-
-    def _run(self, station, session, rec, delays=(0.01, 0.01)):
-        from call.tools import late_match
-
-        asyncio.run(late_match._surface_late_match(
-            station, "r1", get_session=lambda: session, record=rec,
-            delays=delays))
-
-    def test_a_late_match_is_announced_queued_not_playing(self):
-        station, session, rec = self._bits([
-            {}, {"track": {"title": "Spiders", "artist": "Moby"},
-                 "queuePosition": 2}])
-        self._run(station, session, rec)
-
-        self.assertEqual(len(session.said), 1)
-        note = session.said[0]["user_input"]
-        # The same trick as the greeting: a bracketed situation note, never
-        # spoken and never a caller turn — see handoff.is_prime.
-        self.assertTrue(note.startswith("[") and note.endswith("]"))
-        self.assertIn("Spiders", note)
-        self.assertIn("not playing", session.said[0]["instructions"])
-        # And the receipt is in the record even though the tool had already
-        # returned.
-        self.assertTrue(any("Spiders" in r for _, r in rec.receipts))
-
-    def test_a_track_the_dj_already_named_is_not_reannounced(self):
-        # Exactly the motivating call: the caller asked, the DJ read the
-        # answer off station state — announcing it again reads as the DJ
-        # forgetting the conversation.
-        station, session, rec = self._bits(
-            [{"track": {"title": "Spiders", "artist": "Moby"}}],
-            dj_history=["It's \"Spiders\" by Moby — bloody perfect, innit?"])
-        self._run(station, session, rec)
-        self.assertEqual(session.said, [])
-        # The receipt still lands; only the announcement is skipped.
-        self.assertTrue(rec.receipts)
-
-    def test_a_match_that_never_lands_is_a_problem_line(self):
-        # The other half of the operator's complaint: a request whose title
-        # never surfaced should be findable without reading every transcript.
-        station, session, rec = self._bits([{}])
-        self._run(station, session, rec)
-        self.assertEqual(session.said, [])
-        self.assertTrue(any("never said what it matched" in p
-                            for p in rec.problems))
-
-    def test_a_busy_line_is_never_talked_over(self):
-        from call.tools import late_match
-
-        station, session, rec = self._bits(
-            [{"track": {"title": "Spiders", "artist": "Moby"}}])
-        session.user_state = "speaking"          # caller mid-word, forever
-        beats = late_match._QUIET_BEATS
-        try:
-            late_match._QUIET_BEATS = 1
-            self._run(station, session, rec)
-        finally:
-            late_match._QUIET_BEATS = beats
-        self.assertEqual(session.said, [])
-
-    def test_a_finished_call_is_left_alone(self):
-        # The poller can outlive the call; a session that is already gone
-        # must end it quietly.
-        station, _, rec = self._bits(
-            [{"track": {"title": "Spiders", "artist": "Moby"}}])
-        from call.tools import late_match
-
-        asyncio.run(late_match._surface_late_match(
-            station, "r1", get_session=lambda: None, record=rec,
-            delays=(0.01,)))
-        self.assertTrue(rec.receipts)            # the receipt still lands
-
-    def test_library_tools_can_read_the_session_late(self):
-        # Same shape as the hang-up tool: tools are built before the
-        # AgentSession exists, so the announcer is handed a reader.
-        import inspect
-
-        from call.tools.music import build_library_tools
-
-        params = inspect.signature(build_library_tools).parameters
-        for name in ("get_session", "air", "record"):
-            self.assertIn(name, params)
 
 
 class TestAQueuedTrackCanComeBackOut(unittest.TestCase):
@@ -775,6 +663,40 @@ class TestADuplicateIsNotAnAction(unittest.TestCase):
         self.assertIn("Say it is lined up already", out)
         self.assertIn("Africa", out)
 
+    def test_a_cooldown_hold_is_not_called_lined_up(self):
+        # SUB/WAVE's receipt now says WHY a standing record was not added
+        # (`outcome`, #1861). 'cooldown' is the one where "already in the
+        # running order" is false: the station is resting a record that
+        # played recently, and it is NOT queued at all.
+        from unittest import mock
+
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _Station:
+            async def submit_request(self, text, requester):
+                return {"requestId": "r1"}
+
+            async def request_status(self, rid):
+                return {"status": "resolved", "queuePosition": None,
+                        "outcome": "cooldown",
+                        "ack": "that one was on an hour ago",
+                        "track": {"title": "Africa", "artist": "Toto"}}
+
+        with mock.patch.object(music, "_INLINE_POLL_SECS", 0), \
+                mock.patch.object(music, "library_search_needs_mcp",
+                                  lambda: False):
+            tools = build_library_tools(
+                {"allow_requests": True}, _Station(), CallActions(9))
+            tool = next(t for t in tools
+                        if t.info.name == "subwave_request_song")
+            out = asyncio.run(tool(request="Africa by Toto"))
+        self.assertIn("NOT queued", out)
+        self.assertIn("too recently", out)
+        self.assertNotIn("Say it is lined up already", out)
+        self.assertIn("an hour ago", out)
+
     def test_nothing_added_costs_nothing_and_cards_nothing(self):
         from call.actions import CallActions
 
@@ -855,3 +777,62 @@ class TestAnAiredTrackCanBeQueuedAgain(unittest.TestCase):
         out = asyncio.run(tool(id="t1", title="Africa"))
         self.assertEqual(st.queued, ["t1"], "the record took a second slot")
         self.assertIn("ALREADY in the queue", out)
+
+
+class TestAStandInIsNotTheCallersSong(unittest.TestCase):
+    """The receipt's `outcome` (SUB/WAVE #1861/#1866): 'substituted' means the
+    station could not fill the ask exactly and queued its nearest. Relayed as
+    "Added to the queue: X", the DJ introduces X as what the caller asked for
+    — and the caller hears a different record announced as theirs. The
+    verdict (queued) is unchanged; one sentence names the stand-in."""
+
+    def _run(self, receipt):
+        from unittest import mock
+
+        from call.actions import CallActions
+        from call.tools import music
+        from call.tools.music import build_library_tools
+
+        class _Station:
+            async def submit_request(self, text, requester):
+                return {"requestId": "r1"}
+
+            async def request_status(self, rid):
+                return receipt
+
+        with mock.patch.object(music, "_INLINE_POLL_SECS", 0), \
+                mock.patch.object(music, "library_search_needs_mcp",
+                                  lambda: False):
+            tools = build_library_tools(
+                {"allow_requests": True}, _Station(), CallActions(9))
+            tool = next(t for t in tools
+                        if t.info.name == "subwave_request_song")
+            return asyncio.run(tool(request="Hounds of Love by Kate Bush"))
+
+    def test_a_substitute_is_named_as_one(self):
+        out = self._run({"status": "resolved", "queuePosition": 2,
+                         "outcome": "substituted",
+                         "track": {"title": "Running Up That Hill",
+                                   "artist": "Kate Bush"}})
+        self.assertIn("Added to the queue", out)
+        self.assertIn("STAND-IN", out)
+        self.assertIn("instead of what they asked for", out)
+
+    def test_an_exact_match_gets_no_such_line(self):
+        out = self._run({"status": "resolved", "queuePosition": 2,
+                         "outcome": "matched",
+                         "track": {"title": "Hounds of Love",
+                                   "artist": "Kate Bush"}})
+        self.assertIn("Added to the queue", out)
+        self.assertNotIn("STAND-IN", out)
+
+    def test_outcome_note_speaks_only_for_the_two_that_change_the_truth(self):
+        from call.tools.music import outcome_note
+
+        self.assertIn("STAND-IN", outcome_note({"outcome": "substituted"}))
+        self.assertIn("too recently", outcome_note({"outcome": "cooldown"}))
+        for quiet in ("matched", "already-queued", "chat", "no-match",
+                      "unsupported", "error", None, ""):
+            self.assertEqual("", outcome_note({"outcome": quiet}), quiet)
+        # An older station sends no outcome at all.
+        self.assertEqual("", outcome_note({}))

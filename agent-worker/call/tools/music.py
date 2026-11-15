@@ -99,6 +99,15 @@ def read_receipt(st: dict) -> tuple[str, dict, str, object]:
     or the booth answered without queueing it. Either way nothing was ADDED,
     and saying so is the difference between a true line and a promise the
     station never made.
+
+    Since SUB/WAVE 1.2x (#1861/#1866/#1984) the receipt also carries `outcome`
+    — matched, substituted, already-queued, cooldown, chat, no-match,
+    unsupported, error. It does not change the verdict (the four shapes above
+    still decide what HAPPENED); it says why. outcome_note() turns the two
+    that change what the DJ should say into a sentence: 'substituted' means
+    the queued track is the station's stand-in for an ask it could not fill
+    exactly, and 'cooldown' means a standing record was held back for playing
+    too recently rather than being already in the queue.
     """
     track = st.get("track") or st.get("matched") or {}
     if not isinstance(track, dict):
@@ -118,6 +127,32 @@ def read_receipt(st: dict) -> tuple[str, dict, str, object]:
     # "Still being matched" would send the DJ back to check something that no
     # longer exists.
     return "unknown", track, ack, None
+
+
+def outcome_note(st: dict) -> str:
+    """The receipt's `outcome`, as the one extra sentence the DJ needs, or "".
+
+    Only the outcomes that change the TRUTH of what the DJ would otherwise
+    say get a line. 'substituted': the caller asked for one thing and the
+    station queued its nearest — relayed as "added to the queue: X" the DJ
+    announces X as the caller's request, and the caller hears the wrong song
+    introduced as theirs. 'cooldown': the standing wording says "already in
+    the running order", but the record is NOT queued — it played too recently
+    and the station is holding it back. 'matched', 'already-queued', 'chat'
+    and the failures are already what their verdict says.
+    """
+    outcome = str((st or {}).get("outcome") or "").strip().lower()
+    if outcome == "substituted":
+        return ("This is a STAND-IN: the station could not find exactly what "
+                "was asked for and queued the closest it has. Name what it "
+                "picked, say it is instead of what they asked for, and do not "
+                "present it as their song.")
+    if outcome == "cooldown":
+        return ("It is NOT queued: the station is holding it back because it "
+                "played too recently. Say it was on not long ago and the "
+                "station rests a record before repeating it; do not say it is "
+                "lined up.")
+    return ""
 
 
 def _when_it_plays(position) -> str:
@@ -202,6 +237,19 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
         lines = [str(l.get("text") or "").strip()
                  for l in (d.get("lines") or []) if isinstance(l, dict)]
         lines = [l for l in lines if l]
+        if not lines and d.get("pending"):
+            # SUB/WAVE 1.28: the station holds none YET and is fetching them
+            # (LRCLIB). station.current_lyrics already waited ~2s; still
+            # pending is a lookup in progress, not an empty index, and the
+            # wording below must not be the "no lyrics on file" one — that is
+            # what a caller heard about a track the station had the words for
+            # thirty seconds later.
+            return ("The station is STILL LOOKING UP the lyrics for the current "
+                    "track — a lookup is running and has not answered yet. You "
+                    "have learned NOTHING about the track: do not say it has no "
+                    "lyrics, do not call it an instrumental. Tell the caller "
+                    "you're pulling the words up, and call this tool again in "
+                    "a moment.")
         if not lines:
             # The station answered, and holds none. That is a fact about the
             # INDEX, not about the music: an unindexed vocal track and an
@@ -675,18 +723,24 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                     # the running order, and CallActions counts successful
                     # actions only — noting it spent one of the caller's and
                     # put a "Song request scheduled" card up for a non-event.
+                    note = outcome_note(st)
                     return (
                         f"The station matched {_fmt_track(track)} but did NOT "
-                        "add a new queue entry — it is either already in the "
-                        "running order or the booth answered without queueing "
-                        "it. Say it is lined up already, not that you have "
-                        "just put it in, and do not guess at when it plays."
+                        "add a new queue entry — "
+                        + (note if note else
+                           "it is either already in the running order or the "
+                           "booth answered without queueing it. Say it is lined "
+                           "up already, not that you have just put it in, and "
+                           "do not guess at when it plays.")
                         + (f" Station says: {ack}" if ack else "")
                     )
                 if verdict == "queued":
                     actions.note("request", _fmt_track(track))
+                    note = outcome_note(st)
                     out = (
-                        f"Added to the queue: {_fmt_track(track)}. It is NOT playing "
+                        f"Added to the queue: {_fmt_track(track)}. "
+                        + (note + " " if note else "")
+                        + "It is NOT playing "
                         "yet — it comes up later in the running order, after what's "
                         f"on now. {_when_it_plays(position)} "
                         "Tell the caller it's lined up, not that it's on — then "

@@ -477,6 +477,16 @@ SCHEMA: dict[str, dict] = {
              "genre-lock (an older SUB/WAVE answers that it can't). Quieter "
              "than a takeover: a narrowed playlist never announces itself on "
              "air."),
+    "allow_steer": dict(group="perms", kind="select", tiered=True, admin=True,
+        label="Steer the station for a while",
+        help="Leans what the station picks and says from a sentence in the "
+             "caller's words (\"more upbeat for the next hour\", \"90s hip hop "
+             "till the next show\") or one of your playlists, for 15 to 720 "
+             "minutes or until the schedule changes, then lets go by itself. "
+             "The station's own steer (SUB/WAVE 1.31+); it opens with five "
+             "picked tracks at the end of the record playing. A takeover's "
+             "reach without a named DJ: everyone hears it, and starting one "
+             "ends a running takeover. The DJ can also lift one early."),
     "allow_on_air": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Go live on the station",
         help="The phone-in: the conversation airs while it happens, one "

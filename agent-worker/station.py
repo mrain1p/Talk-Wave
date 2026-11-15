@@ -138,6 +138,11 @@ ACTION_TIMEOUT = 45.0
 # because a caller is waiting on the answer.
 LIBRARY_TIMEOUT = 15.0
 
+# How long /lyrics/current is given to finish a lookup it says is `pending`
+# (SUB/WAVE 1.28): one re-ask after each wait, in order. Short on purpose — a
+# caller is holding — and the last answer is returned as-is, flag included.
+LYRICS_PENDING_WAITS = (0.8, 1.2)
+
 # POST /library/blocklist/check takes at most this many rows a call
 # (routes/library.ts BLOCK_CHECK_MAX).
 BLOCK_CHECK_MAX = 500
@@ -972,15 +977,34 @@ class StationClient:
         So the failure branch is now MARKED. `unavailable` means we do not
         know anything about this track's lyrics; an absent `unavailable` with
         empty `lines` means the station answered and holds none.
+
+        **`pending: true` is a third fact** (SUB/WAVE 1.28, #2082): the station
+        has no lyrics on file yet and a lookup (LRCLIB) is running, "ask again
+        shortly". It arrives with empty `lines`, so until 0.99.56 it read as
+        the no-lyrics answer above — the one case where "none indexed" was
+        said about a track the station was about to have the words for. The
+        read now waits and asks again a couple of times (LYRICS_PENDING_WAITS,
+        ~2s all told — a caller is on the line); an answer still pending after
+        that is returned WITH the flag, for the tool to name as a lookup in
+        progress rather than an empty index.
         """
         try:
-            r = await self._client.get("/lyrics/current")
-            r.raise_for_status()
-            d = r.json()
-            return d if isinstance(d, dict) else {}
+            d = await self._lyrics_read()
+            for wait in LYRICS_PENDING_WAITS:
+                if not d.get("pending"):
+                    break
+                await asyncio.sleep(wait)
+                d = await self._lyrics_read()
+            return d
         except Exception as e:
             log.info("lyrics unavailable (%s)", describe(e))
             return {"unavailable": describe(e)}
+
+    async def _lyrics_read(self) -> dict:
+        r = await self._client.get("/lyrics/current")
+        r.raise_for_status()
+        d = r.json()
+        return d if isinstance(d, dict) else {}
 
     @staticmethod
     def _guest_credit_words(body: dict, hit: dict) -> str:
@@ -1438,13 +1462,31 @@ class StationClient:
             log.warning("skill %s failed: %s", name, describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
-    async def skip_track(self) -> dict:
+    # SUB/WAVE's own words for a targeted skip it would not do (#2023,
+    # broadcast/skip-policy.ts SKIP_REFUSAL_MESSAGES), relayed as given.
+    SKIP_REFUSALS = {
+        "track-changed": "that track is no longer on air — nothing skipped",
+        "jingle-on-air": "a jingle is on air, about to air or just ended — nothing skipped",
+        "bed-on-air": "a bed is on air after that track — nothing skipped",
+        "break-on-air": "a pause-and-talk break is on air after that track — nothing skipped",
+    }
+
+    async def skip_track(self, expect_id: str | None = None) -> dict:
         """Force-end whatever is playing. Admin-only, and station-wide.
 
         The station's own API calls this an operator override and notes there
         is deliberately no listener-facing skip. Exposing it to a caller is
         therefore a decision the operator makes about their own station, which
         is why the setting is off by default and capped per call.
+
+        `expect_id` is the on-air track's `subsonic_id` (SUB/WAVE 1.2x, #2023):
+        with it the skip lands only if THAT track is still the one on air, and
+        the station answers 409 with a `reason` — track-changed, jingle-on-air,
+        bed-on-air, break-on-air — and skips nothing. A caller's "skip this"
+        names the song they are hearing; by the time the model acts, the song
+        may have ended on its own, and a bare skip then cut the NEXT one, or
+        the ident, with the DJ reporting a clean skip. The 409 comes back as
+        `ok: False` with the station's own reason and words.
         """
         from station_config import admin_credentials
 
@@ -1454,9 +1496,17 @@ class StationClient:
         try:
             r = await self._client.post(
                 "/dj/skip",
+                json={"expectId": expect_id} if expect_id else None,
                 auth=httpx.BasicAuth(user, password),
                 timeout=ACTION_TIMEOUT,
             )
+            if r.status_code == 409 and expect_id:
+                body = _body(r)
+                reason = str(body.get("reason") or "track-changed")
+                return {"ok": False, "reason": reason,
+                        "error": str(body.get("error")
+                                     or self.SKIP_REFUSALS.get(reason)
+                                     or "the station would not skip that")}
             r.raise_for_status()
             return {"ok": True, **_body(r)}
         except Exception as e:
@@ -2167,6 +2217,107 @@ class StationClient:
                 log.warning("genre lock slow to confirm (%s) — treating as set", e)
                 return {"ok": True, "unconfirmed": True, "genres": clean}
             log.warning("genre lock failed: %s", describe(e))
+            return {"ok": False, "error": str(e)[:120]}
+
+    # The station's steer window (schemas/steer.ts: STEER_MIN_MINUTES /
+    # STEER_MAX_MINUTES, restated from the takeover's) and its prompt cap.
+    STEER_MIN_MINUTES = 15
+    STEER_MAX_MINUTES = 720
+    STEER_PROMPT_MAX = 500
+
+    async def steer(self, prompt: str = "", playlist_id: str | None = None,
+                    minutes: int = 60, until: str = "fixed") -> dict:
+        """Lean what the station picks and says for a while — SUB/WAVE 1.31's
+        steer (`POST /steer`, routes/steer.ts). Admin-only.
+
+        A steer is a sentence (`prompt`, ≤500 chars) and/or one of the
+        operator's playlists (`playlist_id`), for `until`: 'fixed' minutes
+        (15–720) or 'schedule-change' (the next grid boundary; `minutes` is
+        then refused by the station, so it is not sent). The station works
+        out five opening tracks with one picker call and queues exactly those;
+        the rest of the window leans every later pick and talk break. It lands
+        at the end of the record playing, like a takeover — and **starting a
+        steer ends a running takeover**, by the station's own rule.
+
+        Refusals come back as the station's sentence with `ok: False`: 409
+        when nothing in the library is eligible or there is no room before
+        the window ends, 404 for a playlist that resolves to no tracks, 400
+        for a body the schema refuses. A station older than 1.31 has no route
+        and answers 404 too; that one is `unsupported`, the same posture as
+        the genre lock, so the DJ says it can't rather than retrying.
+        """
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        text = " ".join(str(prompt or "").split())[:self.STEER_PROMPT_MAX]
+        if not text and not playlist_id:
+            return {"ok": False, "error": "nothing to steer by"}
+        body: dict = {"prompt": text, "playlistId": playlist_id or None,
+                      "startNow": False, "introduce": False}
+        if until == "schedule-change":
+            body["until"] = "schedule-change"
+        else:
+            body["until"] = "fixed"
+            body["minutes"] = int(minutes)
+        try:
+            r = await self._client.post(
+                "/steer", json=body,
+                auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT,
+            )
+            if r.status_code == 404 and not playlist_id:
+                return {"ok": False, "unsupported": True,
+                        "error": "this station's software has no steer yet"}
+            if r.status_code in (400, 404, 409, 502):
+                return {"ok": False, "error": _body(r).get("error")
+                        or "the station refused the steer"}
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            if _sent_but_unconfirmed(e):
+                log.warning("steer slow to confirm (%s) — treating as set", e)
+                return {"ok": True, "unconfirmed": True}
+            log.warning("steer failed: %s", describe(e))
+            return {"ok": False, "error": str(e)[:120]}
+
+    async def steer_status(self) -> dict:
+        """`GET /steer`: the running steer (or null), the budget mode and the
+        opening tracks still to air. Admin-only; {} when unreadable."""
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {}
+        try:
+            r = await self._client.get(
+                "/steer", auth=httpx.BasicAuth(user, password))
+            r.raise_for_status()
+            return _body(r)
+        except Exception as e:
+            log.info("steer status unavailable: %s", describe(e))
+            return {}
+
+    async def clear_steer(self) -> dict:
+        """`DELETE /steer`: end a steer early and pull its un-aired opening
+        tracks. Idempotent on the station's side — clearing nothing is fine."""
+        from station_config import admin_credentials
+
+        user, password = admin_credentials()
+        if not (user and password):
+            return {"ok": False, "error": "no station admin credentials"}
+        try:
+            r = await self._client.delete(
+                "/steer", auth=httpx.BasicAuth(user, password),
+                timeout=ACTION_TIMEOUT)
+            if r.status_code == 404:
+                return {"ok": False, "unsupported": True,
+                        "error": "this station's software has no steer yet"}
+            r.raise_for_status()
+            return {"ok": True, **_body(r)}
+        except Exception as e:
+            log.warning("steer clear failed: %s", describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
     async def active_show(self, now_playing: dict | None = None,

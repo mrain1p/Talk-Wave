@@ -607,8 +607,8 @@ async def fake_skill(self, name):
 # either switched on, a scripted run against a live station could really cut
 # the record its listeners were hearing, or really fire a programme beat on
 # air — while this file's own docstring promised it could not.
-async def fake_skip(self):
-    STATION_CALLS.append(("skip_track", {}))
+async def fake_skip(self, expect_id=None):
+    STATION_CALLS.append(("skip_track", {"expectId": expect_id}))
     return {"ok": True}
 
 
@@ -649,6 +649,20 @@ async def fake_unblock(self, track_id):
 
 # The genre lock: a takeover by another name on the station's side, so it
 # leaves the same kind of pin behind after the script has finished.
+# The steer (SUB/WAVE 1.31). The takeover's reach again: a scripted run that
+# reached the station would leave every pick and talk break leaned for up to
+# twelve hours after the script finished, and end a takeover the operator set.
+async def fake_steer(self, prompt="", playlist_id=None, minutes=60, until="fixed"):
+    STATION_CALLS.append(("steer", {"prompt": prompt, "playlistId": playlist_id,
+                                    "minutes": minutes, "until": until}))
+    return {"ok": True, "steer": {"prompt": prompt}, "queued": 5, "skipped": []}
+
+
+async def fake_clear_steer(self):
+    STATION_CALLS.append(("clear_steer", {}))
+    return {"ok": True, "steer": None, "removed": 0, "kept": 0}
+
+
 async def fake_genre_lock(self, genres, minutes):
     STATION_CALLS.append(("set_genre_lock", {"genres": genres, "minutes": minutes}))
     return {"ok": True, "genres": genres}
@@ -760,6 +774,8 @@ def muzzle_the_station() -> None:
     StationClient.block_track = fake_block
     StationClient.unblock_track = fake_unblock
     StationClient.set_genre_lock = fake_genre_lock
+    StationClient.steer = fake_steer
+    StationClient.clear_steer = fake_clear_steer
     StationClient.mark_blocked = fake_mark_blocked
 
 

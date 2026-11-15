@@ -5081,7 +5081,7 @@ class TestRingingRidesTheMintsHeadStart(_TempStores):
         self._FakeMCPServer.built = []
         session_mod.mcp = types.SimpleNamespace(MCPServerHTTP=self._FakeMCPServer)
         session_mod.available_voices = fake_voices
-        session_mod.pick_speakable_voice = lambda v, voices: (v or "test-voice", "")
+        session_mod.pick_speakable_voice = lambda v, voices, **kw: (v or "test-voice", "")
 
     def tearDown(self):
         brain_mod, station_mod, session_mod = self._mods

@@ -67,6 +67,10 @@ class CallActions:
         # the hyphen in "never-play" — see test_tools_surface.
         "genre lock": ("🔒", "Station locked to a genre"),
         "genre lock lifted": ("🔓", "Genre lock lifted"),
+        # The steer (SUB/WAVE 1.31): a takeover's reach with nothing on air to
+        # attribute it to, so the card is the only place a caller sees it land.
+        "steer": ("🧭", "Station steered for a while"),
+        "steer lifted": ("🧭", "Steer lifted"),
         # No expiry at all, which is what makes the receipt matter: nothing
         # later un-does this on its own the way a window lapsing does.
         "never-play": ("❌", "Banned from the station"),

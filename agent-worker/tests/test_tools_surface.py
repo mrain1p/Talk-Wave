@@ -307,6 +307,11 @@ class TestExposedSurface(unittest.TestCase):
         # answers plainly that it can't rather than failing.
         "subwave_genre_lock": "allow_genre_lock",
         "subwave_clear_genre_lock": "allow_genre_lock",
+        # SUB/WAVE 1.31's steer: the same reach again, from a sentence or a
+        # playlist, and the one that also shapes what the DJ says between
+        # records. Admin REST only, so ours end to end.
+        "subwave_steer": "allow_steer",
+        "subwave_clear_steer": "allow_steer",
         "subwave_refresh_playlist": "never",
         "subwave_list_sfx": "never",
         "subwave_play_sfx": "never",
