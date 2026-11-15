@@ -4,7 +4,9 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
-## Unreleased
+## 1.0.0
+
+Talk Wave 1.0: the call DJ keeps up with SUB/WAVE 1.32, can steer the whole station from the phone, and leans the way the booth does.
 
 - **Steer the station from the phone.** A new permission, *Steer the station for a while* (off by default, admin), lets a caller lean what the whole station picks and says: "something more upbeat for the next hour", "90s hip hop till the next show", or one of your playlists for a stretch. It is SUB/WAVE 1.31's own steer, so it opens with five picked tracks at the end of the record playing, runs 15 minutes to 12 hours or until the schedule changes, and lets go by itself. The DJ says plainly that it ends a running takeover, and can lift a steer early. An older station is told it hasn't got one.
 - **The call DJ leans the way the booth does.** A persona's Musical Leanings from the station's own settings now reach the call DJ, so "play something you'd pick" gets the same taste on the phone as on air. Nothing is added for a DJ whose leanings are blank.
