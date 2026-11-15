@@ -273,13 +273,16 @@ TOOLS: tuple[Tool, ...] = (
          "operator, so leave it at the admin tier. Counts against Actions per call.",
          needs_station_admin=True),
     Tool("subwave_never_play_track", "allow_never_play", LOCAL,
-         "Bans the track playing now from the station for good.",
+         "Bans a track from the station for good — the one playing now, or "
+         "one the caller names.",
          "Station admin credentials required. OFF by default, and the most "
          "permanent thing on a call line: the station takes it out of the "
          "queue, rebuilds the fallback playlist and never selects it again — "
          "for every listener, from one caller's sentence, with nothing on air "
-         "to say it happened. It does not stop the copy already playing. "
-         "Counts against Actions per call.",
+         "to say it happened. It does not stop the copy already playing. A "
+         "named track is looked up in the recent plays and the library, and "
+         "banned only when exactly one record answers. Counts against Actions "
+         "per call.",
          needs_station_admin=True),
     Tool("subwave_allow_track_again", "allow_never_play", LOCAL,
          "Takes a track back off the never-play list.",

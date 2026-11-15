@@ -187,7 +187,9 @@ class TestBrainSplit(_TempStores):
             'Playing when this call connected: "Dreams" by Fleetwood Mac',
             text)
         self.assertIn("Just played", text)
-        self.assertIn("Coming up", text)
+        # Not "Coming up after that" any more: the queue line is frozen at
+        # pickup too, and says so — TestTheQueueLineSaysItIsFromPickup.
+        self.assertIn("Next in the queue WHEN THIS BRIEFING WAS READ", text)
 
     def test_briefing_reads_the_schedule_only_when_asked(self):
         self.assertNotIn("Morning Drive", self._facts({}))
@@ -1127,3 +1129,257 @@ class TestTheDJIsToldItsMusicalLeanings(_TempStores):
     def test_no_leanings_means_no_sentence(self):
         text = self._build({"id": "p_f", "name": "Francesca", "soul": "A soul."}, "")
         self.assertNotIn("musical leanings", text)
+
+
+class TestTheNextCallsProcessStillKnowsWhatWeAired(unittest.TestCase):
+    """Review, 2026-11-15. `said_by_us` is the only privacy filter that fires
+    on a real station (see the class above for why the kind cannot), and its
+    ledger lived in process memory under a comment saying "one worker process
+    serves many calls". LiveKit runs every call in its OWN job process. The
+    hand-back line is aired from call N's process during its shutdown; call
+    N+1's briefing is assembled in a fresh process with an empty ledger — so
+    the filter was dead by construction, and the previous caller's business
+    could reach the next caller's "Things YOU said on the broadcast".
+
+    The ledger is on disk now, beside the other per-process caches. "A fresh
+    process" is simulated by emptying the in-memory deque, and proved once
+    with a real second interpreter."""
+
+    LINE = "Big thanks to Sarah on the line — that request is coming up."
+
+    def setUp(self):
+        import os
+
+        import station
+
+        self.station = station
+        self._tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self._tmp.name) / "aired-by-us.json"
+        self._old = os.environ.get("AIRED_BY_US_PATH")
+        os.environ["AIRED_BY_US_PATH"] = str(self.path)
+        station._AIRED_BY_US.clear()
+
+    def tearDown(self):
+        import os
+
+        self.station._AIRED_BY_US.clear()
+        if self._old is None:
+            os.environ.pop("AIRED_BY_US_PATH", None)
+        else:
+            os.environ["AIRED_BY_US_PATH"] = self._old
+        self._tmp.cleanup()
+
+    def _a_fresh_process(self):
+        self.station._AIRED_BY_US.clear()
+
+    def test_a_line_aired_by_the_last_call_is_recognised_by_the_next(self):
+        from brain.briefing import _fmt_booth
+
+        self.station.note_aired_by_us(self.LINE)
+        self._a_fresh_process()
+        self.assertTrue(self.station.said_by_us(self.LINE))
+        out = _fmt_booth({"messages": [
+            {"kind": "dj-speak", "text": self.LINE},
+            {"kind": "dj-speak",
+             "text": "That was a station announcement about the weekend."},
+        ]}, 4)
+        self.assertNotIn("Sarah", out)
+        self.assertIn("weekend", out)
+
+    def test_it_holds_across_a_real_second_interpreter(self):
+        # The claim, literally: one process airs, ANOTHER reads the briefing.
+        import os
+        import subprocess
+        import sys
+
+        aired = subprocess.run(
+            [sys.executable, "-c",
+             "import station; station.note_aired_by_us("
+             "'Shout out to Piotr, ringing in about his move to Leeds.')"],
+            cwd=str(AGENT_WORKER), capture_output=True, text=True, timeout=120,
+            env={**os.environ, "LOG_TO_FILE": "0"})
+        self.assertEqual(aired.returncode, 0, aired.stderr)
+        self.assertTrue(self.station.said_by_us(
+            "shout out to PIOTR, ringing in about his move to Leeds."))
+        self.assertFalse(self.station.said_by_us(
+            "A link the station wrote itself about the weather."))
+
+    def test_the_file_holds_no_words_of_the_line(self):
+        # Enough to recognise a line, nothing to read back: a caller's name
+        # in a dedication is not something to leave lying in data/.
+        self.station.note_aired_by_us(self.LINE)
+        on_disk = self.path.read_text(encoding="utf-8")
+        for word in ("Sarah", "sarah", "request", "thanks"):
+            self.assertNotIn(word, on_disk)
+
+    def test_a_line_older_than_the_window_is_forgotten(self):
+        import time
+
+        key = self.station._aired_key(self.station._norm_spoken(self.LINE))
+        stale = time.time() - self.station._AIRED_TTL_SECS - 60
+        self.path.write_text(json.dumps([[stale, key]]), encoding="utf-8")
+        self.assertFalse(self.station.said_by_us(self.LINE))
+        # And the next write prunes it rather than carrying it forever.
+        self.station.note_aired_by_us("Something we said just now.")
+        self.assertEqual(len(json.loads(self.path.read_text("utf-8"))), 1)
+
+    def test_the_ledger_is_bounded(self):
+        for n in range(self.station._AIRED_MAX + 25):
+            self.station.note_aired_by_us(f"line number {n} of the evening")
+        rows = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(len(rows), self.station._AIRED_MAX)
+        # The newest survive; the oldest fell off the front.
+        self._a_fresh_process()
+        self.assertTrue(self.station.said_by_us(
+            f"line number {self.station._AIRED_MAX + 24} of the evening"))
+        self.assertFalse(self.station.said_by_us(
+            "line number 0 of the evening"))
+
+    def test_a_missing_or_corrupt_file_costs_filtering_never_a_call(self):
+        self.assertFalse(self.station.said_by_us(self.LINE))      # no file
+        for junk in ("{not json", '{"a": 1}', '[["x"], 7, [1], null]'):
+            self.path.write_text(junk, encoding="utf-8")
+            self.assertFalse(self.station.said_by_us(self.LINE))
+        # A write over the wreckage repairs it.
+        self.station.note_aired_by_us(self.LINE)
+        self._a_fresh_process()
+        self.assertTrue(self.station.said_by_us(self.LINE))
+
+    def test_an_unwritable_path_does_not_stop_the_line_airing(self):
+        import os
+
+        # The parent "directory" is a file: every write fails.
+        blocker = Path(self._tmp.name) / "blocker"
+        blocker.write_text("x", encoding="utf-8")
+        os.environ["AIRED_BY_US_PATH"] = str(blocker / "aired-by-us.json")
+        self.station.note_aired_by_us(self.LINE)                 # must not raise
+        # This process still knows; only the next one loses the filter.
+        self.assertTrue(self.station.said_by_us(self.LINE))
+
+
+class TestTheQueueLineSaysItIsFromPickup(unittest.TestCase):
+    """Review, 2026-11-15. The briefing printed "Coming up after that: …" —
+    present tense — under a comment claiming a "was" wording the string never
+    had. Nothing refreshes the queue mid-call (call/air.py re-stages the
+    current record only), so ten minutes in the DJ was reading a stale queue
+    out as what's next. The line carries its own tense now, and points at
+    the live read only on a line that actually has one."""
+
+    STATE = {"upcoming": [{"title": "Says", "artist": "Nils Frahm"},
+                          {"title": "Stardust", "artist": "Nat King Cole"}]}
+
+    def test_the_line_says_when_it_was_true(self):
+        out = briefing._fmt_upcoming(self.STATE, 2)
+        self.assertNotIn("Coming up after that", out)
+        self.assertIn("WHEN THIS BRIEFING WAS READ", out)
+        self.assertIn("read once, at pickup", out)
+        self.assertIn('"Says" by Nils Frahm', out)
+
+    def test_whats_next_is_sent_to_the_live_read(self):
+        out = briefing._fmt_upcoming(self.STATE, 2)
+        self.assertIn("subwave_station_state", out)
+
+    def test_a_line_with_no_queue_read_is_not_pointed_at_one(self):
+        out = briefing._fmt_upcoming(self.STATE, 2, live_read=False)
+        self.assertNotIn("subwave_", out)
+        self.assertIn("no live queue read", out)
+        self.assertIn("how things stood", out)
+
+    def test_an_empty_queue_and_a_zero_limit_still_say_nothing(self):
+        self.assertEqual(briefing._fmt_upcoming({"upcoming": []}, 2), "")
+        self.assertEqual(briefing._fmt_upcoming(self.STATE, 0), "")
+
+    def test_only_the_text_line_without_credentials_lacks_the_read(self):
+        from brain import assemble
+
+        # A call gets it over MCP whatever the credentials say.
+        with unittest.mock.patch("station_config.has_admin",
+                                 return_value=False):
+            self.assertTrue(assemble._live_queue_read("call"))
+            self.assertFalse(assemble._live_queue_read("chat"))
+        with unittest.mock.patch("station_config.has_admin",
+                                 return_value=True):
+            self.assertTrue(assemble._live_queue_read("chat"))
+
+    def test_the_briefing_threads_it_through(self):
+        snap = {"now_playing": {}, "state": self.STATE, "session": {}}
+
+        def facts(live):
+            return asyncio.run(briefing.station_context(
+                None, {}, snap, {}, live_queue_read=live))
+
+        self.assertIn("subwave_station_state", facts(True))
+        self.assertNotIn("subwave_station_state", facts(False))
+
+
+class TestThePromptHandsItsSegmentsToTheTool(unittest.TestCase):
+    """Review, 2026-11-15. The text line built its prompt in one place and
+    its run-skill tool in another, and gave the tool no list at all — so
+    `subwave_run_skill` answered "You have no segments to run on this show"
+    on every ask while the briefing above it named the segments the DJ could
+    run. The prompt build now reports the list it PRINTED (and what the
+    station's own gates withheld, and why), so there is no second read for
+    the two to disagree across."""
+
+    ROWS = [
+        {"kind": "weather", "label": "Weather"},
+        {"kind": "news", "label": "News", "enabled": False},
+        {"kind": "storytime", "label": "Story time"},
+    ]
+
+    def _narrowed(self, assigned=None):
+        from brain import assemble
+
+        class _Config:
+            async def persona_skills(self, pid):
+                return assigned
+
+            async def aclose(self):
+                pass
+
+        snap = {"skills": [dict(r) for r in self.ROWS]}
+        with unittest.mock.patch("station_config.StationConfig", _Config):
+            withheld = asyncio.run(
+                assemble._narrow_skills(snap, {"id": "wade"}, {}))
+        gates: dict = {}
+        assemble._report_gates(gates, snap, withheld)
+        return snap, gates
+
+    def test_the_tool_gets_exactly_the_segments_the_prompt_printed(self):
+        snap, gates = self._narrowed()
+        printed = briefing._fmt_skills(snap["skills"])
+        self.assertEqual(gates["skills"], ["weather", "storytime"])
+        for name in gates["skills"]:
+            self.assertIn(name, printed)
+        self.assertNotIn("news", printed)
+
+    def test_what_the_station_switched_off_travels_with_its_reason(self):
+        _snap, gates = self._narrowed()
+        self.assertEqual(list(gates["switched_off"]), ["news"])
+        self.assertTrue(gates["switched_off"]["news"])
+
+    def test_the_personas_own_assignment_narrows_both(self):
+        snap, gates = self._narrowed(assigned=["weather"])
+        self.assertEqual(gates["skills"], ["weather"])
+        self.assertNotIn("storytime", briefing._fmt_skills(snap["skills"]))
+
+    def test_the_keys_are_the_tool_builders_own_arguments(self):
+        # chat/session.py passes the dict straight through as **gates.
+        import inspect
+
+        from call.tools.broadcast import build_on_air_tools
+
+        _snap, gates = self._narrowed()
+        params = inspect.signature(build_on_air_tools).parameters
+        self.assertEqual(sorted(gates), ["skills", "switched_off"])
+        for key in gates:
+            self.assertIn(key, params)
+
+    def test_a_caller_that_asks_for_nothing_is_handed_nothing(self):
+        from brain import assemble
+
+        # The call path and the previews pass no dict; nothing is written
+        # anywhere on their behalf.
+        snap = {"skills": [dict(r) for r in self.ROWS]}
+        self.assertIsNone(assemble._report_gates(None, snap, {"news": "off"}))
+        self.assertEqual(snap, {"skills": self.ROWS})

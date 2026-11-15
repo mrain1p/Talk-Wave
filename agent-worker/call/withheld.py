@@ -35,9 +35,23 @@ import re
 
 from brain.tool_rules import OFF_LIST
 
+# Two station-wide asks the prompt answers with a both-directions rule of its
+# own rather than an OFF_LIST sentence (tool_rules.OFF_LIST_EXEMPT says why:
+# takeover_bullet and cancel_rule state the refusal outright). That covered
+# the PROMPT and left the card: neither gate could ever reach `_off`, so
+# "switch the show to Donovan's Pub" or "cancel my request" on a line with
+# the switch off got no denied card and no pre-answer note — the exact
+# no-receipt refusal this module exists to close (review, 2026-11-15). The
+# phrase is the card's wording, in OFF_LIST's own grammar.
+ALSO_WITHHELD: tuple[tuple[str, str], ...] = (
+    ("allow_takeover", "put a different show or DJ on the air"),
+    ("allow_cancel_queue", "take a queued track back out"),
+)
+
 # What a caller SAYS when they ask for each gated capability. Keyed by the
-# same gate names as OFF_LIST so the two cannot name different worlds; a gate
-# with no pattern here is simply never carded (the prompt still covers it).
+# same gate names as OFF_LIST (plus ALSO_WITHHELD's two) so the lists cannot
+# name different worlds; a gate with no pattern here is simply never carded
+# (the prompt still covers it).
 #
 # allow_requests is special-cased in `Withheld.__init__`: "play X" is served
 # by EITHER the request tool or the exact-queue path, so the music patterns
@@ -73,6 +87,51 @@ ASKS_FOR: dict[str, re.Pattern] = {
         r"queue (?:up )?(?:the |an? )?album|"
         r"(?:make|create|build|spin) (?:me |us )?a (?:mix|playlist)|"
         r"a mix of|mix of them)\b", re.IGNORECASE),
+    # The three station-wide asks (review, 2026-11-15). Each is narrow on
+    # purpose — see the module docstring: a wrong card is worse than none.
+    #
+    # A steer is a DIRECTION held for a STRETCH. The stretch is what makes
+    # it one: "play something more upbeat" is a single-song request and must
+    # never trip this, "more upbeat for the next hour" must. So a direction
+    # word has to be followed, within three words, by a duration — close
+    # enough that "play that for my mum, she's been up all night" and "I
+    # need more coffee to stay up all night" are not steers. "keep it
+    # up/going" is praise, not a direction, and is excluded by name; "for a
+    # while" is how people talk about themselves, so it is not a duration.
+    "allow_steer": re.compile(
+        r"\b(steer (?:the )?(?:station|music|show|picks)|"
+        r"(?:more|less|fewer|nothing but|play|"
+        r"keep (?:it|things|the music|the station)"
+        r"(?! up\b| going\b| coming\b))"
+        r"(?: [\w'&,-]+){1,3}? "
+        r"(?:for (?:the )?(?:next|rest of the) (?:\w+ ){0,2}?"
+        r"(?:hours?|minutes|while|night|evening|morning|afternoon|show|day)|"
+        r"for an hour|for (?:\w+ )?(?:hours|minutes)|"
+        r"all (?:night|evening|day|morning|afternoon)|"
+        r"(?:the )?rest of the (?:night|evening|show|day|hour)|"
+        r"from (?:now|here) on))\b", re.IGNORECASE),
+    # A takeover names a SHOW or a DJ as the thing to change. Bare "put Wade
+    # on" is deliberately NOT here: without the station's roster it is the
+    # same sentence as "put Dreams on", and carding a song request as a
+    # refused show change is the widget telling the caller a falsehood.
+    "allow_takeover": re.compile(
+        r"\b((?:change|switch|swap) (?:the )?(?:dj|host|presenter|show)\b|"
+        r"(?:a|another) different (?:dj|host|presenter|show)\b|"
+        r"put (?:someone|somebody) else on|"
+        r"(?:switch|change|go|flip) (?:over )?to (?:the )?[\w' ]{1,40}? show\b|"
+        r"put (?:the )?[\w' ]{1,40}? show on|"
+        r"take ?over (?:the )?(?:show|station|schedule|air))",
+        re.IGNORECASE),
+    # A cancel names the queued THING — a song, a track, a request — so
+    # "cancel the takeover" and "take the heart back" stay with their own
+    # gates.
+    "allow_cancel_queue": re.compile(
+        r"\b(cancel (?:my|that|the|this|our) (?:last )?"
+        r"(?:song|track|request|one|pick)|"
+        r"un-?queue|"
+        r"(?:take|pull|remove|drop|get) [^.?!]{0,40}?"
+        r"(?:out of|off|from) (?:the |my )?queue|"
+        r"take (?:that|my) (?:song|track|request) back)\b", re.IGNORECASE),
 }
 
 
@@ -115,7 +174,7 @@ class Withheld:
         """
         cfg = cfg or {}
         self._off: list[tuple[str, str]] = []
-        for gate, phrase in OFF_LIST:
+        for gate, phrase in OFF_LIST + ALSO_WITHHELD:
             if cfg.get(gate) or gate not in ASKS_FOR:
                 continue
             # "play X" is served by either path; only card music asks when

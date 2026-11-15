@@ -126,6 +126,145 @@ class TestThePatternsCannotDriftFromTheOffList(unittest.TestCase):
         # capability the prompt never mentions — the two lists must describe
         # the same world. (A gate with no pattern is fine: it is simply
         # never carded, and the prompt's sentence still covers it.)
+        # ALSO_WITHHELD's two are the gates the prompt answers with a rule
+        # of its own rather than an off-list sentence — see
+        # TestTheStationWideAsksAreCardedToo for the guard on THAT list.
         from brain.tool_rules import OFF_LIST
-        gates = {gate for gate, _ in OFF_LIST}
+        from call.withheld import ALSO_WITHHELD
+        gates = {gate for gate, _ in OFF_LIST + ALSO_WITHHELD}
         self.assertEqual(sorted(set(ASKS_FOR) - gates), [])
+
+
+def _only_off(gate):
+    """Everything on except `gate` — so a card can only be for that one."""
+    from call.withheld import ALSO_WITHHELD
+
+    return (_all_on() | {g: True for g, _ in ALSO_WITHHELD}) | {gate: False}
+
+
+class TestTheStationWideAsksAreCardedToo(unittest.TestCase):
+    """Review, 2026-11-15. The three asks that reach every listener — steer
+    the station, put another show on, pull a queued track — had no pattern
+    here, so on a line with those switches off (the default for all three)
+    the caller got neither the denied card nor the pre-answer note: the
+    refusal existed only as the DJ's word for it, which is the Mina call
+    again. Takeover and cancel were not even reachable — they are in
+    OFF_LIST_EXEMPT, because the prompt covers them with its own rule, and
+    the watcher only walked OFF_LIST."""
+
+    HITS = {
+        "allow_steer": (
+            "more upbeat for the next hour",
+            "keep it mellow for the rest of the night",
+            "can you play jazz for the next couple of hours",
+            "play only eighties from now on",
+            "nothing but reggae all night",
+            "steer the station towards soul",
+        ),
+        "allow_takeover": (
+            "switch the show to Donovan's Pub",
+            "change the DJ to Wade",
+            "put someone else on",
+            "can we get a different DJ",
+            "put the Overlook show on",
+        ),
+        "allow_cancel_queue": (
+            "cancel my request",
+            "take that back out of the queue",
+            "remove Dreams from the queue",
+            "can you unqueue that",
+            "cancel that song",
+        ),
+    }
+
+    # What each must NOT hear. The first row of the steer set is the one the
+    # review named: a single-song request is a request, never a steer.
+    NEAR_MISSES = {
+        "allow_steer": (
+            "play something upbeat",
+            "can I hear something more upbeat",
+            "play Dreams by Fleetwood Mac",
+            "one more upbeat song please",
+            "I've been listening for a while",
+            "keep it up for the rest of the night",
+            "I'll be here for the next hour",
+            "play that one for my mum, she's been up all night",
+            "I need more coffee to stay up all night",
+            "play some music for a while",
+        ),
+        "allow_takeover": (
+            "put Dreams on",
+            "put on some jazz",
+            "I love this show",
+            "what show is this",
+            "who is the DJ tonight",
+            "switch to something slower",
+        ),
+        "allow_cancel_queue": (
+            "cancel the takeover",
+            "take the heart back",
+            "what's in the queue",
+            "is my request in the queue",
+            "queue that up",
+            "never mind",
+        ),
+    }
+
+    def test_each_ask_is_carded_and_the_dj_is_told_first(self):
+        for gate, said in self.HITS.items():
+            for line in said:
+                with self.subTest(gate=gate, line=line):
+                    cards = _Cards()
+                    note = Withheld(_only_off(gate), cards).hint_for(line)
+                    self.assertIn("does not offer that tonight", note)
+                    self.assertEqual(len(cards.cards), 1)
+                    self.assertEqual(cards.cards[0][0], "not tonight")
+
+    def test_a_near_miss_is_never_carded(self):
+        for gate, said in self.NEAR_MISSES.items():
+            for line in said:
+                with self.subTest(gate=gate, line=line):
+                    cards = _Cards()
+                    note = Withheld(_only_off(gate), cards).hint_for(line)
+                    self.assertEqual(note, "")
+                    self.assertEqual(cards.cards, [])
+
+    def test_a_single_song_request_is_not_a_steer_even_with_everything_off(self):
+        # With requests off too, "play something upbeat" is carded — as a
+        # REQUEST. The steer's card must not be the one that goes up.
+        from call.withheld import ALSO_WITHHELD
+
+        cfg = ({gate: False for gate in _all_on()}
+               | {g: False for g, _ in ALSO_WITHHELD})
+        cards = _Cards()
+        Withheld(cfg, cards).hint_for("play something upbeat")
+        self.assertEqual(cards.cards, [("not tonight", "take song requests")])
+
+    def test_a_line_that_offers_them_stays_silent(self):
+        for gate, said in self.HITS.items():
+            cards = _Cards()
+            w = Withheld(_only_off(gate) | {gate: True}, cards)
+            for line in said:
+                self.assertEqual(w.hint_for(line), "", line)
+            self.assertEqual(cards.cards, [])
+
+    def test_the_card_says_what_was_asked_for(self):
+        cards = _Cards()
+        Withheld(_only_off("allow_takeover"), cards).hint_for(
+            "change the DJ to Wade")
+        self.assertEqual(cards.cards,
+                         [("not tonight",
+                           "put a different show or DJ on the air")])
+
+    def test_the_two_extra_gates_are_ones_the_prompt_already_answers(self):
+        # ALSO_WITHHELD may only name gates the prompt covers with a rule of
+        # its own (OFF_LIST_EXEMPT) — never a gate OFF_LIST already carries,
+        # which would card one ask under two phrases.
+        from brain.tool_rules import OFF_LIST, OFF_LIST_EXEMPT
+        from call.withheld import ALSO_WITHHELD
+
+        extra = {gate for gate, _ in ALSO_WITHHELD}
+        self.assertEqual(sorted(extra - set(OFF_LIST_EXEMPT)), [])
+        self.assertEqual(sorted(extra & {g for g, _ in OFF_LIST}), [])
+        for gate in extra:
+            self.assertIn(gate, ASKS_FOR)

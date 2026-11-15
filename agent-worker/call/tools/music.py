@@ -178,6 +178,29 @@ def _when_it_plays(position) -> str:
 # the title into the tool result itself, which is the best outcome.
 _INLINE_POLL_SECS = 2.0
 
+async def _preflight(station: StationClient, request: str) -> str:
+    """The words to submit for a "Title by Artist" request.
+
+    If the full phrase finds nothing but the cleaned one does, submit the
+    cleaned one — the station's own resolver trips on the same matcher and
+    substitutes a different song rather than failing.
+
+    None is a TIMEOUT, not a miss (review, 2026-11-15): `not None` is truthy,
+    so a search that never answered bought a SECOND search, and two library
+    timeouts could pass in silence before the request was even posted. No
+    answer is no verdict — their words go to the station as given.
+    """
+    idx = request.lower().rfind(" by ")
+    if idx <= 0:
+        return request
+    first = await station.search_library(request)
+    if first is not None and not first:
+        cleaned = request[:idx] + " " + request[idx + 4:]
+        if await station.search_library(cleaned):
+            return cleaned
+    return request
+
+
 def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                         get_session=None, air=None, record=None) -> list:
     """Search and request as local tools with deterministic fallbacks.
@@ -616,23 +639,8 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
             if actions.at_limit():
                 return actions.refusal()
             text = request
-            idx = request.lower().rfind(" by ")
-            if idx > 0 and cfg.get("allow_library_search"):
-                # Pre-flight: if the full phrase finds nothing but the
-                # cleaned one does, submit the cleaned one — the station's
-                # own resolver trips on the same matcher and substitutes a
-                # different song rather than failing.
-                #
-                # None is a TIMEOUT, not a miss (review, 2026-11-15): `not
-                # None` is truthy, so a search that never answered bought a
-                # SECOND search, and two library timeouts could pass in
-                # silence before the request was even posted. No answer is
-                # no verdict — their words go to the station as given.
-                first = await station.search_library(request)
-                if first is not None and not first:
-                    cleaned = request[:idx] + " " + request[idx + 4:]
-                    if await station.search_library(cleaned):
-                        text = cleaned
+            if cfg.get("allow_library_search"):
+                text = await _preflight(station, request)
 
             # A refusal the station just gave is still true a second later.
             # The conduct says "don't retry a refusal" and on a real call

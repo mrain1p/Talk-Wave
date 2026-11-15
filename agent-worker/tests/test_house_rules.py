@@ -1212,7 +1212,14 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # rule builders, and they landed with the rule builders.
         # 798 at 1.0.0: the steer bullet (SUB/WAVE 1.31) and its off-list line
         # — a rule builder and a declaration, each on its own side of the seam.
-        "agent-worker/brain/tool_rules.py": (798, "the declarations at the top "
+        # 810 at the 2026-11-15 review: the EARLIER CALL row became
+        # earlier_call_row() — twelve lines, a rule builder landing with the
+        # rule builders. Inline in the finding table it rode the name-search
+        # switch, while the tool it names (subwave_booth_log) is a READ built
+        # on every line; a row that rides what builds its tool, minus the
+        # single-lookup mode that folds the tool away, needs a function to
+        # ask in, and _tools has no branch left to spend on it.
+        "agent-worker/brain/tool_rules.py": (810, "the declarations at the top "
                                                   "split from the rule builders "
                                                   "below them"),
         # 729: the withheld watcher joins on_user_turn_completed (0.98.55) —
@@ -1411,7 +1418,12 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # one way out, so the caller's `bye` and the message ceiling stop
         # popping a chat and leaking the LLM client it owns. Twelve lines,
         # all of them in the COLLECTION half the seam already names.
-        "agent-worker/chat/session.py": (806, "the one-conversation half "
+        # 809 at the 2026-11-15 review: the text line's run_skill is built
+        # from the segment list its own prompt printed — a `gates` dict the
+        # prompt build fills, and the three lines that say why. The work is
+        # in brain/assemble.py (_report_gates); this is the one-conversation
+        # half handing it across, none of it over the seam.
+        "agent-worker/chat/session.py": (809, "the one-conversation half "
                                               "(ChatSession: the tool loop, "
                                               "the nudge, the record) split "
                                               "from the collection half "
@@ -2219,7 +2231,10 @@ class TestNoFunctionGrowsTooComplex(unittest.TestCase):
         # out to _parse_picks when the one-artist press joined it.
         # Batch 5 — the brain
         "agent-worker/brain/briefing.py::_fmt_now_playing": (32, "Batch 5 — now-playing formatter"),
-        "agent-worker/brain/assemble.py::build_system_prompt": (29, "Batch 5 — prompt assembler entry; +1 2026-09-01: the persona id, so the booth window can tell our own lines from a co-host's; +1 2026-09-07: the live show resolved before the skills are narrowed, so a co-hosted segment (#1534) is only offered when somebody else is in the booth"),
+        # assemble.build_system_prompt was here at 29; the 2026-11-15 review
+        # moved its skills narrowing out to _narrow_skills (so the text line's
+        # run-skill tool could be handed the list the prompt printed), which
+        # dropped it under the ceiling — row removed, per the ratchet.
         "agent-worker/brain/tool_rules.py::_tools": (30, "Batch 5 — the prompt god-function; +1 2026-08-31: the tool_speakfirst gate, so chat can drop the dead-air rule; +2 1.0.0: the steer bullet rides its switch like every other action"),
         # Batch 6 — chat / onair / openlines / voicemail
         "agent-worker/voicemail/capture.py::answer": (45, "Batch 6 — voicemail answer pipeline"),

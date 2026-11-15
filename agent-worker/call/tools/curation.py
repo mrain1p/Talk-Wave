@@ -10,7 +10,8 @@ removing it from selection for good.
 They also share a shape the queue tools don't: every one of them acts on the
 track playing RIGHT NOW, resolved here rather than passed in, because "this
 one" is how a caller refers to it and asking the model to carry an id across
-turns is how it ends up hearting the wrong song.
+turns is how it ends up hearting the wrong song. Where a caller NAMES another
+record (un-like, never-play), the name is resolved here too — never an id.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from station import StationClient
 
 from ..actions import CallActions
 from .registry import library_search_needs_mcp
-from .rows import _fmt_track
+from .rows import _fmt_track, _has_words, _squash
 
 log = logging.getLogger("callin.agent")
 
@@ -72,6 +73,108 @@ async def _target_to_unlike(station: StationClient, actions, title: str,
     if remembered and remembered[0]:
         return remembered[1], remembered[0]
     return await _track_on_air(station)
+
+
+def _row_id(row: dict) -> str:
+    """A listing row's track id — the play log says `trackId`, search and
+    /now-playing say `subsonic_id` or `id`."""
+    return str(row.get("subsonic_id") or row.get("trackId") or row.get("id")
+               or row.get("songId") or "")
+
+
+def _answers_to(row: dict, title: str, artist: str) -> bool:
+    """Is this row the record the caller NAMED?
+
+    Strict on purpose, because the only caller of this bans what it finds:
+    the title must BE the title (a remaster's bracketed suffix aside), not
+    merely contain it — "Yesterday" must never resolve to "Yesterday Once
+    More" because that happened to be the library's one hit. The artist,
+    when given, must appear in the row's artist as whole words.
+    """
+    filed = str(row.get("title") or "")
+    if not _squash(filed):
+        return False
+    bare = filed.split(" (")[0].split(" - ")[0]
+    if title and _squash(title) not in (_squash(filed), _squash(bare)):
+        return False
+    return not artist or _has_words(row.get("artist"), artist)
+
+
+async def _rows_answering(station: StationClient, title: str,
+                          artist: str) -> tuple[list[dict], bool]:
+    """Every distinct record that answers to the name, and whether the look
+    was COMPLETE. Recent plays first ("that one you played earlier" is the
+    usual ask), then the library by name. An artist alone searches the
+    recent plays only — the whole library by one artist is not a candidate
+    list for a permanent ban."""
+    try:
+        rows = list(await station.play_history(limit=30) or [])
+    except Exception as e:                                     # noqa: BLE001
+        log.debug("play history unreadable for a named ban: %s", e)
+        rows = []
+    for row in rows:
+        row.setdefault("_recent", True)
+    looked = True
+    if title:
+        found = await station.search_library(
+            " ".join(p for p in (title, artist) if p))
+        looked = found is not None
+        rows += list(found or [])
+    seen: dict[str, dict] = {}
+    for row in rows:
+        rid = _row_id(row) if isinstance(row, dict) else ""
+        if rid and rid not in seen and _answers_to(row, title, artist):
+            seen[rid] = row
+    return list(seen.values()), looked
+
+
+async def _target_to_ban(station: StationClient, title: str,
+                         artist: str) -> tuple[dict, str, str]:
+    """(track, id, why not) for a ban. Exactly one of id / why-not is set.
+
+    No name is the record on air, as it always was. A NAME is resolved
+    against the recent plays and the library, and banned only when exactly
+    ONE record answers: this is the one permanent thing on a call line, so
+    two candidates is a question for the caller, never a pick.
+    """
+    if not (title or artist):
+        track, song_id = await _track_on_air(station)
+        return track, song_id, "" if song_id else (
+            "Nothing identifiable is on air, so there's nothing to ban. "
+            "Say you can't see what's playing rather than guessing.")
+    named = " by ".join(p for p in (f'"{title}"' if title else "", artist)
+                        if p) if title else f"anything by {artist}"
+    rows, looked = await _rows_answering(station, title, artist)
+    if len(rows) == 1:
+        return rows[0], _row_id(rows[0]), ""
+    if len(rows) > 1:
+        listed = "; ".join(
+            _fmt_track(r) + (" (played recently)" if r.get("_recent") else "")
+            for r in rows[:6])
+        return {}, "", (
+            f"NOTHING was banned: MORE THAN ONE record answers to {named} — "
+            f"{listed}. A ban is permanent and you do NOT pick one for them. "
+            "Ask the caller which they mean, then call this again with the "
+            "title AND the artist. If two of these are the same song by the "
+            "same artist they are separate copies a name cannot tell apart: "
+            "say so, and ban it while it is playing instead.")
+    if not looked:
+        return {}, "", (
+            f"NOTHING was banned: {named} is not in the recent plays and the "
+            "library search did not answer — the read FAILED, which is not "
+            "'no such record'. Say you couldn't look it up just now; do not "
+            "say the station hasn't got it, and do not ban anything else in "
+            "its place.")
+    if not title:
+        return {}, "", (
+            f"NOTHING was banned: nothing by {artist} is in the recent plays, "
+            "and an artist alone is not enough to ban from the whole library. "
+            "Ask which song they mean.")
+    return {}, "", (
+        f"NOTHING was banned: no record answering to {named} is in the "
+        "station's recent plays or its library under that exact title. A ban "
+        "is permanent, so a near-miss is never taken instead — ask them for "
+        "the exact title and the artist, or ban it while it is on air.")
 
 
 def build_curation_tools(cfg: dict, station: StationClient,
@@ -158,23 +261,34 @@ def build_curation_tools(cfg: dict, station: StationClient,
     # judgement on the operator's library must be able to lift one too, or the
     # only way back is the operator noticing.
     if cfg.get("allow_never_play") and not library_search_needs_mcp():
+        # A caller can NAME the record (review, 2026-11-15). The ban took no
+        # argument, so "never play Africa again" or "ban that one you played
+        # earlier" could only ever land on whatever was on air at that
+        # moment — the wrong record, permanently — while the lift beside it
+        # takes any id and the station's blocklist takes any track. Same
+        # switch, same action budget, same receipt; see _target_to_ban for
+        # the one rule a name adds.
         @lk_llm.function_tool(name="subwave_never_play_track")
-        async def never_play_track() -> str:
-            """Ban the track playing RIGHT NOW from the station for good — it
-            comes out of the queue and is never selected again. Use ONLY when
-            the caller has clearly asked for exactly that ("never play this
-            again", "take this off the station"). This is PERMANENT and affects
-            every listener, so do not reach for it to skip something: skipping
-            is subwave_skip_track. If they only mean they dislike it, say so
-            back instead of banning it."""
+        async def never_play_track(title: str = "", artist: str = "") -> str:
+            """Ban a track from the station for good — it comes out of the
+            queue and is never selected again. With NO arguments it bans the
+            track playing RIGHT NOW ("never play this again", "take this off
+            the station"). When the caller NAMES a different record — "never
+            play Africa again", "ban that Toto one you played earlier" — pass
+            its title, and the artist if they gave one (an artist alone finds
+            it only among the recent plays). It bans only when exactly ONE
+            record answers; otherwise it tells you what to ask. Use ONLY when
+            the caller has clearly asked for exactly that. This is PERMANENT
+            and affects every listener, so do not reach for it to skip
+            something: skipping is subwave_skip_track. If they only mean they
+            dislike it, say so back instead of banning it."""
             if actions.at_limit():
                 return actions.refusal()
-            track, song_id = await _track_on_air(station)
+            title, artist = str(title or "").strip(), str(artist or "").strip()
+            by_name = bool(title or artist)
+            track, song_id, why_not = await _target_to_ban(station, title, artist)
             if not song_id:
-                return (
-                    "Nothing identifiable is on air, so there's nothing to ban. "
-                    "Say you can't see what's playing rather than guessing."
-                )
+                return why_not
             name = _fmt_track(track) if track.get("title") else "the current track"
             res = await station.block_track(song_id)
             if not res.get("ok"):
@@ -194,6 +308,20 @@ def build_curation_tools(cfg: dict, station: StationClient,
             extra = ""
             if isinstance(purged, int) and purged:
                 extra = f" It also came out of the queue ({purged} spot(s))."
+            if by_name:
+                # Banned off a NAME, so the receipt must be checkable by ear:
+                # the caller hears exactly which record went, and the DJ holds
+                # the one id that undoes it.
+                return (
+                    f"Done — {name} is on the never-play list and the station "
+                    f"won't select it again.{extra} It was found by NAME, not "
+                    "taken off the air: say back the title AND the artist so "
+                    "the caller can catch a wrong one — to undo it, "
+                    f"subwave_allow_track_again with id {song_id}. If it is "
+                    "the record playing right now, this does NOT stop it. "
+                    "Say what actually happened, and remember this is "
+                    "permanent."
+                )
             return (
                 f"Done — {name} is on the never-play list and the station won't "
                 f"select it again.{extra} It does NOT stop the copy playing "
