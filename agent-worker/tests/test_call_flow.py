@@ -5521,3 +5521,103 @@ class TestTheHushBeatStopsBeforeTheMarkerDoes(unittest.TestCase):
         src = inspect.getsource(CallSession._on_shutdown)
         self.assertIn("await lifecycle.cancel(beat)", src)
         self.assertNotIn("\n            lifecycle.cancel(beat)", src)
+
+
+class TestAnUndoThatNeverRanOwesAReceiptToo(unittest.TestCase):
+    """Drill against the deployed 1.0.1, 2026-11-16. A caller steered the
+    station and then asked for it back; in two rounds the DJ said it was
+    undone and called nothing - "I've pulled that back for you" and "shifting
+    it back to the regular rotation now". The guard's vocabulary was all
+    about putting things IN, so neither line owed a receipt, and a steer
+    would have run on for its window with the caller believing it lifted."""
+
+    def test_the_two_lines_from_the_drill_are_caught(self):
+        import promises
+
+        self.assertEqual(promises.unbacked(
+            "No problem, I've pulled that back for you - the station is "
+            "back to its usual rotation now."), "claim")
+        self.assertEqual(promises.unbacked(
+            "No problem, shifting it back to the regular rotation now."),
+            "promise")
+        # The two the first pattern still missed, six rounds later: the
+        # thing is NAMED, and nothing is said to come "back".
+        for said in ("No problem, I've just cleared that steer out for you.",
+                     "No problem at all - I've cleared that steering, so "
+                     "we'll be back to the usual drift in a moment."):
+            with self.subTest(said):
+                self.assertEqual(promises.unbacked(said), "claim")
+
+    def test_an_undo_that_really_ran_is_left_alone(self):
+        # Six of the eight matching lines in that day's sweeps were said
+        # after the tool had run. `acted` is the ledger's answer and clears
+        # them, as it does a queue that really went in.
+        import promises
+
+        self.assertEqual(promises.unbacked(
+            "Fair enough. I've taken that ban off, so it's back in the rotation.",
+            tools_ran=True, acted=True), "")
+        self.assertEqual(promises.unbacked(
+            "Understood. I've pulled that back, so we'll drift back to our usual rhythm.",
+            tools_ran=True, acted=True), "")
+
+    def test_ordinary_talk_does_not_trip_it(self):
+        import promises
+
+        for said in (
+            "It's a quiet one tonight, plenty of room to breathe.",
+            "I've got Dreams by Fleetwood Mac right here in the racks.",
+            "Just the music, really. I was letting the opening set find its own space.",
+            "That's a classic. Anything else you'd like to hear?",
+            "We're keeping it steady, back to the quiet then.",
+        ):
+            with self.subTest(said):
+                self.assertEqual(promises.unbacked(said), "")
+
+
+class TestATypographicApostropheIsStillAnApostrophe(unittest.TestCase):
+    """Every guard pattern spells its contractions with the typewriter
+    apostrophe, and the model the operator runs writes U+2019. On the drill
+    against the deployed 1.0.1 (2026-11-16) "I\u2019ve pulled that back for you"
+    went out with no tool call and no nudge: the same words with a straight
+    apostrophe are a claim. The line is straightened once, where it comes in
+    to be read."""
+
+    CURLY = "\u2019"
+
+    def test_a_promise_is_a_promise_either_way(self):
+        import promises
+
+        plain = "I'll queue that up for you."
+        self.assertEqual(promises.unbacked(plain), "promise")
+        self.assertEqual(promises.unbacked(plain.replace("'", self.CURLY)),
+                         "promise")
+
+    def test_a_claim_is_a_claim_either_way(self):
+        import promises
+
+        for plain in ("No problem, I've pulled that back for you.",
+                      "I've got that lined up for you."):
+            with self.subTest(plain):
+                self.assertEqual(promises.unbacked(plain), "claim")
+                self.assertEqual(
+                    promises.unbacked(plain.replace("'", self.CURLY)), "claim")
+
+    def test_the_door_guard_reads_it_too(self):
+        from call import door
+
+        plain = "That's queued. Anything else you're looking for?"
+        self.assertTrue(door.holds_the_door(plain))
+        self.assertTrue(door.holds_the_door(plain.replace("'", self.CURLY)))
+        self.assertTrue(door.signals_done("no, that" + self.CURLY + "s everything"))
+
+    def test_a_named_undo_is_a_promise_and_talk_is_not(self):
+        import promises
+
+        self.assertEqual(promises.unbacked(
+            "Fair enough. I" + self.CURLY + "m lifting that steer now."), "promise")
+        for talk in ("Just lifting the mood a little tonight.",
+                     "Nothing like clearing the air before the next set."):
+            with self.subTest(talk):
+                self.assertEqual(promises.unbacked(talk), "")
+

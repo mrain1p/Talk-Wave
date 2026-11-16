@@ -24,6 +24,7 @@ from ..background import spawn
 from .albums import build_album_tools
 from .playlists import build_playlist_tools
 from .late_match import _surface_late_match
+from .next_move import a_lookup_is_not_a_request
 from .registry import library_search_needs_mcp
 from .removal import build_removal_tools
 # Re-exported, not merely used: `music._fmt_track` is a name several tests and
@@ -434,6 +435,10 @@ def build_library_tools(cfg: dict, station: StationClient, actions: CallActions,
                                 "(\"something by them\", \"whichever\"), "
                                 "choose ONE and queue it — don't read the "
                                 "versions back as a question.")
+                    # Last, because the model acts on what it read last:
+                    # a hit is not a request (see the helper for the calls
+                    # this cost).
+                    tail += "\n" + a_lookup_is_not_a_request(cfg)
                     answer = head + ":\n" + joined + more + tail
                     _search_receipts[cache_key] = answer
                     return answer

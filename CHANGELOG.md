@@ -6,6 +6,10 @@ Release notes for operators. One entry per release to `main`; work in flight on
 
 ## Unreleased
 
+- **The DJ's promises are caught however they are punctuated.** The guard that makes the DJ follow through on "I'll queue that up" only recognised a typewriter apostrophe, and the model writes the typographic one, so most contracted promises and claims went unchecked on a real call. Both are read the same now.
+- **"I've pulled that back" is checked too.** Asked to undo a steer, the DJ occasionally said it was undone without doing it. The guard that catches a queue claimed and not made now also catches an undo claimed and not made, and sends the DJ back to do it.
+- **"It's in the queue" now means it is.** On the default line, asked to play a named song, the DJ often looked it up, found it, and said it was queued without putting the request in. The lookup's answer now says nothing is queued yet and names the step that queues it.
+- **Lifting a ban can no longer miss.** Asked to put a banned record back, the DJ sometimes handed over the song's title where the station wants its id, so the ban stood while the DJ said it was lifted. The title is now matched to the record banned on that call or the one on air, and anything else is refused instead of sent.
 - **An existing webhook secret is locked down too.** 1.0.1 made the file owner-only when written, but it is written once and kept, so a deployment from before the fix stayed readable by every account on the box. It is now tightened whenever it is read.
 
 ## 1.0.1

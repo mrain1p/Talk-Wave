@@ -211,6 +211,7 @@ from tests.test_call_record import (  # noqa: F401
     TestTheRecordAndItsProblemsShareOneClock,
     TestThePickupTimelineIsWrittenDown,
     TestTheDayLogRemembersActionsNotPeople,
+    TestTheSuiteCannotWriteTheRealDayLog,
 )
 from tests.test_call_flow import (  # noqa: F401
     TestAHoldThatRanOutHasNothingToComeBackFrom,
@@ -240,6 +241,8 @@ from tests.test_call_flow import (  # noqa: F401
     TestTheAirSplitHoldsItsShape,
     TestTheGreetingWaitsForTheOnAirDJ,
     TestAPromisedActionActuallyHappens,
+    TestAnUndoThatNeverRanOwesAReceiptToo,
+    TestATypographicApostropheIsStillAnApostrophe,
     TestARefusedActionIsNotReportedAsDone,
     TestEveryGeneratedTurnWaitsForTheBroadcast,
     TestTheCallerIsNotShownTheDoorTwice,
@@ -436,6 +439,7 @@ from tests.test_prompt_budget import (  # noqa: F401
 from tests.test_discovery import (  # noqa: F401
     TestAFailedReadNeverBecomesAFactAboutTheMusic,
     TestAResultNeverNamesAToolThisLineHasNot,
+    TestAFoundRecordIsNotAQueuedOne,
     TestACompoundGenreIsAViableOption,
     TestATitleIsNotATrackId,
     TestTheFixedVocabulariesAreResolvedBeforeAnythingIsSent,
@@ -451,6 +455,7 @@ from tests.test_discovery import (  # noqa: F401
 from tests.test_curation import (  # noqa: F401
     TestBanningARecordIsTheOnePermanentThing,
     TestACallerCanNameTheRecordToBan,
+    TestLiftingABanTakesTheRecordNotItsName,
     TestLikingTheTrackOnAir,
 )
 from tests.test_takeover import (  # noqa: F401

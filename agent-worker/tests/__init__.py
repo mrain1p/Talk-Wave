@@ -45,3 +45,16 @@ os.environ.setdefault(
     "AIRED_BY_US_PATH",
     os.path.join(_tempfile.mkdtemp(prefix="callin-test-aired-"),
                  "aired-by-us.json"))
+
+# And the day log (call/daylog.py), which later callers have READ BACK to them
+# by subwave_booth_log. Some tests redirect it for themselves and some never
+# did: the developer's data/day-log.json held sixteen "play some Bowie" rows
+# and six "a voicemail song request" rows that no caller ever made, and two
+# runs of the suite inside the deployed worker put two of the latter into the
+# LIVE station's log, where the next sweep's DJ read them out as real
+# (2026-11-16). A floor, so no test can reach the real file whatever it
+# forgets; setdefault, so a test's own redirect still wins.
+os.environ.setdefault(
+    "DAYLOG_PATH",
+    os.path.join(_tempfile.mkdtemp(prefix="callin-test-daylog-"),
+                 "day-log.json"))

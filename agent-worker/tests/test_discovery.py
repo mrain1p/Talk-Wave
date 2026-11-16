@@ -1010,3 +1010,84 @@ class TestAResultNeverNamesAToolThisLineHasNot(unittest.TestCase):
                                         f"in {where}")
         self.assertEqual(sorted(set(offences)), [],
                          "\n  " + "\n  ".join(sorted(set(offences))))
+
+
+class TestAFoundRecordIsNotAQueuedOne(unittest.TestCase):
+    """Drill on the deployed 1.0.1, 2026-11-16, at the shipped defaults with
+    an anonymous caller. "Play Dreams by Fleetwood Mac for me": the DJ ran
+    the name search, got `1 result(s): "Dreams" by Fleetwood Mac`, and said
+    "that's in the queue for you" with no request made — three rounds in
+    three. In one the request never happened at all while the DJ answered
+    "it did, just confirmed it".
+
+    The listing ended at the listing. It now ends by saying it was a lookup
+    and naming the tool that does the rest, on the same switch-riding rule
+    as every other results string here."""
+
+    SHAPES = TestAResultNeverNamesAToolThisLineHasNot.SHAPES
+
+    def _surface(self, cfg):
+        from call.tools import registry
+
+        with _with_credentials():
+            return (set(registry.local_tool_names(cfg))
+                    | set(registry.mcp_allowlist(cfg)))
+
+    def test_it_names_only_a_tool_the_line_has(self):
+        import re
+
+        from call.tools import next_move
+
+        for label, cfg in self.SHAPES.items():
+            with self.subTest(label), _with_credentials():
+                said = next_move.a_lookup_is_not_a_request(cfg)
+                self.assertIn("LOOKUP", said)
+                named = set(re.findall(r"subwave_[a-z_]+", said))
+                self.assertLessEqual(named, self._surface(cfg), said)
+
+    def test_each_line_is_told_its_own_next_move(self):
+        from call.tools import next_move
+
+        with _with_credentials():
+            shipped = next_move.a_lookup_is_not_a_request(
+                self.SHAPES["shipped defaults, anonymous caller"])
+            granted = next_move.a_lookup_is_not_a_request(
+                self.SHAPES["everything the operator can grant"])
+            nothing = next_move.a_lookup_is_not_a_request(
+                self.SHAPES["a line that cannot queue at all"])
+        self.assertIn("subwave_request_song", shipped)
+        self.assertIn("NOTHING is queued or requested yet", shipped)
+        self.assertIn("subwave_queue_track", granted)
+        self.assertNotIn("subwave_", nothing)
+        self.assertIn("never that it is lined up", nothing)
+        # The condition is the caller's ASK, not the hit: "have you got
+        # anything by them?" is a question to answer, not a record to queue.
+        for said in (shipped, granted):
+            self.assertIn("If the caller asked you to PLAY", said)
+            self.assertIn("If they only asked what you have", said)
+
+    def test_the_name_search_ends_on_it(self):
+        from call.actions import CallActions
+        from call.tools import music
+
+        class _Racks:
+            async def search_library(self, q, offset=0, limit=30):
+                return [{"id": "t2", "title": "Dreams",
+                         "artist": "Fleetwood Mac"}]
+
+        cfg = {"allow_library_search": True, "allow_requests": True}
+        orig = music.library_search_needs_mcp
+        music.library_search_needs_mcp = lambda: False
+        try:
+            with _with_credentials():
+                tools = music.build_library_tools(cfg, _Racks(), CallActions(5))
+                tool = next(t for t in tools
+                            if t.info.name == "subwave_search_library")
+                out = asyncio.run(tool(q="Dreams Fleetwood Mac"))
+        finally:
+            music.library_search_needs_mcp = orig
+        self.assertIn("1 result(s)", out)
+        # LAST: the model acts on what it read last.
+        self.assertTrue(out.rstrip().endswith("just tell them."), out[-160:])
+        self.assertIn("NOTHING is queued or requested yet", out)
+

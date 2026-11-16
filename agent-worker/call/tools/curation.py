@@ -128,6 +128,51 @@ async def _rows_answering(station: StationClient, title: str,
     return list(seen.values()), looked
 
 
+def _named_in(title, said: str) -> bool:
+    """Whole words, so a record called "X" is not found inside "xylophone"."""
+    t = _squash(title)
+    return bool(t) and f" {t} " in f" {said} "
+
+
+async def _id_to_lift(station: StationClient, given: str,
+                      banned_here: list[tuple[str, str]]) -> tuple[str, str, str]:
+    """(track id, how to name it, why not) for a lift that was handed something.
+
+    A TITLE IS NOT AN ID (drill on the deployed 1.0.1, 2026-11-16). The ban on
+    the record playing gave the model no id, so "put it back in rotation" came
+    in as `id="My Head & My Heart (Jonas Blue remix)"` — the title — and went
+    to the station as a track id. The station has no such track, so the ban
+    stood while the DJ said it was lifted. What was handed over is resolved
+    here before anything is sent: a real id passes through; a title is matched
+    against the records banned on THIS call, then the one on air; anything
+    else that is plainly words is refused rather than guessed at.
+    """
+    for title, rid in banned_here:
+        if given == rid:
+            return rid, (f'"{title}"' if title else "that track"), ""
+    said = _squash(given)
+    hits = {rid: title for title, rid in banned_here if _named_in(title, said)}
+    if len(hits) == 1:
+        rid, title = next(iter(hits.items()))
+        return rid, f'"{title}"', ""
+    if len(hits) > 1:
+        listed = ", ".join(f'"{t}" (id {rid})' for rid, t in hits.items())
+        return "", "", (
+            "NOTHING was lifted: more than one record banned on this call "
+            f"answers to that — {listed}. Ask the caller which, then call "
+            "this again with that record's id.")
+    track, on_air = await _track_on_air(station)
+    if on_air and _named_in(track.get("title"), said):
+        return on_air, _fmt_track(track), ""
+    if len(given.split()) > 1:
+        return "", "", (
+            f'NOTHING was lifted: "{given}" is a TITLE, not a track id, and it '
+            "is neither a record banned on this call nor the one on air. Find "
+            "the record first (search the library for it) and call this again "
+            "with its id. Do NOT tell the caller it is back in rotation.")
+    return given, "that track", ""
+
+
 async def _target_to_ban(station: StationClient, title: str,
                          artist: str) -> tuple[dict, str, str]:
     """(track, id, why not) for a ban. Exactly one of id / why-not is set.
@@ -268,6 +313,10 @@ def build_curation_tools(cfg: dict, station: StationClient,
         # takes any id and the station's blocklist takes any track. Same
         # switch, same action budget, same receipt; see _target_to_ban for
         # the one rule a name adds.
+        # (title, id) of every record banned on this call, so the lift can
+        # find one again from the words a caller uses for it. See _id_to_lift.
+        banned_here: list[tuple[str, str]] = []
+
         @lk_llm.function_tool(name="subwave_never_play_track")
         async def never_play_track(title: str = "", artist: str = "") -> str:
             """Ban a track from the station for good — it comes out of the
@@ -293,6 +342,7 @@ def build_curation_tools(cfg: dict, station: StationClient,
             res = await station.block_track(song_id)
             if not res.get("ok"):
                 return actions.station_refused(res, "That didn't go on the never-play list")
+            banned_here.append((str(track.get("title") or ""), song_id))
             if res.get("already"):
                 # No-op — don't charge or card it (see like_track above).
                 return (
@@ -326,7 +376,8 @@ def build_curation_tools(cfg: dict, station: StationClient,
                 f"Done — {name} is on the never-play list and the station won't "
                 f"select it again.{extra} It does NOT stop the copy playing "
                 "right now; that plays out unless you also skip it. Say what "
-                "actually happened, and remember this is permanent."
+                "actually happened, and remember this is permanent. To undo "
+                f"it, subwave_allow_track_again with id {song_id}."
             )
 
         tools.append(never_play_track)
@@ -335,11 +386,17 @@ def build_curation_tools(cfg: dict, station: StationClient,
         async def allow_track_again(id: str = "") -> str:
             """Take a track back OFF the never-play list, so the station may
             select it again. With no id it lifts the ban on whatever is playing
-            now. Use when a caller asks to undo a ban — including one they
-            didn't set."""
+            now. `id` is the TRACK ID a ban's own receipt or a search gave you
+            — never the title. Use when a caller asks to undo a ban —
+            including one they didn't set."""
             track_id = str(id or "").strip()
             name = "that track"
-            if not track_id:
+            if track_id:
+                track_id, name, why_not = await _id_to_lift(
+                    station, track_id, banned_here)
+                if why_not:
+                    return why_not
+            else:
                 track, track_id = await _track_on_air(station)
                 if track.get("title"):
                     name = _fmt_track(track)
