@@ -161,3 +161,148 @@ class TestBanningARecordIsTheOnePermanentThing(unittest.TestCase):
         out = asyncio.run(tools["subwave_allow_track_again"]())
         self.assertIn(("unblock", "s1"), station.asked)
         self.assertIn("NOT queued", out)
+
+
+class _Library(_Station):
+    """A station with a play log and a library to look a NAME up in."""
+
+    def __init__(self, recent=(), found=(), **kw) -> None:
+        super().__init__(**kw)
+        self._recent = recent
+        self._found = found
+        self.searched: list[str] = []
+
+    async def play_history(self, limit=12):
+        return [dict(r) for r in self._recent]
+
+    async def search_library(self, q, *a, **k):
+        self.searched.append(q)
+        return None if self._found is None else [dict(r) for r in self._found]
+
+
+FLEETWOOD = {"subsonic_id": "fm1", "title": "Dreams", "artist": "Fleetwood Mac"}
+CRANBERRIES = {"subsonic_id": "cr1", "title": "Dreams",
+               "artist": "The Cranberries"}
+
+
+class TestACallerCanNameTheRecordToBan(unittest.TestCase):
+    """Review, 2026-11-15. The ban took no argument, so it could only ever
+    land on the record on air — "never play Africa again" or "ban that one
+    you played earlier", said a track later, banned whatever happened to be
+    playing: the wrong record, permanently. The lift beside it takes any id
+    and the station's blocklist takes any track; the restriction was ours.
+
+    A name is resolved against the recent plays and the library, and the one
+    rule it adds is the reason this class exists: a ban is the only thing on
+    a call line with no expiry, so it lands only when exactly ONE record
+    answers. Two is a question for the caller, never a pick."""
+
+    ON = {"allow_never_play": True}
+
+    def _ban(self, station, actions=None, **named):
+        tools = _build(self.ON, station, actions)
+        return asyncio.run(tools["subwave_never_play_track"](**named))
+
+    def test_a_named_record_is_banned_not_the_one_on_air(self):
+        station = _Library(found=[FLEETWOOD])
+        actions = CallActions(5)
+        out = self._ban(station, actions, title="Dreams")
+        self.assertEqual([a for a in station.asked if a[0] == "block"],
+                         [("block", "fm1")])
+        self.assertNotIn(("block", "s1"), station.asked)
+        # The receipt is checkable by ear, and carries the way back.
+        self.assertIn("Dreams", out)
+        self.assertIn("Fleetwood Mac", out)
+        self.assertIn("found by NAME", out)
+        self.assertIn("subwave_allow_track_again with id fm1", out)
+        self.assertIn("permanent", out.lower())
+        self.assertEqual(actions.count, 1)
+
+    def test_the_one_you_played_earlier_comes_off_the_play_log(self):
+        # The play log keys its rows `trackId`; an artist alone is enough
+        # THERE, and never searches the whole library.
+        station = _Library(recent=[
+            {"trackId": "to1", "title": "Africa", "artist": "Toto"},
+            {"trackId": "ab1", "title": "Waterloo", "artist": "ABBA"}])
+        out = self._ban(station, artist="Toto")
+        self.assertIn(("block", "to1"), station.asked)
+        self.assertEqual(station.searched, [])
+        self.assertIn("Africa", out)
+
+    def test_two_answers_is_a_question_never_a_pick(self):
+        station = _Library(found=[FLEETWOOD, CRANBERRIES])
+        actions = CallActions(5)
+        out = self._ban(station, actions, title="Dreams")
+        self.assertEqual([a for a in station.asked if a[0] == "block"], [])
+        self.assertIn("NOTHING was banned", out)
+        self.assertIn("MORE THAN ONE", out)
+        self.assertIn("Fleetwood Mac", out)
+        self.assertIn("The Cranberries", out)
+        # A question costs the caller nothing and cards nothing.
+        self.assertEqual(actions.count, 0)
+
+    def test_the_artist_settles_it(self):
+        station = _Library(found=[FLEETWOOD, CRANBERRIES])
+        self._ban(station, title="Dreams", artist="Cranberries")
+        self.assertEqual([a for a in station.asked if a[0] == "block"],
+                         [("block", "cr1")])
+
+    def test_a_near_miss_is_never_banned_in_its_place(self):
+        # The library's ONE hit for "Yesterday" — and a different song.
+        station = _Library(found=[{"subsonic_id": "c1",
+                                   "title": "Yesterday Once More",
+                                   "artist": "Carpenters"}])
+        out = self._ban(station, title="Yesterday")
+        self.assertEqual([a for a in station.asked if a[0] == "block"], [])
+        self.assertIn("NOTHING was banned", out)
+        self.assertIn("exact title", out)
+
+    def test_a_remaster_is_still_the_record_they_named(self):
+        station = _Library(found=[{"subsonic_id": "fm2",
+                                   "title": "Dreams (2004 Remaster)",
+                                   "artist": "Fleetwood Mac"}])
+        self._ban(station, title="dreams")
+        self.assertIn(("block", "fm2"), station.asked)
+
+    def test_one_record_seen_twice_is_one_record(self):
+        # In the play log three times and in the library once: one id.
+        played = {"trackId": "fm1", "title": "Dreams",
+                  "artist": "Fleetwood Mac"}
+        station = _Library(recent=[played, played, played], found=[FLEETWOOD])
+        self._ban(station, title="Dreams")
+        self.assertEqual([a for a in station.asked if a[0] == "block"],
+                         [("block", "fm1")])
+
+    def test_a_failed_library_read_is_not_no_such_record(self):
+        station = _Library(found=None)
+        out = self._ban(station, title="Dreams")
+        self.assertEqual([a for a in station.asked if a[0] == "block"], [])
+        self.assertIn("read FAILED", out)
+        self.assertIn("do not say the station hasn't got it", out)
+
+    def test_an_artist_alone_never_bans_from_the_whole_library(self):
+        station = _Library(found=[FLEETWOOD])
+        out = self._ban(station, artist="Fleetwood Mac")
+        self.assertEqual(station.asked, [])
+        self.assertEqual(station.searched, [])
+        self.assertIn("Ask which song they mean", out)
+
+    def test_no_name_is_still_the_record_on_air_and_looks_nothing_up(self):
+        station = _Library(recent=[{"trackId": "to1", "title": "Africa",
+                                    "artist": "Toto"}], found=[FLEETWOOD])
+        out = self._ban(station)
+        self.assertIn(("block", "s1"), station.asked)
+        self.assertEqual(station.searched, [])
+        self.assertIn("does NOT stop the copy playing", out)
+        self.assertNotIn("found by NAME", out)
+
+    def test_a_named_ban_still_rides_the_switch_and_the_budget(self):
+        self.assertNotIn("subwave_never_play_track",
+                         _build({"allow_favorite": True}, _Library()))
+        spent = CallActions(1)
+        spent.note("like", "X")
+        station = _Library(found=[FLEETWOOD])
+        self._ban(station, spent, title="Dreams")
+        # At the limit nothing is even looked up, let alone banned.
+        self.assertEqual(station.asked, [])
+        self.assertEqual(station.searched, [])

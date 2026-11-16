@@ -71,7 +71,10 @@ TOOLS: tuple[Tool, ...] = (
          "REST. See call/tools/reads.py."),
     Tool("subwave_schedule", READ, MCP,
          "Personas, shows and the weekly schedule.",
-         "How much of this reaches the prompt is set under Station awareness."),
+         "How much of this reaches the prompt is set under Station awareness. "
+         "Where MCP is absent — the text line, or a call whose MCP handshake "
+         "failed — a local wrapper serves the same name over REST. See "
+         "call/tools/reads.py."),
     Tool("subwave_session", READ, MCP,
          "The DJ's live session and its recent on-air transcript."),
     # The one locally-served read: the station publishes lyrics over public
@@ -102,8 +105,19 @@ TOOLS: tuple[Tool, ...] = (
          "Station limits: 1 per 20s, 8 per hour, and none while nobody is "
          "listening. Served by a local wrapper that retries awkward phrasing "
          "before reporting a miss."),
-    Tool("subwave_request_status", "allow_requests", MCP,
-         "Checks what the booth did with a request."),
+    # LOCAL, not MCP (review, 2026-11-15). Served over MCP the tool needed a
+    # request id, and the request wrapper never shows the model one — on
+    # purpose — so on every ordinary call "did my request go in?" was
+    # answered with a guessed id or a mimed look. The local twin that reads
+    # the call's own last id existed, but only where MCP had FAILED. Now the
+    # wrapper is the one route on every line, so the name is never served
+    # twice and the refusal text that points at it is true wherever requests
+    # are. The station's GET /request/:id is public, hence no credentials.
+    Tool("subwave_request_status", "allow_requests", LOCAL,
+         "Checks what the booth did with a request.",
+         "Served by a local wrapper so the DJ needs no request id: asked "
+         "with none, it checks the LAST request this call put in. Reads the "
+         "station's public request status — no credentials needed."),
     Tool("subwave_search_library", "allow_library_search", LOCAL,
          "Exact term search over the library — no LLM, no rate limit.",
          "Needs no credentials over MCP. With station admin credentials it is "
@@ -259,13 +273,16 @@ TOOLS: tuple[Tool, ...] = (
          "operator, so leave it at the admin tier. Counts against Actions per call.",
          needs_station_admin=True),
     Tool("subwave_never_play_track", "allow_never_play", LOCAL,
-         "Bans the track playing now from the station for good.",
+         "Bans a track from the station for good — the one playing now, or "
+         "one the caller names.",
          "Station admin credentials required. OFF by default, and the most "
          "permanent thing on a call line: the station takes it out of the "
          "queue, rebuilds the fallback playlist and never selects it again — "
          "for every listener, from one caller's sentence, with nothing on air "
-         "to say it happened. It does not stop the copy already playing. "
-         "Counts against Actions per call.",
+         "to say it happened. It does not stop the copy already playing. A "
+         "named track is looked up in the recent plays and the library, and "
+         "banned only when exactly one record answers. Counts against Actions "
+         "per call.",
          needs_station_admin=True),
     Tool("subwave_allow_track_again", "allow_never_play", LOCAL,
          "Takes a track back off the never-play list.",

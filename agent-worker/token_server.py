@@ -45,9 +45,8 @@ from api.hook_receiver import handle_hooks_recent, handle_station_hook
 from api.hooks import handle_hooks_test, keep_station_warm
 from api.auth import handle_guest_login, handle_set_password
 from api.guide import handle_guide
+from api.art import handle_avatar, handle_cover
 from api.live import (
-    handle_avatar,
-    handle_cover,
     handle_health,
     handle_live,
     handle_live_preview,
@@ -310,4 +309,7 @@ if __name__ == "__main__":
     log.info("browser will be told to connect to %s", LIVEKIT_PUBLIC_URL)
     settings_store.check_data_dir()
     web.run_app(build_app(), port=PORT, print=None,
-                access_log_format=ACCESS_LOG_FORMAT)
+                access_log_format=ACCESS_LOG_FORMAT,
+                # %a is the caller, not the proxy in front of them — see the
+                # class (review, 2026-11-15).
+                access_log_class=wire.ClientAccessLogger)

@@ -710,6 +710,12 @@
     padding: 12px 16px; border-top: 1px solid var(--line);
     background: color-mix(in srgb, var(--pine) 55%, transparent);
   }
+  /* The sign-out question borrows the sheet: narrower, the answers at the
+     right the way a question's buttons sit, and the quiet one first so the
+     filled one is the act. */
+  .oledbox.signoutbox { width: min(420px, 100%); }
+  .signouttext { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--text); }
+  .oledfoot.signoutfoot { justify-content: flex-end; gap: 8px; }
 
   .oladdinput {
     margin-right: 16px; font: 13.5px inherit; padding: 8px 10px;
@@ -1678,6 +1684,14 @@
      every line is heavier than the text it separates. */
   .logline:nth-child(even) { background: color-mix(in srgb, var(--text) 3%, transparent); }
   .logline:hover { background: var(--line); }
+  /* The day, where it changes (review, 2026-11-15): a ring that spans
+     midnight used to be ambiguous. A heading, not a column - the time
+     column is a fixed 62px. Same micro-label voice as the columns. */
+  .logday {
+    margin: 8px 0 2px; padding: 0 7px; color: var(--dimmer);
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    letter-spacing: .12em; text-transform: uppercase;
+  }
   .logline .lt { color: var(--dimmer); font-variant-numeric: tabular-nums; }
   /* One letter, not the whole word: the level is a glance, and eight columns
      of "WARNING" pushes the message — the part you are reading for — off the

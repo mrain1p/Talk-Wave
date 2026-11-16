@@ -191,7 +191,7 @@ Whichever option carries the media, the **signalling** works best as a single pu
 | `/` (everything else) | `talkwave-web:8100` | the widget, the panel, the API |
 | `/rtc` | `livekit-server:7880` | **WebSocket support ON** — this is signalling |
 
-Then set `LIVEKIT_PUBLIC_URL=wss://call.example.com` in the stack environment and redeploy. With a real certificate there is no certificate screen at all, and because the page and the signalling share an origin, the pipeline check's browser-media stage passes by construction.
+Then set `LIVEKIT_PUBLIC_URL=wss://call.example.com` and `CALLIN_TRUSTED_PROXIES=<the proxy's address>` in the stack environment and redeploy. The second is what lets the wrong-password lockout tell one caller from another once they all arrive through the proxy — [security — Lockout](security.md#lockout). With a real certificate there is no certificate screen at all, and because the page and the signalling share an origin, the pipeline check's browser-media stage passes by construction.
 
 > **The `/rtc` half is the one people forget.** Without it the page loads, the token mints, and the call dies at *"could not establish signal connection"*.
 

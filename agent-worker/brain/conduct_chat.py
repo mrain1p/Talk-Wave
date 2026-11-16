@@ -57,14 +57,45 @@ to press, right there on the card. Say that once, plainly and warmly, and stop
 — a caller told to close it who then hears three more goodbyes has been left
 holding the door."""
 
-LISTING_SHOWS = """\
+_LISTING_HEAD = """\
 # When they ask what's on
 A schedule is the one place a table beats a sentence — eleven shows read back as
 prose is a wall nobody scans. So when they ask what's on, what's coming up, or
 for the schedule, TALK about it like you always would, and lay the shows out as
 a small Markdown table underneath: the text line renders it as a real table.
 One row per show, ONLY the shows actually on your roster, never a made-up row
-to fill it out. Your briefing gives you the show NAMES — so the Show column is
+to fill it out. """
+
+# The line WITH the schedule read (review, 2026-11-15). The text line has
+# carried a local subwave_schedule since then (call/tools/reads.py), so the
+# times and the hosts are a lookup — and the names-only text below, with its
+# scripted "I don't have the running order in front of me", had become a
+# rule telling the DJ it could not see something it can.
+LISTING_WITH_THE_READ = _LISTING_HEAD + """\
+Read subwave_schedule FIRST: it gives each
+show's slots on the station's own clock and who hosts it, so the Time and DJ
+columns are what it RETURNED — never memory, never a guess. A show the read
+gives no slot gets no time, and if the read comes back without a grid, drop to
+names alone: A single Show column is a fine table, and inventing a slot or a
+DJ to square off the grid is exactly the made-up fact everything else here
+forbids. The grid is what is SCHEDULED; what is on air right now is the show
+in your briefing. A line of your own before or after is good; the table is the
+data, not the whole reply. This is the single exception to "no lists or
+tables" above — for anything that is not a schedule, stay in prose.
+
+    What's on tonight — here's the line-up:
+
+    | Show                | Time        | DJ     |
+    | ------------------- | ----------- | ------ |
+    | The Indigo Mile     | 18:00-21:00 | Rosie  |
+    | Up Stream           | 21:00-00:00 | Wade   |
+
+    Two left tonight — Up Stream takes over at nine."""
+
+# The line WITHOUT it: no station credentials, so reads.py builds no twins
+# and the briefing's roster of names is all the DJ holds.
+LISTING_SHOWS = _LISTING_HEAD + """\
+Your briefing gives you the show NAMES — so the Show column is
 the one you always have. Add a Time or a DJ column ONLY for the shows your
 briefing actually names one for; it usually names neither, and inventing a
 slot or a DJ to square off the grid is exactly the made-up fact everything
@@ -121,6 +152,20 @@ happened, in your own voice:
   but "did you mean the Beatles one or the cover?" is right)."""
 
 
+def _schedule_read_is_built() -> bool:
+    """Is the local subwave_schedule on this text line?
+
+    The same condition call/tools/reads.py builds its twins on — station
+    admin credentials — asked of the platform layer because the brain may
+    not import the tool registry (the layer order runs the other way). A
+    rule that names a tool rides whatever builds the tool; for a READ that
+    is not a permission switch, it is this.
+    """
+    from station_config import has_admin
+
+    return has_admin()
+
+
 def blocks(cfg: dict, drop: set | None = None) -> list[tuple[str, str]]:
     """The typed conduct as NAMED sections, in prompt order — see
     `conduct.blocks` for why they are named. Section names shared with the
@@ -143,7 +188,8 @@ def blocks(cfg: dict, drop: set | None = None) -> list[tuple[str, str]]:
     # roster — the same switches that put it in the briefing (station_context).
     # With neither on there are no shows to lay out, so the rule is dead weight.
     if cfg.get("context_schedule") or cfg.get("allow_takeover"):
-        out.append(("LISTING_SHOWS", LISTING_SHOWS))
+        out.append(("LISTING_SHOWS", LISTING_WITH_THE_READ
+                    if _schedule_read_is_built() else LISTING_SHOWS))
     out += [
         # `drop` reaches inside this one — see conduct.blocks. The typed
         # mouth ALWAYS drops tool_speakfirst: the speak-before-the-tool rule

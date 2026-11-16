@@ -61,9 +61,21 @@ ENV HOME=/home/app
 # .pyc write on every import and silently gives up each time.
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Downloads the Silero VAD / turn-detector weights at build time so the first
-# caller doesn't pay for it mid-call. (The Whisper model for local STT still
-# downloads on first use — it depends on which model you select.)
+# Runs every installed LiveKit plugin's download step, so a plugin that fetches
+# weights does it at build time rather than in a caller's first seconds.
+#
+# With the plugins pinned today it fetches NOTHING, and this comment used to
+# say otherwise: the Silero VAD model ships inside its wheel
+# (livekit/plugins/silero/resources/silero_vad.onnx) and none of the installed
+# plugins implements the step — there is no turn-detector plugin in
+# requirements.txt (checked against livekit-plugins 1.6.7; review, 2026-11-15).
+# So `|| true` cannot hide a missing model today; it only keeps an outage from
+# failing the build. If a plugin that DOES download is added, drop the
+# `|| true` or have the worker's prewarm check for what this should have
+# fetched — a silent gap here becomes the first caller's wait.
+#
+# The Whisper model for local STT is separate: it downloads at prewarm, on
+# first use, because it depends on which model you select.
 RUN python main.py download-files || true
 
 # `start` is the production worker command; token-server overrides this with

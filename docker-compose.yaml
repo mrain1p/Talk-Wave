@@ -74,7 +74,8 @@ services:
       - LIVEKIT_URL=ws://livekit-server:7880                              # matches the livekit service's name above
       - LIVEKIT_PUBLIC_URL=wss://${HOST_IP:-localhost}:8443               # what the BROWSER dials (via the bundled caddy)
       # - LIVEKIT_PUBLIC_URL=wss://call.example.com                       # SWAP the one above to this version for proxy/domain (docs/networking.md)
-      - CALLIN_HOOK_URL=http://${HOST_IP:-localhost}:8100/hooks/station   # where the station posts webhooks — derived from HOST_IP; change only if SUB/WAVE is on ANOTHER network (then use your public https URL)
+      - CALLIN_HOOK_URL=http://${HOST_IP:-localhost}:8100/hooks/station   # where the station posts webhooks — derived from HOST_IP, so HOST_IP must be set: a localhost address is the STATION's own machine and is refused, with the reason in the panel's webhook row. Change only if SUB/WAVE is on ANOTHER network (then use your public https URL)
+      # - CALLIN_TRUSTED_PROXIES=172.18.0.5                               # UNCOMMENT with the caddy container's address (or your own proxy's): without it every caller behind the proxy shares ONE wrong-password counter. The web log names the address to use, once (docs/security.md, Lockout)
       - LOG_TO_FILE=0                                                     # keep at 0 — docker captures stdout already
     volumes:
       - ./data:/data                                                      # keep IDENTICAL to the worker's mount above

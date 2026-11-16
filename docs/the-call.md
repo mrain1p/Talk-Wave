@@ -100,6 +100,8 @@ Each tool declares a **gate** (`read`, `never`, or the settings field that unloc
   3. **the station serves no MCP endpoint at all**, and the wrapper is the only way to have the tool (`subwave_current_lyrics`, `subwave_recent_tracks`, the takeover pair).
 - **NONE** — never on a call line at any setting.
 
+**A segment has to pass the station's switches as well as ours.** `allow_dj_segment` decides whether a caller may fire a programme beat at all; which segments exist tonight is the station's answer. Its `GET /dj/skills` says for each one whether the operator has it enabled and whether it is ready to run — a segment that needs an API key says what is wrong with the key. The station's own manual trigger ignores both, so the call line reads them itself: a switched-off or key-less segment is left out of the DJ's briefing and off the answering machine's list, and if the DJ names one anyway `subwave_run_skill` answers that the station has that segment switched off tonight, with the reason, and runs nothing. The caller is told it isn't on tonight. A station that publishes none of those fields keeps every segment.
+
 `TestNoToolIsBuiltWithoutThePromptKnowingIt` fails the build when a tool is handed to the model with nothing in the assembled prompt naming it. That test exists because `subwave_queue_track` shipped with a switch, credentials, a working wrapper and no mention anywhere in a 16,644-character prompt — so a caller asked for one specific recording three times and got three different wrong ones.
 
 ## 3. Request triage — the five ways into a library

@@ -99,9 +99,15 @@ async def _triage(station, cfg: dict, text: str) -> tuple[str, str]:
     if cfg.get("allow_announcements"):
         allowed.append("air")
     if cfg.get("allow_skills"):
+        # The station's own gates first (station_config.runnable_skills):
+        # `POST /dj/skill` is an operator override, so a segment the operator
+        # switched off, or one missing its key, must never be on the list the
+        # model picks from — the same rule the live line applies.
         try:
+            from station_config import runnable_skills
+
             skills = [str(s.get("kind") or s.get("name") or "")
-                      for s in await station.list_skills()]
+                      for s in runnable_skills(await station.list_skills(), None)]
             skills = [s for s in skills if s]
         except Exception:                                     # noqa: BLE001
             skills = []
@@ -218,9 +224,16 @@ async def deliver(station, cfg: dict, text: str, persona_name: str,
             # Without it a caller who left a message queuing a track is told,
             # on ringing back, that nothing was queued — the per-call evasion
             # call/daylog.py was built to kill (Casino night, 2026-08-26).
+            #
+            # A NEUTRAL label, never `text` (review, 2026-11-15): `text` is
+            # the caller's own transcribed message, and the day-log is read
+            # back to LATER callers under a no-caller-content contract
+            # (call/daylog.py). The live request wrapper has noted a neutral
+            # label since the 2026-08-28 security sitting; this path still
+            # stored the words — a dedication naming a person among them.
             from call import daylog
 
-            daylog.note("request", text, tier=tier)
+            daylog.note("request", "a voicemail song request", tier=tier)
             return f"sent as a request — {note}"
         except Exception as e:                                # noqa: BLE001
             # The station refusing is a real outcome, not a crash: the

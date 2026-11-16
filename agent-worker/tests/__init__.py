@@ -35,3 +35,13 @@ os.environ.setdefault(
     "CALLIN_HOOK_AIR_PATH",
     os.path.join(_tempfile.mkdtemp(prefix="callin-test-air-"),
                  "hook-air.json"))
+
+# And the aired-line ledger (station.note_aired_by_us), on disk since the
+# 2026-11-15 review. Every test that drives dj_say feeds it, and none of them
+# inherit a redirect for it — so without this floor the suite would write
+# hashes of fixture lines into the developer's real data/aired-by-us.json,
+# and a real call's briefing would go looking through them.
+os.environ.setdefault(
+    "AIRED_BY_US_PATH",
+    os.path.join(_tempfile.mkdtemp(prefix="callin-test-aired-"),
+                 "aired-by-us.json"))

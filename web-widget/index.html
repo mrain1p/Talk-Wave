@@ -17,7 +17,9 @@
      chrome in it, which is what a phone should look like. sw.js says what is
      and is not cached, and it is deliberately very little.
      Two theme-colors: the installed window's own furniture follows the same
-     light/dark the card does, rather than always being the dark one. -->
+     light/dark the card does, rather than always being the dark one. These
+     are the FIRST FRAME only: call.js (syncThemeColor) rewrites both from the
+     card's real background whenever a theme or a station palette applies. -->
 <link rel="manifest" href="/manifest.webmanifest" />
 <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)" />
 <meta name="theme-color" content="#f6f5f3" media="(prefers-color-scheme: light)" />
@@ -105,7 +107,7 @@
          The count is a separate element, not part of the text, so every
          painter of eyebrowText can leave it alone and it hides itself off
          air. -->
-    <div class="eyebrow" id="eyebrow"><span id="eyebrowText">Checking…</span><span class="listeners" id="eyebrowListeners" title="Listening now" hidden><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 18v-6a8 8 0 0 1 16 0v6"/><rect x="2.6" y="13.5" width="4.2" height="6.5" rx="1.8"/><rect x="17.2" y="13.5" width="4.2" height="6.5" rx="1.8"/></svg><span id="eyebrowListenersN"></span></span><div class="corner"><button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="themeBtn" title="Theme" aria-label="Change the theme" hidden><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.4v2.5M12 19.1v2.5M2.4 12h2.5M19.1 12h2.5M5.1 5.1l1.8 1.8M17.1 17.1l1.8 1.8M18.9 5.1l-1.8 1.8M6.9 17.1l-1.8 1.8"/></svg></button><button class="gear" id="signinBtn" title="Sign in for more options" aria-label="Sign in for more options" hidden><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 12H2.5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1H6"/><path d="M9 9.5 11.5 7 9 4.5"/><path d="M11.5 7H5.5"/></svg></button><button class="gear" id="lockBtn" title="Sign out — forget the code on this device" aria-label="Sign out — forget the code on this device" hidden><svg width="11" height="13" viewBox="0 0 11 13" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="1" y="5.5" width="9" height="6.5" rx="1"/><path d="M3 5.5V3.8a2.5 2.5 0 0 1 5 0v1.7"/></svg></button><a class="gear" id="linkBtn" href="#" target="_blank" rel="noopener noreferrer" title="" hidden></a><button class="gear" id="gearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></div></div>
+    <div class="eyebrow" id="eyebrow"><span id="eyebrowText">Checking…</span><span class="listeners" id="eyebrowListeners" title="Listening now" hidden><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 18v-6a8 8 0 0 1 16 0v6"/><rect x="2.6" y="13.5" width="4.2" height="6.5" rx="1.8"/><rect x="17.2" y="13.5" width="4.2" height="6.5" rx="1.8"/></svg><span id="eyebrowListenersN"></span></span><div class="corner"><button class="gear" id="helpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="themeBtn" title="Theme" aria-label="Change the theme" hidden><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.4v2.5M12 19.1v2.5M2.4 12h2.5M19.1 12h2.5M5.1 5.1l1.8 1.8M17.1 17.1l1.8 1.8M18.9 5.1l-1.8 1.8M6.9 17.1l-1.8 1.8"/></svg></button><button class="gear" id="signinBtn" title="Sign in for more options" aria-label="Sign in for more options" hidden><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 2H11a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H8.5"/><path d="M5.5 4.5 8 7 5.5 9.5"/><path d="M8 7H2"/></svg></button><button class="gear signout" id="lockBtn" title="Sign out of this device" aria-label="Sign out of this device" hidden><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 12H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h2.5"/><path d="M9.5 9.5 12 7 9.5 4.5"/><path d="M12 7H5.5"/></svg></button><a class="gear" id="linkBtn" href="#" target="_blank" rel="noopener noreferrer" title="" hidden></a><button class="gear" id="gearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></div></div>
 
     <div class="who-row">
       <img class="avatar hidden" id="djAvatar" alt="" />
@@ -143,6 +145,22 @@
         <button class="askpop-close" id="askClose" aria-label="Close">&times;</button>
       </div>
       <ul class="askpop-list" id="askPopList"></ul>
+    </div>
+
+    <!-- ARE YOU SURE, for the one corner control that changes who this
+         device is. Signing out forgets a code the caller may not have
+         written down and drops them a tier on the next read; one press on a
+         28px glyph beside the theme toggle was too little to ask for that
+         (operator, 2026-11-15). Fixed like the ask popup, for the same
+         reason: a box inside the card has no room on an embed. -->
+    <div class="confirmpop" id="confirmPop" hidden role="dialog" aria-modal="true" aria-labelledby="confirmText">
+      <div class="confirmbox">
+        <p class="confirmtext" id="confirmText"></p>
+        <div class="confirmacts">
+          <button type="button" class="quiet" id="confirmNo">Stay signed in</button>
+          <button type="button" class="go" id="confirmYes">Sign out</button>
+        </div>
+      </div>
     </div>
 
     <div class="michelp" id="micHelp" hidden></div>
@@ -347,7 +365,7 @@
           <button id="vmSendBtn" type="button">Send&nbsp;to&nbsp;booth&nbsp;➤</button>
           <!-- Icon over word, so a third of a narrow card never truncates a
                verb — "RER…" reached the operator's phone. -->
-          <button id="vmPlayBtn" type="button"><span class="vico" aria-hidden="true">▶</span>Play</button>
+          <button id="vmPlayBtn" type="button" aria-pressed="false"><span class="vico" aria-hidden="true">▶</span><span id="vmPlayWord">Play</span></button>
           <button id="vmRerecBtn" type="button"><span class="vico" aria-hidden="true">↺</span>Rerecord</button>
           <button id="vmCancelBtn" type="button"><span class="vico" aria-hidden="true">✕</span>Cancel</button>
         </div>
@@ -381,7 +399,7 @@
       <!-- The listener count beside the words, same mark as the header's
            (operator's ask, 2026-08-18): whoever opened the deck is one of
            the people this number counts. -->
-      <div class="plhead"><span class="pip" aria-hidden="true"></span>Now playing<span class="listeners" id="plListeners" title="Listening now" hidden><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 18v-6a8 8 0 0 1 16 0v6"/><rect x="2.6" y="13.5" width="4.2" height="6.5" rx="1.8"/><rect x="17.2" y="13.5" width="4.2" height="6.5" rx="1.8"/></svg><span id="plListenersN"></span></span><button type="button" class="plseg" id="plSegBtn" hidden aria-haspopup="true" aria-expanded="false" aria-label="Start an Open Lines segment">Segment</button><span class="corner"><button class="gear" id="plHelpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="plCastBtn" title="Play on a device" aria-label="Play the stream on another device" hidden><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 20h.01"/><path d="M2 16a4 4 0 0 1 4 4"/><path d="M2 12a8 8 0 0 1 8 8"/><path d="M6 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></button><button class="gear" id="plThemeBtn" title="Theme" aria-label="Change the theme" hidden></button><button class="gear" id="plSigninBtn" title="Sign in for more options" aria-label="Sign in for more options" hidden><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 12H2.5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1H6"/><path d="M9 9.5 11.5 7 9 4.5"/><path d="M11.5 7H5.5"/></svg></button><button class="gear" id="plGearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></span></div>
+      <div class="plhead"><span class="pip" aria-hidden="true"></span>Now playing<span class="listeners" id="plListeners" title="Listening now" hidden><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 18v-6a8 8 0 0 1 16 0v6"/><rect x="2.6" y="13.5" width="4.2" height="6.5" rx="1.8"/><rect x="17.2" y="13.5" width="4.2" height="6.5" rx="1.8"/></svg><span id="plListenersN"></span></span><button type="button" class="plseg" id="plSegBtn" hidden aria-haspopup="true" aria-expanded="false" aria-label="Start an Open Lines segment">Segment</button><span class="corner"><button class="gear" id="plHelpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="plCastBtn" title="Play on a device" aria-label="Play the stream on another device" hidden><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 20h.01"/><path d="M2 16a4 4 0 0 1 4 4"/><path d="M2 12a8 8 0 0 1 8 8"/><path d="M6 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></button><button class="gear" id="plThemeBtn" title="Theme" aria-label="Change the theme" hidden></button><button class="gear" id="plSigninBtn" title="Sign in for more options" aria-label="Sign in for more options" hidden><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 2H11a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H8.5"/><path d="M5.5 4.5 8 7 5.5 9.5"/><path d="M8 7H2"/></svg></button><button class="gear" id="plGearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></span></div>
       <!-- The segment sheet: only ever rendered for a caller /live says may
            trigger one, which is a guest or the operator AND the setting on.
            It offers a length and where the subject comes from — never the
@@ -508,7 +526,7 @@
          call.js builds the rows from the payload, so only the frames are
          here. -->
     <div class="guide" id="guideView" hidden role="region" aria-label="Programme guide">
-      <div class="plhead"><span class="pip" aria-hidden="true"></span>Programme guide<span class="listeners" id="gdListeners" title="Listening now" hidden><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 18v-6a8 8 0 0 1 16 0v6"/><rect x="2.6" y="13.5" width="4.2" height="6.5" rx="1.8"/><rect x="17.2" y="13.5" width="4.2" height="6.5" rx="1.8"/></svg><span id="gdListenersN"></span></span><span class="corner"><button class="gear" id="gdHelpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="gdThemeBtn" title="Theme" aria-label="Change the theme" hidden></button><button class="gear" id="gdSigninBtn" title="Sign in for more options" aria-label="Sign in for more options" hidden><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 12H2.5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1H6"/><path d="M9 9.5 11.5 7 9 4.5"/><path d="M11.5 7H5.5"/></svg></button><button class="gear" id="gdGearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></span></div>
+      <div class="plhead"><span class="pip" aria-hidden="true"></span>Programme guide<span class="listeners" id="gdListeners" title="Listening now" hidden><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 18v-6a8 8 0 0 1 16 0v6"/><rect x="2.6" y="13.5" width="4.2" height="6.5" rx="1.8"/><rect x="17.2" y="13.5" width="4.2" height="6.5" rx="1.8"/></svg><span id="gdListenersN"></span></span><span class="corner"><button class="gear" id="gdHelpBtn" title="What can I ask?" aria-label="What can I ask?" hidden>?</button><button class="gear" id="gdThemeBtn" title="Theme" aria-label="Change the theme" hidden></button><button class="gear" id="gdSigninBtn" title="Sign in for more options" aria-label="Sign in for more options" hidden><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 2H11a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H8.5"/><path d="M5.5 4.5 8 7 5.5 9.5"/><path d="M8 7H2"/></svg></button><button class="gear" id="gdGearBtn" title="Settings" aria-label="Settings" hidden>&#9881;</button></span></div>
       <div class="gdscroll" id="guideScroll">
         <div class="gdtodayhead" id="guideTodayHead" hidden><span class="gdtodaylab" id="guideTodayMeta"></span><span class="gdviews" id="guideViews" hidden role="group" aria-label="How to read the week"><button type="button" class="gdview on" id="guideViewDay" aria-pressed="true">Day</button><button type="button" class="gdview" id="guideViewWeek" aria-pressed="false">Week</button></span></div>
         <div class="gdtoday" id="guideToday" hidden></div>
@@ -535,6 +553,13 @@
     </div>
     <nav class="facebar" id="faceBar" hidden aria-label="Cards"><span class="faceind" id="faceInd" aria-hidden="true"></span><button type="button" class="face on" id="facePhone" aria-current="true">Phone</button><button type="button" class="face" id="facePlayer" hidden aria-current="false">Player</button><button type="button" class="face" id="faceGuide" hidden aria-current="false">Guide</button></nav>
   </div>
+  <!-- What the card SAYS, for a screen reader: the one live region on the
+       page. call.js copies the status line, the refusals, the receipts and
+       the text line's finished messages into it (see say). Off screen and
+       always rendered — the visible lines are display:none while empty, and
+       a region that is not rendered when its text arrives is not announced.
+       role="log": each new line is read once, never the whole box again. -->
+  <div class="srsay" id="srSay" role="log" aria-live="polite"></div>
 
 <script src="/shared.js"></script>
 <script src="/call.js"></script>

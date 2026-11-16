@@ -326,6 +326,19 @@ SCHEMA: dict[str, dict] = {
              "servers like llama-swap only route model names they declare."),
     "llm_temperature": dict(group="brains", kind="number", label="Temperature",
         help="0.8 suits a DJ. Below 0.5 sounds clipped."),
+    "llm_fallback_provider": dict(group="brains", kind="select", label="Fallback provider",
+        alias="backup second net outage billing credits 402",
+        help="Off until you pick one. When the provider above refuses a "
+             "request outright — billing lapsed, key revoked, nothing "
+             "answering — the call carries on here and the record says so. "
+             "Ollama on your own box needs no key; a cloud pick needs its "
+             "key below like the primary. Not used for slow replies."),
+    "llm_fallback_model": dict(group="brains", kind="text", label="Fallback model",
+        needs=("llm_fallback_provider", True),
+        placeholder="default: the fallback provider's own default model",
+        help="Typed, not read live — the fallback is for when nothing else "
+             "answers. Pick one proven on tool calls (the Test button checks "
+             "a model when you set it as the primary first)."),
 
     # --- ears ---
     "stt_provider": dict(group="ears", kind="select", label="Provider", alias="api key stt transcription",
@@ -532,7 +545,8 @@ SCHEMA: dict[str, dict] = {
              "three."),
     "allow_never_play": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Ban a track for good", alias="block ban blocklist",
-        help="Puts the track playing now on the station's never-play list: "
+        help="Puts the track playing now, or one the caller names, on the "
+             "station's never-play list: "
              "out of the queue and the fallback playlist, never selected "
              "again. The only PERMANENT caller action; nothing airs to say it "
              "happened. The same switch LIFTS a ban, including yours."),
@@ -810,9 +824,6 @@ SCHEMA: dict[str, dict] = {
              "disagree with a host page's faster ticker."),
     "embed_now_playing": dict(group="whosonair", kind="check", label="Now playing (embed)",
         help="Off if the host page already has a now-playing line."),
-    "word_ringing": dict(group="linebox", kind="text", label="Ringing",
-        placeholder="default: Ringing…",
-        help="While the line rings, before the DJ picks up."),
     "word_answering": dict(group="linebox", kind="text", label="Answering",
         placeholder="default: Answering…",
         help="The moment the DJ picks up, before the first word."),
@@ -1448,6 +1459,13 @@ RANDOM_PERSONA = "__random__"
 
 # Choices for the select fields that aren't populated from a live source.
 STATIC_CHOICES = {
+    # Every LLM provider, keyed or not. The primary dropdown lists only the
+    # providers a key exists for, filled live by panel.js; the fallback is
+    # a static list so it needs no JS of its own — and a blank first option,
+    # which is the default and means "no net". Labels from LLM_PROVIDER_LABELS
+    # so the two dropdowns name a provider the same way (filled below, after
+    # that table exists).
+    "llm_fallback_provider": [("", "Off — no fallback, the primary carries every call")],
     "open_lines_source": [
         ("dj", "The DJ decides — invents a topic from tonight's show"),
         ("directions", "Targeted directions — a random named angle each time"),
@@ -1686,6 +1704,12 @@ LLM_PROVIDER_LABELS: dict[str, str] = {
     "locca": "locca (the station's local runner, no key)",
     "ollama": "Ollama (your own box, no key)",
 }
+
+
+# The fallback dropdown's choices, in the primary's declaration order with the
+# primary's labels — see STATIC_CHOICES["llm_fallback_provider"].
+STATIC_CHOICES["llm_fallback_provider"].extend(
+    (p, LLM_PROVIDER_LABELS.get(p, p)) for p in LLM_PROVIDER_KEY)
 
 
 STT_PROVIDER_KEY: dict[str, str | None] = {

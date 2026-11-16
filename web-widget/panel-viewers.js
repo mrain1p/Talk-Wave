@@ -709,6 +709,19 @@
       // The newest are what an operator looks at first, so show the TAIL and
       // let them page back through older lines rather than scroll a wall.
       const shown = rows.slice(-logShown);
+      // `ts` is the instant (epoch seconds); `t` beside it is the SERVER's
+      // wall clock with no date. Rendering `t` put this viewer in the
+      // container's zone while the call viewer above is in the reader's, so
+      // one moment read hours apart in the two. Painted through callTime so
+      // they cannot disagree; an older server sends no `ts` and keeps `t`.
+      // The day is a heading where it changes, and only once the buffer
+      // spans more than one — the time column is too narrow to carry a date.
+      const at = (r) => (r && r.ts ? new Date(r.ts * 1000) : null);
+      const dayOf = (d) => (d ? d.toLocaleDateString([], {
+        weekday: 'short', month: 'short', day: 'numeric' }) : '');
+      const spansDays = dayOf(at(logRecords[0]))
+        !== dayOf(at(logRecords[logRecords.length - 1]));
+      let lastDay = '';
       if (rows.length > shown.length) {
         const more = document.createElement('button');
         more.type = 'button';
@@ -722,7 +735,18 @@
         line.className = 'logline lvl-' + String(r.level || 'INFO').toLowerCase();
         line.innerHTML = '<span class="lt"></span><span class="ll"></span>'
           + '<span class="lg"></span><span class="lm"></span>';
-        line.querySelector('.lt').textContent = r.t || '';
+        const when = at(r);
+        if (spansDays && when && dayOf(when) !== lastDay) {
+          lastDay = dayOf(when);
+          const day = document.createElement('p');
+          day.className = 'logday';
+          day.textContent = lastDay;
+          out.appendChild(day);
+        }
+        line.querySelector('.lt').textContent =
+          when ? callTime(when.toISOString()) : (r.t || '');
+        line.querySelector('.lt').title =
+          when ? callTime(when.toISOString(), true) : '';
         line.querySelector('.ll').textContent = (r.level || '')[0] || '·';
         line.querySelector('.ll').title = r.level || '';
         // The callin. prefix is on every line of ours and earns no width.

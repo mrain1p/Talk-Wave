@@ -25,6 +25,7 @@ from api.auth import _write_allowed
 from api.credentials import _credentials_travel_to
 from api.env import LIVEKIT_API_KEY, LIVEKIT_API_SECRET
 from api.hooks import _hook_state
+from api.stats import _listener_count
 from api.wire import _cors, refused
 from station import StationClient
 from station_config import StationConfig
@@ -638,7 +639,9 @@ async def handle_test_llm(request: web.Request) -> web.Response:
     )
 
     try:
-        model = build_llm(cfg, use_stored_key=may_send)
+        # fallback=False: a Test that quietly passed on the fallback leg
+        # would report the broken primary as working.
+        model = build_llm(cfg, use_stored_key=may_send, fallback=False)
 
         @lk_llm.function_tool
         async def request_song(song: str) -> str:
@@ -919,7 +922,7 @@ async def handle_speed_test(request: web.Request) -> web.Response:
 
         from call.providers import build_llm
 
-        model_obj = build_llm(cfg, use_stored_key=llm_key_ok)
+        model_obj = build_llm(cfg, use_stored_key=llm_key_ok, fallback=False)
         ctx = lk_llm.ChatContext.empty()
         # The prompt this stage measured two stages ago, and the tools the DJ
         # is given, because the caller pays for both on every turn. Sending
@@ -1249,10 +1252,12 @@ async def handle_test_env(request: web.Request) -> web.Response:
             np = await st.now_playing()
         finally:
             await st.aclose()
-        count = ((np.get("listeners") or {}).get("current"))
-        if count is None:
-            count = ((np.get("context") or {}).get("listeners") or {}).get("count")
-        result["listeners"] = listeners_verdict(count, bool(cfg.get("tune_in_on_call")))
+        # The station's two listener shapes are read in ONE place
+        # (api/stats._listener_count); this spelled them out again, and a
+        # second copy is the one that misses the third shape (review,
+        # 2026-11-15).
+        result["listeners"] = listeners_verdict(
+            _listener_count(np or {}), bool(cfg.get("tune_in_on_call")))
     except Exception as e:
         result["listeners"] = {"count": None, "requestsOpen": False, "detail": _plain_error(e)[:120]}
 

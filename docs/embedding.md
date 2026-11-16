@@ -23,6 +23,7 @@ The settings gear is the one thing never offered here at any setting: an embed d
 |---|---|
 | `data-theme="light\|dark\|inherit"` | The widget *starts* on this theme — `inherit` matches the host page's background (resolved before the frame loads, since a cross-origin frame can't see its parent) — but the viewer's toggle still works and their choice is remembered. The toggle cycles light → dark → the station's show colours (when the panel has them on offer) → match the page. Omit for OS preference |
 | `data-lock-theme="true"` | Pin `data-theme` outright and remove the toggle, for a page that needs one look |
+| `data-skin="<name>"` | Start the card in one of the experimental skins (the names in **Players → Surface → Skin**). Lowercase letters, digits and hyphens; anything else, or `default`, is ignored |
 | `data-captions="ticker\|full\|off"` | Embeds default to `ticker` — latest line only, fading, so the widget stays short |
 | `data-height="260px"` | Frame height for tight layouts |
 | `data-compact="false"` | Full card instead of the compact one |
@@ -35,3 +36,5 @@ The settings gear is the one thing never offered here at any setting: an embed d
 A host page can also push its own palette *and fonts* into the card over `postMessage` — see `web-widget/HOST-STYLE-GUIDE.md` — which repaints in place without dropping a call.
 
 > **Any page you embed on can mint call tokens**, so treat an embed as publishing the phone. Set a guest code if that isn't what you want.
+
+**What a page on another origin can do, exactly.** An embed is a frame onto the call page plus one plain `GET /live` (how `embed.js` names who is on air before the frame opens). Everything a caller does — typing the code, signing in, the call — happens inside the frame, on this service's own origin. The allowlist does not turn your site into an API client: cross-origin requests may carry `Content-Type` and be a `POST`, and nothing else, so a script on your page cannot send a guest code or the admin password (`X-Call-Key`, `X-Admin-Key`) here, and no panel request works from another origin at any setting. If you want a keyed call from your own page, embed the frame; do not call the API.

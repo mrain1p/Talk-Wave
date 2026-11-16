@@ -1605,3 +1605,180 @@ class TestTheTextLineIsNotBlind(unittest.TestCase):
 
         src = inspect.getsource(session)
         self.assertIn("build_read_tools", src)
+
+
+class TestTheTextLineCanRunTheSegmentsItsPromptLists(_TempStores):
+    """Review, 2026-11-15. chat/session.py built the on-air tools with no
+    segment list, so `subwave_run_skill` refused EVERY ask with "You have no
+    segments to run on this show" — while the same message's prompt listed
+    the segments the DJ could run. The prompt build now reports the narrowed
+    list it printed and what the station switched off, and the chat passes
+    both to the tool — the way the phone and the voicemail studio do."""
+
+    def _ask_and_capture(self):
+        from chat import session as chat_session
+        import brain.assemble as assemble_mod
+        import call.providers as providers_mod
+        import call.tools as tools_mod
+
+        class _FakeStation:
+            async def resolve_live_persona(self):
+                return {"name": "Ash"}
+
+            async def aclose(self):
+                pass
+
+        class _Stream:
+            def __init__(self):
+                self._chunks = [types.SimpleNamespace(
+                    delta=types.SimpleNamespace(content="On it.",
+                                                tool_calls=[]))]
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if not self._chunks:
+                    raise StopAsyncIteration
+                return self._chunks.pop(0)
+
+            async def aclose(self):
+                pass
+
+        class _Model:
+            def chat(self, chat_ctx=None, tools=None):
+                return _Stream()
+
+            async def aclose(self):
+                pass
+
+        async def _fake_prompt(*a, gates=None, **k):
+            # What brain.assemble does for real (see
+            # TestThePromptHandsItsSegmentsToTheTool): report what it printed.
+            if gates is not None:
+                gates["skills"] = ["weather"]
+                gates["switched_off"] = {"news": "switched off"}
+            return "SYS"
+
+        seen: dict = {}
+
+        def _on_air(cfg, station, actions, guard, guarded=True, skills=None,
+                    switched_off=None):
+            seen.update(guarded=guarded, skills=skills,
+                        switched_off=switched_off)
+            return []
+
+        orig = (chat_session.StationClient, assemble_mod.build_system_prompt,
+                providers_mod.build_llm, tools_mod.build_on_air_tools)
+        chat_session.StationClient = _FakeStation
+        assemble_mod.build_system_prompt = _fake_prompt
+        providers_mod.build_llm = lambda cfg: _Model()
+        tools_mod.build_on_air_tools = _on_air
+        try:
+            chat = chat_session.ChatSession("s1", "open")
+            asyncio.run(chat.ask("do the weather", lambda e: None))
+        finally:
+            (chat_session.StationClient, assemble_mod.build_system_prompt,
+             providers_mod.build_llm, tools_mod.build_on_air_tools) = orig
+        return seen
+
+    def test_the_tool_is_built_from_the_prompts_own_list(self):
+        seen = self._ask_and_capture()
+        self.assertEqual(seen["skills"], ["weather"])
+        self.assertEqual(seen["switched_off"], {"news": "switched off"})
+        # Still unguarded: a typed DJ is never held off the air.
+        self.assertIs(seen["guarded"], False)
+
+    def test_with_the_list_the_segment_runs_and_without_it_never_could(self):
+        from call.actions import CallActions
+        from call.air import OnAirGuard
+        from call.tools.broadcast import build_on_air_tools
+
+        class _Station:
+            def __init__(self):
+                self.ran = []
+
+            async def run_skill(self, name):
+                self.ran.append(name)
+                return {"ok": True, "spoken": "Sunny, and staying that way."}
+
+        def run(**gates):
+            station = _Station()
+            guard = OnAirGuard(station, {"avoid_on_air_overlap": False})
+            built = build_on_air_tools({"allow_skills": True}, station,
+                                       CallActions(5), guard, False, **gates)
+            tool = {t.info.name: t for t in built}["subwave_run_skill"]
+            return station, asyncio.run(tool(name="weather"))
+
+        # The old chat build, exactly: no list, so every ask was refused.
+        station, out = run()
+        self.assertIn("You have no segments to run", out)
+        self.assertEqual(station.ran, [])
+        # What the chat passes now.
+        station, out = run(skills=["weather"],
+                           switched_off={"news": "switched off"})
+        self.assertEqual(station.ran, ["weather"])
+        self.assertIn("HANDED TO THE BOOTH", out)
+        # And a segment the station switched off is refused with the reason.
+        station = _Station()
+        guard = OnAirGuard(station, {"avoid_on_air_overlap": False})
+        built = build_on_air_tools(
+            {"allow_skills": True}, station, CallActions(5), guard, False,
+            skills=["weather"], switched_off={"news": "switched off"})
+        tool = {t.info.name: t for t in built}["subwave_run_skill"]
+        out = asyncio.run(tool(name="news"))
+        self.assertIn("switched off tonight", out)
+        self.assertEqual(station.ran, [])
+
+
+class TestTheScheduleTableIsTrueToWhatTheLineCanRead(unittest.TestCase):
+    """Review, 2026-11-15. The text line had no schedule read, and its
+    conduct said so in the DJ's own mouth: "I don't have the running order in
+    front of me". It has `subwave_schedule` now (call/tools/reads.py), so on
+    a line where that twin is built the rule sends the DJ to it for the times
+    and the hosts — and on a line where it is not, the old names-only rule
+    still stands, naming no tool."""
+
+    CFG = {"context_schedule": True}
+
+    def _rules(self, has_read: bool) -> str:
+        from unittest import mock
+
+        from brain import conduct_chat
+
+        with mock.patch("station_config.has_admin", return_value=has_read):
+            return conduct_chat.rules(self.CFG)
+
+    def test_with_the_read_the_dj_is_sent_to_it_for_times_and_hosts(self):
+        text = self._rules(True)
+        self.assertIn("Read subwave_schedule FIRST", text)
+        self.assertIn("| Time", text)
+        self.assertNotIn("I don't have the running order in front of me", text)
+        # The fabrication guard survives: no grid, no invented slot.
+        self.assertIn("A single Show column is a fine table", text)
+        self.assertIn("square off the grid", text)
+
+    def test_without_it_no_tool_is_named_and_no_column_is_promised(self):
+        text = self._rules(False)
+        self.assertNotIn("subwave_schedule", text)
+        self.assertNotIn("| Time", text)
+        self.assertIn("A single Show column is a fine table", text)
+
+    def test_the_rule_and_the_twin_ride_the_same_condition(self):
+        # has_admin() is what conduct_chat asks; library_search_needs_mcp()
+        # is what reads.py asks. One fact, and they must not drift.
+        from unittest import mock
+
+        from call.tools import reads, registry
+
+        for creds in (("op", "pw"), ("", "")):
+            with mock.patch("station_config.admin_credentials",
+                            return_value=creds):
+                import station_config
+
+                built = {t.info.name
+                         for t in reads.build_read_tools({}, None)}
+                self.assertEqual(station_config.has_admin(),
+                                 "subwave_schedule" in built)
+                self.assertEqual(station_config.has_admin(),
+                                 not registry.library_search_needs_mcp())

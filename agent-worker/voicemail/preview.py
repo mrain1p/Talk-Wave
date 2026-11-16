@@ -66,7 +66,13 @@ _LABELS = {
     "subwave_skip_track": lambda a: "Skip the track playing now (everyone hears the cut)",
     "subwave_like_track": lambda a: "Like the track playing now",
     "subwave_unlike_track": lambda a: "Un-like the track playing now",
-    "subwave_never_play_track": lambda a: "Never play the current track again",
+    # Names the record when the message did (review, 2026-11-15): the ban
+    # takes a title now, and "the current track" on the approval line for a
+    # ban of something else is a receipt for the wrong record.
+    "subwave_never_play_track": lambda a: (
+        f"Never play “{a.get('title') or a.get('artist')}” again"
+        if a.get("title") or a.get("artist")
+        else "Never play the current track again"),
     "subwave_allow_track_again": lambda a: "Take the current track off the never-play list",
     "subwave_cancel_takeover": lambda a: "Cancel the show takeover — back to the schedule",
     "subwave_clear_genre_lock": lambda a: "Lift the genre lock",
@@ -106,18 +112,26 @@ async def build_action_tools(cfg: dict, station):
     # guard for exactly this reason).
     guard = OnAirGuard(station, {"avoid_on_air_overlap": False})
     skills = []
+    switched_off = {}
     if cfg.get("allow_skills"):
+        # Narrowed by the station's own gates the way the live line narrows
+        # (station_config.runnable_skills): a staged segment the operator
+        # switched off would otherwise replay straight into `POST /dj/skill`.
         try:
+            from station_config import runnable_skills, withheld_skills
+
+            rows = await station.list_skills()
+            switched_off = withheld_skills(rows)
             skills = [s for s in (str(x.get("kind") or x.get("name") or "")
-                                  for x in await station.list_skills()) if s]
+                                  for x in runnable_skills(rows, None)) if s]
         except Exception:                                     # noqa: BLE001
-            skills = []
+            skills, switched_off = [], {}
     tools = (
         build_library_tools(cfg, station, actions)
         + build_discovery_tools(cfg, station, actions)
         + build_curation_tools(cfg, station, actions)
         + build_on_air_tools(cfg, station, actions, guard, guarded=False,
-                             skills=skills)
+                             skills=skills, switched_off=switched_off)
     )
     return tools, actions
 

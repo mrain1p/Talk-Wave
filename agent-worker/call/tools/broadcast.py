@@ -34,6 +34,7 @@ def build_on_air_tools(
     guard: OnAirGuard,
     guarded: bool = True,
     skills: list[str] | None = None,
+    switched_off: dict[str, str] | None = None,
 ) -> list:
     """On-air actions that keep the call and the broadcast from colliding.
 
@@ -102,6 +103,18 @@ def build_on_air_tools(
             "them and pick the conversation up where you left it."
         )
 
+    def hold_the_floor(result: dict, secs: int, spoken: str) -> None:
+        """Close the reply gate for what the station is about to say. An
+        UNCONFIRMED delivery was accepted but had not aired when the station
+        answered, so a countdown from here measures the wrong thing (the Ash
+        call's hold expired before the delivery began): it holds until the
+        station's log shows it. One helper since the review of 2026-11-15 —
+        dj_segment kept its own copy, without the pending branch."""
+        if result.get("unconfirmed"):
+            guard.mark_pending_air(spoken)
+        else:
+            guard.mark_on_air(secs, spoken=spoken)
+
     tools = []
 
     if cfg.get("allow_announcements"):
@@ -134,14 +147,7 @@ def build_on_air_tools(
             # the original for a conservative hold.
             aired = booth_spoken_text(spoken)
             secs = speaking_secs(aired or spoken, 25)
-            if result.get("unconfirmed"):
-                # The station accepted it but had not aired it when it
-                # answered, so a countdown from HERE measures the wrong thing
-                # — the Ash call's hold expired before the delivery started.
-                # Hold until the station's log shows it instead.
-                guard.mark_pending_air(spoken)
-            else:
-                guard.mark_on_air(secs, spoken=spoken)
+            hold_the_floor(result, secs, spoken)
             out = after_action(
                 "Your announcement", waited, result.get("unconfirmed"), secs)
             if aired != spoken:
@@ -164,7 +170,10 @@ def build_on_air_tools(
         # trigger honours NONE of that — it is documented as an operator
         # override and runs a skill even when it is switched off — so this is
         # the only place the operator's intent survives a caller asking.
+        # `switched_off` is what those gates dropped, name → why, so a model
+        # that names one anyway hears the real reason and stops.
         runnable = [str(s) for s in (skills or []) if str(s or "").strip()]
+        gated = {str(k): str(v) for k, v in (switched_off or {}).items()}
 
         @lk_llm.function_tool(name="subwave_run_skill")
         async def run_skill(name: str) -> str:
@@ -173,6 +182,15 @@ def build_on_air_tools(
             if actions.at_limit():
                 return actions.refusal()
             wanted = str(name or "").strip()
+            if wanted in gated and wanted not in runnable:
+                # The station's own gate, honoured HERE — `POST /dj/skill` is an
+                # operator override and would run a switched-off segment anyway.
+                return (
+                    f"The station has the {wanted} segment switched off tonight "
+                    f"({gated[wanted]}). Do NOT run it or try another name for "
+                    "the same thing — tell the caller plainly it isn't on tonight"
+                    + (f"; yours are: {', '.join(runnable)}." if runnable else ".")
+                )
             if runnable and wanted not in runnable:
                 # Refused HERE rather than at the station, which would have run
                 # it: the station's manual trigger ignores the enabled flag on
@@ -235,13 +253,7 @@ def build_on_air_tools(
             # voice on the broadcast. 60s is the fallback when the station
             # doesn't tell us what it said.
             secs = speaking_secs(result.get("spoken"), 60)
-            if result.get("unconfirmed"):
-                # Same shape as the announcement: unconfirmed means the clock
-                # cannot start here. Segments are the case that made the
-                # station slow in the first place.
-                guard.mark_pending_air(result.get("spoken") or "")
-            else:
-                guard.mark_on_air(secs, spoken=result.get("spoken") or "")
+            hold_the_floor(result, secs, result.get("spoken") or "")
             return after_action(
                 f"The {name} segment", waited, result.get("unconfirmed"), secs)
 
@@ -272,7 +284,7 @@ def build_on_air_tools(
                 return actions.station_refused(result, "That segment didn't fire")
             actions.note("segment", type)
             secs = speaking_secs(result.get("spoken"), 30)
-            guard.mark_on_air(secs, spoken=result.get("spoken") or "")
+            hold_the_floor(result, secs, result.get("spoken") or "")
             return after_action(
                 f"The {type} beat", waited, result.get("unconfirmed"), secs)
 

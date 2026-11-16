@@ -939,3 +939,69 @@ class TestATurnAfterAnActionKeepsTheCallMoving(unittest.TestCase):
         # A typed line has an input box under it; the caller can see the
         # reply is finished. The rule is the phone's alone.
         self.assertNotIn("dead line sound the same", conduct_chat.rules({}))
+
+
+class TestTheBoothLogRowRidesNoSearchSwitch(unittest.TestCase):
+    """Review, 2026-11-15. `subwave_booth_log` is a READ — built on every
+    line, whatever is switched on — but the one prompt row that names it
+    ("did you cancel my queue?" -> the booth's own log) sat inside the
+    name-search branch of the finding table. On a line with library search
+    off, or in the single-lookup mode, the DJ was handed the tool and never
+    told what it was for: the absence-is-invisible bug
+    TestNoToolIsBuiltWithoutThePromptKnowingIt exists to stop, hidden from
+    that test because it checks with everything on. The row lives with the
+    other always-on reads now."""
+
+    SHAPES = (
+        {},                                         # nothing switched on
+        {"allow_requests": True},                   # the shipped open line
+        {"allow_sound_search": True},               # a finder, not by name
+        {"allow_library_search": True},
+        # The mode switch alone folds nothing: with no finder to route to,
+        # the dispatcher is never built and the booth log stays its own tool.
+        {"single_lookup_tool": True},
+    )
+
+    def test_the_row_is_there_whenever_the_tool_is(self):
+        from brain import conduct, conduct_chat
+
+        for cfg in self.SHAPES:
+            for rules in (conduct.rules, conduct_chat.rules):
+                flat = " ".join(rules(cfg).split())
+                with self.subTest(cfg=cfg, mouth=rules.__module__):
+                    self.assertIn("subwave_booth_log", flat)
+                    self.assertIn("EARLIER CALL", flat)
+                    self.assertIn("your memory starts at pickup", flat)
+
+    def test_the_single_lookup_mode_folds_the_row_away_with_the_tool(self):
+        # There the booth log is a ROUTE of subwave_find_music
+        # (finding.ROUTES["booth"]) and leaves the model's list, so the row
+        # naming it must leave the prompt too — the one line where "present
+        # whenever the tool is" means absent.
+        from brain import conduct, conduct_chat
+        from call.tools.finding import ROUTES
+
+        self.assertEqual(ROUTES["booth"], "subwave_booth_log")
+        folded = {"allow_library_search": True, "single_lookup_tool": True}
+        for rules in (conduct.rules, conduct_chat.rules):
+            text = rules(folded)
+            self.assertNotIn("subwave_booth_log", text)
+            self.assertIn("subwave_find_music", text)
+
+    def test_it_is_said_once_not_once_per_branch(self):
+        from brain import conduct
+
+        everything = {"allow_library_search": True, "allow_sound_search": True,
+                      "allow_requests": True, "allow_exact_queue": True}
+        self.assertEqual(conduct.rules(everything).count("EARLIER CALL"), 1)
+
+    def test_the_tool_really_is_built_at_every_one_of_those_shapes(self):
+        # The other half of the claim: if booth_log ever gains a switch,
+        # this row has to move with it rather than quietly outlive it.
+        from call.tools import registry
+
+        self.assertEqual(registry.BY_NAME["subwave_booth_log"].gate,
+                         registry.READ)
+        for cfg in self.SHAPES:
+            self.assertIn("subwave_booth_log", registry.local_tool_names(
+                cfg, local_search_available=False))

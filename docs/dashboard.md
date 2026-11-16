@@ -57,9 +57,9 @@ The three ways through the door above, each pairing a switch with the tile for t
 
 | Line | Switched on, the card says | The tile beside it counts |
 |---|---|---|
-| **Live calls** | the permission counts as chips, and the fallback that answers when a live call cannot start | recent conversations, with failed calls and thumbs — click to open the records |
+| **Live calls** | the permission counts as chips, and the fallback that answers when a live call cannot start | recent phone calls, with failed calls and thumbs — click to open the records |
 | **Voicemail** | who may use it, whether it is the fallback or always on, and where a message goes afterwards | messages taken, split into held for you and passed on — click to open the voicemail section |
-| **Text line** | who may open the line, and how long a quiet chat stays open | — |
+| **Text line** | who may open the line, and how long a quiet chat stays open | recent text exchanges, with failed ones and thumbs — click to open the records |
 
 The permission chips count how many things a caller at each tier can actually ask for, read from the same switches the reference lists read. Fallback and always-on are different machines, and the card says which one you have.
 

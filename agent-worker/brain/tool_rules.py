@@ -240,6 +240,27 @@ def _dispatch_rule(exact: bool) -> str:
     return "\n".join(parts) + "\n"
 
 
+def earlier_call_row(cfg: dict) -> str:
+    """The "did you cancel my queue?" row, wherever subwave_booth_log is built.
+
+    It sat under the name-search switch in the finding table (review,
+    2026-11-15), but the tool is a READ: built on every line, EXCEPT in the
+    single-lookup mode, which folds it into the finder (finding.ROUTES) — the
+    same test finding_rule applies before it hands over to _dispatch_rule.
+    """
+    if cfg.get("single_lookup_tool") and (
+            cfg.get("allow_library_search") or cfg.get("allow_sound_search")):
+        return ""
+    return """
+    * They ask about an EARLIER CALL — "did you cancel my queue?", "where's
+      the song I asked for?" -> your memory starts at pickup, so never answer
+      from it. subwave_booth_log says what this line's calls actually DID, by
+      which door; subwave_station_state says what stands in the queue now.
+      Check them, say what you SEE, and say plainly that the booth's memory
+      resets between calls. "I haven't touched anything since we started" is
+      an evasion wearing honesty's clothes; the log and the queue are the answer."""
+
+
 def finding_rule(cfg: dict) -> str:
     """How to actually find a record — which tool, and what a miss means.
 
@@ -283,16 +304,7 @@ def finding_rule(cfg: dict) -> str:
     * They ask whether something ALREADY PLAYED, tonight or before ->
       subwave_already_played. It reaches further back than the recent history
       in your briefing, and it says who requested each one, so a caller ringing
-      back about their own request gets a real answer instead of a maybe.
-    * They ask about an EARLIER CALL — "did you cancel my queue?", "where's
-      the song I asked for?" -> your memory starts at pickup, so never answer
-      from it. subwave_booth_log says what this line's calls actually DID —
-      queued, pulled, skipped, taken over, by which door — and
-      subwave_station_state says what stands in the queue now; check them,
-      then say what you SEE. When it matters, say plainly that the booth's
-      memory resets between calls. "I haven't touched anything since we
-      started" is an evasion wearing honesty's clothes; the log and the
-      queue are the answer.""")
+      back about their own request gets a real answer instead of a maybe.""")
     parts.append("""\
     * Their ask is RELATIVE to what's queued or playing — "similar to my
       queue", "no repeats of what's in there", "more in that vein" -> read
@@ -739,7 +751,7 @@ Use your tools mid-conversation, the way a DJ works while talking:
       line means. It is never the answer to what the song IS, and it cannot
       tell you whether a track is an instrumental: a station with no lyrics
       indexed and an instrumental look identical from there.
-    * What is coming up, or what just played -> subwave_station_state.
+    * What is coming up, or what just played -> subwave_station_state.{earlier_call_row(cfg)}
   **If a caller tells you you have this wrong, they are the one hearing it.**
   Say what your information shows, take their word for what they can hear,
   and go and look again rather than repeating yourself.""")

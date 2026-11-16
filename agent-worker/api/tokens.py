@@ -23,7 +23,7 @@ import settings as settings_store
 import station_prefetch
 from api.auth import _guest_ok, _write_allowed, caller_tier
 from api.env import LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_PUBLIC_URL
-from api.wire import _caller_key, _cors, refused
+from api.wire import _caller_key, _cors, is_local_address, refused
 
 log = logging.getLogger("callin.token")
 
@@ -116,14 +116,15 @@ def _network_of(ip: str) -> str:
     ip = (ip or "").strip()
     if not ip or ip == "unknown":
         return "unknown"
-    if ip.startswith(("10.", "192.168.", "127.", "::1", "fd", "fe80")):
-        return "same network"
-    if ip.startswith("172."):
-        try:
-            return "same network" if 16 <= int(ip.split(".")[1]) <= 31 else "off-network"
-        except (ValueError, IndexError):
-            return "unknown"
-    return "off-network"
+    # Asked of the one helper that knows (api/wire.is_local_address) rather
+    # than re-derived from string prefixes, which is what this did: `fd` and
+    # `fe80` caught some IPv6 and missed the rest of the unique-local range,
+    # 169.254 link-local read as off-network, and anything that merely BEGAN
+    # "fd" or "10." counted as local whether or not it was an address at all
+    # (review, 2026-11-15). Something that is not an address stays
+    # "off-network", as it always was: not provably here is the safe label
+    # for a line whose job is to flag a caller with no media path.
+    return "same network" if is_local_address(ip) else "off-network"
 _live_calls: dict[str, float] = {}       # room -> started at
 
 # room -> the one-shot secret minted beside it. /call-ended is public (a

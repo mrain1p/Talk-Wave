@@ -85,6 +85,17 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "llm_model":        ("LLM_MODEL", ""),
     "llm_base_url":     ("LLM_BASE_URL", ""),
     "llm_temperature":  (None, 0.8),
+    # The net under the brain (1.0.1), mirroring the station's own
+    # llm.fallback.provider/model. Blank = no net, which is what every
+    # deployment had: six days of calls (2026-11-09 to -15) each died with the
+    # same 402 — "prepayment credits are depleted" — while the station beside
+    # them kept talking on its Ollama fallback. When the primary refuses a
+    # request outright (401/402/403, or no connection at all) the call
+    # switches to this leg and the record says so. Any provider the primary
+    # can be; the fallback's Endpoint is the primary's llm_base_url only when
+    # the two share a provider, otherwise the provider's own default address.
+    "llm_fallback_provider": ("LLM_FALLBACK_PROVIDER", ""),
+    "llm_fallback_model":    ("LLM_FALLBACK_MODEL", ""),
 
     # The bundled Whisper (0.10.80): no key, no network, works out of the box
     # — which is what a default should do. Deepgram and the other cloud ears
@@ -126,8 +137,10 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     #
     # Reads are always on and are not listed here at all.
     "allow_requests":     (None, "open"),
-    # Requests are irreversible — the station has no cancel endpoint — so the
-    # cheap protection is confirming the track before it's submitted.
+    # A request is hard to take back — the station's cancel (DELETE
+    # /dj/queue/:id, our subwave_cancel_queued_track) sits behind
+    # allow_cancel_queue, off by default, and refuses once the track is on its
+    # way to air — so the cheap protection is confirming before it's submitted.
     "confirm_requests":   (None, True),
     # A mood ("something fun") is enough to act on, and the station's picker
     # resolves it — but sending it straight through means the caller never got
@@ -781,7 +794,13 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     "call_button_mode":      (None, "default"),
     # The card's fixed strings, blank = the built-in. All of them take
     # {station}, {dj}, {show}, {track} and {tagline}, filled live.
-    "word_ringing":          (None, ""),
+    #
+    # word_ringing is gone (review, 2026-11-15): the card lost its Ringing
+    # phase when Hang up replaced the Call button at the press, so nothing
+    # had read the override since and the panel was offering a box that did
+    # nothing. A store that still carries the key needs no migration — load()
+    # walks FIELDS, so a retired key is simply never read, and it stays in
+    # the file untouched for a rollback.
     "word_answering":        (None, ""),
     "word_online":           (None, ""),
     "word_recording":        (None, ""),

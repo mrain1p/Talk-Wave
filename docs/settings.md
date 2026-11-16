@@ -91,6 +91,7 @@ The LLM that thinks: provider, model, endpoint, temperature, and the provider AP
 
 - **Only providers you hold a key for are listed.** Ollama, an OpenAI-compatible server and the station's locca always appear, since they need none — and they lead the list, because a fresh install can actually pick them.
 - Keys are stored server-side and never shown back. There is no separate Connections section.
+- **Fallback provider / model** — off by default. The station's own `llm.fallback`, mirrored: when the primary refuses a request outright (billing lapsed, key revoked, nothing answering at the address) the call carries on with this provider for the rest of the call, and the call record says which brain carried it. Any provider the primary can be; Ollama or locca on your own box need no key. Not for slow replies — a model that is merely slow is a model choice, see below. The Test button checks the primary only, so prove a fallback model by setting it as the primary first.
 
 Which models actually carry a call: [what to run](models.md).
 
@@ -129,7 +130,7 @@ A reference card, not settings: the three tiers (Admin always, Guest gate, Open)
 - Call-in access as three ticks, one choice apiece. Admin is always a door; **Guest code and Anyone are mutually exclusive** — an open line has no code door, and the code stops elevating.
 - The admin password for this panel, and the optional guest code for the phone.
 - `CALLIN_ADMIN_KEY` is the recovery override.
-- A guest-code expiry (hours, default 24) for shared machines. The card also offers a lock button to forget the code immediately.
+- A guest-code expiry (hours, default 24) for shared machines. The card also offers a sign-out button that forgets the code on that device, after asking.
 - **Pause all calls**, the kill switch — filed here because it is not a call cap and not call-only: it silences the machine and the text line too. The control itself stays the dashboard's Line switch.
 
 ### Caller permissions
@@ -140,7 +141,7 @@ What a caller may trigger, and **which caller** — each row set to the least tr
 - **Find music by how it sounds** — two discovery reads: a "sounds like" search over a description, and "more like this" off the track on air. They match the analysed audio rather than words in a title, change nothing, and cost nothing against Actions per call. Browsing by mood, genre and era rides the library-search row instead.
 - **Say where listeners tune in from** — off by default. One line in the DJ's briefing, from the station's own last-24-hours audience rollup: the countries its listeners came from, so "where's everyone listening from?" gets a real answer. Only countries with at least three listeners are named, and never the sites or pages they came from. A read; needs the station admin login.
 - **Take a track back out of the queue** — off by default: the queue is shared, so it can pull a record somebody else asked for, which is why the station gives its own listeners no cancel.
-- **The three station-wide switches** — skip the current track, fire a programme beat, put a different show on air. These reach every listener.
+- **The three station-wide switches** — skip the current track, fire a programme beat, put a different show on air. These reach every listener. A programme beat also has to be on at the station: a segment you have switched off in SUB/WAVE, or one whose API key is missing or rejected, is not offered on a call, and a caller who asks for it is told it isn't on tonight.
 
 Rows that need the station admin credentials carry a **Station admin** badge, coral until the credentials are stored — including **un-like the track**, the operator's own curation heart, admin only.
 
@@ -343,7 +344,7 @@ The DJ block, per surface: the DJ photo with its **shape** right under it (round
 
 ### Call status wording
 
-Every call-state string in one place, in call order — Ringing, Answering, Connecting, Connected — waiting, On the line, Recording, Line closed, Message only, Call ended.
+Every call-state string in one place, in call order — Answering, Connecting, Connected — waiting, On the line, Recording, Line closed, Message only, Call ended.
 
 Overridable in the station's own voice, with `{station}` `{dj}` `{show}` `{track}` `{tagline}` filled live. **Focus a field and the preview card's line box shows that state** — your typed words, or the built-in default — until you click away. Also here: whether the transcript names the DJ.
 
@@ -375,7 +376,7 @@ The Behaviour band — nothing visual:
 - the card's **listener count** — "On air now · 2 listening", shown from one listener up, so a quiet hour never paints a zero
 - its **heart button** — the same public like any listener page sends, beside the record on the card. Both on by default
 - the station player card, and **which card it opens on** — the phone or the player, the other a swipe across; the row at the card's foot names every card that is on
-- the **programme guide card** — the station's week, read from its public schedule through this server and cached five minutes: today's shows hour by hour, then every show with its description, its DJs and their published souls, and its times. Off by default
+- the **programme guide card** — the station's week, read from its public schedule through this server and cached five minutes: today's shows hour by hour, then every show with its description, its DJs and their published souls, and its times; each open show carries a share icon that copies a link (`/#show/<id>`) opening the card on that show. Off by default
 - the player's **cast button** — Chromecast on Chrome, AirPlay on Safari, on by default and always on show while the switch is on; pressing it starts the stream if needed, and reopening the picker is how you switch speakers or stop casting
 - the player's **operator side**, off by default: a **skip button** beside the heart and an **operator mode** on the request line — one-shot commands through the text line's own brain, receipts flashed in place and a Booth tab reading the 48-hour action log. Both are doors onto admin-backed writes, so each is gated twice: these switches put the furniture on the sheet, and the permission matrix decides which tier's key may use it
 - how loud the station plays under the answering machine
@@ -410,7 +411,7 @@ Each row shows which tier gets it, and the actions that are never available are 
 
 ### Station tools
 
-**Station tools** is the station's whole surface — 43 tools in all: 7 handed straight through from the station's MCP server, 31 served by wrappers of ours (retries, guards, the action ledger), and 5 that are never on a call line at any setting — each row saying whether a caller can reach it.
+**Station tools** is the station's whole surface — 43 tools in all: 6 handed straight through from the station's MCP server, 32 served by wrappers of ours (retries, guards, the action ledger), and 5 that are never on a call line at any setting — each row saying whether a caller can reach it.
 
 Below the list, **How the DJ finds a record** sets out the five ways in and which kind of ask takes each, and a short note names what the station can do that the call line still doesn't use.
 

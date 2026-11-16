@@ -64,6 +64,7 @@ Everything the deployment owns is in that one folder, and only `data/` ever chan
 ## Next steps
 
 - **A real domain and a trusted certificate** (no certificate screen): [networking — the TLS front door](networking.md).
+- **Tell the app about the proxy in front of it — the bundled Caddy included**: set `CALLIN_TRUSTED_PROXIES` to the proxy's address, or everyone behind it shares one wrong-password counter and one person's bad guesses lock out the rest. The web service's log names the address to use the first time it matters; [security — Lockout](security.md#lockout) has the step.
 - **Your own reverse proxy instead of the bundled Caddy**: replicate **both** Caddyfile routes — the widget *and* `/rtc` — or calls connect with no audio; [networking](networking.md) has the details.
 - **Callers from outside your network**: [networking](networking.md) — one router rule plus one compose line.
 - **Every setting explained**: [settings](settings.md). **Hardening**: [security](security.md). **When a call goes wrong**: [troubleshooting](troubleshooting.md).

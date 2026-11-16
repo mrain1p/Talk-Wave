@@ -10,7 +10,7 @@
   const {
     $, ASKS, ASK_GROUPS, NEVER, rememberCallKey,
     ctx, playSound, pack, setSounds, getVolume, THEME_ICONS, LINK_ICONS,
-    playFirstWorking, readPlayerHandoff, writePlayerHandoff,
+    playFirstWorking, readPlayerHandoff, writePlayerHandoff, store,
   } = window.Callin;
 
   // The panel's own copy of /live. It used to read the call page's, which is
@@ -1445,7 +1445,7 @@
     const who = ['dj_avatar', 'dj_show', 'dj_tagline', 'now_playing'];
     setTag('tagWhosonair', who.filter(onPage).length + ' of 4 · '
       + (resolved.avatar_style || 'round') + ' photo');
-    const lineWords = ['word_ringing', 'word_answering', 'word_connecting',
+    const lineWords = ['word_answering', 'word_connecting',
       'word_waiting', 'word_online', 'word_recording', 'word_closed',
       'word_message_only', 'word_ended'];
     const reworded = lineWords.filter((f) => String(resolved[f] || '').trim()).length;
@@ -2263,18 +2263,33 @@
       const d = await afetch('/calls').then((r) => r.json());
       const calls = d.calls || [];
       const vms = calls.filter((c) => c.kind === 'voicemail');
-      const lives = calls.filter((c) => c.kind !== 'voicemail');
-      const rough = lives.filter((c) =>
-        (c.problems || []).length || !(c.callerTurns || 0)).length;
-      const up = calls.filter((c) => c.rating === 'up').length;
-      const down = calls.filter((c) => c.rating === 'down').length;
-      tile('tileCalls',
-        lives.length ? lives.length + ' recent' : 'none yet',
-        [rough && rough + ' failed',
-         up && '\u25b2' + up, down && '\u25bc' + down]
-          .filter(Boolean).join(' \u00b7 ')
-          || (lives.length ? 'all clean' : 'records appear here'),
-        rough ? 'warn' : lives.length ? 'ok' : undefined);
+      // A typed exchange is its own line with its own tile (review,
+      // 2026-11-15). `kind !== 'voicemail'` swept the chats into Calls, so a
+      // night of texting read as phone calls while the Chats tile beside it
+      // sat on a dash that nothing ever painted. Same /calls window for all
+      // three, and each record is counted on exactly one tile.
+      const chats = calls.filter((c) => c.kind === 'chat');
+      const lives = calls.filter((c) =>
+        c.kind !== 'voicemail' && c.kind !== 'chat');
+      // `thumbs` is passed apart from `list` because the Calls tile has
+      // always carried the thumbs left on voicemails too, and that is not
+      // this change's to move.
+      const talkTile = (id, list, thumbs, empty) => {
+        const rough = list.filter((c) =>
+          (c.problems || []).length || !(c.callerTurns || 0)).length;
+        const up = thumbs.filter((c) => c.rating === 'up').length;
+        const down = thumbs.filter((c) => c.rating === 'down').length;
+        tile(id,
+          list.length ? list.length + ' recent' : 'none yet',
+          [rough && rough + ' failed',
+           up && '\u25b2' + up, down && '\u25bc' + down]
+            .filter(Boolean).join(' \u00b7 ')
+            || (list.length ? 'all clean' : empty),
+          rough ? 'warn' : list.length ? 'ok' : undefined);
+      };
+      talkTile('tileCalls', lives, calls.filter((c) => c.kind !== 'chat'),
+        'records appear here');
+      talkTile('tileChat', chats, chats, '');
       // Where the messages went, not just that they exist \u2014 delivery is the
       // half of voicemail the operator cannot see from the card, and "held"
       // means there is something waiting for them in the section.
@@ -2290,9 +2305,13 @@
         held ? 'warn' : vms.length ? 'ok' : undefined);
       $('tileCalls').onclick = jumpToRecords;
       $('tileVm').onclick = jumpToVoicemail;
+      // The chats are filed in the same archive as the calls, so the tile
+      // lands on the same viewer (its "All types" box narrows to chats).
+      $('tileChat').onclick = jumpToRecords;
     } catch (e) {
       tile('tileCalls', '\u2014', 'sign in to read the records');
       tile('tileVm', '\u2014', '');
+      tile('tileChat', '\u2014', '');
     }
   }
 
@@ -3083,7 +3102,24 @@
 
   // Signing out only forgets the password on THIS browser — the panel
   // itself stays protected everywhere.
+  // ARE YOU SURE first (operator, 2026-11-15): the button sits in a row
+  // of ordinary actions and signs this browser out of BOTH surfaces.
   $('logoutBtn').onclick = () => {
+    const ask = $('signoutAsk');
+    if (!ask) return signOutHere();
+    ask.hidden = false;
+    $('signoutNo').focus();
+  };
+  if ($('signoutAsk')) {
+    const close = () => { $('signoutAsk').hidden = true; };
+    $('signoutYes').onclick = signOutHere;
+    $('signoutNo').onclick = close;
+    $('signoutAsk').onmousedown = (e) => { if (e.target === $('signoutAsk')) close(); };
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !$('signoutAsk').hidden) close();
+    });
+  }
+  function signOutHere() {
     // Both credentials, not just the panel one. They are stored separately
     // because they buy different things, but "sign out" means signed out —
     // clearing only the admin key left the phone still open on a deployment
@@ -3097,7 +3133,7 @@
     localStorage.removeItem('callinAdminKey');
     rememberCallKey('');
     location.reload();
-  };
+  }
 
   async function setGuest(code) {
     const out = $('guestResult');
@@ -4414,6 +4450,13 @@
   // the operator met a two-state toggle here and a four-state one on the
   // card and reasonably called it inconsistent. The station stop only
   // exists when /live carries a palette.
+  //
+  // The choice is read and written through shared.js's `store`, never
+  // `localStorage.` by hand (review, 2026-11-15). shared.js boots the theme
+  // from that same object, so the two cannot disagree about what is stored;
+  // and the first read here runs while this file is still loading, so in a
+  // browser that refuses storage a bare read throws there and nothing
+  // below this line — the finder, the diagnostics — is ever bound.
   let panelStationTheme = null;
 
   function panelThemeOptions() {
@@ -4442,8 +4485,8 @@
     } else {
       root.removeAttribute('data-theme');
     }
-    if (choice) localStorage.setItem('callinTheme', choice);
-    else localStorage.removeItem('callinTheme');
+    if (choice) store.setItem('callinTheme', choice);
+    else store.removeItem('callinTheme');
     panelPaintGlyph();
   }
 
@@ -4451,7 +4494,7 @@
     const btn = $('themeBtn');
     if (!btn) return;
     const opts = panelThemeOptions();
-    const stored = localStorage.getItem('callinTheme') || '';
+    const stored = store.getItem('callinTheme') || '';
     const here = opts.includes(stored) ? stored : '';
     const next = opts[(opts.indexOf(here) + 1) % opts.length];
     // Drawn, not typed \u2014 the same table the card's cycle uses (shared.js
@@ -4476,7 +4519,7 @@
     if (!btn) return;
     btn.onclick = () => {
       const opts = panelThemeOptions();
-      const stored = localStorage.getItem('callinTheme') || '';
+      const stored = store.getItem('callinTheme') || '';
       const idx = opts.indexOf(opts.includes(stored) ? stored : '');
       panelApplyTheme(opts[(idx + 1) % opts.length]);
     };
@@ -4485,7 +4528,7 @@
       panelStationTheme = (d && d.stationTheme) || null;
       // A stored 'station' choice could not paint at boot (shared.js only
       // knows light/dark); honour it now the palette exists.
-      if (localStorage.getItem('callinTheme') === 'station') {
+      if (store.getItem('callinTheme') === 'station') {
         panelApplyTheme('station');
       }
       panelPaintGlyph();

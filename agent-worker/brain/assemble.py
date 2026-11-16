@@ -83,6 +83,63 @@ async def _lean_block(persona: dict, music_lean: str | None) -> str:
             "for something else wins.\n")
 
 
+def _live_queue_read(mode: str) -> bool:
+    """Will this line be handed subwave_station_state?
+
+    The briefing's queue line points at it for "what's next NOW" (review,
+    2026-11-15), and a sentence that names a tool the line has not got is how
+    a DJ reaches, is refused, and narrates a look it never took. A call gets
+    it over MCP — an always-on read in the registry. The text line has no
+    MCP: its twin (call/tools/reads.py) is built only with station admin
+    credentials, so that is the condition here. Asked of the platform layer
+    because the brain may not import the registry.
+    """
+    if mode != "chat":
+        return True
+    from station_config import has_admin
+
+    return has_admin()
+
+
+async def _narrow_skills(snap: dict, persona: dict, show: dict) -> dict:
+    """Narrow `snap["skills"]` to what this DJ may run; return what the
+    station's own gates withheld (name -> why), read BEFORE the narrowing."""
+    from station_config import StationConfig, runnable_skills, withheld_skills
+
+    withheld = withheld_skills(snap["skills"])
+    sc = StationConfig()
+    try:
+        assigned = await sc.persona_skills(str(persona.get("id") or ""))
+    except Exception:                                         # noqa: BLE001
+        assigned = None
+    finally:
+        await sc.aclose()
+    snap["skills"] = runnable_skills(
+        snap["skills"], assigned, bool((show or {}).get("guests")))
+    return withheld
+
+
+def _report_gates(gates: dict | None, snap: dict, withheld: dict) -> None:
+    """Hand a caller-supplied `gates` dict the segments this prompt PRINTED.
+
+    The text line builds its prompt here and its run-skill tool somewhere
+    else, and gave the tool no list at all — so `subwave_run_skill` answered
+    "You have no segments to run on this show" on every ask while the
+    briefing above it named the segments the DJ could run (review,
+    2026-11-15). The keys are `build_on_air_tools`' own keyword names, so the
+    caller passes the dict straight through and the prompt and the tool read
+    one narrowed list: there is no second read for them to disagree across.
+    """
+    if gates is None:
+        return
+    from station_config import _skill_name
+
+    names = (_skill_name(s) for s in (snap.get("skills") or [])
+             if isinstance(s, dict))
+    gates["skills"] = [n for n in names if n]
+    gates["switched_off"] = dict(withheld)
+
+
 async def build_system_prompt(
     station: StationClient, persona: dict, snapshot: dict | None = None,
     cfg: dict | None = None, mode: str = "call",
@@ -91,6 +148,7 @@ async def build_system_prompt(
     talk_between_tracks: bool | None = None,
     pause_talk: int | None = None,
     music_lean: str | None = None,
+    gates: dict | None = None,
 ) -> str:
     """`cfg` must be the settings ALREADY RESOLVED for this caller's tier.
 
@@ -114,6 +172,7 @@ async def build_system_prompt(
     # runnable when somebody else is in the booth (#1534). No I/O - it works
     # off payloads the snapshot already carries.
     show = await station.active_show(snap["now_playing"], snap.get("schedule"))
+    withheld: dict = {}
     if snapshot is None and snap.get("skills"):
         # Only when we fetched it ourselves: the call path narrows the
         # catalogue to the on-air DJ before handing it over (session.prepare),
@@ -121,17 +180,8 @@ async def build_system_prompt(
         # chat line and the operator previews, which build their own snapshot —
         # a preview that lists segments the DJ cannot run is exactly the
         # disagreement the narrowing exists to remove.
-        from station_config import StationConfig, runnable_skills
-
-        sc = StationConfig()
-        try:
-            assigned = await sc.persona_skills(str(persona.get("id") or ""))
-        except Exception:                                     # noqa: BLE001
-            assigned = None
-        finally:
-            await sc.aclose()
-        snap["skills"] = runnable_skills(
-            snap["skills"], assigned, bool((show or {}).get("guests")))
+        withheld = await _narrow_skills(snap, persona, show)
+    _report_gates(gates, snap, withheld)
 
     # The clock mirror (djSpeakClock, SUB/WAVE 1.8). The call path passes it
     # in — its StationConfig caches /settings, so the read is free there;
@@ -144,7 +194,8 @@ async def build_system_prompt(
                                   persona_id=str(persona.get("id") or ""),
                                   track_floor=track_floor,
                                   talk_between_tracks=talk_between_tracks,
-                                  pause_talk=pause_talk)
+                                  pause_talk=pause_talk,
+                                  live_queue_read=_live_queue_read(mode))
 
     # NAME_BUDGET: identity strings ride the opening line of the prompt on
     # every turn, and while soul/topic are clipped to CARD_BUDGET their short

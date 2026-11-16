@@ -15,10 +15,11 @@ Work down it. Each line says what goes wrong if you skip it.
 - [ ] **Admin password set.** Until one exists the panel is open to whoever can load the page — and every line is locked: no calls, texts or voicemail in any access mode until the password is set. → *Access*
 - [ ] **Call-in access chosen deliberately.** A fresh install starts *Admin only* — opening the line to a guest code or to anyone is a decision you make, not a state you inherit. → *Access*
 - [ ] **TLS on the front door.** Passwords travel with every request, and browsers refuse the microphone on plain http anyway.
-- [ ] **Open the panel over the TLS door (`:8443`), not `:8100`.** The plain-http port is published alongside Caddy and is a *live admin surface* — reach the panel over `http://…:8100` and the admin password and every API key you type cross the LAN in cleartext, sniffable by anything on the wire. Type them at the `:8443` door. If your own reverse proxy terminates TLS, don't publish `:8100` to the LAN at all — the station's webhook is the only thing that needs it, and that can go through the proxy too.
+- [ ] **Open the panel over the TLS door (`:8443`), not `:8100`.** The plain-http port is published alongside Caddy and is a *live admin surface* — reach the panel over `http://…:8100` and the admin password and every API key you type cross the LAN in cleartext, sniffable by anything on the wire. Type them at the `:8443` door. If your own reverse proxy terminates TLS, don't publish `:8100` to the LAN at all — the station's webhook is the only thing that needs it. That webhook is a plain-http POST to `:8100` (`CALLIN_HOOK_URL`), so either keep `:8100` reachable from the station's address alone, or send it through a proxy **whose certificate the station trusts**. The bundled Caddy is not one: its certificate is self-signed (`tls internal`), the station refuses it, and the pushes stop without a word — leave the station on plain `:8100` with that proxy.
 - [ ] **The embed allowlist** (*Players → Embed frame → Allowed origins*) set to your real origin(s), or empty. `*` lets any page on the internet mint call tokens against you; the server warns at startup if you choose it. Empty is same-origin only — the widget's own page needs no entry.
 - [ ] **Fresh LiveKit secret.** Never the example one.
-- [ ] **`CALLIN_ADMIN_KEY`** set as break-glass, so a lockout is recoverable without deleting files on the host.
+- [ ] **`CALLIN_ADMIN_KEY`** set as break-glass, so a lockout is recoverable without deleting files on the host. Make it long and random: it is the one credential the lockout does not slow down.
+- [ ] **`CALLIN_TRUSTED_PROXIES`** set to your reverse proxy's address — the bundled Caddy counts. Without it every caller behind the proxy shares one lockout counter. → *Lockout*
 - [ ] **Reach the panel by hostname only after a password exists.** Before one is set, the panel accepts same-origin requests only from a literal address (a *name* can be pointed at your box by someone else); `CALLIN_PANEL_ORIGINS` is the escape hatch during setup.
 
 **Money and airtime — every call spends your API keys**
@@ -57,7 +58,7 @@ The four that need **station admin credentials** either way: `allow_takeover`, `
 - [ ] **`allow_listener_countries`** reads the station's audience rollup into the DJ's briefing, countries only. A country is named only when at least three of the last day's listeners share it, because on a small station one listener's country points at a person. It ships **off**; at **anyone** it tells every caller roughly where your audience is.
 - [ ] **`allow_genre_lock`** is quieter than a takeover, which is the risk: a pinned show announces itself on air in a voice listeners recognise, a narrowed playlist does not. Needs a SUB/WAVE new enough to have the control at all — older stations answer that they can't, rather than failing.
 - [ ] **`allow_steer`** is the station's own steer (SUB/WAVE 1.31): a caller's sentence leans every pick and every talk break for up to twelve hours, and starting one ends a running takeover. Like the genre lock it is quiet — nothing on air announces it — and unlike the lock it also shapes what the DJ says between records. Admin by default; grant it to the guest code only for people you would hand the desk to.
-- [ ] **`allow_never_play`** — **the furthest-reaching switch here, and the only one with no expiry.** It puts the record on air onto the station's never-play list: out of the queue, out of the fallback playlist, never selected again. Nothing goes out on air to say it happened, so an unwanted ban is found by noticing a record has stopped coming round.
+- [ ] **`allow_never_play`** — **the furthest-reaching switch here, and the only one with no expiry.** It puts the record on air, or one the caller names (only when exactly one record answers to the name), onto the station's never-play list: out of the queue, out of the fallback playlist, never selected again. Nothing goes out on air to say it happened, so an unwanted ban is found by noticing a record has stopped coming round.
 
 > The same `allow_never_play` switch lets a caller *lift* a ban, including one you set yourself. That is deliberate: a mistake made from the phone has a way back that doesn't depend on you spotting it.
 
@@ -103,6 +104,14 @@ Both under *Access*, and the store refuses to let them match.
 | 5 wrong tries from one address | 5-minute cooldown |
 | a second round | banned until restart |
 
-Guest failures are counted separately from admin ones. Locked out? `CALLIN_ADMIN_KEY` is always accepted, or restart.
+Guest failures are counted separately from admin ones. A record nobody has failed against for a day is forgotten, so an old cooldown does not count toward a ban weeks later; a ban itself stands until restart.
 
-The lockout keys on the **immediate socket peer**, which a client cannot choose. It believes a forwarded address only when `CALLIN_TRUSTED_PROXIES` names the proxy — so set that whenever a reverse proxy is in front.
+Locked out? `CALLIN_ADMIN_KEY` is always accepted — from a cooling-down or banned address too, at the panel, at the password change and at the phone. It is compared before the lockout is consulted; the passwords you set in the panel are not, so a ban still holds against those until restart, and using the break-glass key does not lift it.
+
+The lockout keys on the **immediate socket peer**, which a client cannot choose. It believes a forwarded address only when `CALLIN_TRUSTED_PROXIES` names the proxy — so set that whenever a reverse proxy is in front, **the bundled Caddy included**. Left blank behind a proxy, every caller looks like the proxy: a few wrong codes from one person lock out everyone, and the same on the panel password locks you out. The web service says so once in its log, naming the address to set:
+
+```
+CALLIN_TRUSTED_PROXIES=172.18.0.5
+```
+
+That is an example — use the address the warning named. Put it in `.env` (or uncomment the line in `docker-compose.yaml`) and recreate the web service. Name the proxy's own address where you can. A whole range such as `172.16.0.0/12` survives the proxy changing address, but it trusts everything in that range — acceptable only when `:8100` is not reachable by anything else on it. Once set, the access log shows each caller's own address instead of the proxy's. If the proxy later comes back on a different address the same warning is logged again, naming the new one.

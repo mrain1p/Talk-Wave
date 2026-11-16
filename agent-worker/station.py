@@ -58,12 +58,26 @@ def degraded() -> bool:
 # never once fired on a real deployment — a past caller's hand-back line was
 # reaching the next caller's prompt as ordinary booth chatter.
 #
-# Module-level on purpose: one worker process serves many calls, and the line
-# that must be recognised was aired during the PREVIOUS call. A restart
-# forgets the ledger, which costs one call's worth of filtering, not privacy
-# of anything the station didn't already broadcast.
+# ON DISK, not only in this process (review, 2026-11-15). The comment that
+# stood here said "one worker process serves many calls" — and LiveKit runs
+# every call in its own job process (main.py; the persona cache below says so
+# itself). So the hand-back line aired from call N's process, during its
+# shutdown, was in a ledger that died with that process, and call N+1's
+# briefing — a fresh process, an empty deque — never recognised it: the
+# filter was dead by construction, and the previous caller's business could
+# reach the next caller's "Things YOU said on the broadcast". The deque stays
+# as this process's own fast path (the text line and the previews live in
+# one long-running process); the file beside the other per-process caches is
+# what the NEXT process reads.
+#
+# The file holds no words: each row is (when, sha256 of the normalised first
+# 160 characters) — enough to recognise a line, nothing to read back. A
+# caller's name in a dedication is not something to leave lying in data/.
+import hashlib as _hashlib
 from collections import deque as _deque
 from urllib.parse import quote as _quote
+
+import jsonstore
 
 
 def _seg(value) -> str:
@@ -92,18 +106,59 @@ def _seg(value) -> str:
     """
     return _quote(str(value), safe="").replace(".", "%2E")
 
-_AIRED_BY_US: _deque = _deque(maxlen=80)
+_AIRED_MAX = 80
+_AIRED_BY_US: _deque = _deque(maxlen=_AIRED_MAX)
 _AIRED_TTL_SECS = 2 * 3600.0
+
+
+def _aired_path() -> Path:
+    """Read per call, like the push file: a test (or a re-homed data dir)
+    redirects it with the environment, with no import-order trap."""
+    return jsonstore.store_path(
+        "AIRED_BY_US_PATH",
+        Path(__file__).parent.parent / "data" / "aired-by-us.json")
 
 
 def _norm_spoken(text: str) -> str:
     return " ".join(str(text or "").lower().split())
 
 
+def _aired_key(norm: str) -> str:
+    return _hashlib.sha256(norm[:160].encode("utf-8")).hexdigest()
+
+
+def _aired_on_disk(now: float) -> list[list]:
+    """The shared ledger's live rows — [] for a missing, corrupt or
+    wrong-shaped file, which only ever costs filtering, never a call."""
+    rows = jsonstore.read_or(_aired_path(), [])
+    out = []
+    for row in rows:
+        try:
+            at, key = float(row[0]), str(row[1])
+        except (TypeError, ValueError, IndexError, KeyError):
+            continue
+        if now - at <= _AIRED_TTL_SECS:
+            out.append([at, key])
+    return out
+
+
 def note_aired_by_us(text: str) -> None:
     t = _norm_spoken(text)
-    if t:
-        _AIRED_BY_US.append((time.time(), t))
+    if not t:
+        return
+    now = time.time()
+    _AIRED_BY_US.append((now, t))
+    try:
+        # Pruned on every write to the same window and bound as the deque.
+        # Atomic (tmp + replace), so a briefing reading mid-write sees the
+        # old file or the new one; 0o644 stated because both containers read
+        # it off the shared mount and a Synology share hands out mode 000.
+        rows = _aired_on_disk(now) + [[now, _aired_key(t)]]
+        jsonstore.write_atomic(_aired_path(), rows[-_AIRED_MAX:],
+                               file_mode=0o644, indent=None)
+    except Exception as e:                                    # noqa: BLE001
+        # The line is already on air; this is bookkeeping about it.
+        log.debug("could not persist the aired-line ledger (harmless): %s", e)
 
 
 def said_by_us(text: str) -> bool:
@@ -118,8 +173,13 @@ def said_by_us(text: str) -> bool:
     if not t:
         return False
     now = time.time()
-    return any(now - at <= _AIRED_TTL_SECS and t == line[:160]
-               for at, line in _AIRED_BY_US)
+    if any(now - at <= _AIRED_TTL_SECS and t == line[:160]
+           for at, line in _AIRED_BY_US):
+        return True
+    # Not ours in THIS process — but the line this exists to catch was aired
+    # by the previous call's process. See the note above _AIRED_BY_US.
+    key = _aired_key(t)
+    return any(key == stored for _at, stored in _aired_on_disk(now))
 
 
 # Reads are quick or they're broken. ACTIONS are not: /dj/skill runs a whole
