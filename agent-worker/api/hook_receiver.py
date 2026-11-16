@@ -64,10 +64,29 @@ def _air_path() -> Path:
 
 def _load_hook_secret() -> str:
     try:
-        d = json.loads(_secret_path().read_text())
+        path = _secret_path()
+        d = json.loads(path.read_text())
+        _keep_the_secret_owner_only(path)
         return str(d.get("authHeader") or "")
     except Exception:                                         # noqa: BLE001
         return ""
+
+
+def _keep_the_secret_owner_only(path: Path) -> None:
+    """Tighten a secret file that is already on disk.
+
+    The owner-only mode in _store_hook_secret only lands when the secret is
+    WRITTEN, and it is minted once and kept: on the operator's own box the
+    file dated from August and was still 0644 a day after the fix shipped
+    (found on the deployed 1.0.1, 2026-11-16). So the read tightens it too.
+    Best-effort, like every chmod here - Windows has no such bits, and a
+    file we cannot chmod is still a file we can read.
+    """
+    try:
+        if os.name != "nt" and path.stat().st_mode & 0o077:
+            os.chmod(path, 0o600)
+    except OSError:
+        pass
 
 
 def _store_hook_secret(value: str) -> None:

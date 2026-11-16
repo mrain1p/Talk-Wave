@@ -552,6 +552,30 @@ class TestWrittenFilesGetExplicitModes(_TempStores):
         self.assertEqual(
             hook_receiver._secret_path().stat().st_mode & 0o777, 0o600)
 
+    @unittest.skipIf(os.name == "nt", "POSIX file modes")
+    def test_a_secret_already_on_disk_is_tightened_when_it_is_read(self):
+        # The write-time mode never reaches a deployment whose secret was
+        # minted before the fix: it is written once and kept. The operator's
+        # own file was still 0644 on 1.0.1 (2026-11-16), so reading it is
+        # what closes it.
+        from api import hook_receiver
+
+        path = hook_receiver._secret_path()
+        path.write_text('{"authHeader": "Bearer old"}', encoding="utf-8")
+        os.chmod(path, 0o644)
+        self.assertEqual(hook_receiver._load_hook_secret(), "Bearer old")
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_the_read_tightens_and_nothing_else(self):
+        # Runs everywhere, Windows included: the tightening is in the read
+        # path, guarded so a platform without the bits is left alone.
+        src = (AGENT_WORKER / "api" / "hook_receiver.py").read_text(encoding="utf-8")
+        load = src.split("def _load_hook_secret() -> str:")[1].split("\ndef ")[0]
+        self.assertIn("_keep_the_secret_owner_only(path)", load)
+        keep = src.split("def _keep_the_secret_owner_only(path: Path) -> None:")[1].split("\ndef ")[0]
+        self.assertIn('os.name != "nt"', keep)
+        self.assertIn("os.chmod(path, 0o600)", keep)
+
     def test_the_listener_history_is_readable_by_its_owner(self):
         from api import stats
 

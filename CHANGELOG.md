@@ -4,6 +4,10 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+- **An existing webhook secret is locked down too.** 1.0.1 made the file owner-only when written, but it is written once and kept, so a deployment from before the fix stayed readable by every account on the box. It is now tightened whenever it is read.
+
 ## 1.0.1
 
 The 1.0 day in one story: the call DJ catches up with SUB/WAVE 1.32 and can steer the station, then a top-to-bottom review fixes what it found (1.0.0's notes ride here too — two tags a few hours apart did not need two stories).
