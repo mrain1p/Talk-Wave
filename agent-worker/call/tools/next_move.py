@@ -54,6 +54,42 @@ def queue_this_row(cfg: dict) -> str:
             "about to play — and do not offer to line one up.")
 
 
+def a_lookup_is_not_a_request(cfg: dict) -> str:
+    """What a NAME search's hits end with: nothing has been queued.
+
+    Drill on the deployed 1.0.1, 2026-11-16, the line as it ships to an
+    anonymous caller. "Play Dreams by Fleetwood Mac for me": the DJ searched,
+    got `1 result(s): "Dreams" by Fleetwood Mac`, and said "that's in the
+    queue for you" — in three rounds of three, with no request made. The
+    guard won one back in the same turn; one was only requested when the
+    caller asked whether it had gone in; and in one it never was, while the
+    DJ answered "it did, just confirmed it". The result ended at the listing,
+    and a found record reads as a finished job to the model that reads it
+    last.
+
+    So the listing says what it was, and names the tool that does the rest —
+    the one this line actually has. The condition is the caller's ask, not the
+    hit: "have you got anything by them?" is still a question to answer, not
+    a record to queue.
+    """
+    if on_the_surface(cfg, "subwave_queue_track"):
+        return ("This was a LOOKUP — NOTHING is queued yet. If the caller "
+                "asked you to PLAY one of these, queue it NOW, in this same "
+                "turn, with subwave_queue_track and the id shown; do not say "
+                "it is lined up until that tool has answered. If they only "
+                "asked what you have, just tell them.")
+    if on_the_surface(cfg, "subwave_request_song"):
+        return ("This was a LOOKUP — NOTHING is queued or requested yet. If "
+                "the caller asked you to PLAY one of these, put the request "
+                "in NOW, in this same turn, with subwave_request_song (the "
+                "title AND the artist); do not say it is lined up until that "
+                "tool has answered. If they only asked what you have, just "
+                "tell them.")
+    return ("This was a LOOKUP, and nothing on this line can put a record in "
+            "the queue: say what the station HAS, never that it is lined up "
+            "or coming.")
+
+
 def another_way_to_look(cfg: dict) -> str:
     """The other door, when the sound search cannot answer at all.
 

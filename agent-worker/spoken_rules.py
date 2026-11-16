@@ -33,6 +33,23 @@ from __future__ import annotations
 
 import re
 
+# AN APOSTROPHE IS AN APOSTROPHE (2026-11-16). Every pattern that reads the
+# DJ's words spells its contractions `i'?ll`, `i'?ve`, `that'?s` - and the
+# model the operator runs writes the typographic one, U+2019. So "I’ll queue
+# that up" matched nothing where "I'll queue that up" was a promise, and the
+# guards were blind to most contracted lines on a real call. Found on the
+# drill against the deployed 1.0.1: "I’ve pulled that back for you" went out
+# with no tool call and the new undo pattern, measured on straightened text,
+# never saw it. The words are straightened ONCE, where a line comes in to be
+# read, so no pattern has to know.
+_STRAIGHT = str.maketrans({"\u2019": "'", "\u2018": "'", "\u02bc": "'",
+                           "\u201c": '"', "\u201d": '"'})
+
+
+def straight(text) -> str:
+    """The line with typographic quotes made plain, for matching only."""
+    return str(text or "").translate(_STRAIGHT)
+
 # Phrases that tell the caller a thing is on its way. Ordinary and correct on
 # almost every turn; a lie on a turn where the action was refused.
 #
@@ -194,7 +211,7 @@ def check_after_failure(text: str) -> list[str]:
     and the failure this exists to catch when it isn't — so the caller decides
     which check applies, from the tool result it already holds.
     """
-    line = str(text or "").strip()
+    line = straight(text).strip()
     if not line or not CUE_FRAMING.search(line):
         return []
     # …except the wait relay, which is the honest answer to this exact

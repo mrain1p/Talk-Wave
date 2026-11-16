@@ -652,14 +652,29 @@ async def fake_unblock(self, track_id):
 # The steer (SUB/WAVE 1.31). The takeover's reach again: a scripted run that
 # reached the station would leave every pick and talk break leaned for up to
 # twelve hours after the script finished, and end a takeover the operator set.
+# The steer REMEMBERS (2026-11-16). steer_status was left real - it is a read -
+# so after a scripted steer the live station truthfully said nothing was
+# steering it, the lift tool answered "there's no steer to lift", and the
+# sweep could never see whether the DJ undoes one. One dict, cleared by the
+# lift, read by the status.
+_STEERED: dict = {}
+
+
 async def fake_steer(self, prompt="", playlist_id=None, minutes=60, until="fixed"):
     STATION_CALLS.append(("steer", {"prompt": prompt, "playlistId": playlist_id,
                                     "minutes": minutes, "until": until}))
+    _STEERED.clear()
+    _STEERED.update({"prompt": prompt, "playlistId": playlist_id})
     return {"ok": True, "steer": {"prompt": prompt}, "queued": 5, "skipped": []}
+
+
+async def fake_steer_status(self):
+    return {"steer": dict(_STEERED) or None}
 
 
 async def fake_clear_steer(self):
     STATION_CALLS.append(("clear_steer", {}))
+    _STEERED.clear()
     return {"ok": True, "steer": None, "removed": 0, "kept": 0}
 
 
@@ -775,6 +790,7 @@ def muzzle_the_station() -> None:
     StationClient.unblock_track = fake_unblock
     StationClient.set_genre_lock = fake_genre_lock
     StationClient.steer = fake_steer
+    StationClient.steer_status = fake_steer_status
     StationClient.clear_steer = fake_clear_steer
     StationClient.mark_blocked = fake_mark_blocked
 
@@ -954,6 +970,19 @@ COVERAGE = [
     ("never play that again, then relent", [
         "this one, never play it again — I can't stand it",
         "actually that was harsh, put it back in rotation",
+    ]),
+    # 1.0.1's ban BY NAME, and the way back from it. The record named is in
+    # the fake library and is not the one on air, so a ban that lands on the
+    # record playing is the failure this is here to show (drill, 2026-11-16).
+    ("banning a record by name, then relenting", [
+        "never play Dreams by Fleetwood Mac again, I've had enough of it",
+        "no, that's too much — let it back in",
+    ]),
+    # The steer shipped in 1.0.0 with no ask in this set, so the sweep called
+    # it "never called" and could not say whether the DJ reaches for it.
+    ("steering the station, then letting go", [
+        "can you keep it more upbeat for the next hour or so?",
+        "actually undo that, go back to how it normally runs",
     ]),
     ("locking the genre for a bit", [
         "keep it all soul for a while, nothing else",
@@ -2737,9 +2766,17 @@ async def main() -> None:
     # cfg is passed rather than left to the admin-tier fallback so the forced
     # gates reach the prompt too — a prompt that promises less than the tool
     # surface makes the model look shy of tools it was never told about.
+    # `gates` comes back holding the segments the prompt PRINTED and the ones
+    # the station has switched off, and goes into the run-segment tool below —
+    # the wiring call/session.py and chat/session.py both have. Until
+    # 2026-11-16 this harness passed neither, so "do the weather" was answered
+    # "you have no segments to run" on every sweep in both modes: the drill
+    # had never run a segment, and it reported the text line's 1.0.1 fix as
+    # still broken when the thing broken was this mirror of it.
+    gates: dict = {}
     prompt = await brain.build_system_prompt(
         station, persona, snapshot=snap, cfg=cfg,
-        mode="chat" if chat else "call")
+        mode="chat" if chat else "call", gates=gates)
 
     # The withheld watcher reads the same resolved set the tools were built
     # from — see run_scenario, which builds one per scenario.
@@ -2818,7 +2855,7 @@ async def main() -> None:
         # TestTheDrillBuildsEveryToolTheCallDoes now fails if this drifts.
         tools += build_curation_tools(cfg, station, actions)
         tools += build_on_air_tools(cfg, station, actions, guard,
-                                    guarded=False)
+                                    guarded=False, **gates)
         # Last, and reading the list — the same order the call and the chat
         # build it in, because it routes to what is already there. Empty
         # unless the arm under test switched single_lookup_tool on, which is

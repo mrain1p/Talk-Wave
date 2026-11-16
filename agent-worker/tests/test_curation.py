@@ -306,3 +306,60 @@ class TestACallerCanNameTheRecordToBan(unittest.TestCase):
         # At the limit nothing is even looked up, let alone banned.
         self.assertEqual(station.asked, [])
         self.assertEqual(station.searched, [])
+
+
+class TestLiftingABanTakesTheRecordNotItsName(unittest.TestCase):
+    """Drill on the deployed 1.0.1, 2026-11-16. The caller banned the record
+    on air and then relented; the model had been given no id, so it called the
+    lift with the TITLE as the id. The harness's fake station said Done, and a
+    real one would have had no such track: the ban stands while the DJ says it
+    is lifted, on the one caller action with no expiry."""
+
+    ON = {"allow_never_play": True}
+
+    def _tools(self, station):
+        return _build(self.ON, station)
+
+    def test_the_on_air_bans_receipt_carries_the_way_back(self):
+        out = asyncio.run(self._tools(_Station())["subwave_never_play_track"]())
+        self.assertIn("subwave_allow_track_again with id s1", out)
+
+    def test_a_title_for_a_record_banned_on_this_call_finds_its_id(self):
+        station = _Library(found=[FLEETWOOD])
+        tools = self._tools(station)
+        asyncio.run(tools["subwave_never_play_track"](title="Dreams"))
+        out = asyncio.run(tools["subwave_allow_track_again"](id="Dreams"))
+        self.assertIn(("unblock", "fm1"), station.asked)
+        self.assertNotIn(("unblock", "Dreams"), station.asked)
+        self.assertIn("off the never-play list", out)
+
+    def test_the_title_of_the_record_on_air_finds_its_id(self):
+        # The exact shape from the drill: ban what is playing, then hand the
+        # lift its title.
+        station = _Station()
+        tools = self._tools(station)
+        asyncio.run(tools["subwave_never_play_track"]())
+        asyncio.run(tools["subwave_allow_track_again"](id="X"))
+        self.assertIn(("unblock", "s1"), station.asked)
+
+    def test_words_that_match_nothing_are_refused_not_sent(self):
+        station = _Station()
+        out = asyncio.run(self._tools(station)["subwave_allow_track_again"](
+            id="My Head & My Heart (Jonas Blue remix)"))
+        self.assertEqual([a for a in station.asked if a[0] == "unblock"], [])
+        self.assertIn("NOTHING was lifted", out)
+        self.assertIn("TITLE, not a track id", out)
+
+    def test_a_real_id_still_passes_straight_through(self):
+        station = _Station()
+        asyncio.run(self._tools(station)["subwave_allow_track_again"](
+            id="3OwmOAWVrnDKqvvGXai8ya"))
+        self.assertIn(("unblock", "3OwmOAWVrnDKqvvGXai8ya"), station.asked)
+
+    def test_a_short_title_is_not_found_inside_another_word(self):
+        # The on-air record is called "X". "Xylophone Song" is not it.
+        station = _Station()
+        out = asyncio.run(self._tools(station)["subwave_allow_track_again"](
+            id="Xylophone Song"))
+        self.assertEqual([a for a in station.asked if a[0] == "unblock"], [])
+        self.assertIn("NOTHING was lifted", out)

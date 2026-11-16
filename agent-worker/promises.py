@@ -44,6 +44,7 @@ import re
 # from the harness side, so the guard and the grader cannot drift into
 # disagreeing about what a claim looks like.
 from spoken_rules import CUE_FRAMING as _ASSURED_OUTCOME
+from spoken_rules import straight as _straight
 
 # Future tense: the DJ says it is ABOUT to act.
 PROMISES_ACTION = re.compile(
@@ -60,7 +61,19 @@ PROMISES_ACTION = re.compile(
     # the same day: it matches none of them, so it widens what is caught
     # without widening what is interrupted.
     r"(?:taking|pulling|putting|queuing|cueing) (?:it|that|them|those) "
-    r"(?:off|out|back|on|in|up)"
+    r"(?:off|out|back|on|in|up)|"
+    # ...and the same shape for a setting being moved rather than a record:
+    # "No problem, shifting it back to the regular rotation now" — said with
+    # no tool call, on the drill's steer-then-undo scenario against the
+    # deployed 1.0.1 (2026-11-16). The steer would have run for its full
+    # window with the caller believing it lifted. See _UNDONE for the count.
+    r"(?:shifting|switching|rolling|turning|setting|lifting|clearing) "
+    r"(?:it|that|them|those|things) (?:off|out|back|on|in|up)|"
+    # ...and with the thing NAMED, which needs no "back": "I'm lifting that
+    # steer now" (same drill, the patched round). The noun is required and
+    # is one of ours, so "lifting the mood" and "clearing the air" are talk.
+    r"(?:lifting|clearing|undoing|cancell?ing|removing|dropping) "
+    r"(?:that|the|this|your) (?:steer|lock|ban|takeover|pin)"
     r")\b",
     re.IGNORECASE)
 
@@ -78,9 +91,30 @@ _ACT = (r"(?:queued|queue|lined up|line-?up|pinned|on its way|on the way|"
         r"handed over|handing (?:it |the )?over|added|sent (?:down|it|that)|"
         r"put (?:it |that |them )?on|set up|cued|on air|on the air|"
         r"in the queue|to the booth)")
+# The UN-doing, finished tense. _DONE + _ACT is the vocabulary of putting a
+# thing in; taking one back out wears different words, and none of them were
+# here: "No problem, I've pulled that back for you — the station is back to
+# its usual rotation now" went out with no tool call, one round in six, on the
+# drill's steer-then-undo scenario against the deployed 1.0.1 (2026-11-16).
+# One clause on purpose: subject, an undoing verb, its object, and "back",
+# "off" or "out". Measured the same day against all 404 DJ lines in that
+# day's sweeps, with the named form below: 26 match - the five that had run
+# nothing, and 21 said after the undo had really run, which `acted` already
+# clears. Every one of the 26 is an undo; nothing else in them fires.
+#
+# And with the thing NAMED, where no "back" is needed: "I've just cleared that
+# steer out for you" and "I've cleared that steering" were the two misses in
+# the next six rounds. The noun is required and is one of ours.
+_UNDONE = (r"(?:i'?ve|i have|i just|just)(?:\s+just)?\s+(?:pulled|taken|lifted|"
+           r"cleared|undone|reverted|rolled|switched|shifted|put|set|removed|"
+           r"dropped|cancell?ed)\s+(?:"
+           r"(?:it|that|them|those|things|everything)(?:\s+\w+)?\s+(?:back|off|out)|"
+           r"(?:that|the|this|your)\s+(?:steer(?:ing)?|lock|ban|takeover|pin)"
+           r")")
 CLAIMS_DONE = re.compile(
     rf"\b{_DONE}\b[^.!?\n]{{0,80}}\b{_ACT}\b|"
-    rf"\b{_ACT}\b[^.!?\n]{{0,60}}\b{_DONE}\b",
+    rf"\b{_ACT}\b[^.!?\n]{{0,60}}\b{_DONE}\b|"
+    rf"\b{_UNDONE}\b",
     re.IGNORECASE)
 
 # The DELIVERABLE half of the promise vocabulary — _ACT plus the progressive
@@ -187,7 +221,7 @@ def unbacked(text: str, *, tools_ran: bool = False, acted: bool = False,
     that ran and was refused — a refused queue leaves the claim false, and the nudge for that
     case tells the DJ to own it.
     """
-    text = str(text or "")
+    text = _straight(text)       # "I’ll" is "I'll" - see spoken_rules.straight
     # A tool that ran and was REFUSED backs nothing, and this case slipped
     # both other flags. Measured 2026-08-14, refusals set, two judged rounds
     # out of two: `subwave_request_song` came back "The station couldn't take

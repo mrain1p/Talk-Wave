@@ -69,6 +69,8 @@ from __future__ import annotations
 
 import re
 
+from spoken_rules import straight
+
 # A turn that ENDS by asking whether they want more. Anchored to the tail
 # because the same words mid-line are ordinary conversation — "anything else on
 # your mind while that spins up" in the middle of a sentence is not the failure;
@@ -112,11 +114,11 @@ def holds_the_door(text: str) -> bool:
     """Did this line end by asking the caller whether they want more?"""
     # Only the tail is examined: a line can be long, and what makes it the
     # door-holding move is how it FINISHES.
-    return bool(HOLDS_THE_DOOR.search(str(text or "").strip()[-160:]))
+    return bool(HOLDS_THE_DOOR.search(straight(text).strip()[-160:]))
 
 
 def signals_done(text: str) -> bool:
-    return bool(SIGNALS_DONE.search(str(text or "")))
+    return bool(SIGNALS_DONE.search(straight(text)))
 
 
 class Door:

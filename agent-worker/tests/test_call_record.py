@@ -1529,13 +1529,20 @@ class TestTheDayLogRemembersActionsNotPeople(unittest.TestCase):
         import tempfile
 
         self._dir = tempfile.TemporaryDirectory()
+        self._old_daylog = os.environ.get("DAYLOG_PATH")
         os.environ["DAYLOG_PATH"] = os.path.join(self._dir.name,
                                                  "day-log.json")
 
     def tearDown(self):
         import os
 
-        os.environ.pop("DAYLOG_PATH", None)
+        # Put back what was there, never just popped: tests/__init__ lays a
+        # floor under this path, and popping it handed every later test in
+        # the module the REAL data/day-log.json (2026-11-16).
+        if self._old_daylog is None:
+            os.environ.pop("DAYLOG_PATH", None)
+        else:
+            os.environ["DAYLOG_PATH"] = self._old_daylog
         self._dir.cleanup()
 
     def test_station_changing_kinds_land_and_speech_does_not(self):
@@ -1672,4 +1679,29 @@ class TestTheDayLogRemembersActionsNotPeople(unittest.TestCase):
         a = CallActions(5, tier="open")
         a.note("album", "Africa")
         self.assertEqual("Africa", daylog.recent()[0]["what"])
+
+
+class TestTheSuiteCannotWriteTheRealDayLog(unittest.TestCase):
+    """The day log is read back to later callers. A test that forgot to
+    redirect it wrote rows no caller made into the real file — on the
+    developer's machine for months, and on the live station the first time
+    the suite was run inside the deployed worker (2026-11-16). tests/__init__
+    puts a floor under every test; this holds the floor in place."""
+
+    def test_the_path_is_floored_away_from_the_data_directory(self):
+        import os
+        from pathlib import Path
+
+        from call import daylog
+
+        self.assertTrue(os.environ.get("DAYLOG_PATH"))
+        real = (Path(daylog.__file__).parent.parent.parent / "data").resolve()
+        self.assertNotIn(real, daylog._path().resolve().parents)
+
+    def test_the_floor_is_laid_before_anything_is_imported(self):
+        from pathlib import Path
+
+        src = (Path(__file__).parent / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn('"DAYLOG_PATH"', src)
+        self.assertIn("os.environ.setdefault(", src.split('"DAYLOG_PATH"')[0][-40:])
 
