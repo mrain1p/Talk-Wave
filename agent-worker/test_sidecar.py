@@ -16,7 +16,9 @@ from __future__ import annotations
 import tests  # noqa: F401
 
 from tests.test_settings import (  # noqa: F401
+    TestTheOperatorCanKeepLyricsOffTheCard,
     TestTheTierLadderIsOneCopy,
+    TestTheDriftToolReadsTheStationsProviders,
     TestEverySettingIsRealAndEveryKeyIsDeclared,
     TestTheGuestDoorRuleHasOneSpelling,
     TestTheJsonStoreIdiom,
@@ -67,6 +69,7 @@ from tests.test_secrets_and_auth import (  # noqa: F401
     TestWrittenFilesGetExplicitModes,
 )
 from tests.test_http import (  # noqa: F401
+    TestASlowStationStillTookTheRequest,
     TestAProxyNobodyNamedIsSaidOnce,
     TestTheAccessLogNamesTheCallerNotTheProxy,
     TestCrossOriginUseIsAFrameAndOneGet,
@@ -96,6 +99,7 @@ from tests.test_http import (  # noqa: F401
     TestTheSettingsApiRegistersThroughTheLock,
 )
 from tests.test_widget import (
+    TestTheCardCatchesUpWithTheStation,
     TestEveryStateChipHasAWriterAndEveryWriterAChip,
     TestTheFacesSitSideBySide,
     TestTheGuideCardRidesItsOwnSwitch,
@@ -385,6 +389,7 @@ from tests.test_takeover import (  # noqa: F401
 from tests.test_brain import (  # noqa: F401
     TestAnotherHostsLinesAreNotOurs,
     TestTheDJIsToldItsMusicalLeanings,
+    TestTheDJIsToldItsOtherLanguagesAndTheShowsBlurb,
     TestTheDJKnowsWhenTheBroadcastIsNotNormal,
     TestTheLastCallersBusinessStaysOutOfTheBriefing,
     TestTheNextCallsProcessStillKnowsWhatWeAired,
@@ -459,20 +464,22 @@ from tests.test_curation import (  # noqa: F401
     TestLikingTheTrackOnAir,
 )
 from tests.test_takeover import (  # noqa: F401
-    TestLiftingALockIsNotLiftingSomeoneElsesTakeover,
-    TestLockingTheStationToAGenre,
+    TestTheGenreLockIsRetired,
 )
 from tests.test_station import (  # noqa: F401
+    TestThePlayersLyricsRead,
+    TestAQueueChangeIsSeenInSeconds,
     TestTheGuideShapesTheStationsWeek,
     TestASteerIsPostedAsTheStationSpellsIt,
     TestTheDJsLeaningsAreMirrored,
+    TestTheDJsLanguagesAndRescueVoiceAreMirrored,
     TestAPendingLyricsLookupIsAskedAgain,
     TestATargetedSkipNamesItsRefusal,
     TestTheSpeechReadFollowsTheLogOffThePublicState,
     TestNoIdEscapesItsPathSegment,
     TestTheDJsLanguageSurvivesTheRead,
     TestTheGenreShelvesTheStationComputesItself,
-    TestTheNeverPlayWritesAndTheGenreLock,
+    TestTheNeverPlayWrites,
 )
 from tests.test_tools_logic import (  # noqa: F401
     TestOnlyThisDJsSegmentsCanBeRun,
@@ -507,6 +514,7 @@ from tests.test_station import (  # noqa: F401
     TestTuneIn,
 )
 from tests.test_webhooks import (  # noqa: F401
+    TestAPushOpensTheQuickWindowAndClearsTheLyrics,
     TestALoopbackReceiverIsNotRegistered,
     TestADevBootCannotStealTheLiveRegistration,
     TestAFailedProbeQuotesTheProvider,
@@ -542,6 +550,7 @@ from tests.test_voice import (  # noqa: F401
     TestGeminiSpeaksThroughTheAdapter,
     TestVoiceDiscoveryIsNotHardcodedToOneShape,
     TestWhatTheBackendSaidReachesTheOperator,
+    TestTheStationsRescueVoiceIsTheSecondChoice,
 )
 from tests.test_voicemail import (  # noqa: F401
     TestAMessageIsNeverLost,

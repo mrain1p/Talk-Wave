@@ -1382,7 +1382,11 @@ class TestNoFileGrowsWithoutSomebodyDeciding(unittest.TestCase):
         # 954 post-1.0: the fallback brain's record hook is attached with the
         # other behaviours — one line in the live half, the hook itself in
         # lifecycle.py where the rest of them live.
-        "agent-worker/call/session.py": (954, "the ringing half (prepare, "
+        # 959 at 1.0.3 (upstream pass 2026-11-27): the DJ's other languages
+        # (#1740) ride the cached /settings read into build_system_prompt, and
+        # the station's rescue voice for the DJ (#2089) into the voice pick —
+        # five lines in the ringing half, the seam untouched.
+        "agent-worker/call/session.py": (959, "the ringing half (prepare, "
                                               "resolve, the station server) "
                                               "split from the live half "
                                               "(start, behaviours, shutdown)"),

@@ -1,6 +1,6 @@
 """The dashboard's station-override card: what stands, and the one clear.
 
-A takeover or a genre lock outlives the call that set it — a caller with the
+A takeover outlives the call that set it — a caller with the
 permission can point the station somewhere and hang up. Until this card,
 neither panel showed one standing: this dashboard had only the permission
 row, and the station's own quick control is still an open PR upstream. The
@@ -21,13 +21,6 @@ from api.wire import _cors, refused
 from station import StationClient
 
 log = logging.getLogger("callin.override")
-
-# The reserved show id the genre lock pins — the same mirror
-# call/tools/broadcast.GENRE_LOCK_SHOW_ID keeps, for the same reason: the
-# card names the two differently, because "pinned to The Graveyard Shift"
-# and "locked to a genre" are different sentences to an operator.
-GENRE_LOCK_SHOW_ID = "genre_lock"
-
 
 async def override_payload() -> dict:
     """The pin currently in force, named, or {"active": False}.
@@ -75,7 +68,7 @@ async def override_payload() -> dict:
             break
     return {
         "active": True,
-        "kind": "genre-lock" if show_id == GENRE_LOCK_SHOW_ID else "takeover",
+        "kind": "takeover",
         "showId": show_id,
         "show": name,
         "startedAt": ov.get("startedAt"),

@@ -359,10 +359,9 @@ class TestHttpSurface(_TempStores):
 
 
 class TestAStandingOverrideIsVisibleAndClearable(unittest.TestCase):
-    """The dashboard's station-override box: a takeover or genre lock
-    outlives the call that set it, and until this card neither panel showed
-    one standing. The pin is named from the same /schedule read that reports
-    it, the genre lock is told apart by its reserved show id, and the clear
+    """The dashboard's station-override box: a takeover outlives the call
+    that set it, and until this card neither panel showed one standing. The
+    pin is named from the same /schedule read that reports it, and the clear
     relays the station's own answer rather than claiming one."""
 
     def _payload(self, schedule):
@@ -397,20 +396,6 @@ class TestAStandingOverrideIsVisibleAndClearable(unittest.TestCase):
         self.assertEqual(p["kind"], "takeover")
         self.assertEqual(p["show"], "The Graveyard Shift")
 
-    def test_the_genre_lock_is_told_apart_by_its_reserved_id(self):
-        from api import override
-        from call.tools.broadcast import GENRE_LOCK_SHOW_ID
-
-        # One mirror, two modules — they must never disagree about which
-        # show id means "lock", because clearing rides the same DELETE and
-        # the card's words hang on the distinction.
-        self.assertEqual(override.GENRE_LOCK_SHOW_ID, GENRE_LOCK_SHOW_ID)
-        p = self._payload({
-            "override": {"showId": "genre_lock", "startedAt": 1,
-                         "expiresAt": 2},
-            "shows": [],
-        })
-        self.assertEqual(p["kind"], "genre-lock")
 
 
 class TestTheGuidesTakeoverIsGatedByItsSetting(_TempStores):
@@ -1617,7 +1602,7 @@ class TestTheModelListFollowsTheEndpoint(unittest.TestCase):
 
     def test_a_custom_url_wins_for_openai_protocol_providers(self):
         for provider in ("openai", "openai-compatible", "deepseek",
-                         "requesty", "gateway"):
+                         "requesty", "gateway", "cheaperinference"):
             self.assertEqual(
                 self._endpoint(provider, "http://192.168.1.20:18081/v1"),
                 "http://192.168.1.20:18081/v1", provider)
@@ -1934,3 +1919,62 @@ class TestTheMintGivesTheWorkerAHeadStart(unittest.TestCase):
                  "allow_voicemail": "open"})
         self.assertEqual(200, status)
         self.assertEqual([], kicked)
+
+
+class TestASlowStationStillTookTheRequest(unittest.TestCase):
+    """2026-11-27, on the operator's stack: the station stalled for tens of
+    seconds while its music server rescanned a library import, and two
+    player requests timed out at the relay. They had been taken; the
+    listener was told "could not be reached" and would have sent them again.
+    A request whose answer timed out is SENT (station.py's
+    _sent_but_unconfirmed, the rule the DJ's own tools follow)."""
+
+    class _Req(dict):
+        headers: dict = {}
+        remote = "10.0.0.9"
+
+    def _relay(self, method, path, exc):
+        import asyncio
+        import json
+        from unittest import mock
+
+        import httpx
+
+        from api import player
+
+        class _Client:
+            def __init__(self, *a, **k):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def request(self, *a, **k):
+                raise exc
+
+        with mock.patch.object(httpx, "AsyncClient", _Client):
+            resp = asyncio.run(player._relay(self._Req(), method, path, {"text": "x"}))
+        return resp.status, json.loads(resp.body.decode("utf-8"))
+
+    def test_a_request_that_timed_out_reading_is_reported_sent(self):
+        import httpx
+
+        status, body = self._relay("POST", "/request", httpx.ReadTimeout("slow"))
+        self.assertEqual(status, 202)
+        self.assertTrue(body["success"])
+        self.assertTrue(body["unconfirmed"])
+
+    def test_one_that_never_connected_is_still_a_failure(self):
+        import httpx
+
+        status, _ = self._relay("POST", "/request", httpx.ConnectError("down"))
+        self.assertEqual(status, 502)
+
+    def test_only_the_request_is_assumed_taken(self):
+        import httpx
+
+        status, _ = self._relay("POST", "/like", httpx.ReadTimeout("slow"))
+        self.assertEqual(status, 502)

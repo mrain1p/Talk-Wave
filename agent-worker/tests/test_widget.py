@@ -6358,3 +6358,40 @@ class TestTheThemeGlyphMeansOneThingFromTheFirstFrame(unittest.TestCase):
         self.assertIn("|| (!live && store.getItem('callinTheme') === 'station')) "
                       "opts.push('station');",
                       _body(self.js, "  function themeOptions() {"))
+
+
+class TestTheCardCatchesUpWithTheStation(unittest.TestCase):
+    """Operator's report, 2026-11-27: a request took a while to reach Up next,
+    and a new song a while to reach the card. The card polled every 20s and
+    knew nothing else. It now refreshes just after the record is due to end,
+    and bursts its polls after anything the listener or the DJ did to the
+    queue. Driven in the stub (a refresh at +2.5s, bursts at +6.5s, +10.5s);
+    held here at the source."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = widget_js()["call.js"]
+        cls.css = (REPO / "web-widget" / "style.css").read_text(encoding="utf-8")
+
+    def test_the_record_end_arms_a_refresh(self):
+        self.assertIn("function armTrackEndRefresh", self.js)
+        self.assertIn("armTrackEndRefresh(rec ? (rec.trackStartedAt", self.js)
+
+    def test_the_queue_changes_the_listener_makes_burst_the_poll(self):
+        req = self.js.split("async function plSendRequest")[1][:2500]
+        self.assertIn("burstLive(", req)
+        act = self.js.split("msg.type === 'action'")[1][:600]
+        self.assertIn("burstLive(", act)
+
+    def test_a_short_burst_never_cuts_a_longer_one(self):
+        burst = self.js.split("function burstLive")[1][:600]
+        self.assertIn("Math.max(burstUntil", burst)
+
+    def test_the_lyrics_window_is_not_mistaken_for_an_empty_queue(self):
+        # The empty-queue rule centres a body with no .plrow as a flex ROW;
+        # caught the lyrics and laid every line out as a column one word
+        # wide (found in the stub, 2026-11-27).
+        self.assertIn(":not(.pllyrics):not(:has(.plrow))", self.css)
+
+    def test_the_lyrics_tab_only_offers_itself_with_words(self):
+        self.assertIn("tl.hidden = !lyrHas()", self.js)

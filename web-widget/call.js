@@ -2416,14 +2416,45 @@
   // short voicemail where the whole interaction is over before the record is.
   // A brief faster poll catches the handover within a few seconds of it airing.
   // Idle-only and self-cancelling, so it never runs during a call or forever.
-  let burstTimer = null;
+  let burstTimer = null, burstUntil = 0;
   function burstLive(secs = 40, every = 4000) {
     if (burstTimer) clearInterval(burstTimer);
-    const until = Date.now() + secs * 1000;
+    // The LATER end wins: the song-end burst below and a request's burst can
+    // overlap, and a short one must not cut a longer one off.
+    burstUntil = Math.max(burstUntil, Date.now() + secs * 1000);
     burstTimer = setInterval(() => {
-      if (room || Date.now() > until) { clearInterval(burstTimer); burstTimer = null; return; }
+      if (room || Date.now() > burstUntil) {
+        clearInterval(burstTimer); burstTimer = null; return;
+      }
       refreshLive();
     }, every);
+  }
+
+  // THE RECORD'S OWN CLOCK (2026-11-27). The card knows when the record
+  // started and how long it runs, and still waited for the 20s poll to
+  // notice it had changed — a new song reached the card up to twenty seconds
+  // late (operator's report). The station's track.play hook already clears
+  // the server's held answer, so asking just after the record is due to end
+  // lands the new one within seconds. A short burst rides it, for a station
+  // that runs a few seconds long (a crossfade, a link). Idle only, like the
+  // poll; re-armed only when the record it was armed for changes.
+  let trackEndTimer = null, trackEndFor = '';
+  function armTrackEndRefresh(startedAt, seconds) {
+    const key = startedAt + ':' + seconds;
+    if (key === trackEndFor) return;
+    trackEndFor = key;
+    clearTimeout(trackEndTimer); trackEndTimer = null;
+    if (!startedAt || !seconds) return;
+    const ms = (startedAt + seconds) * 1000 - Date.now() + 2500;
+    // Already past its end (a stale start, an idle station): the ordinary
+    // poll owns it — a burst here would only repeat on every poll.
+    if (ms < 0 || ms > 2 * 60 * 60 * 1000) return;
+    trackEndTimer = setTimeout(() => {
+      trackEndTimer = null;
+      if (room) return;
+      refreshLive();
+      burstLive(12, 4000);
+    }, ms);
   }
 
   // A DJ's initials for the no-image ring: first and last word, or the first
@@ -2621,6 +2652,8 @@
       npStart = (parts.track === false || !rec) ? 0 : (rec.trackStartedAt || 0);
       npLength = rec ? (rec.trackSeconds || 0) : 0;
       paintNowPlaying();
+      armTrackEndRefresh(rec ? (rec.trackStartedAt || 0) : 0,
+                         rec ? (rec.trackSeconds || 0) : 0);
       // The heart follows the same per-surface visibility as the track line
       // it sits beside: a surface whose operator hid the record shows no
       // heart for it either.
@@ -4985,6 +5018,9 @@
       } else if (msg.type === 'action') {
         hideTyping();
         addSystemLine(msg.icon || '✅', msg.label || 'Action completed', msg.detail || '');
+        // The DJ queued, skipped or pinned something on the text line: the
+        // card's Up next is about to move and no station event will say so.
+        burstLive(45, 4000);
       } else if (msg.type === 'delta') {
         // In "dots" mode the cue STAYS up and nothing is revealed until the
         // reply is whole — that is the difference between the two settings.
@@ -6460,6 +6496,7 @@
     }
     plQueueCounts = { next: list.length, past: past.length };
     paintQueueTabs();
+    syncLyrics(d, np);
     // IN THE BOOTH: what the DJ is SAYING — the newest turn of the live
     // session, straight from the station's own booth feed (the operator's
     // correction: the panel restated the identity header, which is already
@@ -6754,8 +6791,12 @@
   function paintQueueTabs() {
     const tn = $('plTabNext'), tp = $('plTabPast'), tb = $('plTabBooth');
     const bn = $('plNextBody'), bp = $('plPastBody'), bb = $('plBoothLogBody');
+    const tl = $('plTabLyrics'), bl = $('plLyricsBody');
     if (!tn || !tp || !bn || !bp) return;
     tp.hidden = !plQueueCounts.past;
+    // LYRICS offers itself only while the record on air has words — like
+    // Just played, a tab is never a door to an empty room.
+    if (tl) tl.hidden = !lyrHas();
     // The Booth face is the operator's receipt printer — offered only when
     // the server said this caller's key clears operator mode.
     if (tb) tb.hidden = !(plAbilities && plAbilities.command);
@@ -6772,17 +6813,19 @@
       plTab = (!plQueueCounts.next && plQueueCounts.past) ? 'past' : 'next';
     }
     if ((tp.hidden && plTab === 'past')
-        || (!tb || tb.hidden) && plTab === 'booth') plTab = 'next';
+        || (!tb || tb.hidden) && plTab === 'booth'
+        || (!tl || tl.hidden) && plTab === 'lyrics') plTab = 'next';
     const face = plTab;
     const set = (btn, name) => {
       if (!btn) return;
       btn.classList.toggle('on', face === name);
       btn.setAttribute('aria-selected', face === name ? 'true' : 'false');
     };
-    set(tn, 'next'); set(tp, 'past'); set(tb, 'booth');
+    set(tn, 'next'); set(tp, 'past'); set(tb, 'booth'); set(tl, 'lyrics');
     bn.hidden = face !== 'next';
     bp.hidden = face !== 'past';
     if (bb) bb.hidden = face !== 'booth';
+    if (bl) bl.hidden = face !== 'lyrics';
     // Just the three tab headers on the shoulder (operator, 2026-09-01 —
     // the meta words were noise beside them); the pip alone still says
     // whether something is actually queued.
@@ -6791,6 +6834,107 @@
   }
 
   $('plTabNext').onclick = () => { plTab = 'next'; plTabPicked = true; paintQueueTabs(); };
+  if ($('plTabLyrics')) {
+    $('plTabLyrics').onclick = () => {
+      plTab = 'lyrics'; plTabPicked = true; paintQueueTabs();
+      lyrLine = -2; tickLyrics();
+    };
+  }
+
+  // ------------------------------------------- the record's lyrics
+  // The station has shown lyrics in its own player since 1.28 (on by
+  // default); this is the same read for a listener on this card, proxied
+  // like the cover art (/player/lyrics). Asked once per record and only with
+  // the sheet open. When the station has TIMED lines the one being sung is
+  // lit and kept in the middle of the window; untimed words simply scroll.
+  // The clock is the card's own (when the record started, as /live sends
+  // it), less the stream buffer the listener hears it through, plus the
+  // station's own correction for this track — the same sum its player does.
+  let lyr = null, lyrKey = '', lyrAsked = '', lyrAsks = 0, lyrTimer = null;
+  let lyrStart = 0, lyrLine = -1;
+  function lyrHas() { return !!(lyr && lyr.lines && lyr.lines.length); }
+
+  function syncLyrics(d, np) {
+    // The operator's switch (player_lyrics): off, no tab and no read.
+    const key = np && np.title && d.playerLyrics !== false
+      ? (d.trackStartedAt || '') + '|' + np.title : '';
+    if (key !== lyrKey) {
+      lyrKey = key; lyr = null; lyrAsks = 0; lyrLine = -1;
+      lyrStart = d.trackStartedAt || 0;
+      clearTimeout(lyrTimer); lyrTimer = null;
+      paintLyrics();
+    }
+    if (key && playerOpen && lyrAsked !== key) {
+      lyrAsked = key;
+      fetchLyrics(key);
+    }
+  }
+
+  async function fetchLyrics(key) {
+    let got = null;
+    try {
+      const r = await fetch('/player/lyrics', { headers: keyHeaders() });
+      got = r.ok ? await r.json() : null;
+    } catch (e) { got = null; }
+    if (key !== lyrKey) return;              // the record moved on meanwhile
+    lyr = got && Array.isArray(got.lines) ? got : null;
+    // The station is still looking it up (LRCLIB): ask again while it does,
+    // for about forty seconds — its own player's patience.
+    if (lyr && lyr.pending && !lyr.lines.length && ++lyrAsks < 10) {
+      lyrTimer = setTimeout(() => { if (key === lyrKey) fetchLyrics(key); }, 4000);
+    }
+    paintLyrics();
+  }
+
+  function paintLyrics() {
+    const body = $('plLyricsBody');
+    if (body) {
+      body.innerHTML = '';
+      if (lyrHas()) {
+        lyr.lines.forEach((ln) => {
+          const p = document.createElement('div');
+          p.className = 'pllyr';
+          p.textContent = ln.text;
+          body.appendChild(p);
+        });
+      }
+      body.classList.toggle('synced', lyrHas() && !!lyr.synced);
+    }
+    lyrLine = -2;
+    paintQueueTabs();
+    tickLyrics();
+  }
+
+  function tickLyrics() {
+    const body = $('plLyricsBody');
+    if (!body || body.hidden || !lyrHas() || !lyr.synced || !lyrStart) return;
+    const pos = (Date.now() - lyrStart * 1000)
+      - (lyr.heardDelayMs || 0) + (lyr.offsetMs || 0);
+    let at = -1;
+    for (let i = 0; i < lyr.lines.length; i++) {
+      const t = lyr.lines[i].t;
+      if (t == null) continue;
+      if (t > pos) break;
+      at = i;
+    }
+    if (at === lyrLine) return;
+    lyrLine = at;
+    const rows = body.children;
+    for (let i = 0; i < rows.length; i++) rows[i].classList.toggle('on', i === at);
+    // Keep the sung line in the middle of the window — the body scrolls,
+    // never the page (scrollTop, not scrollIntoView).
+    // Measured by the boxes on screen, not offsetTop: the body's offset
+    // parent is whichever ancestor the sheet's layout positions, which is
+    // not the body, and offsetTop read against it put the line off-window.
+    const el = rows[Math.max(0, at)];
+    if (el) {
+      const top = el.getBoundingClientRect().top
+        - body.getBoundingClientRect().top + body.scrollTop;
+      body.scrollTop = Math.max(0, top - body.clientHeight / 2
+                                   + el.offsetHeight / 2);
+    }
+  }
+  setInterval(tickLyrics, 400);
   $('plTabPast').onclick = () => { plTab = 'past'; plTabPicked = true; paintQueueTabs(); };
   if ($('plTabBooth')) {
     $('plTabBooth').onclick = () => {
@@ -8759,6 +8903,8 @@
       else flashOpResult('✗  ' + (d.note || d.said
                                   || 'the booth would not take that'), true);
       if (plTab === 'booth') refreshBoothLog();
+      // A command can move the queue; same burst as a request.
+      burstLive(45, 4000);
     } catch (e) {
       flashOpResult('✗  ' + String(e.message || e), true);
     }
@@ -8853,6 +8999,11 @@
       // whispering "Sent" (operator, 2026-09-01). The booth's own log
       // keeps the event; this is the moment's receipt.
       flashOpResult('🎵  ' + text);
+      // The request lands in Up next once the station has resolved it, which
+      // takes seconds; the server holds its answer briefly meanwhile, and a
+      // short burst of polls shows the row as it arrives rather than a poll
+      // or two later (operator's report, 2026-11-27).
+      burstLive(45, 4000);
       btn.textContent = 'Sent';
       setTimeout(() => {
         btn.textContent = plOpMode ? 'Do it' : 'Send';

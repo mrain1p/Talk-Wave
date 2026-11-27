@@ -57,6 +57,7 @@ from api.player import (
     handle_player_command,
     handle_player_like,
     handle_player_like_status,
+    handle_player_lyrics,
     handle_player_request,
     handle_player_skip,
     handle_player_unlike,
@@ -231,6 +232,8 @@ def build_app() -> web.Application:
     app.router.add_post("/player/command", handle_player_command)
     app.router.add_options("/player/command", handle_options)
     app.router.add_get("/player/booth-log", handle_player_booth_log)
+    app.router.add_get("/player/lyrics", handle_player_lyrics)
+    app.router.add_options("/player/lyrics", handle_options)
     app.router.add_options("/player/booth-log", handle_options)
     app.router.add_get("/settings/sounds", handle_sounds_list)
     app.router.add_post("/settings/sounds", handle_sound_upload)

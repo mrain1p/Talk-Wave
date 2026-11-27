@@ -55,26 +55,88 @@ async def _station_switches(speak_clock, track_floor, talk_between_tracks,
             0 if pause_talk is None else pause_talk)
 
 
+async def _persona_mirrors(persona: dict, music_lean: str | None,
+                           also_speaks: list[str] | None):
+    """The admin-only persona fields the prompt mirrors — Musical Leanings
+    (#1678) and the languages a multilingual DJ mixes in (#1740) — filled in
+    where the caller did not pass them. The call path passes both off its
+    cached /settings read; the preview and chat paths make ONE read here for
+    both, not one each."""
+    if music_lean is not None and also_speaks is not None:
+        return music_lean, also_speaks
+    from station_config import StationConfig
+
+    pid = str(persona.get("id") or "")
+    sc = StationConfig()
+    try:
+        if music_lean is None:
+            music_lean = await sc.music_lean(pid)
+        if also_speaks is None:
+            also_speaks = await sc.also_speaks(pid)
+    except Exception:                                         # noqa: BLE001
+        pass
+    finally:
+        await sc.aclose()
+    return music_lean or "", also_speaks or []
+
+
+def _language_block(dj_language: str, also_speaks: list[str]) -> str:
+    """Which language the DJ works in, and — on a multilingual persona
+    (SUB/WAVE #1740) — which others it mixes in. Without the second half a DJ
+    the booth runs bilingual answered the phone in one language only.
+
+    Empty when the station names neither: empty means English there, and
+    asserting "you speak English" at every DJ on every call would be a
+    sentence bought on every turn to say what the prompt is already written
+    in."""
+    mix = [clip(demojibake(m), 40) for m in also_speaks if m][:8]
+    if not (dj_language or mix):
+        return ""
+    primary = dj_language or "English"
+    if not mix:
+        return (f"\nYou work in {primary} — that is the language you open in and "
+                "come back to. Match a caller who brings another one.\n")
+    head = ", ".join(mix[:-1])
+    others = f"{head} and {mix[-1]}" if head else mix[0]
+    either = f"{head} or {mix[-1]}" if head else mix[0]
+    # "Answer them in that language ... not a greeting and then English": the
+    # softer "a caller who picks one gets it back" was measured on the deployed
+    # brain (2026-11-27, Gemini flash-lite, a Spanish caller) and got a
+    # Spanish greeting followed by English on half the replies; this got the
+    # whole reply in Spanish on four of four.
+    return (f"\nYou work in {primary} and also speak {others}, as you do on air. "
+            f"Open in {primary}. The moment a caller speaks {either}, answer them "
+            "in that language for the rest of the call - the whole reply, not a "
+            f"greeting and then {primary}. A caller in any other language is "
+            "matched too. Artist names and song titles stay exactly as written, "
+            "never translated.\n")
+
+
+def _show_blurb(show: dict) -> str:
+    """The show's listener-facing blurb (SUB/WAVE 1.34, #2358) as a prompt
+    line, or "": what the schedule and the On Now card tell listeners the show
+    is. `topic` is the DJ's brief, written to the DJ; this is the station's own
+    answer to a caller asking "what's this show about?". Only when set and not
+    the brief again."""
+    blurb = clip(demojibake(str(show.get("description") or "").strip()), 300)
+    if not blurb or blurb == str(show.get("topic") or "").strip():
+        return ""
+    # "In your own words": asked only to "use this", the deployed brain read
+    # the blurb out word for word on three replies in four (2026-11-27); this
+    # wording, one in four, and every reply still on the show.
+    return ("\nHow the station describes the show to listeners - what to get "
+            "across when a caller asks what it is, in your own words rather "
+            f"than read out:\n  {blurb}\n")
+
+
 async def _lean_block(persona: dict, music_lean: str | None) -> str:
     """The station's Musical Leanings field (#1678) as one prompt block, or "".
 
     What this DJ reaches for when picking, mirrored so the call DJ and the
-    booth lean the same way when a caller leaves the choice to them. Admin-only
-    on the station, so the call path passes it from its cached /settings read;
-    the preview and chat paths read it once here. Empty says nothing — most
-    personas leave it blank, and a sentence about having no leanings would
-    ride every turn.
+    booth lean the same way when a caller leaves the choice to them. Empty
+    says nothing — most personas leave it blank, and a sentence about having
+    no leanings would ride every turn. Resolved by _persona_mirrors.
     """
-    if music_lean is None:
-        from station_config import StationConfig
-
-        sc = StationConfig()
-        try:
-            music_lean = await sc.music_lean(str(persona.get("id") or ""))
-        except Exception:                                     # noqa: BLE001
-            music_lean = ""
-        finally:
-            await sc.aclose()
     lean = clip(demojibake(str(music_lean or "").strip()), CARD_BUDGET)
     if not lean:
         return ""
@@ -149,6 +211,7 @@ async def build_system_prompt(
     pause_talk: int | None = None,
     music_lean: str | None = None,
     gates: dict | None = None,
+    also_speaks: list[str] | None = None,
 ) -> str:
     """`cfg` must be the settings ALREADY RESOLVED for this caller's tier.
 
@@ -232,13 +295,9 @@ async def build_system_prompt(
     # group to slip (top-down review, 2026-08-28).
     dj_language = clip(demojibake(str(persona.get("language") or "").strip()),
                        NAME_BUDGET)
-    # Only when the station named one. Empty means English there, and asserting
-    # "you speak English" at every DJ on every call would be a sentence bought
-    # on every turn to say what the prompt is already written in.
-    language_block = (
-        f"\nYou work in {dj_language} — that is the language you open in and "
-        "come back to. Match a caller who brings another one.\n"
-    ) if dj_language else ""
+    music_lean, also_speaks = await _persona_mirrors(persona, music_lean,
+                                                     also_speaks)
+    language_block = _language_block(dj_language, also_speaks)
     lean_block = await _lean_block(persona, music_lean)
     show_name = clip(demojibake(show.get("name", "")), NAME_BUDGET)
     show_card = clip(show.get("topic", ""), CARD_BUDGET)
@@ -246,6 +305,7 @@ async def build_system_prompt(
     show_block = ""
     if show_name or show_card:
         show_block = f"\n# The show you're hosting: {show_name}\n{show_card}\n"
+    show_block += _show_blurb(show)
 
     # The Show Card is the standing format; this is what tonight's episode is
     # actually about. It only exists on programme shows, and it was being

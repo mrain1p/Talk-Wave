@@ -18,7 +18,7 @@ import tune_in
 import voice_effects
 from api.auth import _write_allowed, caller_tier
 from api.env import LIVEKIT_PUBLIC_URL
-from api.live_cache import _LIVE_TTL, _live_cache, build_lock
+from api.live_cache import _live_cache, build_lock, live_ttl
 from api.openlines import public_open_line
 # Re-exported: the look half moved to api/look.py at 0.10.131 and
 # `from api.live import look_payload` is what every caller already
@@ -330,8 +330,9 @@ async def handle_live(request: web.Request) -> web.Response:
     import time as _time
 
     def fresh():
+        now = _time.time()
         return (_live_cache["data"] is not None
-                and _time.time() - _live_cache["at"] < _LIVE_TTL)
+                and now - _live_cache["at"] < live_ttl(now))
 
     if fresh():
         return _cors(request, web.json_response(
@@ -521,6 +522,9 @@ async def _build_live(request: web.Request) -> web.Response:
                     # Whether the player keeps its cast control on show.
                     # The widget still requires a casting API in the browser.
                     "castButton": bool(cfg.get("player_cast_button", True)),
+                    # Whether the player may offer its Lyrics tab at all;
+                    # /player/lyrics refuses on its own when this is off.
+                    "playerLyrics": bool(cfg.get("player_lyrics", True)),
                     # Which face the page opens on; the widget still requires
                     # the player to actually be offered before honouring it.
                     "playerStart": settings_store.opens_on_player(cfg),

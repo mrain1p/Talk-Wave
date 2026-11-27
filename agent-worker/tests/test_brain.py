@@ -1383,3 +1383,72 @@ class TestThePromptHandsItsSegmentsToTheTool(unittest.TestCase):
         snap = {"skills": [dict(r) for r in self.ROWS]}
         self.assertIsNone(assemble._report_gates(None, snap, {"news": "off"}))
         self.assertEqual(snap, {"skills": self.ROWS})
+
+
+class TestTheDJIsToldItsOtherLanguagesAndTheShowsBlurb(_TempStores):
+    """The 2026-11-27 upstream pass. A multilingual persona (SUB/WAVE 1.34,
+    #1740) answered the phone in one language only, and the show's
+    listener-facing description (#2358) never reached the DJ, who had only
+    the brief written to it."""
+
+    def _build(self, persona, also_speaks, show=None) -> str:
+        import asyncio
+
+        from station import StationClient
+
+        active = dict(show or {})
+        snapshot = {"dj": {}, "personas": [], "state": {}, "session": {},
+                    "schedule": {},
+                    "now_playing": {"context": {"activeShow": active}} if active else {}}
+
+        async def build() -> str:
+            station = StationClient()
+            try:
+                return await brain.build_system_prompt(
+                    station, persona, snapshot=snapshot, music_lean="",
+                    also_speaks=also_speaks)
+            finally:
+                await station.aclose()
+
+        return asyncio.run(build())
+
+    def test_the_other_languages_join_the_language_line(self):
+        text = self._build({"id": "p_m", "name": "Mari", "soul": "A soul.",
+                            "language": "Spanish"}, ["English", "Catalan"])
+        self.assertIn("You work in Spanish and also speak English and Catalan", text)
+        self.assertIn("never translated", text)
+        # The parts that carried the live A/B (2026-11-27): a whole reply in
+        # the caller's language, not a greeting and then the primary.
+        self.assertIn("The moment a caller speaks English or Catalan, answer them "
+                      "in that language", text)
+        self.assertIn("not a greeting and then Spanish", text)
+        who = text.index("# Who you are")
+        self.assertLess(who, text.index("You work in Spanish"))
+
+    def test_a_blank_language_with_others_is_english_first(self):
+        text = self._build({"id": "p_e", "name": "Ed", "soul": "A soul."}, ["French"])
+        self.assertIn("You work in English and also speak French", text)
+
+    def test_one_language_is_the_old_line_and_none_is_no_line(self):
+        text = self._build({"id": "p_s", "name": "S", "soul": "A soul.",
+                            "language": "Spanish"}, [])
+        self.assertIn("You work in Spanish — that is the language you open in", text)
+        self.assertNotIn("also speak", text)
+        text = self._build({"id": "p_f", "name": "F", "soul": "A soul."}, [])
+        self.assertNotIn("You work in", text)
+
+    def test_the_shows_listener_blurb_reaches_the_dj(self):
+        show = {"id": "s1", "name": "Night Shift", "topic": "Brief: keep it slow.",
+                "description": "Slow jams for the small hours."}
+        text = self._build({"id": "p_f", "name": "F", "soul": "A soul."}, [], show)
+        self.assertIn("How the station describes the show to listeners", text)
+        # Asked only to "use this", the deployed brain read it out verbatim.
+        self.assertIn("in your own words rather than read out", text)
+        self.assertIn("Slow jams for the small hours.", text)
+
+    def test_no_blurb_or_the_brief_again_says_nothing(self):
+        for desc in ("", "Brief: keep it slow."):
+            show = {"id": "s1", "name": "Night Shift", "topic": "Brief: keep it slow.",
+                    "description": desc}
+            text = self._build({"id": "p_f", "name": "F", "soul": "A soul."}, [], show)
+            self.assertNotIn("describes the show to listeners", text)

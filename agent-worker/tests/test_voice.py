@@ -1048,3 +1048,53 @@ class TestTheKeyCheckAsksTheBackendRatherThanGuessing(unittest.TestCase):
                       "the key check stopped asking tts_adapter")
         self.assertNotIn('secrets_store.get("openai_api_key")', block,
                          "the probe is spelling the cloud-TTS key rule again")
+
+
+class TestTheStationsRescueVoiceIsTheSecondChoice(unittest.TestCase):
+    """SUB/WAVE 1.33 (#2089): a persona may name the voice it takes when its
+    own engine fails. On a call, a station voice this backend cannot say used
+    to fall to the backend's FIRST voice — on a two-host station that can be
+    the other host. The rescue voice is the operator's own choice for this
+    DJ, so it comes first."""
+
+    VOICES = ["Aoede", "Kore", "Puck"]
+
+    def test_the_rescue_voice_wins_over_the_first_voice(self):
+        from tts_adapter import pick_speakable_voice
+
+        voice, why = pick_speakable_voice("eleven-abc123", self.VOICES, rescue="Puck")
+        self.assertEqual("Puck", voice)
+        self.assertIn("rescue voice", why)
+        self.assertIn("eleven-abc123", why)
+
+    def test_the_own_voice_still_wins_when_it_is_speakable(self):
+        from tts_adapter import pick_speakable_voice
+
+        self.assertEqual(("Kore", ""),
+                         pick_speakable_voice("Kore", self.VOICES, rescue="Puck"))
+
+    def test_an_unspeakable_rescue_falls_to_the_first_voice_as_before(self):
+        from tts_adapter import pick_speakable_voice
+
+        voice, why = pick_speakable_voice("eleven-abc123", self.VOICES, rescue="bm_george")
+        self.assertEqual("Aoede", voice)
+        self.assertNotIn("rescue voice", why)
+
+    def test_the_rescue_may_be_a_library_id_the_pattern_allows(self):
+        from tts_adapter import pick_speakable_voice
+
+        voice, _ = pick_speakable_voice("eleven-abc123", self.VOICES,
+                                        id_pattern=r"[a-z]{2}-[a-z]{2}-[a-z0-9-]+",
+                                        rescue="en-us-varo")
+        self.assertEqual("en-us-varo", voice)
+
+    def test_no_voice_asked_for_takes_the_rescue_quietly(self):
+        from tts_adapter import pick_speakable_voice
+
+        self.assertEqual(("Puck", ""), pick_speakable_voice("", self.VOICES, rescue="Puck"))
+
+    def test_a_failed_lookup_is_still_not_evidence(self):
+        from tts_adapter import pick_speakable_voice
+
+        self.assertEqual(("eleven-abc123", ""),
+                         pick_speakable_voice("eleven-abc123", [], rescue="Puck"))

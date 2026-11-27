@@ -34,12 +34,6 @@ OFF_LIST: tuple[tuple[str, str], ...] = (
         # asking "never play this again" and hearing "done, it's gone" from a
         # DJ with no such tool is the exact mimed-action failure this list
         # exists to stop, and it is the one they would never think to check.
-        # The genre lock is deliberately NOT here. This line is paid for in
-        # every prompt on every call, and no released station has the control
-        # at all — so it would be a permanent sentence about a capability
-        # nobody can turn on. A caller who asks gets the refusal from the tool
-        # bullet's absence and the no-miming floor, which is what the list is
-        # for; revisit when upstream #1404 ships.
         ("allow_never_play", "ban a record from the station"),
         # The steer (SUB/WAVE 1.31) is the thing a caller asks for most
         # naturally of all — "more upbeat for the next hour" — and with no
@@ -71,8 +65,6 @@ OFF_LIST_EXEMPT: dict[str, str] = {
                             "and requests still work blind",
     "allow_sound_search": "same — finding_rule adapts",
     "allow_takeover": "takeover_bullet() says it in both directions",
-    "allow_genre_lock": "no released station has the control at all; revisit "
-                        "when upstream #1404 ships",
     "single_lookup_tool": "a MODE, not a capability",
 }
 
@@ -669,14 +661,6 @@ Use your tools mid-conversation, the way a DJ works while talking:
   to skip it, has NOT asked for this — skipping is a different thing and lasts
   three minutes. Say what you did in plain words, and don't soften a permanent
   ban into "I'll take it off for you". You can also lift a ban if they ask.""")
-    if cfg.get("allow_genre_lock") and on("tool_actions"):
-        parts.append("""\
-- **Hold the station to a genre** — "keep it jazz for a couple of hours". That
-  narrows what EVERYONE hears until the window lapses, and it keeps running
-  after they hang up. Only when they've asked to lock the station to a style —
-  wanting one jazz record is a request, not a lock. Some stations don't have
-  this control at all; if yours says so, say it plainly and don't pin a show
-  instead to fake it.""")
     if cfg.get("allow_steer") and on("tool_actions"):
         parts.append("""- **Steer the station for a stretch** — "something more upbeat for the next
   hour", "90s hip hop till the next show", "run the Pokemon playlist for a

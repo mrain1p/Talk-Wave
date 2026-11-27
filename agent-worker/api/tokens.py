@@ -256,6 +256,14 @@ async def handle_call_ended(request: web.Request) -> web.Response:
             return _cors(request, web.json_response({"ok": True}))
     _live_calls.pop(room, None)
     _call_release.pop(room, None)
+    # A call can queue records, and the worker that ran it sends the card no
+    # word of it: the widget bursts its polls after a hangup, and this lets
+    # those polls see the queue rather than the answer held from before.
+    import time as _time
+
+    from api.live_cache import expect_queue_change
+
+    expect_queue_change(_time.time())
     return _cors(request, web.json_response({"ok": True}))
 
 

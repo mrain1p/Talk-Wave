@@ -75,11 +75,9 @@ _LABELS = {
         else "Never play the current track again"),
     "subwave_allow_track_again": lambda a: "Take the current track off the never-play list",
     "subwave_cancel_takeover": lambda a: "Cancel the show takeover — back to the schedule",
-    "subwave_clear_genre_lock": lambda a: "Lift the genre lock",
     "subwave_dj_announce": lambda a: f"Announce on air: “{str(a.get('message') or '').strip()[:100]}”",
     "subwave_run_skill": lambda a: f"Run the {a.get('name') or 'station'} segment on air",
     "subwave_dj_segment": lambda a: f"Fire the {a.get('type') or 'station'} beat on air",
-    "subwave_genre_lock": lambda a: f"Lock the station to {a.get('genres') or 'a genre'} for a while",
     "subwave_cancel_queued_track": lambda a: f"Take “{a.get('title') or a.get('id') or 'that track'}” back out of the queue",
     "subwave_queue_track": lambda a: f"Queue “{a.get('title') or 'the track'}”",
 }

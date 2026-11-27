@@ -1439,7 +1439,7 @@ class TestBothCancelRefusalsAre409(unittest.TestCase):
         self.assertEqual(self._cancel({})["reason"], "not-queued")
 
 
-class TestTheNeverPlayWritesAndTheGenreLock(unittest.TestCase):
+class TestTheNeverPlayWrites(unittest.TestCase):
     """The three station writes added on the 2026-08-14 upstream pass. Each has
     a status code that is a SUCCESS from the caller's point of view rather than
     a failure, and getting that wrong makes the DJ report a fault for something
@@ -1523,39 +1523,6 @@ class TestTheNeverPlayWritesAndTheGenreLock(unittest.TestCase):
     def test_nothing_identifiable_never_reaches_the_station(self):
         client, sent = self._client(self._Resp(200))
         out = self._run(client, lambda c: c.block_track(""))
-        self.assertFalse(out["ok"])
-        self.assertEqual(sent, {})
-
-    def test_a_station_without_the_genre_lock_says_so_rather_than_failing(self):
-        # Upstream #1404 is not in a released SUB/WAVE. A 404 here is a
-        # capability gap, and the tool depends on being able to tell it from a
-        # refusal — the two get completely different words on air.
-        client, _ = self._client(self._Resp(404))
-        out = self._run(client, lambda c: c.set_genre_lock(["Jazz"], 60))
-        self.assertFalse(out["ok"])
-        self.assertTrue(out["unsupported"])
-
-    def test_genres_dedupe_case_insensitively_in_first_seen_order(self):
-        # The station's own schema does this; doing it here too means the list
-        # the DJ reads back is the list that was actually set.
-        client, sent = self._client(self._Resp(200, {}))
-        out = self._run(
-            client, lambda c: c.set_genre_lock(["Jazz", "jazz", "Soul", "JAZZ"], 60))
-        self.assertEqual(sent["json"]["genres"], ["Jazz", "Soul"])
-        self.assertEqual(out["genres"], ["Jazz", "Soul"])
-
-    def test_an_over_long_list_is_trimmed_rather_than_400ing(self):
-        from station import StationClient
-
-        client, sent = self._client(self._Resp(200, {}))
-        many = [f"g{i}" for i in range(StationClient.GENRE_LOCK_MAX_GENRES + 5)]
-        self._run(client, lambda c: c.set_genre_lock(many, 60))
-        self.assertEqual(len(sent["json"]["genres"]),
-                         StationClient.GENRE_LOCK_MAX_GENRES)
-
-    def test_an_empty_genre_list_never_reaches_the_station(self):
-        client, sent = self._client(self._Resp(200, {}))
-        out = self._run(client, lambda c: c.set_genre_lock(["  ", ""], 60))
         self.assertFalse(out["ok"])
         self.assertEqual(sent, {})
 
@@ -2586,3 +2553,219 @@ class TestTheDJsLeaningsAreMirrored(unittest.TestCase):
         self.assertEqual("", station_config._music_lean_from(payload, "p_missing"))
         self.assertEqual("", station_config._music_lean_from(payload, ""))
         self.assertEqual("", station_config._music_lean_from({}, "p_g"))
+
+
+class TestTheDJsLanguagesAndRescueVoiceAreMirrored(unittest.TestCase):
+    """Two persona fields from the 2026-11-27 upstream pass, both admin-only
+    on the station: `alsoSpeaks` (SUB/WAVE 1.34, #1740), the languages a
+    multilingual DJ mixes in, and `fallbackVoice` (1.33, #2089), the voice the
+    station gives a DJ when its own engine fails."""
+
+    PAYLOAD = {"values": {"personas": [
+        {"id": "p_m", "name": "Mari", "language": "Spanish",
+         "alsoSpeaks": " English , spanish, Catalan,english,  ",
+         "fallbackVoice": {"engine": "gemini", "cloudProvider": "openai",
+                           "voice": " Kore "}},
+        {"id": "p_e", "name": "Ed", "alsoSpeaks": "English, French"},
+        {"id": "p_n", "name": "Nobody", "alsoSpeaks": "", "fallbackVoice": None},
+        {"id": "p_x", "name": "Odd", "alsoSpeaks": 7, "fallbackVoice": "Kore"},
+    ]}}
+
+    def test_also_speaks_is_read_the_way_the_station_reads_it(self):
+        import station_config
+
+        # Split on commas, trimmed; the primary and any repeat dropped
+        # case-insensitively, first spelling kept (personaLanguages()).
+        self.assertEqual(["English", "Catalan"],
+                         station_config._also_speaks_from(self.PAYLOAD, "p_m"))
+        # A blank language is English on the station, so English is dropped.
+        self.assertEqual(["French"],
+                         station_config._also_speaks_from(self.PAYLOAD, "p_e"))
+        for pid in ("p_n", "p_x", "p_missing", ""):
+            self.assertEqual([], station_config._also_speaks_from(self.PAYLOAD, pid))
+        self.assertEqual([], station_config._also_speaks_from({}, "p_m"))
+
+    def test_the_rescue_voice_is_the_voice_and_nothing_else(self):
+        import station_config
+
+        self.assertEqual("Kore", station_config._rescue_voice_from(self.PAYLOAD, "p_m"))
+        for pid in ("p_e", "p_n", "p_x", "p_missing", ""):
+            self.assertEqual("", station_config._rescue_voice_from(self.PAYLOAD, pid))
+
+    def test_musical_leanings_still_read_through_the_shared_record(self):
+        import station_config
+
+        payload = {"personas": [{"id": "p_g", "musicLean": " boom  bap "}]}
+        self.assertEqual("boom bap", station_config._music_lean_from(payload, "p_g"))
+
+
+class TestAQueueChangeIsSeenInSeconds(unittest.TestCase):
+    """Operator's report, 2026-11-27: a request took most of a minute to show
+    in Up next. Measured on the stack: the station fires request.received when
+    it ACCEPTS a request, before it resolves the track, so the cache was
+    cleared, refilled with the old queue and held for the full 30s. Whatever
+    is known to be about to move the queue now opens a short window in which
+    the card's answer is held for seconds."""
+
+    def setUp(self):
+        from api import live_cache
+
+        self.lc = live_cache
+        self._saved = dict(live_cache._live_cache)
+
+    def tearDown(self):
+        self.lc._live_cache.clear()
+        self.lc._live_cache.update(self._saved)
+
+    def test_outside_a_window_the_card_is_held_for_the_ordinary_ttl(self):
+        self.lc._live_cache["quick_until"] = 0.0
+        self.assertEqual(self.lc.live_ttl(1000.0), self.lc._LIVE_TTL)
+
+    def test_a_coming_change_drops_the_answer_and_shortens_the_hold(self):
+        self.lc._live_cache.update(data={"stale": True}, quick_until=0.0)
+        self.lc.expect_queue_change(1000.0)
+        self.assertIsNone(self.lc._live_cache["data"])
+        self.assertEqual(self.lc.live_ttl(1001.0), self.lc._LIVE_QUICK_TTL)
+        # A window, not a mode: it lapses back to the ordinary hold.
+        self.assertEqual(
+            self.lc.live_ttl(1000.0 + self.lc._LIVE_QUICK_SECS + 1),
+            self.lc._LIVE_TTL)
+
+    def test_a_second_change_never_shortens_an_open_window(self):
+        self.lc._live_cache["quick_until"] = 0.0
+        self.lc.expect_queue_change(1000.0, secs=60)
+        self.lc.expect_queue_change(1001.0, secs=5)
+        self.assertEqual(self.lc._live_cache["quick_until"], 1060.0)
+
+    def test_the_window_still_bounds_the_station_work(self):
+        # However many tabs or hooks arrive, a rebuild at most every few
+        # seconds — the floor the quick window keeps.
+        self.assertGreaterEqual(self.lc._LIVE_QUICK_TTL, 2.0)
+        self.assertLess(self.lc._LIVE_QUICK_TTL, self.lc._LIVE_TTL)
+
+
+class TestThePlayersLyricsRead(unittest.TestCase):
+    """GET /player/lyrics, the Lyrics tab's feed (2026-11-27): the station's
+    /lyrics/current narrowed to what the card draws, behind the player's own
+    door, held briefly so an open tab costs the station one read a record."""
+
+    class _Req(dict):
+        headers: dict = {}
+
+    def setUp(self):
+        from api import live_cache, player
+
+        self.player = player
+        self.lc = live_cache
+        self._lyr = dict(live_cache._lyrics_cache)
+        self._door = player._door
+        live_cache._lyrics_cache.update(data=None, at=0.0)
+
+    def tearDown(self):
+        self.player._door = self._door
+        self.lc._lyrics_cache.clear()
+        self.lc._lyrics_cache.update(self._lyr)
+
+    def _station(self, lyrics, buffer_secs=6, calls=None):
+        calls = [] if calls is None else calls
+
+        class _St:
+            async def _lyrics_read(self):
+                calls.append(1)
+                return lyrics
+
+            async def now_playing(self):
+                return {"stream": {"bufferSeconds": buffer_secs}}
+
+            async def aclose(self):
+                pass
+
+        return _St, calls
+
+    def _get(self, station_cls):
+        import asyncio
+        import json
+        from unittest import mock
+
+        self.player._door = lambda request, *a, **k: None
+        with mock.patch("station.StationClient", station_cls):
+            resp = asyncio.run(self.player.handle_player_lyrics(self._Req()))
+        return resp.status, json.loads(resp.body.decode("utf-8"))
+
+    def test_timed_lines_arrive_with_the_corrections_the_card_needs(self):
+        st, _ = self._station({"songId": "s1", "synced": True, "offsetMs": 250,
+                               "pending": False, "source": "lrclib",
+                               "lines": [{"startMs": 0, "text": " one "},
+                                         {"startMs": 4000, "text": "two"},
+                                         {"startMs": 8000, "text": "   "}]})
+        status, d = self._get(st)
+        self.assertEqual(status, 200)
+        self.assertEqual(d["lines"], [{"t": 0, "text": "one"}, {"t": 4000, "text": "two"}])
+        self.assertTrue(d["synced"])
+        self.assertEqual(d["offsetMs"], 250)
+        # The stream buffer: the card counts from the station's start, the
+        # listener hears the record that much later.
+        self.assertEqual(d["heardDelayMs"], 6000)
+
+    def test_untimed_words_are_not_called_synced(self):
+        st, _ = self._station({"songId": "s1", "synced": True,
+                               "lines": [{"startMs": None, "text": "words"}]})
+        _, d = self._get(st)
+        self.assertFalse(d["synced"])
+        self.assertEqual(d["lines"], [{"t": None, "text": "words"}])
+
+    def test_a_failed_read_is_no_lyrics_not_an_error(self):
+        class _Broken:
+            async def _lyrics_read(self):
+                raise RuntimeError("404")
+
+            async def aclose(self):
+                pass
+
+        status, d = self._get(_Broken)
+        self.assertEqual(status, 200)
+        self.assertEqual(d["lines"], [])
+
+    def test_one_read_serves_the_record_until_it_lapses(self):
+        st, calls = self._station({"songId": "s1", "synced": False,
+                                   "lines": [{"startMs": None, "text": "w"}]})
+        self._get(st)
+        self._get(st)
+        self.assertEqual(len(calls), 1, "the second ask went to the station")
+
+    def test_a_pending_lookup_is_asked_again_soon(self):
+        self.assertLess(self.player._LYRICS_PENDING_TTL, self.player._LYRICS_TTL)
+
+    def test_it_answers_to_the_players_door(self):
+        import inspect
+
+        src = inspect.getsource(self.player.handle_player_lyrics)
+        self.assertIn("_door(request)", src)
+
+    def test_the_operators_switch_turns_the_read_off(self):
+        import asyncio
+        from unittest import mock
+
+        st, calls = self._station({"lines": [{"startMs": 0, "text": "w"}]})
+        self.player._door = lambda request, *a, **k: None
+        with mock.patch.object(self.player.settings_store, "load",
+                               return_value={"player_lyrics": False}), \
+                mock.patch("station.StationClient", st):
+            resp = asyncio.run(self.player.handle_player_lyrics(self._Req()))
+        self.assertEqual(resp.status, 404)
+        self.assertEqual(calls, [], "a switched-off tab still asked the station")
+
+    def test_a_timed_out_read_is_asked_again_not_called_wordless(self):
+        # Measured 2026-11-27: the station's lyrics read waits on its music
+        # server, which took 8-49s while a library import kept it
+        # rescanning. Cached as "no words", the record never got its tab.
+        class _Slow:
+            async def _lyrics_read(self):
+                raise RuntimeError("ReadTimeout")
+
+            async def aclose(self):
+                pass
+
+        _, d = self._get(_Slow)
+        self.assertEqual(d["lines"], [])
+        self.assertTrue(d["pending"], "the widget would never ask again")

@@ -960,6 +960,7 @@ async def handle_speed_test(request: web.Request) -> web.Response:
         adapter_path = resolve_adapter(cfg.get("tts_adapter"))
 
         voice = cfg.get("tts_voice") or ""
+        rescue = ""
         if not voice:
             sc = StationConfig()
             try:
@@ -969,6 +970,8 @@ async def handle_speed_test(request: web.Request) -> web.Response:
                 finally:
                     await st2.aclose()
                 voice = await sc.voice_for(pv["id"])
+                # The same second choice a call makes (#2089).
+                rescue = await sc.rescue_voice(pv["id"])
             finally:
                 await sc.aclose()
 
@@ -985,7 +988,7 @@ async def handle_speed_test(request: web.Request) -> web.Response:
             # stored key to a previewed host regardless (invariant 4).
             allow_stored=tts_key_ok,
         )
-        voice, voice_note = pick_speakable_voice(voice, available)
+        voice, voice_note = pick_speakable_voice(voice, available, rescue=rescue)
         if voice_note:
             record("Voice availability", 0, voice_note, counts=False)
 

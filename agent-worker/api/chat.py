@@ -174,6 +174,19 @@ async def _run_turn(ws: web.WebSocketResponse, chat, make_coro, cfg: dict) -> No
                      "moment?"})
 
 
+async def _run_noted_turn(ws: web.WebSocketResponse, chat, text: str,
+                          cfg: dict) -> None:
+    """One caller message's turn, and word to the card when the DJ ACTED in
+    it (a queue, a skip): Up next is about to move and nothing from the
+    station will say so, so /live's quick window opens (2026-11-27)."""
+    acted = int(getattr(chat.actions, "count", 0) or 0)
+    await _run_turn(ws, chat, lambda put: chat.ask(text, put), cfg)
+    if int(getattr(chat.actions, "count", 0) or 0) > acted:
+        from api.live_cache import expect_queue_change
+
+        expect_queue_change(time.time())
+
+
 # How long an un-authenticated socket may sit before its first `hello`.
 # A WS handshake is accepted before any auth, and the reprompt timer only
 # arms once a chat exists — so a peer that connects and never says hello held
@@ -338,8 +351,7 @@ async def handle_chat_ws(request: web.Request) -> web.WebSocketResponse:
                     continue
                 # Stream the reply as it happens, wrapped in the typing cue and
                 # the reply timeout — see _run_turn.
-                await _run_turn(ws, chat,
-                                lambda put: chat.ask(text, put), cfg)
+                await _run_noted_turn(ws, chat, text, cfg)
 
                 # The hard ceilings live in ChatShelf.sweep, which holds no
                 # reference to this socket — so one long-held connection blew

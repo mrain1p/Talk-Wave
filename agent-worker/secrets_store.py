@@ -43,6 +43,7 @@ SECRET_FIELDS: dict[str, str] = {
     "google_api_key": "GOOGLE_API_KEY",
     "deepseek_api_key": "DEEPSEEK_API_KEY",
     "requesty_api_key": "REQUESTY_API_KEY",
+    "cheaperinference_api_key": "CHEAPER_INFERENCE_API_KEY",
     "gateway_api_key": "AI_GATEWAY_API_KEY",
     "deepgram_api_key": "DEEPGRAM_API_KEY",
     "tts_api_key": "TTS_API_KEY",
@@ -60,6 +61,7 @@ SECRET_LABELS: dict[str, str] = {
     "google_api_key": "Google / Gemini",
     "deepseek_api_key": "DeepSeek",
     "requesty_api_key": "Requesty",
+    "cheaperinference_api_key": "Cheaper Inference",
     "gateway_api_key": "Vercel AI Gateway",
     "deepgram_api_key": "Deepgram",
     "tts_api_key": "TTS server",
@@ -85,6 +87,7 @@ SECRET_GROUPS: dict[str, str] = {
     "google_api_key": "brains",
     "deepseek_api_key": "brains",
     "requesty_api_key": "brains",
+    "cheaperinference_api_key": "brains",
     "gateway_api_key": "brains",
     "deepgram_api_key": "ears",
     "tts_api_key": "voice",
@@ -104,6 +107,8 @@ SECRET_HELP: dict[str, str] = {
     "google_api_key": "Gemini models and voices, and Google speech-to-text.",
     "deepseek_api_key": "DeepSeek chat and reasoner.",
     "requesty_api_key": "Aggregator — many vendors behind one key. Models are read live from your account.",
+    "cheaperinference_api_key": "Aggregator the station offers too (SUB/WAVE 1.33) — bare model ids like "
+                                "gpt-5.4-mini. Models are read live from your account.",
     "gateway_api_key": "Vercel's aggregator. Models are read live from your account.",
     "deepgram_api_key": "The fastest speech-to-text on a call, and the only one that gives word-by-word captions.",
     "tts_api_key": "Optional, and usually for a self-hosted or local speech server: only if that "

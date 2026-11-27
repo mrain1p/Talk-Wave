@@ -127,12 +127,14 @@ class TestStoredKeysStayHome(_TempStores):
         "deepseek": "DEEPSEEK_API_KEY",
         "requesty": "REQUESTY_API_KEY",
         "gateway": "AI_GATEWAY_API_KEY",
+        "cheaperinference": "CHEAPER_INFERENCE_API_KEY",
     }
 
     # The two aggregators refuse to build without a model on purpose (their
     # catalogues are namespaced and move, so there is no honest default) —
     # the key tests need one that looks like theirs.
-    MODEL_FOR = {"requesty": "openai/gpt-4.1-mini", "gateway": "openai/gpt-4.1-mini"}
+    MODEL_FOR = {"requesty": "openai/gpt-4.1-mini", "gateway": "openai/gpt-4.1-mini",
+                 "cheaperinference": "gpt-5.4-mini"}
 
     def _key_on(self, model):
         client = model._client

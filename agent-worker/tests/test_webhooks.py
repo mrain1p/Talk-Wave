@@ -1409,3 +1409,48 @@ class TestADevBootCannotStealTheLiveRegistration(_StationWebhooks):
         if launch.exists():
             self.assertIn("preview_token_server",
                           launch.read_text(encoding="utf-8"))
+
+
+class TestAPushOpensTheQuickWindowAndClearsTheLyrics(_StationWebhooks):
+    """2026-11-27. request.received is the station saying a request was
+    ACCEPTED, not queued — so it opens /live's quick window rather than only
+    clearing an answer the next poll would refill with the old queue. And a
+    new record makes the lyrics held for the last one the wrong song."""
+
+    def setUp(self):
+        super().setUp()
+        from api import live_cache
+
+        self.lc = live_cache
+        self._live = dict(live_cache._live_cache)
+        self._lyr = dict(live_cache._lyrics_cache)
+
+    def tearDown(self):
+        self.lc._live_cache.clear()
+        self.lc._live_cache.update(self._live)
+        self.lc._lyrics_cache.clear()
+        self.lc._lyrics_cache.update(self._lyr)
+        super().tearDown()
+
+    def test_a_request_received_opens_the_window(self):
+        import time
+
+        self.lc._live_cache.update(data={"stale": True}, quick_until=0.0,
+                                   at=time.time())
+        asyncio.run(self.hooks.handle_station_hook(
+            _FakeHookRequest({"event": "request.received"})))
+        self.assertIsNone(self.lc._live_cache["data"])
+        self.assertGreater(self.lc._live_cache["quick_until"], time.time())
+
+    def test_a_new_record_clears_the_held_lyrics(self):
+        self.lc._lyrics_cache.update(data={"lines": [{"t": 0, "text": "x"}]}, at=1.0)
+        asyncio.run(self.hooks.handle_station_hook(
+            _FakeHookRequest({"event": "track.play"})))
+        self.assertIsNone(self.lc._lyrics_cache["data"])
+
+    def test_other_pushes_leave_the_lyrics_alone(self):
+        held = {"lines": [{"t": 0, "text": "x"}]}
+        self.lc._lyrics_cache.update(data=held, at=1.0)
+        asyncio.run(self.hooks.handle_station_hook(
+            _FakeHookRequest({"event": "dj.say"})))
+        self.assertIs(self.lc._lyrics_cache["data"], held)
