@@ -1417,6 +1417,11 @@ class TestTheDJIsToldItsOtherLanguagesAndTheShowsBlurb(_TempStores):
                             "language": "Spanish"}, ["English", "Catalan"])
         self.assertIn("You work in Spanish and also speak English and Catalan", text)
         self.assertIn("never translated", text)
+        # The parts that carried the live A/B (2026-11-27): a whole reply in
+        # the caller's language, not a greeting and then the primary.
+        self.assertIn("The moment a caller speaks English or Catalan, answer them "
+                      "in that language", text)
+        self.assertIn("not a greeting and then Spanish", text)
         who = text.index("# Who you are")
         self.assertLess(who, text.index("You work in Spanish"))
 
@@ -1437,6 +1442,8 @@ class TestTheDJIsToldItsOtherLanguagesAndTheShowsBlurb(_TempStores):
                 "description": "Slow jams for the small hours."}
         text = self._build({"id": "p_f", "name": "F", "soul": "A soul."}, [], show)
         self.assertIn("How the station describes the show to listeners", text)
+        # Asked only to "use this", the deployed brain read it out verbatim.
+        self.assertIn("in your own words rather than read out", text)
         self.assertIn("Slow jams for the small hours.", text)
 
     def test_no_blurb_or_the_brief_again_says_nothing(self):

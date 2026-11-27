@@ -96,12 +96,20 @@ def _language_block(dj_language: str, also_speaks: list[str]) -> str:
     if not mix:
         return (f"\nYou work in {primary} — that is the language you open in and "
                 "come back to. Match a caller who brings another one.\n")
-    others = mix[0] if len(mix) == 1 else ", ".join(mix[:-1]) + " and " + mix[-1]
-    return (f"\nYou work in {primary} and also speak {others}, as you do on air — "
-            f"open in {primary} and mix the others in naturally. A caller who "
-            "picks one of them gets it back; one who brings another language "
-            "is matched too. Artist names and song titles stay exactly as "
-            "written, never translated.\n")
+    head = ", ".join(mix[:-1])
+    others = f"{head} and {mix[-1]}" if head else mix[0]
+    either = f"{head} or {mix[-1]}" if head else mix[0]
+    # "Answer them in that language ... not a greeting and then English": the
+    # softer "a caller who picks one gets it back" was measured on the deployed
+    # brain (2026-11-27, Gemini flash-lite, a Spanish caller) and got a
+    # Spanish greeting followed by English on half the replies; this got the
+    # whole reply in Spanish on four of four.
+    return (f"\nYou work in {primary} and also speak {others}, as you do on air. "
+            f"Open in {primary}. The moment a caller speaks {either}, answer them "
+            "in that language for the rest of the call - the whole reply, not a "
+            f"greeting and then {primary}. A caller in any other language is "
+            "matched too. Artist names and song titles stay exactly as written, "
+            "never translated.\n")
 
 
 def _show_blurb(show: dict) -> str:
@@ -113,8 +121,12 @@ def _show_blurb(show: dict) -> str:
     blurb = clip(demojibake(str(show.get("description") or "").strip()), 300)
     if not blurb or blurb == str(show.get("topic") or "").strip():
         return ""
-    return ("\nHow the station describes the show to listeners - use this "
-            f"when a caller asks what it is:\n  {blurb}\n")
+    # "In your own words": asked only to "use this", the deployed brain read
+    # the blurb out word for word on three replies in four (2026-11-27); this
+    # wording, one in four, and every reply still on the show.
+    return ("\nHow the station describes the show to listeners - what to get "
+            "across when a caller asks what it is, in your own words rather "
+            f"than read out:\n  {blurb}\n")
 
 
 async def _lean_block(persona: dict, music_lean: str | None) -> str:
