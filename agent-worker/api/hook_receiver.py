@@ -24,7 +24,8 @@ from aiohttp import web
 import jsonstore
 from api.auth import _write_allowed
 from api.env import PORT
-from api.live_cache import _LIVE_BUST_FLOOR, _live_cache
+from api.live_cache import (_LIVE_BUST_FLOOR, _live_cache, _lyrics_cache,
+                             expect_queue_change)
 from api.wire import _cors, refused
 
 log = logging.getLogger("callin.token")
@@ -522,6 +523,16 @@ async def handle_station_hook(request: web.Request) -> web.Response:
     if event.split(".")[0] in _BUSTING_PREFIXES:
         if time.time() - _live_cache["at"] >= _LIVE_BUST_FLOOR:
             _live_cache["data"] = None
+    # A new record: the lyrics held for the last one are the wrong song now.
+    # Clearing costs nothing — the next read is a listener opening the tab.
+    if event == "track.play":
+        _lyrics_cache["data"] = None
+    # A request is ACCEPTED, not yet queued: the station resolves it after
+    # this fires. Open the quick window so the queue it is about to change
+    # is re-read in seconds, not held for the old 30 (see live_cache). The
+    # cost stays bounded by _LIVE_QUICK_TTL however often this arrives.
+    if event == "request.received":
+        expect_queue_change(time.time())
     return web.json_response({"ok": True})
 
 

@@ -1843,6 +1843,18 @@
                                max-width: 46%; white-space: nowrap;
                                overflow: hidden; text-overflow: ellipsis; }
   .plpanelbody .plrow + .plrow { margin-top: 5px; }
+  /* LYRICS (2026-11-27): the queue card's window, one line per lyric; the
+     painter keeps the sung line centred by scrolling the body. Unlit lines
+     sit in the panel's quiet ink; the sung one takes the record's own ink,
+     the same as a queue row's title. Untimed words (no .synced) all read in
+     that ink — there is no "now" to mark. */
+  .plpanelbody .pllyr { font-size: 13px; line-height: 1.45; color: var(--sage);
+                        transition: color .25s ease; }
+  .plpanelbody .pllyr + .pllyr { margin-top: 2px; }
+  .plpanelbody .pllyr.on, .plpanelbody.pllyrics:not(.synced) .pllyr {
+    color: var(--alpenglow);
+  }
+  .plpanelbody .pllyr.on { font-weight: 700; }
   /* The DJ's own words — prose, not a title. */
   .plpanelbody .plquote {
     font-size: 13px; line-height: 1.45; color: var(--alpenglow);
@@ -4873,6 +4885,14 @@
     gap: 6px; white-space: nowrap; overflow: hidden;
   }
   .card .pltabs .pltab + .pltab { border-left: 0; }
+  /* FOUR tabs (an operator's sheet: Requests, and Lyrics when the record
+     has words) on a phone-width card ran "UP NEXT 4" into "JUST PLAYED 2"
+     (2026-11-27, 360px). The tracking and the cell's inset give way first;
+     the labels and the type size stay. */
+  .card .pltabs:has(> .pltab:not([hidden]) ~ .pltab:not([hidden])
+                    ~ .pltab:not([hidden]) ~ .pltab:not([hidden])) .pltab {
+    letter-spacing: .04em; padding: 0 2px; gap: 3px;
+  }
   .card .pltabs .pltab.on {
     background: var(--pick-live); box-shadow: inset 0 0 0 1px var(--coral);
     color: var(--coral);
@@ -6177,8 +6197,10 @@
      it. The queue is the sheet's flexing region, so on a quiet station its
      one sentence sat under the tabs with five hundred pixels of nothing
      beneath — which reads as a list that failed to load rather than as a
-     station with nothing queued. Centred, it reads as the answer it is. */
-  .plscroll .plqgroup .plpanel.plqueue .plpanelbody:not([hidden]):not(:has(.plrow)) {
+     station with nothing queued. Centred, it reads as the answer it is.
+     Not the Lyrics window: it holds lines, not .plrow rows, and as a
+     centred flex ROW every lyric became a column one word wide. */
+  .plscroll .plqgroup .plpanel.plqueue .plpanelbody:not([hidden]):not(.pllyrics):not(:has(.plrow)) {
     display: flex; align-items: center; justify-content: center;
     text-align: center; padding: 0 16px;
   }

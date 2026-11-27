@@ -15,7 +15,7 @@ live.py would have sounds.py importing back into it.
 
 from __future__ import annotations
 
-_live_cache: dict = {"at": 0.0, "data": None}
+_live_cache: dict = {"at": 0.0, "data": None, "quick_until": 0.0}
 # 30s: comfortably above the widget's 20s poll, so an open page costs the
 # station roughly one sweep per 40s instead of one per poll. Now-playing on
 # the card may lag by up to ~30s, which is fine for a status line.
@@ -24,6 +24,39 @@ _LIVE_TTL = 30.0
 # Operator actions (a settings save, a sound upload) still clear it outright —
 # those are already behind the password.
 _LIVE_BUST_FLOOR = 5.0
+
+# THE QUICK WINDOW (2026-11-27). A request reaches Up next late, measured on
+# the operator's stack: the station fires `request.received` the moment it
+# ACCEPTS a request, before it resolves which track to queue (routes/
+# request.ts, then resolveRequest) — so the bust above landed first, the
+# next /live refilled with the OLD queue, and that stale answer was then held
+# for the full 30s, with the widget's own poll on top. A queue change our own
+# DJ makes (a call, the text line, the player's command row) sends no event
+# at all. So whatever is known to be about to change the queue opens a short
+# window in which an answer is held for seconds rather than half a minute:
+# the card's burst of polls then sees the track land within a few seconds of
+# the station queueing it. Bounded both ways — a window, not a mode, and a
+# floor of one sweep per _LIVE_QUICK_TTL however many tabs or hooks arrive.
+_LIVE_QUICK_TTL = 3.0
+_LIVE_QUICK_SECS = 45.0
+
+# The player's lyrics read (api/player.py), held here beside the card's so the
+# one place that hears "a new record is on" clears both. One entry: the
+# station only ever answers for the track on air.
+_lyrics_cache: dict = {"at": 0.0, "data": None}
+
+
+def live_ttl(now: float) -> float:
+    """How long a /live answer is fresh at `now`: seconds inside a quick
+    window, the ordinary 30 outside one."""
+    return _LIVE_QUICK_TTL if now < _live_cache.get("quick_until", 0.0) else _LIVE_TTL
+
+
+def expect_queue_change(now: float, secs: float = _LIVE_QUICK_SECS) -> None:
+    """Something is about to change the queue: drop the held answer and open
+    (or extend) the quick window. Never shortens a window already open."""
+    _live_cache["data"] = None
+    _live_cache["quick_until"] = max(_live_cache.get("quick_until", 0.0), now + secs)
 
 
 def build_lock():

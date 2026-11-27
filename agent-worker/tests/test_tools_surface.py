@@ -66,6 +66,11 @@ class TestExposedSurface(unittest.TestCase):
         "POST /player/unlike": "public",
         "POST /player/command": "public",
         "GET /player/booth-log": "public",
+        # The Lyrics tab's feed (2026-11-27). Public like the rest of the
+        # player: behind the player's own door (switched on, and the phone's
+        # guest gate), a read of what the station's own player already shows
+        # every listener — and held, so it cannot be used to hammer it.
+        "GET /player/lyrics": "public",
         "GET /sounds/{name}": "public",        # uploaded call sounds
         "GET /sound-lib/{name}": "public",     # bundled clips — the widget plays them on every caller's page
         "POST /settings/sounds/meta": "admin", # category edits on the sound board

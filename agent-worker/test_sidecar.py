@@ -97,6 +97,7 @@ from tests.test_http import (  # noqa: F401
     TestTheSettingsApiRegistersThroughTheLock,
 )
 from tests.test_widget import (
+    TestTheCardCatchesUpWithTheStation,
     TestEveryStateChipHasAWriterAndEveryWriterAChip,
     TestTheFacesSitSideBySide,
     TestTheGuideCardRidesItsOwnSwitch,
@@ -464,6 +465,8 @@ from tests.test_takeover import (  # noqa: F401
     TestTheGenreLockIsRetired,
 )
 from tests.test_station import (  # noqa: F401
+    TestThePlayersLyricsRead,
+    TestAQueueChangeIsSeenInSeconds,
     TestTheGuideShapesTheStationsWeek,
     TestASteerIsPostedAsTheStationSpellsIt,
     TestTheDJsLeaningsAreMirrored,
@@ -509,6 +512,7 @@ from tests.test_station import (  # noqa: F401
     TestTuneIn,
 )
 from tests.test_webhooks import (  # noqa: F401
+    TestAPushOpensTheQuickWindowAndClearsTheLyrics,
     TestALoopbackReceiverIsNotRegistered,
     TestADevBootCannotStealTheLiveRegistration,
     TestAFailedProbeQuotesTheProvider,

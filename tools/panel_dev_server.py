@@ -381,6 +381,9 @@ LOG_RECORDS = [
      "msg": "GET /live HTTP/1.1 200"},
 ]
 
+# When the fixture's record started: see /live and /player/lyrics.
+_STUB_TRACK_START = int(__import__("time").time()) - 95
+
 LIVEKIT_TAG = ('<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.21.0'
                '/dist/livekit-client.umd.min.js"></script>')
 
@@ -944,6 +947,18 @@ class Handler(BaseHTTPRequestHandler):
                 "id": "overlook",
                 "episodeAngle": "Tonight, the quiet hum of a valley "
                                 "preparing for rest."}}}))
+        if path == "/player/lyrics":
+            # Timed lines against the pinned record, every four seconds, so
+            # the Lyrics tab's lit line can be watched moving. The words are
+            # the fixture's own, not a song's. The "lyrics" failing stage
+            # answers the empty shape, where the tab must not offer itself.
+            if _down("lyrics"):
+                return self._json({"songId": None, "synced": False, "offsetMs": 0,
+                                   "heardDelayMs": 0, "pending": False, "lines": []})
+            lines = [{"t": i * 4000, "text": f"Fixture line {i + 1}: the words of the record go here"}
+                     for i in range(54)]
+            return self._json({"songId": "stub-1", "synced": True, "offsetMs": 0,
+                               "heardDelayMs": 0, "pending": False, "lines": lines})
         if path == "/live":
             # The caller-facing outage. call.js holds one failed poll for 90
             # seconds against a card that answered recently, so this only
@@ -965,7 +980,9 @@ class Handler(BaseHTTPRequestHandler):
                 "track": "I Am — Kamasi Washington · Heaven and Earth (Deluxe Edition)",
                 # A record mid-flight, so the card's rail clock and progress
                 # bar paint — absent, the rail's honesty rule hides both.
-                "trackStartedAt": int(__import__("time").time()) - 95,
+                # Pinned at load, like a real station's start instant — a
+                # start that moved on every poll read as a new record each time.
+                "trackStartedAt": _STUB_TRACK_START,
                 "trackSeconds": 215,
                 # The structured record the player sheet renders. The art
                 # points at a file this origin actually serves, so the art

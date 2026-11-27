@@ -1,4 +1,5 @@
-"""The station player's listener actions: the heart and the request box.
+"""The station player's listener actions: the heart, the request box, and
+the lyrics read.
 
 The player is a LISTENER surface, and the station already answers listeners
 without credentials — POST /like and POST /request are public on the station
@@ -28,6 +29,17 @@ from api.wire import _caller_key, _cors
 from log_setup import describe
 
 log = logging.getLogger("callin.token")
+
+
+def _queue_moving() -> None:
+    """The player just asked the station to change its queue: open /live's
+    quick window so the card's burst of polls sees the change land (see
+    api/live_cache.expect_queue_change)."""
+    import time
+
+    from api.live_cache import expect_queue_change
+
+    expect_queue_change(time.time())
 
 
 def _door(request: web.Request,
@@ -318,6 +330,7 @@ async def handle_player_command(request: web.Request) -> web.Response:
         took = relay.status < 400 and body_out.get("success") is not False
         said = str(body_out.get("message") or body_out.get("error") or "")
         if took:
+            _queue_moving()
             from call import daylog
 
             daylog.note("request", text[:80],
@@ -331,6 +344,7 @@ async def handle_player_command(request: web.Request) -> web.Response:
             {"chat": chat.id, "fallback": "request", "refused": True,
              "actions": [],
              "note": said[:160] or "the booth would not take that"}))
+    _queue_moving()
     return _cors(request, web.json_response(
         {"chat": chat.id, "actions": actions}))
 
@@ -389,4 +403,99 @@ async def handle_player_request(request: web.Request) -> web.Response:
 
         daylog.note("request", "from the player",
                     tier=caller_tier(request))
+        _queue_moving()
     return resp
+
+
+# How long one lyrics answer is held. The station only ever answers for the
+# record on air, and a track.play hook clears it (api/hook_receiver), so this
+# is the ceiling on a stale answer when no hook arrives. A lookup the station
+# says is still running (`pending`, LRCLIB) is held for less: the widget asks
+# again every few seconds while it waits, and each of those must reach it.
+_LYRICS_TTL = 20.0
+_LYRICS_PENDING_TTL = 3.0
+
+
+def _lyrics_shape(raw: dict, buffer_secs) -> dict:
+    """The station's /lyrics/current, narrowed to what the card draws.
+
+    `lines` keep the station's own `startMs`, which is already measured from
+    when the record started PLAYING (it shifts for the dead-air trim). The
+    station's per-track correction rides as `offsetMs` — its own player adds
+    it to the elapsed time before finding the line. `heardDelayMs` is the
+    stream buffer: the card's clock counts from when the station started the
+    record, a listener hears it that much later, and the highlighted line has
+    to be the one they are hearing.
+    """
+    lines = []
+    for ln in (raw.get("lines") or [])[:400]:
+        if not isinstance(ln, dict):
+            continue
+        text = str(ln.get("text") or "").strip()[:300]
+        if not text:
+            continue
+        start = ln.get("startMs")
+        lines.append({"t": int(start) if isinstance(start, (int, float)) else None,
+                      "text": text})
+    try:
+        offset = int(raw.get("offsetMs") or 0)
+    except (TypeError, ValueError):
+        offset = 0
+    try:
+        heard = int(float(buffer_secs or 0) * 1000)
+    except (TypeError, ValueError):
+        heard = 0
+    return {
+        "songId": raw.get("songId") or None,
+        "synced": bool(raw.get("synced")) and any(ln["t"] is not None for ln in lines),
+        "offsetMs": max(-10000, min(10000, offset)),
+        "heardDelayMs": max(0, min(60000, heard)),
+        "pending": bool(raw.get("pending")),
+        "lines": lines,
+    }
+
+
+async def handle_player_lyrics(request: web.Request) -> web.Response:
+    """GET /player/lyrics — the words of the record on air, for the player's
+    Lyrics tab.
+
+    The station has had lyrics on by default since 1.28 (#2082) and shows them
+    in its own player; this is the same read for a listener on this card, who
+    often cannot reach the station at all (the reason /cover is proxied too).
+    The tab offers itself only when there are words, so a station with the
+    feature off, an instrumental, or a read that failed all answer the same
+    way: `lines: []`, and nothing is drawn. Held for seconds and cleared on a
+    track change, so an open tab costs the station one read per record.
+    """
+    refuse = _door(request)
+    if refuse:
+        return refuse
+    import time
+
+    from api.live_cache import _lyrics_cache
+    from station import StationClient
+
+    now = time.time()
+    held = _lyrics_cache.get("data")
+    if held is not None:
+        ttl = _LYRICS_PENDING_TTL if held.get("pending") else _LYRICS_TTL
+        if now - _lyrics_cache["at"] < ttl:
+            return _cors(request, web.json_response(held))
+    st = StationClient()
+    try:
+        raw = await st._lyrics_read()
+        try:
+            np = await st.now_playing()
+            buffer_secs = (np.get("stream") or {}).get("bufferSeconds")
+        except Exception:                                     # noqa: BLE001
+            buffer_secs = 0
+    except Exception as e:                                    # noqa: BLE001
+        # Not an error the listener can do anything about: no tab, quietly.
+        log.info("player lyrics unavailable (%s)", describe(e))
+        raw, buffer_secs = {}, 0
+    finally:
+        await st.aclose()
+    data = _lyrics_shape(raw if isinstance(raw, dict) else {}, buffer_secs)
+    _lyrics_cache["data"] = data
+    _lyrics_cache["at"] = now
+    return _cors(request, web.json_response(data))
