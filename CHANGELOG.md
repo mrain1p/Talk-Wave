@@ -4,15 +4,15 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
-## Unreleased
+## 1.0.3
 
-Up to date with SUB/WAVE 1.34, which your station now runs.
+Lyrics on the player, a card that keeps up with the queue, and the call DJ caught up with SUB/WAVE 1.34.
 
 - **Cheaper Inference as a brain.** The aggregator the station added in 1.33 is now on the call line's provider list, with its key under Brains, so a station that thinks on it can point the phone at the same account.
 - **Multilingual DJs stay multilingual on the phone.** A persona's *Also speaks* languages now reach the call DJ: it opens in its main language, mixes the others in the way it does on air, and answers a caller in whichever one they pick.
 - **A DJ the backend can't voice keeps a voice of its own.** When the station's voice for a DJ is one this TTS backend can't say, the call now uses that DJ's *rescue voice* from the station before the backend's first voice, which could be another host's.
 - **"What's this show about?" gets the station's answer.** A show's listener-facing description now reaches the DJ alongside the brief.
-- **Lyrics on the player.** The player has a Lyrics tab beside Up next whenever the record on air has words. When the station has them timed, the line being sung lights up and stays centred, lined up with what the listener actually hears. It uses the same lyrics your station's own player shows. It's on by default; **Lyrics on the player**, under the phone's settings, turns it off for everyone.
+- **Lyrics on the player.** A Lyrics tab beside Up next whenever the song on air has words, with the line being sung lit up when the station has them timed. On by default; *Lyrics on the player* in the phone settings turns it off.
 - **Requests and new songs show up in seconds.** A request sent from the player, and anything the DJ queues on a call or the text line, now reaches Up next as soon as the station has queued it, instead of up to a minute later. A new song reaches the card a couple of seconds after the last one ends, instead of at the next 20-second poll.
 - **A slow station no longer loses a request.** When the station is too busy to confirm a request from the player in time, the request has almost always gone through, so the listener now sees it as sent instead of "could not be reached" (and no longer sends it twice).
 - **The genre lock is gone.** It waited on a station control that SUB/WAVE closed without merging, so it could never work. *Steer the station for a while* does the same job and is live. A stored genre-lock switch is ignored.
