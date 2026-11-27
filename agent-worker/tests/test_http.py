@@ -1919,3 +1919,62 @@ class TestTheMintGivesTheWorkerAHeadStart(unittest.TestCase):
                  "allow_voicemail": "open"})
         self.assertEqual(200, status)
         self.assertEqual([], kicked)
+
+
+class TestASlowStationStillTookTheRequest(unittest.TestCase):
+    """2026-11-27, on the operator's stack: the station stalled for tens of
+    seconds while its music server rescanned a library import, and two
+    player requests timed out at the relay. They had been taken; the
+    listener was told "could not be reached" and would have sent them again.
+    A request whose answer timed out is SENT (station.py's
+    _sent_but_unconfirmed, the rule the DJ's own tools follow)."""
+
+    class _Req(dict):
+        headers: dict = {}
+        remote = "10.0.0.9"
+
+    def _relay(self, method, path, exc):
+        import asyncio
+        import json
+        from unittest import mock
+
+        import httpx
+
+        from api import player
+
+        class _Client:
+            def __init__(self, *a, **k):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def request(self, *a, **k):
+                raise exc
+
+        with mock.patch.object(httpx, "AsyncClient", _Client):
+            resp = asyncio.run(player._relay(self._Req(), method, path, {"text": "x"}))
+        return resp.status, json.loads(resp.body.decode("utf-8"))
+
+    def test_a_request_that_timed_out_reading_is_reported_sent(self):
+        import httpx
+
+        status, body = self._relay("POST", "/request", httpx.ReadTimeout("slow"))
+        self.assertEqual(status, 202)
+        self.assertTrue(body["success"])
+        self.assertTrue(body["unconfirmed"])
+
+    def test_one_that_never_connected_is_still_a_failure(self):
+        import httpx
+
+        status, _ = self._relay("POST", "/request", httpx.ConnectError("down"))
+        self.assertEqual(status, 502)
+
+    def test_only_the_request_is_assumed_taken(self):
+        import httpx
+
+        status, _ = self._relay("POST", "/like", httpx.ReadTimeout("slow"))
+        self.assertEqual(status, 502)

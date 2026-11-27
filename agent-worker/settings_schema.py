@@ -960,6 +960,14 @@ SCHEMA: dict[str, dict] = {
              "it starts the stream and opens the picker, and reopening the "
              "picker is how you switch speakers or stop casting. Hidden "
              "only on browsers with no casting at all."),
+    "player_lyrics": dict(group="phone", kind="check",
+        needs=("swipe_player", True),
+        label="Lyrics on the player", alias="words karaoke lyric",
+        help="A Lyrics tab beside Up next, shown only while the record on "
+             "air has words; when the station has them timed, the line being "
+             "sung lights up. The words are the station's own (its Lyrics "
+             "setting, and LRCLIB when it has that on). Off removes the tab "
+             "for everyone."),
     "start_on_player": dict(group="phone", kind="select",
         label="Opens on",
         needs=("swipe_player", True),

@@ -2741,3 +2741,31 @@ class TestThePlayersLyricsRead(unittest.TestCase):
 
         src = inspect.getsource(self.player.handle_player_lyrics)
         self.assertIn("_door(request)", src)
+
+    def test_the_operators_switch_turns_the_read_off(self):
+        import asyncio
+        from unittest import mock
+
+        st, calls = self._station({"lines": [{"startMs": 0, "text": "w"}]})
+        self.player._door = lambda request, *a, **k: None
+        with mock.patch.object(self.player.settings_store, "load",
+                               return_value={"player_lyrics": False}), \
+                mock.patch("station.StationClient", st):
+            resp = asyncio.run(self.player.handle_player_lyrics(self._Req()))
+        self.assertEqual(resp.status, 404)
+        self.assertEqual(calls, [], "a switched-off tab still asked the station")
+
+    def test_a_timed_out_read_is_asked_again_not_called_wordless(self):
+        # Measured 2026-11-27: the station's lyrics read waits on its music
+        # server, which took 8-49s while a library import kept it
+        # rescanning. Cached as "no words", the record never got its tab.
+        class _Slow:
+            async def _lyrics_read(self):
+                raise RuntimeError("ReadTimeout")
+
+            async def aclose(self):
+                pass
+
+        _, d = self._get(_Slow)
+        self.assertEqual(d["lines"], [])
+        self.assertTrue(d["pending"], "the widget would never ask again")

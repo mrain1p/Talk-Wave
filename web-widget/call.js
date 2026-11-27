@@ -6855,7 +6855,9 @@
   function lyrHas() { return !!(lyr && lyr.lines && lyr.lines.length); }
 
   function syncLyrics(d, np) {
-    const key = np && np.title ? (d.trackStartedAt || '') + '|' + np.title : '';
+    // The operator's switch (player_lyrics): off, no tab and no read.
+    const key = np && np.title && d.playerLyrics !== false
+      ? (d.trackStartedAt || '') + '|' + np.title : '';
     if (key !== lyrKey) {
       lyrKey = key; lyr = null; lyrAsks = 0; lyrLine = -1;
       lyrStart = d.trackStartedAt || 0;

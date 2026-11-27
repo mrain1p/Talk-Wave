@@ -522,6 +522,9 @@ async def _build_live(request: web.Request) -> web.Response:
                     # Whether the player keeps its cast control on show.
                     # The widget still requires a casting API in the browser.
                     "castButton": bool(cfg.get("player_cast_button", True)),
+                    # Whether the player may offer its Lyrics tab at all;
+                    # /player/lyrics refuses on its own when this is off.
+                    "playerLyrics": bool(cfg.get("player_lyrics", True)),
                     # Which face the page opens on; the widget still requires
                     # the player to actually be offered before honouring it.
                     "playerStart": settings_store.opens_on_player(cfg),

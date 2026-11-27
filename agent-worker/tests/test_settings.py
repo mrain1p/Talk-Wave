@@ -1989,3 +1989,25 @@ class TestTheDriftToolReadsTheStationsProviders(unittest.TestCase):
         tool = self._tool()
         station, mine = tool.check_llm_providers({"schemas/providers.ts": self.PROVIDERS_TS})
         self.assertEqual(station, mine)
+
+
+class TestTheOperatorCanKeepLyricsOffTheCard(_TempStores):
+    """The operator's ask, 2026-11-27: lyrics on the player must be something
+    an admin can switch off. On by default (it shipped with this switch, so no
+    deployment changes under it), shown only under the player, and carried to
+    the card on /live."""
+
+    def test_on_by_default_and_tied_to_the_player(self):
+        import settings as settings_store
+
+        self.assertIs(settings_store.FIELDS["player_lyrics"][1], True)
+        self.assertEqual(settings_store.SCHEMA["player_lyrics"]["needs"],
+                         ("swipe_player", True))
+
+    def test_the_card_hears_the_switch(self):
+        from tests.support import AGENT_WORKER, REPO
+
+        live = (AGENT_WORKER / "api" / "live.py").read_text(encoding="utf-8")
+        js = (REPO / "web-widget" / "call.js").read_text(encoding="utf-8")
+        self.assertIn('"playerLyrics": bool(cfg.get("player_lyrics", True))', live)
+        self.assertIn("d.playerLyrics !== false", js)

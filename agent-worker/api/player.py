@@ -89,6 +89,19 @@ async def _relay(request: web.Request, method: str, path: str,
         return _cors(request, web.json_response(body, status=r.status_code))
     except Exception as e:
         log.info("player relay %s %s failed: %s", method, path, describe(e))
+        # A request that went out and whose answer did not come back in time
+        # has almost certainly been taken (station.py _sent_but_unconfirmed,
+        # the rule the DJ's own tools follow). Measured 2026-11-27: the
+        # station stalled for tens of seconds while its music server was
+        # rescanning a library import, two player requests timed out here,
+        # and the listener was told "could not be reached" about requests
+        # the station had queued — and would have sent them again.
+        if (method == "POST" and path == "/request"
+                and isinstance(e, httpx.ReadTimeout)):
+            return _cors(request, web.json_response(
+                {"success": True, "unconfirmed": True,
+                 "message": "Sent — the station is slow to confirm it"},
+                status=202))
         return _cors(request, web.json_response(
             {"error": "the station could not be reached"}, status=502))
 
@@ -470,6 +483,9 @@ async def handle_player_lyrics(request: web.Request) -> web.Response:
     refuse = _door(request)
     if refuse:
         return refuse
+    if not settings_store.load().get("player_lyrics", True):
+        return _cors(request, web.json_response(
+            {"error": "this line does not offer that"}, status=404))
     import time
 
     from api.live_cache import _lyrics_cache
@@ -491,8 +507,13 @@ async def handle_player_lyrics(request: web.Request) -> web.Response:
             buffer_secs = 0
     except Exception as e:                                    # noqa: BLE001
         # Not an error the listener can do anything about: no tab, quietly.
+        # But NOT "this record has no words" either: measured 2026-11-27,
+        # the station's own lyrics read waits on its music server, which
+        # was taking 8-49s while a library import kept it rescanning. Marked
+        # `pending`, so it is held for seconds and the widget asks again,
+        # rather than cached as empty and never asked again for the record.
         log.info("player lyrics unavailable (%s)", describe(e))
-        raw, buffer_secs = {}, 0
+        raw, buffer_secs = {"pending": True}, 0
     finally:
         await st.aclose()
     data = _lyrics_shape(raw if isinstance(raw, dict) else {}, buffer_secs)
