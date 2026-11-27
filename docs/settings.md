@@ -87,7 +87,7 @@ Those credentials unlock on-air messages, segments, programme beats, skips, show
 
 ### Brains (LLM)
 
-The LLM that thinks: provider, model, endpoint, temperature, and the provider API keys — OpenAI, OpenRouter, Anthropic, Google, DeepSeek, Requesty, Vercel AI Gateway.
+The LLM that thinks: provider, model, endpoint, temperature, and the provider API keys — OpenAI, OpenRouter, Anthropic, Google, DeepSeek, Requesty, Vercel AI Gateway, Cheaper Inference.
 
 - **Only providers you hold a key for are listed.** Ollama, an OpenAI-compatible server and the station's locca always appear, since they need none — and they lead the list, because a fresh install can actually pick them.
 - Keys are stored server-side and never shown back. There is no separate Connections section.
@@ -411,7 +411,7 @@ Each row shows which tier gets it, and the actions that are never available are 
 
 ### Station tools
 
-**Station tools** is the station's whole surface — 43 tools in all: 6 handed straight through from the station's MCP server, 32 served by wrappers of ours (retries, guards, the action ledger), and 5 that are never on a call line at any setting — each row saying whether a caller can reach it.
+**Station tools** is the station's whole surface — 41 tools in all: 6 handed straight through from the station's MCP server, 30 served by wrappers of ours (retries, guards, the action ledger), and 5 that are never on a call line at any setting — each row saying whether a caller can reach it.
 
 Below the list, **How the DJ finds a record** sets out the five ways in and which kind of ask takes each, and a short note names what the station can do that the call line still doesn't use.
 

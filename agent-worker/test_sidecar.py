@@ -17,6 +17,7 @@ import tests  # noqa: F401
 
 from tests.test_settings import (  # noqa: F401
     TestTheTierLadderIsOneCopy,
+    TestTheDriftToolReadsTheStationsProviders,
     TestEverySettingIsRealAndEveryKeyIsDeclared,
     TestTheGuestDoorRuleHasOneSpelling,
     TestTheJsonStoreIdiom,
@@ -385,6 +386,7 @@ from tests.test_takeover import (  # noqa: F401
 from tests.test_brain import (  # noqa: F401
     TestAnotherHostsLinesAreNotOurs,
     TestTheDJIsToldItsMusicalLeanings,
+    TestTheDJIsToldItsOtherLanguagesAndTheShowsBlurb,
     TestTheDJKnowsWhenTheBroadcastIsNotNormal,
     TestTheLastCallersBusinessStaysOutOfTheBriefing,
     TestTheNextCallsProcessStillKnowsWhatWeAired,
@@ -459,20 +461,20 @@ from tests.test_curation import (  # noqa: F401
     TestLikingTheTrackOnAir,
 )
 from tests.test_takeover import (  # noqa: F401
-    TestLiftingALockIsNotLiftingSomeoneElsesTakeover,
-    TestLockingTheStationToAGenre,
+    TestTheGenreLockIsRetired,
 )
 from tests.test_station import (  # noqa: F401
     TestTheGuideShapesTheStationsWeek,
     TestASteerIsPostedAsTheStationSpellsIt,
     TestTheDJsLeaningsAreMirrored,
+    TestTheDJsLanguagesAndRescueVoiceAreMirrored,
     TestAPendingLyricsLookupIsAskedAgain,
     TestATargetedSkipNamesItsRefusal,
     TestTheSpeechReadFollowsTheLogOffThePublicState,
     TestNoIdEscapesItsPathSegment,
     TestTheDJsLanguageSurvivesTheRead,
     TestTheGenreShelvesTheStationComputesItself,
-    TestTheNeverPlayWritesAndTheGenreLock,
+    TestTheNeverPlayWrites,
 )
 from tests.test_tools_logic import (  # noqa: F401
     TestOnlyThisDJsSegmentsCanBeRun,
@@ -542,6 +544,7 @@ from tests.test_voice import (  # noqa: F401
     TestGeminiSpeaksThroughTheAdapter,
     TestVoiceDiscoveryIsNotHardcodedToOneShape,
     TestWhatTheBackendSaidReachesTheOperator,
+    TestTheStationsRescueVoiceIsTheSecondChoice,
 )
 from tests.test_voicemail import (  # noqa: F401
     TestAMessageIsNeverLost,

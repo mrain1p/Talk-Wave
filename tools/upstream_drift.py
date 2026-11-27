@@ -41,6 +41,10 @@ STATION_FILES = {
     "schemas/schedule.ts": "OVERRIDE_MIN/MAX_MINUTES",
     "schemas/persona.ts": "TTS_ENGINES, the inherit sentinel",
     "settings/vocab.ts": "LLM_PROVIDERS",
+    # Since #2124 (1.29) vocab.ts spreads LLM_PROVIDER_IDS from here instead of
+    # listing quoted ids, so the provider check read nothing at all and said
+    # "0 matched" for a month -- Cheaper Inference (#2097) landed unseen.
+    "schemas/providers.ts": "LLM_PROVIDER_CATALOG, the provider ids",
     "mcp/tools.ts": "the MCP tool surface",
     "llm/internal/provider/registry.ts": "per-provider default model ids",
     # The station saying it itself: the curated catalogue behind its Connect
@@ -136,8 +140,24 @@ def check_takeover_bounds(src: dict) -> tuple[list, list]:
             [m.group(1) for m in mine if m])
 
 
+def station_llm_providers(src: dict) -> list[str]:
+    """The station's LLM provider ids. The catalogue entries in
+    schemas/providers.ts are objects that open `id: '...', label:` -- the
+    `label` is what tells a provider from the embedding-model suggestions
+    nested inside it, which are `{ id: '...', dim: ... }`. The old quoted list
+    in vocab.ts is still read, for a station from before #2124."""
+    catalog = re.findall(r"\bid:\s*'([a-z0-9-]+)',\s*label:",
+                         _strip_comments(src.get("schemas/providers.ts", "")))
+    literal = _list_after(src.get("settings/vocab.ts", ""), "LLM_PROVIDERS")
+    return sorted(set(catalog) | set(literal))
+
+
 def check_llm_providers(src: dict) -> tuple[list, list]:
-    station = _list_after(src["settings/vocab.ts"], "LLM_PROVIDERS")
+    station = station_llm_providers(src)
+    if not station:
+        # An empty read is a broken extractor, never "no providers": say so
+        # rather than print "0 matched" as if that were a pass.
+        return ["<no provider ids read from the station>"], []
     body = worker("settings_schema.py")
     i = body.find("MODEL_CHOICES = {")
     mine = re.findall(r'^\s{4}"([a-z0-9-]+)"\s*:', body[i:i + 4000], re.M) if i >= 0 else []

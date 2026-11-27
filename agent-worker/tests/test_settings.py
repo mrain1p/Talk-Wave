@@ -740,7 +740,7 @@ class TestTheProviderTablesAgreeWithEachOther(unittest.TestCase):
         # say where to fix it.
         from call.providers import build_llm
 
-        for provider in ("requesty", "gateway"):
+        for provider in ("requesty", "gateway", "cheaperinference"):
             with self.subTest(provider=provider):
                 with self.assertRaises(ValueError) as caught:
                     build_llm({"llm_provider": provider, "llm_model": ""})
@@ -1939,3 +1939,53 @@ class TestTheFallbackBrainCarriesTheCallOnA402(_TempStores):
                            "llm_fallback_provider": "openai-compatible",
                            "llm_fallback_model": ""})
         self.assertNotIsInstance(brain, FallbackLLM)
+
+
+class TestTheDriftToolReadsTheStationsProviders(unittest.TestCase):
+    """Since SUB/WAVE 1.29 (#2124) `vocab.ts` spreads LLM_PROVIDER_IDS from
+    schemas/providers.ts, so the drift tool's provider check read nothing and
+    printed "0 matched" as a pass for a month: Cheaper Inference (#2097)
+    landed unseen. It reads the catalogue now, and an empty read is drift."""
+
+    PROVIDERS_TS = """
+    export const LLM_PROVIDER_CATALOG: readonly LlmProviderEntry[] = [
+      {
+        id: 'ollama', label: 'Ollama', longLabel: 'Ollama (local/cloud)',
+        embedding: { suggestions: [
+          { id: 'nomic-embed-text', dim: 768 },
+        ] },
+      },
+      {
+        // a comment: id: 'not-a-provider', label: 'x'
+        id: 'cheaperinference', label: 'Cheaper Inference',
+        embedding: { defaultModel: 'text-embedding-3-small', suggestions: OPENAI },
+      },
+    ];
+    """
+
+    def _tool(self):
+        import importlib.util
+
+        from tests.support import REPO
+
+        spec = importlib.util.spec_from_file_location(
+            "upstream_drift_under_test", REPO / "tools" / "upstream_drift.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_provider_ids_come_from_the_catalogue_not_the_embeddings(self):
+        tool = self._tool()
+        got = tool.station_llm_providers({"schemas/providers.ts": self.PROVIDERS_TS,
+                                          "settings/vocab.ts": "LLM_PROVIDERS = [...IDS]"})
+        self.assertEqual(["cheaperinference", "ollama"], got)
+
+    def test_an_empty_read_is_reported_not_passed(self):
+        tool = self._tool()
+        station, mine = tool.check_llm_providers({})
+        self.assertNotEqual(station, mine)
+
+    def test_every_station_provider_in_the_sample_is_ours(self):
+        tool = self._tool()
+        station, mine = tool.check_llm_providers({"schemas/providers.ts": self.PROVIDERS_TS})
+        self.assertEqual(station, mine)

@@ -1055,7 +1055,7 @@
     openai: 'openai_api_key', google: 'google_api_key',
     anthropic: 'anthropic_api_key', openrouter: 'openrouter_api_key',
     deepseek: 'deepseek_api_key', requesty: 'requesty_api_key',
-    gateway: 'gateway_api_key',
+    gateway: 'gateway_api_key', cheaperinference: 'cheaperinference_api_key',
     ollama: null,
   };
 
@@ -1837,7 +1837,7 @@
                           'allow_sound_search', 'allow_announcements',
                           'allow_skills', 'allow_skip_track',
                           'allow_dj_segment', 'allow_takeover',
-                          'allow_genre_lock', 'allow_steer', 'allow_never_play',
+                          'allow_steer', 'allow_never_play',
                           'allow_unfavorite'];
     const stationCreds = !!(secrets.subwave_admin_pass
                             && secrets.subwave_admin_pass.set);
@@ -3798,7 +3798,7 @@
   }
 
   // The station-override box. Its own read, like Open Lines above: whether a
-  // takeover or genre lock stands is server state, not a setting, so
+  // takeover stands is server state, not a setting, so
   // `resolved` cannot answer it. Hidden entirely while the schedule runs
   // itself — the box only exists when there is something to show and clear.
   async function readOverride() {
@@ -3810,12 +3810,9 @@
       const d = await r.json().catch(() => null);
       if (!d || !d.active) { box.hidden = true; return; }
       box.hidden = false;
-      $('ovState').textContent =
-        d.kind === 'genre-lock' ? 'genre lock' : 'takeover';
-      $('ovWhat').textContent = d.kind === 'genre-lock'
-        ? 'The station is locked to a genre.'
-        : 'The schedule is pinned to '
-          + (d.show || d.showId || 'a show') + '.';
+      $('ovState').textContent = 'takeover';
+      $('ovWhat').textContent = 'The schedule is pinned to '
+        + (d.show || d.showId || 'a show') + '.';
       // Minutes, not a countdown: the box repaints with the dash, not on a
       // timer, so a seconds figure would sit visibly wrong most of the time.
       const left = d.expiresAt

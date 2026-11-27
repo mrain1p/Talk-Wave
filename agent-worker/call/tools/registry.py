@@ -348,25 +348,6 @@ TOOLS: tuple[Tool, ...] = (
          "operator's own takeover is making a station-wide change too.",
          needs_station_admin=True),
 
-    Tool("subwave_genre_lock", "allow_genre_lock", LOCAL,
-         "Holds the station to one genre or a few, for a bounded window.",
-         "Station admin credentials required, and NOT YET IN A RELEASED "
-         "STATION — it needs SUB/WAVE's genre-lock control (upstream #1404). "
-         "A station without it answers plainly that it can't, rather than "
-         "failing. OFF by default: it reaches every listener and outlives the "
-         "call like a takeover, but where a takeover puts a named DJ on air "
-         "that anyone can hear, this quietly narrows what the station may "
-         "play. Same 15–720 minute window as a takeover, and it lands at the "
-         "next track boundary.",
-         needs_station_admin=True),
-    Tool("subwave_clear_genre_lock", "allow_genre_lock", LOCAL,
-         "Lifts a genre lock early.",
-         "Checks what is actually pinned first: on the station's side a genre "
-         "lock and a show takeover are the same pin, so clearing blind would "
-         "cancel a takeover the operator set for a caller who only asked "
-         "about a genre.",
-         needs_station_admin=True),
-
     Tool("subwave_steer", "allow_steer", LOCAL,
          "Leans what the station picks and says for a while, from a sentence "
          "or one of the operator's playlists.",

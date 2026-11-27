@@ -2221,64 +2221,6 @@ class StationClient:
             log.warning("unblock %s failed: %s", track_id, describe(e))
             return {"ok": False, "error": str(e)[:120]}
 
-    # The station's own caps on a genre lock (GENRE_LOCK_GENRES_MAX and
-    # GENRE_LOCK_GENRE_MAX upstream). Mirrored for the same reason the takeover
-    # window is: an over-long list comes back as a 400, which reaches the caller
-    # as "that didn't work" for something we could have trimmed ourselves.
-    GENRE_LOCK_MAX_GENRES = 15
-    GENRE_LOCK_MAX_GENRE_LEN = 64
-
-    async def set_genre_lock(self, genres: list[str], minutes: int) -> dict:
-        """Hard-filter the station to a genre or few, for a bounded window.
-
-        Upstream's quick control (PR #1404): it upserts one reserved show
-        carrying the genre filter and pins it exactly like a takeover, so the
-        window bounds are the takeover's own and re-posting replaces rather
-        than stacks.
-
-        **Not merged upstream yet.** A station that hasn't got it answers 404,
-        which is reported here as a capability gap rather than a failure — the
-        same posture as the lyrics read. When it lands this starts working with
-        no change on this side.
-        """
-        from station_config import admin_credentials
-
-        user, password = admin_credentials()
-        if not (user and password):
-            return {"ok": False, "error": "no station admin credentials"}
-        clean: list[str] = []
-        for genre in genres or []:
-            word = str(genre or "").strip()[:self.GENRE_LOCK_MAX_GENRE_LEN]
-            # De-duplicated case-insensitively in first-seen order, the way the
-            # station's own schema does it, so "Jazz, jazz" is one genre here
-            # too rather than two that the station silently folds.
-            if word and word.lower() not in {c.lower() for c in clean}:
-                clean.append(word)
-        if not clean:
-            return {"ok": False, "error": "no genre named"}
-        try:
-            r = await self._client.post(
-                "/schedule/genre-lock",
-                json={"genres": clean[:self.GENRE_LOCK_MAX_GENRES],
-                      "minutes": int(minutes)},
-                auth=httpx.BasicAuth(user, password),
-                timeout=ACTION_TIMEOUT,
-            )
-            if r.status_code == 404:
-                return {"ok": False, "unsupported": True,
-                        "error": "this station's software has no genre lock yet"}
-            if r.status_code == 409:
-                return {"ok": False, "error": _body(r).get("error")
-                        or "the station refused the lock"}
-            r.raise_for_status()
-            return {"ok": True, "genres": clean, **_body(r)}
-        except Exception as e:
-            if _sent_but_unconfirmed(e):
-                log.warning("genre lock slow to confirm (%s) — treating as set", e)
-                return {"ok": True, "unconfirmed": True, "genres": clean}
-            log.warning("genre lock failed: %s", describe(e))
-            return {"ok": False, "error": str(e)[:120]}
-
     # The station's steer window (schemas/steer.ts: STEER_MIN_MINUTES /
     # STEER_MAX_MINUTES, restated from the takeover's) and its prompt cap.
     STEER_MIN_MINUTES = 15
@@ -2304,7 +2246,7 @@ class StationClient:
         the window ends, 404 for a playlist that resolves to no tracks, 400
         for a body the schema refuses. A station older than 1.31 has no route
         and answers 404 too; that one is `unsupported`, the same posture as
-        the genre lock, so the DJ says it can't rather than retrying.
+        the lyrics read, so the DJ says it can't rather than retrying.
         """
         from station_config import admin_credentials
 

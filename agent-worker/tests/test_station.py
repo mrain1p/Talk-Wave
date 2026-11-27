@@ -1439,7 +1439,7 @@ class TestBothCancelRefusalsAre409(unittest.TestCase):
         self.assertEqual(self._cancel({})["reason"], "not-queued")
 
 
-class TestTheNeverPlayWritesAndTheGenreLock(unittest.TestCase):
+class TestTheNeverPlayWrites(unittest.TestCase):
     """The three station writes added on the 2026-08-14 upstream pass. Each has
     a status code that is a SUCCESS from the caller's point of view rather than
     a failure, and getting that wrong makes the DJ report a fault for something
@@ -1523,39 +1523,6 @@ class TestTheNeverPlayWritesAndTheGenreLock(unittest.TestCase):
     def test_nothing_identifiable_never_reaches_the_station(self):
         client, sent = self._client(self._Resp(200))
         out = self._run(client, lambda c: c.block_track(""))
-        self.assertFalse(out["ok"])
-        self.assertEqual(sent, {})
-
-    def test_a_station_without_the_genre_lock_says_so_rather_than_failing(self):
-        # Upstream #1404 is not in a released SUB/WAVE. A 404 here is a
-        # capability gap, and the tool depends on being able to tell it from a
-        # refusal — the two get completely different words on air.
-        client, _ = self._client(self._Resp(404))
-        out = self._run(client, lambda c: c.set_genre_lock(["Jazz"], 60))
-        self.assertFalse(out["ok"])
-        self.assertTrue(out["unsupported"])
-
-    def test_genres_dedupe_case_insensitively_in_first_seen_order(self):
-        # The station's own schema does this; doing it here too means the list
-        # the DJ reads back is the list that was actually set.
-        client, sent = self._client(self._Resp(200, {}))
-        out = self._run(
-            client, lambda c: c.set_genre_lock(["Jazz", "jazz", "Soul", "JAZZ"], 60))
-        self.assertEqual(sent["json"]["genres"], ["Jazz", "Soul"])
-        self.assertEqual(out["genres"], ["Jazz", "Soul"])
-
-    def test_an_over_long_list_is_trimmed_rather_than_400ing(self):
-        from station import StationClient
-
-        client, sent = self._client(self._Resp(200, {}))
-        many = [f"g{i}" for i in range(StationClient.GENRE_LOCK_MAX_GENRES + 5)]
-        self._run(client, lambda c: c.set_genre_lock(many, 60))
-        self.assertEqual(len(sent["json"]["genres"]),
-                         StationClient.GENRE_LOCK_MAX_GENRES)
-
-    def test_an_empty_genre_list_never_reaches_the_station(self):
-        client, sent = self._client(self._Resp(200, {}))
-        out = self._run(client, lambda c: c.set_genre_lock(["  ", ""], 60))
         self.assertFalse(out["ok"])
         self.assertEqual(sent, {})
 
@@ -2586,3 +2553,47 @@ class TestTheDJsLeaningsAreMirrored(unittest.TestCase):
         self.assertEqual("", station_config._music_lean_from(payload, "p_missing"))
         self.assertEqual("", station_config._music_lean_from(payload, ""))
         self.assertEqual("", station_config._music_lean_from({}, "p_g"))
+
+
+class TestTheDJsLanguagesAndRescueVoiceAreMirrored(unittest.TestCase):
+    """Two persona fields from the 2026-11-27 upstream pass, both admin-only
+    on the station: `alsoSpeaks` (SUB/WAVE 1.34, #1740), the languages a
+    multilingual DJ mixes in, and `fallbackVoice` (1.33, #2089), the voice the
+    station gives a DJ when its own engine fails."""
+
+    PAYLOAD = {"values": {"personas": [
+        {"id": "p_m", "name": "Mari", "language": "Spanish",
+         "alsoSpeaks": " English , spanish, Catalan,english,  ",
+         "fallbackVoice": {"engine": "gemini", "cloudProvider": "openai",
+                           "voice": " Kore "}},
+        {"id": "p_e", "name": "Ed", "alsoSpeaks": "English, French"},
+        {"id": "p_n", "name": "Nobody", "alsoSpeaks": "", "fallbackVoice": None},
+        {"id": "p_x", "name": "Odd", "alsoSpeaks": 7, "fallbackVoice": "Kore"},
+    ]}}
+
+    def test_also_speaks_is_read_the_way_the_station_reads_it(self):
+        import station_config
+
+        # Split on commas, trimmed; the primary and any repeat dropped
+        # case-insensitively, first spelling kept (personaLanguages()).
+        self.assertEqual(["English", "Catalan"],
+                         station_config._also_speaks_from(self.PAYLOAD, "p_m"))
+        # A blank language is English on the station, so English is dropped.
+        self.assertEqual(["French"],
+                         station_config._also_speaks_from(self.PAYLOAD, "p_e"))
+        for pid in ("p_n", "p_x", "p_missing", ""):
+            self.assertEqual([], station_config._also_speaks_from(self.PAYLOAD, pid))
+        self.assertEqual([], station_config._also_speaks_from({}, "p_m"))
+
+    def test_the_rescue_voice_is_the_voice_and_nothing_else(self):
+        import station_config
+
+        self.assertEqual("Kore", station_config._rescue_voice_from(self.PAYLOAD, "p_m"))
+        for pid in ("p_e", "p_n", "p_x", "p_missing", ""):
+            self.assertEqual("", station_config._rescue_voice_from(self.PAYLOAD, pid))
+
+    def test_musical_leanings_still_read_through_the_shared_record(self):
+        import station_config
+
+        payload = {"personas": [{"id": "p_g", "musicLean": " boom  bap "}]}
+        self.assertEqual("boom bap", station_config._music_lean_from(payload, "p_g"))

@@ -550,8 +550,6 @@ class TestNoToolIsBuiltWithoutThePromptKnowingIt(unittest.TestCase):
         "subwave_cancel_takeover": "the takeover bullet",
         "subwave_never_play_track": "Ban a record for good",
         "subwave_allow_track_again": "Ban a record for good",
-        "subwave_genre_lock": "Hold the station to a genre",
-        "subwave_clear_genre_lock": "Hold the station to a genre",
         # MOVED from SCHEMA 2026-09-17. The claim used to be that the segment
         # line in running_the_call is always on, so there is no switch-riding
         # bullet to find — which was true and was the bug: with allow_skills

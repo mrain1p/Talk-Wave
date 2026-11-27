@@ -453,6 +453,8 @@ class CallSession:
             talk_between_tracks=await self.station_cfg.talk_between_tracks_only(),
             music_lean=await self.station_cfg.music_lean(
                 str(self.persona.get("id") or "")),
+            also_speaks=await self.station_cfg.also_speaks(
+                str(self.persona.get("id") or "")),
             pause_talk=await self.station_cfg.pause_talk_seconds(
                 str(live_show.get("id", ""))),
         )
@@ -472,8 +474,11 @@ class CallSession:
         # backend does not have used to mean a call where the DJ never spoke
         # at all, with a green pipeline check, because that check tests the
         # CONFIGURED voice and never the one the on-air persona resolves to.
+        # Its second choice is the station's rescue voice for this DJ (#2089).
+        rescue = "" if str(self.cfg.get("tts_voice") or "").strip() else (
+            await self.station_cfg.rescue_voice(str(self.persona.get("id") or "")))
         self.voice, why = pick_speakable_voice(
-            self.voice, speakable, id_pattern=voice_id_pattern(
+            self.voice, speakable, rescue=rescue, id_pattern=voice_id_pattern(
                 resolve_adapter(self.cfg.get("tts_adapter")),
                 mode=str(self.cfg.get("tts_mode", ""))))
         if why:

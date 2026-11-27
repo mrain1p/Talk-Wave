@@ -359,10 +359,9 @@ class TestHttpSurface(_TempStores):
 
 
 class TestAStandingOverrideIsVisibleAndClearable(unittest.TestCase):
-    """The dashboard's station-override box: a takeover or genre lock
-    outlives the call that set it, and until this card neither panel showed
-    one standing. The pin is named from the same /schedule read that reports
-    it, the genre lock is told apart by its reserved show id, and the clear
+    """The dashboard's station-override box: a takeover outlives the call
+    that set it, and until this card neither panel showed one standing. The
+    pin is named from the same /schedule read that reports it, and the clear
     relays the station's own answer rather than claiming one."""
 
     def _payload(self, schedule):
@@ -397,20 +396,6 @@ class TestAStandingOverrideIsVisibleAndClearable(unittest.TestCase):
         self.assertEqual(p["kind"], "takeover")
         self.assertEqual(p["show"], "The Graveyard Shift")
 
-    def test_the_genre_lock_is_told_apart_by_its_reserved_id(self):
-        from api import override
-        from call.tools.broadcast import GENRE_LOCK_SHOW_ID
-
-        # One mirror, two modules — they must never disagree about which
-        # show id means "lock", because clearing rides the same DELETE and
-        # the card's words hang on the distinction.
-        self.assertEqual(override.GENRE_LOCK_SHOW_ID, GENRE_LOCK_SHOW_ID)
-        p = self._payload({
-            "override": {"showId": "genre_lock", "startedAt": 1,
-                         "expiresAt": 2},
-            "shows": [],
-        })
-        self.assertEqual(p["kind"], "genre-lock")
 
 
 class TestTheGuidesTakeoverIsGatedByItsSetting(_TempStores):
@@ -1617,7 +1602,7 @@ class TestTheModelListFollowsTheEndpoint(unittest.TestCase):
 
     def test_a_custom_url_wins_for_openai_protocol_providers(self):
         for provider in ("openai", "openai-compatible", "deepseek",
-                         "requesty", "gateway"):
+                         "requesty", "gateway", "cheaperinference"):
             self.assertEqual(
                 self._endpoint(provider, "http://192.168.1.20:18081/v1"),
                 "http://192.168.1.20:18081/v1", provider)

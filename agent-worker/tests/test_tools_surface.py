@@ -301,12 +301,6 @@ class TestExposedSurface(unittest.TestCase):
         # over admin REST only — so these two are ours end to end.
         "subwave_takeover_show": "allow_takeover",
         "subwave_cancel_takeover": "allow_takeover",
-        # The same reach as a takeover and quieter — a pinned show announces
-        # itself on air, a narrowed playlist doesn't. Built against upstream
-        # #1404, which is not in a released station yet: a station without it
-        # answers plainly that it can't rather than failing.
-        "subwave_genre_lock": "allow_genre_lock",
-        "subwave_clear_genre_lock": "allow_genre_lock",
         # SUB/WAVE 1.31's steer: the same reach again, from a sentence or a
         # playlist, and the one that also shapes what the DJ says between
         # records. Admin REST only, so ours end to end.

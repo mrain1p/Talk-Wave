@@ -309,24 +309,60 @@ def _persona_skills_from(settings: dict, persona_id: str) -> list[str] | None:
     return None
 
 
+def _persona_record(settings: dict, persona_id: str) -> dict:
+    """One persona's full admin record off `/settings`, or {}. The public
+    `/dj` and `/personas` reads carry name, tagline and soul only; the fields
+    below are admin-only, so without station credentials they are unknown."""
+    if not persona_id:
+        return {}
+    for roster in _persona_rosters(settings):
+        for persona in roster:
+            if isinstance(persona, dict) and persona.get("id") == persona_id:
+                return persona
+    return {}
+
+
 def _music_lean_from(settings: dict, persona_id: str) -> str:
     """A persona's musical leanings — `personas[].musicLean` (SUB/WAVE #1678,
     the Musical Leanings field the station's own picker reads) — or "".
+    Free text, capped on the station at PERSONA_MUSIC_LEAN_MAX; clipped again
+    where it is interpolated."""
+    lean = _persona_record(settings, persona_id).get("musicLean")
+    return " ".join(lean.split()) if isinstance(lean, str) else ""
 
-    Admin-only: the public `/dj` and `/personas` reads carry name, tagline
-    and soul but not this, so without station credentials it is simply
-    unknown and the prompt says nothing. Free text, capped on the station at
-    PERSONA_MUSIC_LEAN_MAX; clipped again where it is interpolated.
-    """
-    if not persona_id:
-        return ""
-    for roster in _persona_rosters(settings):
-        for persona in roster:
-            if not isinstance(persona, dict) or persona.get("id") != persona_id:
-                continue
-            lean = persona.get("musicLean")
-            return " ".join(str(lean).split()) if isinstance(lean, str) else ""
-    return ""
+
+def _also_speaks_from(settings: dict, persona_id: str) -> list[str]:
+    """The languages a multilingual DJ mixes into its main one —
+    `personas[].alsoSpeaks` (SUB/WAVE 1.34, #1740), comma-separated, "" for
+    one language. Read the way the station's own personaLanguages() reads it:
+    split on commas, trimmed, the primary and any repeat dropped
+    case-insensitively, first spelling kept."""
+    record = _persona_record(settings, persona_id)
+    raw = record.get("alsoSpeaks")
+    if not isinstance(raw, str):
+        return []
+    primary = str(record.get("language") or "").strip() or "English"
+    seen = {primary.lower()}
+    mix: list[str] = []
+    for part in raw.split(","):
+        name = " ".join(part.split())
+        if name and name.lower() not in seen:
+            seen.add(name.lower())
+            mix.append(name)
+    return mix
+
+
+def _rescue_voice_from(settings: dict, persona_id: str) -> str:
+    """The voice the station gives this persona when its own engine fails —
+    `personas[].fallbackVoice.voice` (SUB/WAVE 1.33, #2089), or "".
+
+    Voice identity only; the station keeps the keys. The call line uses it as
+    the second choice when the persona's own voice is one this TTS backend
+    cannot say, ahead of the backend's first voice: the operator picked it as
+    "this DJ, on another engine", which the first voice is not."""
+    slot = _persona_record(settings, persona_id).get("fallbackVoice")
+    voice = slot.get("voice") if isinstance(slot, dict) else None
+    return voice.strip() if isinstance(voice, str) else ""
 
 
 def _skill_name(skill: dict) -> str:
@@ -557,6 +593,18 @@ class StationConfig:
         if not station:
             return ""
         return _music_lean_from(station, persona_id)
+
+    async def also_speaks(self, persona_id: str) -> list[str]:
+        """The other languages this DJ mixes in on air (#1740); [] for one.
+        Rides the cached `/settings` read; [] when unknown or unset."""
+        station = await self.settings()
+        return _also_speaks_from(station, persona_id) if station else []
+
+    async def rescue_voice(self, persona_id: str) -> str:
+        """The station's rescue voice for this DJ (#2089); "" when unset.
+        Rides the cached `/settings` read."""
+        station = await self.settings()
+        return _rescue_voice_from(station, persona_id) if station else ""
 
     async def persona_voices(self) -> dict[str, str]:
         """persona_id -> voice id, mirrored from the station when possible."""

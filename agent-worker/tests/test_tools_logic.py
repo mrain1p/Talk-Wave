@@ -739,29 +739,6 @@ class TestEveryStationRefusalShowsTheCallerACard(unittest.TestCase):
             asyncio.run(tools[name](**kwargs))
             self.assertTrue(self._carded(actions), name)
 
-    def test_an_unsupported_genre_lock_cards_unavailable(self):
-        # Not a refusal — the station's release simply lacks the control —
-        # so it takes the label built for exactly that ("Not available on
-        # this station"), which only current_lyrics had ever used.
-        from call.actions import CallActions
-        from call.tools.broadcast import build_on_air_tools
-
-        class _OldStation(self._RefusingStation):
-            async def set_genre_lock(self, genres, minutes):
-                return {"unsupported": True}
-
-        class _Guard:
-            async def wait_until_clear(self, timeout=None):
-                return 0.0
-
-        actions = CallActions(9)
-        built = build_on_air_tools(
-            {"allow_genre_lock": True}, _OldStation(), actions, _Guard(),
-            guarded=True)
-        tools = {t.info.name: t for t in built}
-        self.assertIn("subwave_genre_lock", tools)
-        asyncio.run(tools["subwave_genre_lock"](genres="jazz"))
-        self.assertTrue(any(k == "unavailable" for k, _ in actions._denied))
 
 
 class TestTheTextLineCanSeeTheStation(unittest.TestCase):

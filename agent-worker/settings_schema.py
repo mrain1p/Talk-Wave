@@ -318,6 +318,7 @@ SCHEMA: dict[str, dict] = {
     "llm_base_url": dict(group="brains", kind="text", label="Endpoint",
         needs=("llm_provider", ("ollama", "openai", "openrouter",
                                 "deepseek", "requesty", "gateway",
+                                "cheaperinference",
                                 "openai-compatible", "locca")),
         placeholder="default: the provider's own address",
         help="Only for a self-hosted or gateway endpoint; required for "
@@ -483,13 +484,6 @@ SCHEMA: dict[str, dict] = {
              "everyone — an hour by default, landing at the end of the record "
              "playing. The only caller action that outlives the call; the DJ "
              "can also cancel one, including one you set yourself."),
-    "allow_genre_lock": dict(group="perms", kind="select", tiered=True, admin=True,
-        label="Lock the station to a genre",
-        help="Holds the station to one genre or a few for a set window — 15 "
-             "to 720 minutes, ending by itself — via the station's own "
-             "genre-lock (an older SUB/WAVE answers that it can't). Quieter "
-             "than a takeover: a narrowed playlist never announces itself on "
-             "air."),
     "allow_steer": dict(group="perms", kind="select", tiered=True, admin=True,
         label="Steer the station for a while",
         help="Leans what the station picks and says from a sentence in the "
@@ -1635,6 +1629,7 @@ MODEL_CHOICES = {
     # always be asked, and what it says is the only list worth showing.
     "requesty": [],
     "gateway": [],
+    "cheaperinference": [],
     # The operator's own OpenAI-compatible server (llama.cpp, vLLM, LM
     # Studio). Discovered live from its /v1/models; there is nothing sensible
     # to curate for a server we have never seen.
@@ -1687,6 +1682,9 @@ LLM_PROVIDER_KEY: dict[str, str | None] = {
     "deepseek": "deepseek_api_key",
     "requesty": "requesty_api_key",
     "gateway": "gateway_api_key",
+    # SUB/WAVE 1.33 (#2097): the station's fourth gateway. Bare OpenAI-style
+    # ids (gpt-5.4-mini), not vendor/model, behind one key.
+    "cheaperinference": "cheaperinference_api_key",
 }
 
 
@@ -1700,6 +1698,7 @@ LLM_PROVIDER_LABELS: dict[str, str] = {
     "deepseek": "DeepSeek",
     "requesty": "Requesty (aggregator)",
     "gateway": "Vercel AI Gateway (aggregator)",
+    "cheaperinference": "Cheaper Inference (aggregator)",
     "openai-compatible": "OpenAI-compatible (llama.cpp · vLLM · LM Studio)",
     "locca": "locca (the station's local runner, no key)",
     "ollama": "Ollama (your own box, no key)",
@@ -1740,6 +1739,8 @@ OPENAI_PROTOCOL_HOSTS: dict[str, tuple[str, str]] = {
     "deepseek": ("https://api.deepseek.com/v1", "deepseek-v4-flash"),
     "requesty": ("https://router.requesty.ai/v1", ""),
     "gateway": ("https://ai-gateway.vercel.sh/v1", ""),
+    # The station's own base URL for it (schemas/providers.ts, #2097).
+    "cheaperinference": ("https://api.cheaperinference.com/v1", ""),
 }
 
 

@@ -214,7 +214,8 @@ async def available_voices(
 
 
 def pick_speakable_voice(wanted: str, available: list[str],
-                         id_pattern: str | None = None) -> tuple[str, str]:
+                         id_pattern: str | None = None,
+                         rescue: str = "") -> tuple[str, str]:
     """(voice to use, why it changed). An empty reason means it did not.
 
     The station tells us which voice each DJ uses ON AIR, and mirroring that is
@@ -234,18 +235,41 @@ def pick_speakable_voice(wanted: str, available: list[str],
     the thirty prebuilt names. Without it a persona the station voices from
     the library fell to the first prebuilt voice, with a warning in the
     record and the wrong DJ on the line.
+
+    `rescue` is the station's own second voice for this DJ (persona
+    `fallbackVoice`, SUB/WAVE #2089): the voice the operator chose for when
+    this DJ's engine cannot speak. It is tried before the backend's first
+    voice, which is nobody's choice — on a two-host station the first voice
+    can be the OTHER host's.
     """
     wanted = str(wanted or "").strip()
+    rescue = str(rescue or "").strip()
     if not available:
         return wanted, ""            # lookup failed — not evidence of anything
-    if wanted and wanted in available:
+
+    def speakable(voice: str) -> bool:
+        if not voice:
+            return False
+        if voice in available:
+            return True
+        if id_pattern:
+            try:
+                return bool(_re.fullmatch(id_pattern, voice))
+            except _re.error:
+                log.warning("adapter voice_id_pattern is not a regex: %r", id_pattern)
+        return False
+
+    if speakable(wanted):
         return wanted, ""
-    if wanted and id_pattern:
-        try:
-            if _re.fullmatch(id_pattern, wanted):
-                return wanted, ""
-        except _re.error:
-            log.warning("adapter voice_id_pattern is not a regex: %r", id_pattern)
+    if speakable(rescue) and rescue != wanted:
+        if not wanted:
+            return rescue, ""
+        return rescue, (
+            f"The station uses voice {wanted!r} for this DJ, and the TTS backend "
+            f"does not have it — speaking in the station's rescue voice for this "
+            f"DJ, {rescue!r}, instead. Set Voice under Models & voice to choose "
+            f"deliberately, or point this at the TTS server the station uses."
+        )
     fallback = available[0]
     if not wanted:
         return fallback, ""          # nothing asked for; nothing surprising

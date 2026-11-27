@@ -4,6 +4,16 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## Unreleased
+
+Up to date with SUB/WAVE 1.34, which your station now runs.
+
+- **Cheaper Inference as a brain.** The aggregator the station added in 1.33 is now on the call line's provider list, with its key under Brains, so a station that thinks on it can point the phone at the same account.
+- **Multilingual DJs stay multilingual on the phone.** A persona's *Also speaks* languages now reach the call DJ: it opens in its main language, mixes the others in the way it does on air, and answers a caller in whichever one they pick.
+- **A DJ the backend can't voice keeps a voice of its own.** When the station's voice for a DJ is one this TTS backend can't say, the call now uses that DJ's *rescue voice* from the station before the backend's first voice, which could be another host's.
+- **"What's this show about?" gets the station's answer.** A show's listener-facing description now reaches the DJ alongside the brief.
+- **The genre lock is gone.** It waited on a station control that SUB/WAVE closed without merging, so it could never work. *Steer the station for a while* does the same job and is live. A stored genre-lock switch is ignored.
+
 ## 1.0.2
 
 What the first drill against the released 1.0.1 found: the DJ saying a thing was done before doing it.

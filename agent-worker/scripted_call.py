@@ -647,8 +647,6 @@ async def fake_unblock(self, track_id):
     return {"ok": True}
 
 
-# The genre lock: a takeover by another name on the station's side, so it
-# leaves the same kind of pin behind after the script has finished.
 # The steer (SUB/WAVE 1.31). The takeover's reach again: a scripted run that
 # reached the station would leave every pick and talk break leaned for up to
 # twelve hours after the script finished, and end a takeover the operator set.
@@ -676,11 +674,6 @@ async def fake_clear_steer(self):
     STATION_CALLS.append(("clear_steer", {}))
     _STEERED.clear()
     return {"ok": True, "steer": None, "removed": 0, "kept": 0}
-
-
-async def fake_genre_lock(self, genres, minutes):
-    STATION_CALLS.append(("set_genre_lock", {"genres": genres, "minutes": minutes}))
-    return {"ok": True, "genres": genres}
 
 
 async def fake_like(self, song_id):
@@ -788,7 +781,6 @@ def muzzle_the_station() -> None:
     StationClient.browse_library = fake_browse
     StationClient.block_track = fake_block
     StationClient.unblock_track = fake_unblock
-    StationClient.set_genre_lock = fake_genre_lock
     StationClient.steer = fake_steer
     StationClient.steer_status = fake_steer_status
     StationClient.clear_steer = fake_clear_steer
@@ -984,7 +976,8 @@ COVERAGE = [
         "can you keep it more upbeat for the next hour or so?",
         "actually undo that, go back to how it normally runs",
     ]),
-    ("locking the genre for a bit", [
+    # Once the genre lock's phrasing; the steer is what answers it now.
+    ("holding the station to a style for a bit", [
         "keep it all soul for a while, nothing else",
         "alright, that's enough — open it back up to anything",
     ]),

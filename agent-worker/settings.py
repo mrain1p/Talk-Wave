@@ -240,7 +240,6 @@ FIELDS: dict[str, tuple[str | tuple[str, ...] | None, Any]] = {
     # The same reach as a takeover and quieter: it narrows what the station is
     # allowed to play for a bounded window. Admin, and it needs a station new
     # enough to have the control at all (upstream #1404).
-    "allow_genre_lock":   (None, "admin"),
     # SUB/WAVE 1.31's steer: lean what the station picks and says for a
     # bounded window from a sentence ("more upbeat for the next hour") or
     # one of the operator's playlists. A takeover's reach — everyone, and
@@ -1292,7 +1291,9 @@ def _migrate(stored: dict) -> dict:
     # narrow the station's playlist or ban a record from it permanently. Stamped
     # off; the panel is where they get turned on, deliberately.
     if _coerce(stored.get("_rev"), 1) < 5:
-        for field in ("allow_genre_lock", "allow_never_play"):
+        # allow_genre_lock was stamped here too; it is retired (2026-11-27,
+        # upstream #1404 closed unmerged) and a retired key is never read.
+        for field in ("allow_never_play",):
             if field not in stored:
                 stored[field] = TIER_OFF
     # 0.98.10: bulk queueing (albums and mixes). A POWER — one sentence can
