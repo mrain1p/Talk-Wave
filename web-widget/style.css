@@ -4939,8 +4939,10 @@
        below it, because there is no panel edge to merge into any more. */
     margin-bottom: 0; padding-bottom: 0; border-radius: 0;
   }
-  .card .pltabs .pltab .ppip { visibility: hidden; }
-  .card .pltabs .pltab.on .ppip { visibility: visible; background: currentColor; }
+  /* Gone, not invisible, on an unlit tab: a hidden pip still took its 7px
+     and its gap, so every unlit label sat ~5px right of its cell's centre. */
+  .card .pltabs .pltab .ppip { display: none; }
+  .card .pltabs .pltab.on .ppip { display: block; background: currentColor; }
   /* The count beside a tab's label: a bare figure in the label's own quiet
      ink, the lit tab's coral when it is the face being read, and gone —
      gap and all — when there is nothing to count. */
@@ -5468,6 +5470,15 @@
   .card .gdspine {
     width: 2px; height: auto; border-radius: 0; align-self: stretch;
   }
+  /* In the DAY list the spine says WHEN, not WHO (design system,
+     2026-11-28): coral on air, amber next, a quiet edge for the rest. A
+     column of per-show tones put amber, teal and coral down the list, the
+     same three colours that mean time, the caller and the station
+     everywhere else on the card. The week grid keeps the tones — there a
+     colour is how you follow one show across seven rows. */
+  .card .gdrow .gdspine { background: var(--edge); }
+  .card .gdrow.live .gdspine { background: var(--coral); }
+  .card .gdrow.next .gdspine { background: var(--amber); }
 
   /* -- the surfaces ------------------------------------------------------
      The handoff's own numbers, at the viewport it was drawn for: the
@@ -5529,7 +5540,12 @@
       font-size: 25px; line-height: 1.1; font-weight: 700; margin: 0;
     }
     body:not(.compact) .card:not([data-mode="chat"]) .who-row .show {
-      text-align: left; font-size: 11px; letter-spacing: .14em; margin: 3px 0 0;
+      /* 10px at .1em, not 11 at .14: "THE PIAZZA · GOLDEN-ERA POP" needed
+         220px of a 200px column and left POP alone on a second line. The
+         operator's rule (2026-11-28): smaller type that fits beats bigger
+         type that wraps. The two-line clamp stays as the fallback for a name
+         that is long even at this size. */
+      text-align: left; font-size: 10px; letter-spacing: .1em; margin: 3px 0 0;
     }
     body:not(.compact) .card:not([data-mode="chat"]) .who-row .tagline {
       margin: 3px 0 0;
