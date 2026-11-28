@@ -4,6 +4,13 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
+## 1.0.4
+
+Two fixes from last night's call.
+
+- **"Cancel what's ahead of mine" keeps your picks.** Asked to clear the songs in front of the ones they'd just queued, the DJ pulled the caller's own picks instead. It now leaves them in, says where they sit, and explains it can't jump the queue.
+- **A busy station no longer makes the phone ring for half a minute.** When SUB/WAVE stops answering for a moment, the call now waits on it once instead of five times in a row, and picks up with the DJ's voice from the last settings it saw rather than a fallback voice.
+
 ## 1.0.3
 
 Lyrics on the player, a card that keeps up with the queue, and the call DJ caught up with SUB/WAVE 1.34.
