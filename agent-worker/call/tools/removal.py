@@ -134,7 +134,9 @@ def build_removal_tools(cfg: dict, station: StationClient,
         was too late for, and skipping is the only tool for those. For a
         single track use subwave_cancel_queued_track. The queue is shared:
         clear only what THIS caller asked to clear, never another caller's
-        requests."""
+        requests. "Cancel what's ahead of mine / before them" asks for the
+        tracks IN FRONT of their picks — never clear their own picks for it;
+        this line can't jump the queue, so say where theirs sit instead."""
         if actions.at_limit():
             return actions.refusal()
         want_artist = _squash(artist)

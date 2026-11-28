@@ -52,6 +52,13 @@ MAX_AGE_SECS = 10.0
 # polling: a quiet line reads nothing at all.
 SETTINGS_MAX_AGE_SECS = 6 * 60 * 60
 SETTINGS_REFRESH_SECS = 10 * 60
+# And when the station is NOT answering, an older copy still beats none: the
+# worker falls back to anything up to a week old rather than ringing through
+# every timeout onto a fallback voice (2026-11-28: the only copy was ten hours
+# old, the station was frozen mid auto-playlist rebuild, and the mint's own
+# failed read then wrote {} over that copy). Never used while a live read
+# works — only by StationConfig after its own /settings read has failed.
+SETTINGS_STALE_OK_SECS = 7 * 24 * 60 * 60
 
 
 async def capture(with_skills: bool) -> None:
@@ -66,7 +73,7 @@ async def capture(with_skills: bool) -> None:
 
     station, station_cfg = StationClient(), StationConfig()
     try:
-        kept = _stored_settings(SETTINGS_MAX_AGE_SECS)
+        kept = _stored_settings(SETTINGS_STALE_OK_SECS)
         if kept is not None and time.time() - kept[1] <= SETTINGS_REFRESH_SECS:
             snapshot = await station.snapshot(with_skills=with_skills)
             station_settings, settings_t = kept
@@ -76,7 +83,9 @@ async def capture(with_skills: bool) -> None:
                 station_cfg.settings(),
             )
             settings_t = time.time()
-            # A failed read is {} — never let it overwrite a good copy.
+            # A failed read is {} — never let it overwrite a good copy, of
+            # ANY age the stale fallback would still use: keeping its own
+            # read time means the fresh window still ages it out correctly.
             if not station_settings and kept is not None:
                 station_settings, settings_t = kept
         store(snapshot, station_settings, with_skills=with_skills,
@@ -168,9 +177,13 @@ def _stored_settings(max_age: float) -> tuple[dict, float] | None:
     return station_settings, t
 
 
-def recall_settings() -> dict | None:
+def recall_settings(*, stale_ok: bool = False) -> dict | None:
     """The station's settings from a recent capture, for the worker's
     StationConfig — so the ringing never waits on the slow read when a copy
-    from the last few hours already says what it would say."""
-    kept = _stored_settings(SETTINGS_MAX_AGE_SECS)
+    from the last few hours already says what it would say.
+
+    `stale_ok=True` widens the window to SETTINGS_STALE_OK_SECS, for the one
+    moment that earns it: the live read has just failed."""
+    kept = _stored_settings(SETTINGS_STALE_OK_SECS if stale_ok
+                            else SETTINGS_MAX_AGE_SECS)
     return kept[0] if kept is not None else None

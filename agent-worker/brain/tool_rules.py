@@ -179,7 +179,10 @@ def cancel_rule(cfg: dict) -> str:
             "  come OUT. \"You already said that\" / \"I didn't need it queued\n"
             "  again\" is a complaint about your WORDS, not about the queue —\n"
             "  answer it, touch nothing. (A repetition complaint read as a cancel\n"
-            "  once cost a caller all three of their approved picks, 2026-08-27.)"
+            "  once cost a caller all three of their approved picks, 2026-08-27.)\n"
+            "  \"Cancel what's AHEAD of mine\" is not a cancel of theirs: their\n"
+            "  picks stay, this line can't jump the queue — say where theirs sit.\n"
+            "  (Read as a cancel, it cost a caller all six picks, 2026-11-28.)"
         )
     return (
         "  Submitted requests CANNOT be cancelled from this line. If they change\n"
