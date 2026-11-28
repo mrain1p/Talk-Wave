@@ -244,6 +244,29 @@ try:
     from call import landed as call_landed
 except ImportError:                                            # noqa: BLE001
     call_landed = None
+try:
+    # "Cancel what's ahead of mine" (2026-11-28) — mirrored so the drill
+    # measures the DJ the product ships; absent on older images.
+    from call import ahead as call_ahead
+except ImportError:                                            # noqa: BLE001
+    call_ahead = None
+
+
+def _new_ahead():
+    """The per-scenario "ahead of mine" guard, or None on an older image."""
+    return call_ahead.Ahead() if call_ahead is not None else None
+
+
+def _steer_ahead(guard, text, log, ctx, steered: str) -> str:
+    """Put the "ahead of mine" note in front of the model, as state.py does,
+    and return what is steering this turn so far — `steered` (the notes
+    already added) if this one stayed quiet."""
+    note = guard.hint_for(text) if guard is not None else ""
+    if note:
+        log.append("  (wants what's ahead of their picks cleared — "
+                   "steering this turn)")
+        ctx.add_message(role="system", content=note)
+    return note or steered
 from call import promise_guard
 from chat.session import _tool_report
 from livekit.agents import llm as lk_llm
@@ -2206,6 +2229,7 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
                 if (call_landed is not None and CLOSING_NUDGE_ON) else None)
     # Per scenario, like the door: what this caller has already had to ask.
     stuck = call_stuck.Stuck()
+    ahead_g = _new_ahead()
     # Per scenario, like both above: which withheld capability this caller
     # has already been carded for. None when the image predates the module.
     wh = (call_withheld.Withheld(WITHHELD_CFG, ACTIONS)
@@ -2277,6 +2301,10 @@ async def run_scenario(llm, tools, prompt, name, turns, log, expect=None):
         if note:
             log.append("  (the caller has asked this before — steering this turn)")
             ctx.add_message(role="system", content=note)
+        # Same slot as state.py: before the door — it is about THIS line,
+        # not how the last one ended. Folded into `note` so the wind-down's
+        # "is anything else steering" test below sees it unchanged.
+        note = _steer_ahead(ahead_g, text, log, ctx, note)
         hint = door.hint_for(text) if DOOR_ON else ""
         if hint:
             log.append("  (last line held the door open — steering this turn)")

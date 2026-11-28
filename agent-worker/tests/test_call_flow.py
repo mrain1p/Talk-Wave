@@ -3514,6 +3514,80 @@ class TestTheCallerIsNotShownTheDoorTwice(unittest.TestCase):
         self.assertEqual([], added)
 
 
+class TestClearingWhatIsAheadNeverPullsTheCallersOwnPicks(unittest.TestCase):
+    """2026-11-28 02:44Z (record 20261128-024256): six KPop Demon Hunters
+    tracks queued, the caller said "All right, cancel anything before them",
+    and the DJ cleared the caller's OWN batch. They hung up. The note on the
+    next reply says what "before them" meant; see call/ahead.py."""
+
+    ASKS = [
+        "All right, cancel anything before them.",
+        "can you clear whatever's ahead of mine",
+        "Cancel everything that’s in front of my songs",
+        "get rid of the stuff in front of them",
+        "remove the songs before my tracks please",
+        "everything ahead of mine, just skip it",
+        "can you move them up to the front",
+        "bump my songs to the top",
+        "put those first",
+    ]
+    NOT_ASKS = [
+        "cancel them",
+        "actually pull the Golden one",
+        "remove all the Eminem",
+        "cancel that mix you just queued",
+        "what songs did you queue up?",
+        "I was here before them, lol",
+        "play something before midnight",
+        "you already said that",
+    ]
+
+    def test_the_words_that_mean_ahead_of_mine(self):
+        from call.ahead import asks_to_clear_ahead
+
+        for line in self.ASKS:
+            self.assertTrue(asks_to_clear_ahead(line), line)
+
+    def test_an_ordinary_cancel_is_not_this(self):
+        from call.ahead import asks_to_clear_ahead
+
+        for line in self.NOT_ASKS:
+            self.assertFalse(asks_to_clear_ahead(line), line)
+
+    def test_the_note_keeps_their_picks_and_reaches_the_reply_path(self):
+        from call.ahead import Ahead
+        from call.state import ConversationState
+
+        st = ConversationState(ahead=Ahead())
+        out = st.hints_for("All right, cancel anything before them.")
+        self.assertEqual(["ahead"], [k for k, *_ in out])
+        note = out[0][-1]
+        self.assertIn("NOT asking you to remove their own picks", note)
+        self.assertIn("can't jump the queue", note)
+        self.assertEqual(1, st.ahead.fired)
+        self.assertEqual([], st.hints_for("cancel them"))
+
+    def test_every_mouth_runs_it(self):
+        from tests.support import AGENT_WORKER
+
+        # The holder builds it itself, so the phone and the text line both
+        # run it; the drill harness keeps its own mirror.
+        from call.state import ConversationState
+
+        self.assertIsNotNone(ConversationState().ahead)
+        src = (AGENT_WORKER / "scripted_call.py").read_text(encoding="utf-8")
+        self.assertIn("call_ahead.Ahead()", src)
+
+    def test_the_standing_rule_and_the_tool_say_it_too(self):
+        from brain.tool_rules import cancel_rule
+        from tests.support import AGENT_WORKER
+
+        self.assertIn("AHEAD of mine", cancel_rule({"allow_cancel_queue": True}))
+        src = (AGENT_WORKER / "call" / "tools" / "removal.py").read_text(
+            encoding="utf-8")
+        self.assertIn("never clear their own picks for it", src)
+
+
 class TestAFinishedCallStaysFinished(unittest.TestCase):
     """The two across-turn losses from the 2026-08-25 live harness call: the
     DJ said goodbye TWICE, and after an on-air hold interrupted the ended

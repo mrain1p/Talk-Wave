@@ -513,8 +513,21 @@ class StationConfig:
             auth=auth,
         )
         self._cache: dict[str, Any] = {}
+        # path -> monotonic time a read of it timed out or failed to connect.
+        # A failed read is NOT cached as data ({} has to stay a miss so
+        # persona_voices can fall back to its last-known-good copy), and so
+        # it used to be retried by every reader that rode it: on 2026-11-28
+        # 02:43Z the station froze mid auto-playlist rebuild and call setup
+        # asked /settings five times, 4.5s apiece, one after another — 22s
+        # of the caller's 26s ring. Remembered briefly, so the setup burst
+        # pays one timeout, and a station that recovers is read again.
+        self._failed: dict[str, float] = {}
         self._authed = bool(auth)
         self._recent = bool(recent_settings)
+
+    # Long enough to cover one call's setup burst, short enough that a
+    # station back on its feet is read again within the same call.
+    FAILED_READ_MEMORY_SECS = 60.0
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -522,6 +535,10 @@ class StationConfig:
     async def _get(self, path: str) -> dict:
         if path in self._cache:
             return self._cache[path]
+        failed_at = self._failed.get(path)
+        if (failed_at is not None
+                and time.monotonic() - failed_at < self.FAILED_READ_MEMORY_SECS):
+            return {}
         # The same guard as prime(): only an authed client may adopt another
         # process's /settings, and only a real one. See station_prefetch.
         if path == "/settings" and self._recent and self._authed:
@@ -546,7 +563,24 @@ class StationConfig:
             data = r.json()
         except Exception as e:
             log.warning("station config read %s failed: %s", path, describe(e))
+            self._failed[path] = time.monotonic()
+            # The station isn't answering, so an older copy of what the
+            # operator CONFIGURED beats none at all: the persona's voice and
+            # segments rarely change overnight, and on 2026-11-28 the only
+            # copy was ten hours old — past the fresh window — so the call
+            # rang through every timeout and still came up on a fallback
+            # voice. Only for the worker's own setup, like the fresh copy.
+            if path == "/settings" and self._recent and self._authed:
+                import station_prefetch
+
+                older = station_prefetch.recall_settings(stale_ok=True)
+                if older:
+                    log.info("station /settings unreachable — using the last "
+                             "copy on record rather than none")
+                    self._cache[path] = older
+                    return older
             return {}
+        self._failed.pop(path, None)
         self._cache[path] = data
         return data
 

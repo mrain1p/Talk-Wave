@@ -29,8 +29,15 @@ class ConversationState:
     """The guards one call runs, their order, and their two seams."""
 
     def __init__(self, door=None, stuck=None, withheld=None, arc=None,
-                 asks=None, actions=None, landed=None) -> None:
+                 asks=None, actions=None, landed=None, ahead=None) -> None:
         self.door = door
+        # "Cancel what's ahead of mine" (call/ahead.py). Built here unless
+        # given, like the comeback below: it is stateless, so every mouth —
+        # the phone and the text line alike — gets it without its own wiring.
+        if ahead is None:
+            from .ahead import Ahead
+            ahead = Ahead()
+        self.ahead = ahead
         self.stuck = stuck
         self.withheld = withheld
         self.arc = arc
@@ -82,6 +89,11 @@ class ConversationState:
                 out.append(("withheld", "the caller asked for a withheld "
                             "capability — carding and steering this turn",
                             note))
+        note = self.ahead.hint_for(caller_text)
+        if note:
+            out.append(("ahead", "the caller wants what's ahead of their "
+                        "picks cleared, not their picks — steering this "
+                        "turn", note))
         if self.door is not None:
             note = self.door.hint_for(caller_text)
             if note:

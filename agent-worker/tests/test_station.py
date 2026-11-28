@@ -1875,6 +1875,99 @@ class TestTheMintsHeadStartIsFreshOrNothing(unittest.TestCase):
         session = (AGENT_WORKER / "call" / "session.py").read_text(encoding="utf-8")
         self.assertIn("self.station_cfg = StationConfig(recent_settings=True)", session)
 
+    # A FROZEN STATION COSTS ONE TIMEOUT. 2026-11-28 02:43Z: SUB/WAVE's
+    # controller stalled ~27s rebuilding its auto-playlist, the only settings
+    # copy was ten hours old, and call setup asked /settings five times in a
+    # row at 4.5s apiece — 22s of a 26s ring, then a fallback voice anyway.
+
+    def _frozen_reads(self, recent, reads, before=None):
+        import httpx
+
+        import station_config as station_config_mod
+
+        hits = []
+
+        def handler(request):
+            hits.append(request.url.path)
+            raise httpx.ReadTimeout("station froze", request=request)
+
+        async def run():
+            sc = station_config_mod.StationConfig(base_url="http://station",
+                                                  recent_settings=recent)
+            await sc.aclose()
+            sc._authed = True
+            sc._client = httpx.AsyncClient(base_url="http://station",
+                                           transport=httpx.MockTransport(handler))
+            try:
+                got = []
+                for _ in range(reads):
+                    if before is not None:
+                        before(sc)
+                    got.append(await sc._get("/settings"))
+                return got
+            finally:
+                await sc.aclose()
+
+        return asyncio.run(run()), hits
+
+    def test_a_frozen_station_costs_setup_one_timeout_not_five(self):
+        got, hits = self._frozen_reads(recent=False, reads=5)
+        self.assertEqual([{}] * 5, got)
+        self.assertEqual(["/settings"], hits,
+                         "every reader on the setup path re-asked a frozen station")
+
+    def test_a_station_that_recovers_is_read_again(self):
+        import station_config as station_config_mod
+
+        def lapse(sc):
+            for p in list(sc._failed):
+                sc._failed[p] -= station_config_mod.StationConfig.FAILED_READ_MEMORY_SECS + 1
+
+        _, hits = self._frozen_reads(recent=False, reads=2, before=lapse)
+        self.assertEqual(["/settings", "/settings"], hits)
+
+    def test_a_frozen_station_rings_on_an_older_copy_rather_than_none(self):
+        import station_prefetch
+
+        station_prefetch.store(self.SNAP, {"values": {"v": 1}}, with_skills=False)
+        self._age("settingsT", 10 * 60 * 60)
+        self.assertIsNone(station_prefetch.recall_settings(),
+                          "ten hours is still past the fresh window")
+        got, hits = self._frozen_reads(recent=True, reads=3)
+        self.assertEqual([{"values": {"v": 1}}] * 3, got)
+        self.assertEqual(["/settings"], hits)
+
+    def test_the_older_copy_is_only_for_when_the_station_is_down(self):
+        # A live answer wins over the stale copy: the panel's edits must land.
+        import station_prefetch
+
+        station_prefetch.store(self.SNAP, {"values": {"v": 1}}, with_skills=False)
+        self._age("settingsT", 10 * 60 * 60)
+        got, hits = self._config_reads(recent=True)
+        self.assertEqual({"values": {"live": True}}, got)
+        self.assertEqual(["/settings"], hits)
+
+    def test_a_week_old_copy_is_too_old_even_for_a_frozen_station(self):
+        import station_prefetch
+
+        station_prefetch.store(self.SNAP, {"values": {"v": 1}}, with_skills=False)
+        self._age("settingsT", station_prefetch.SETTINGS_STALE_OK_SECS + 60)
+        got, _ = self._frozen_reads(recent=True, reads=1)
+        self.assertEqual([{}], got)
+
+    def test_a_failed_mint_read_does_not_wipe_an_old_copy(self):
+        # The 2026-11-28 mint hit the frozen station too, and its {} replaced
+        # the ten-hour-old copy — the one thing a stale fallback could use.
+        import station_prefetch
+
+        station_prefetch.store(self.SNAP, {"values": {"v": 1}}, with_skills=False)
+        self._age("settingsT", 10 * 60 * 60)
+        self.assertEqual(1, self._capture({}))
+        self.assertEqual({"values": {"v": 1}},
+                         station_prefetch.recall_settings(stale_ok=True))
+        self.assertIsNone(station_prefetch.recall_settings(),
+                          "keeping the copy must keep its age, not refresh it")
+
 
 class TestTheGenreShelvesTheStationComputesItself(unittest.TestCase):
     """GET /library/genres/related, adopted on the 2026-09-01 upstream pass.

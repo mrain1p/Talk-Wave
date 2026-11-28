@@ -227,6 +227,7 @@ from tests.test_call_flow import (  # noqa: F401
     TestOneFailingShutdownStepDoesNotTakeTheRestDown,
     TestTheGreetingRacesItsOwnSilence,
     TestAFinishedCallStaysFinished,
+    TestClearingWhatIsAheadNeverPullsTheCallersOwnPicks,
     TestAnOpenAskComesBackWithoutReasking,
     TestTheWindDownIsAMomentNotAParagraph,
     TestOneStateObjectFeedsTheReplyPath,
