@@ -4,12 +4,22 @@ Release notes for operators. One entry per release to `main`; work in flight on
 `dev` sits under Unreleased until then, and the version bumps once at release
 (the full commit-by-commit detail is in git history).
 
-## 1.0.4
+## 1.0.5
 
-Two fixes from last night's call.
+Two fixes from last night's call, and a cleaner, easier-to-read phone.
 
 - **"Cancel what's ahead of mine" keeps your picks.** Asked to clear the songs in front of the ones they'd just queued, the DJ pulled the caller's own picks instead. It now leaves them in, says where they sit, and explains it can't jump the queue.
 - **A busy station no longer makes the phone ring for half a minute.** When SUB/WAVE stops answering for a moment, the call now waits on it once instead of five times in a row, and picks up with the DJ's voice from the last settings it saw rather than a fallback voice.
+- **Easier to read.** Hang up, Call and Play carry white text that now passes contrast, the smallest labels came up a size, and the light theme's coral and amber are a shade deeper so they read on cream.
+- **The player's tabs are a slim track.** Up next, Just played, Requests and Lyrics sit on one underlined row that is a third shorter, labels centred, and the room goes to the list.
+- **The show line fits.** A long show name like "The Piazza · Golden-era pop" stays on one line instead of leaving a word behind.
+- **The guide's day list reads by time.** On air is coral, next is amber, the rest are quiet; the week grid keeps each show's own colour.
+- **Song-picked receipts look like the rest of the card.** "Mix queued" and friends are a square marker in a coral box instead of an emoji on a bar.
+- **Tapping Phone, Player or Guide no longer nudges the icon.** The tapped tab used to jump a few pixels up.
+
+## 1.0.4
+
+Released the same morning; its notes are part of 1.0.5.
 
 ## 1.0.3
 
