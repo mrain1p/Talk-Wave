@@ -5635,8 +5635,25 @@
     body:not(.compact) .card .plscroll > .plpanel:not(.plqueue) {
       margin: 10px 16px 10px; padding: 10px 14px;
     }
-    /* …and the tab row over the list, likewise. */
-    body:not(.compact) .card .pltabs { padding: 10px 16px 8px; }
+    /* …and the tab row over the list: a TRACK, not a row of buttons
+       (operator, 2026-11-28: "a little less tall"). 57px became 41 —
+       8px over 32px cells, nothing under them, so the lit tab's 2px
+       coral mark lands on the hairline every cell draws and the list
+       starts right there. No fill on the lit cell: the coral word, its
+       pip and the mark are three signals already. Its own height, not
+       --seg-h, because the route switch rides --seg-h at 38. The 16px
+       the row gives back goes to the list, which is the part that was
+       starved. */
+    body:not(.compact) .card .pltabs { padding: 8px 16px 0; }
+    body:not(.compact) .card .pltabs .pltab {
+      height: 32px; background: none;
+      box-shadow: inset 0 -1px 0 var(--hairline);
+    }
+    body:not(.compact) .card .pltabs .pltab.on {
+      background: none; box-shadow: inset 0 -2px 0 var(--coral);
+    }
+    /* The track IS the first row's top rule; its own would draw a second. */
+    body:not(.compact) .card .plqueue .plrow:first-child { border-top: 0; }
     /* THE LIST FILLS WHAT THE SHEET LEAVES, AND SCROLLS INSIDE IT. The
        group flexes on this surface but the panel inside it did not, so a
        296px group carried a 156px body with 140px of nothing under it, and
