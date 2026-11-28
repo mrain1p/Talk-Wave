@@ -7940,6 +7940,7 @@
       if (show.id === ordered.next) {
         const f = row.querySelector('.gdflag');
         if (f && !f.textContent) f.textContent = 'Next';
+        row.classList.add('next');
       }
       list.appendChild(row);
     });

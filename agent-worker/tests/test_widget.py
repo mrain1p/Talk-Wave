@@ -5152,8 +5152,12 @@ class TestThePlayersDockIsTwoBandsThatLineUp(unittest.TestCase):
         self.assertIn("--hero-title: 19px;", block)
         self.assertIn("--pl-artist: 15px; --pl-release: 13px;", block)
         self.assertIn("body:not(.compact) .card .plprog { height: 32px; }", block)
+        # 8/0 over 32px cells, was 10/8 over 38 (operator, 2026-11-28: the
+        # tab row "can be a little less tall") — 57px down to 41, and the
+        # 16px went to this same list.
         self.assertIn("body:not(.compact) .card .pltabs "
-                      "{ padding: 10px 16px 8px; }", block)
+                      "{ padding: 8px 16px 0; }", block)
+        self.assertIn("height: 32px; background: none;", block)
 
     def test_the_list_is_reachable_where_its_floor_does_not_fit(self):
         # In a phone BROWSER the bar takes the height the installed app gets,

@@ -55,7 +55,7 @@
     --alpenglow: #f2f0ec; --sage: #9a9aa2; --sage-dim: #83838d;
     --coral: #e0533d; --amber: #d8a13a;
     --hairline: #26262a; --edge: #2b2b31;
-    --ok: #47b877; --cool: #4a8b8d;
+    --ok: #47b877; --cool: #5a9fa1;
     --shadow: none;
 
     /* System stacks, deliberately. The widget ships no font files and makes
@@ -73,6 +73,19 @@
        --action-h is gone; the idle doors resolve to --control-h like
        everything else. */
     --control-h: 38px; --chip-h: 26px; --band-gap: 12px;
+
+    /* THE ONE FILLED BUTTON'S FILL. White on --coral measured 3.84:1 in dark
+       (design system, 2026-11-28); a step darker is 4.9:1 and still reads as
+       the same coral. Derived, not a literal, so a station's own accent moves
+       it too. Light's coral already carries white at 5.7:1, so light leaves
+       it alone. */
+    --coral-fill: color-mix(in srgb, var(--coral) 88%, #000);
+    --on-accent: #fff;
+    /* The selected ground: a lit tab, the face you are on, a receipt. One
+       value for all of them (they had drifted to 9%, 12% and 13%), solid
+       over --pine so the artwork behind the player cannot tint it. */
+    --pick-live: color-mix(in srgb, var(--coral) 13%, var(--pine));
+    --pick-priv: color-mix(in srgb, var(--cool) 13%, var(--pine));
 
     /* --- the skin surface -------------------------------------------------
        Colour was named once and nothing below could hardcode it; FORM was
@@ -178,10 +191,13 @@
     :root {
       --pine: #f6f5f3; --granite: #ffffff; --granite-hi: #f0eeea;
       --alpenglow: #1b1a18; --sage: #5f5c57; --sage-dim: #6e6a64;
-      --coral: #c2402b; --amber: #9a6b16;
+      --coral: #b83b27; --amber: #8c6112;
       --hairline: #e3e0db; --edge: #d5d1ca;
       --ok: #2f7d4f; --cool: #2f6f72;
       --shadow: 0 1px 2px rgba(0,0,0,.05);
+      --coral-fill: var(--coral);
+      /* 13% left coral labels at 4.3:1 on cream; 8% is 4.6. */
+      --pick-live: color-mix(in srgb, var(--coral) 8%, var(--pine));
     }
   }
   /* Explicit choice always wins over the OS. */
@@ -191,17 +207,22 @@
     --alpenglow: #f2f0ec; --sage: #9a9aa2; --sage-dim: #83838d;
     --coral: #e0533d; --amber: #d8a13a;
     --hairline: #26262a; --edge: #2b2b31;
-    --ok: #47b877; --cool: #4a8b8d;
+    --ok: #47b877; --cool: #5a9fa1;
     --shadow: none;
+    --coral-fill: color-mix(in srgb, var(--coral) 88%, #000);
+    --pick-live: color-mix(in srgb, var(--coral) 13%, var(--pine));
   }
   :root[data-theme="light"] {
     color-scheme: light;
     --pine: #f6f5f3; --granite: #ffffff; --granite-hi: #f0eeea;
     --alpenglow: #1b1a18; --sage: #5f5c57; --sage-dim: #6e6a64;
-    --coral: #c2402b; --amber: #9a6b16;
+    --coral: #b83b27; --amber: #8c6112;
     --hairline: #e3e0db; --edge: #d5d1ca;
     --ok: #2f7d4f; --cool: #2f6f72;
     --shadow: 0 1px 2px rgba(0,0,0,.05);
+    --coral-fill: var(--coral);
+    /* 13% left coral labels at 4.3:1 on cream; 8% is 4.6. */
+    --pick-live: color-mix(in srgb, var(--coral) 8%, var(--pine));
   }
 
   /* LIGHT IS NOT A TINT OF DARK. On cream the same greys that read as
@@ -704,12 +725,13 @@
   /* Primary: the one action in this state. Idle that is Call, in-call it is
      Hang up, behind the door it is the code button. */
   #callBtn:not(:disabled), #hangBtn, .guestgate:not([hidden]) #guestBtn {
-    background: var(--coral); color: #fff; border-color: var(--coral);
+    background: var(--coral-fill); color: var(--on-accent);
+    border-color: var(--coral-fill);
     box-shadow: var(--skin-glow);
   }
   #callBtn:not(:disabled):hover, #hangBtn:hover,
   .guestgate:not([hidden]) #guestBtn:hover {
-    filter: brightness(1.08); background: var(--coral);
+    filter: brightness(1.08); background: var(--coral-fill);
   }
   /* While the door code is up it owns the primary, so Call steps back even
      when it is technically enabled. */
@@ -1087,7 +1109,7 @@
   /* On the schedule: day groups left, hours right, today marked. */
   .gdsched { margin-top: 10px; border-top: 1px solid var(--hairline); padding-top: 8px; }
   .gdcap {
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
     margin-bottom: 6px;
   }
@@ -1100,7 +1122,7 @@
   .gddays { color: var(--alpenglow); display: inline-flex; align-items: center; gap: 6px; }
   .gdhours { margin-left: auto; color: var(--amber); white-space: nowrap; }
   .gdtodaytag {
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .12em;
     text-transform: var(--skin-label-case); color: var(--coral);
     border: 1px solid var(--coral); border-radius: max(4px, var(--skin-radius-ctl));
     padding: 3px 5px;
@@ -1112,7 +1134,7 @@
   }
   .gdherotop { display: flex; align-items: center; gap: 7px; }
   .gdherolab {
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--coral);
   }
   .gdheronext {
@@ -1124,7 +1146,7 @@
      listed for a different time shown as current is confusing. */
   .gdheroflag {
     margin-left: auto;
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .12em;
     text-transform: var(--skin-label-case); color: var(--amber);
     border: 1px solid var(--amber); border-radius: max(4px, var(--skin-radius-ctl));
     padding: 3px 6px;
@@ -1180,7 +1202,7 @@
   }
   .gdpmeta { min-width: 0; }
   .gdrole {
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
   }
   .gdpname {
@@ -1207,7 +1229,7 @@
   .gdviews { margin-left: auto; display: inline-flex; }
   .gdviews[hidden] { display: none; }
   .card .gdview {
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
     background: transparent; border: 1px solid var(--edge);
     padding: 0 9px; margin: 0; min-height: 0; height: 22px; cursor: pointer;
@@ -1270,7 +1292,7 @@
   .gdspans { display: flex; justify-content: flex-end; gap: 0; margin-top: 12px; }
   .gdspans[hidden] { display: none; }
   .card .gdspan {
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .12em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
     background: transparent; border: 1px solid var(--edge); border-left: 0;
     padding: 0 10px; margin: 0; min-height: 0; height: 22px; cursor: pointer;
@@ -1301,7 +1323,7 @@
     gap: 2px; padding: 2px 0; position: relative;
   }
   .gdhourlab {
-    font: 9.5px/1 var(--font-mono); letter-spacing: .04em; color: var(--sage-dim);
+    font: 10px/1 var(--font-mono); letter-spacing: .04em; color: var(--sage-dim);
     padding: 6px 0 4px; align-self: end;
   }
   .gdgridrow { border-top: 1px solid var(--hairline); }
@@ -1327,7 +1349,7 @@
   .card .gdcell[data-tone="11"] { background: color-mix(in srgb, var(--alpenglow) 19%, var(--granite)); }
   .card .gdcell.on { border-color: var(--coral); }
   .gdcellname {
-    font: 700 9.5px/1.2 var(--font-mono); letter-spacing: .04em;
+    font: 700 10px/1.2 var(--font-mono); letter-spacing: .04em;
     text-transform: var(--skin-label-case); color: var(--alpenglow);
     white-space: nowrap; overflow: hidden;
   }
@@ -1368,7 +1390,7 @@
     padding: 10px 0 6px; margin: 0 0 2px; min-height: 0; height: auto;
     background: transparent; border: 0; border-top: 1px solid var(--hairline);
     border-radius: 0; cursor: pointer; text-align: left;
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
   }
   .card .gdshelfcap:hover { color: var(--alpenglow); }
@@ -1550,7 +1572,7 @@
      broadcast, and it is dressed quietly for that reason. */
   .plseg {
     flex: none; margin-left: 8px; cursor: pointer;
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case);
     padding: 5px 9px; border-radius: 6px;
     border: 1px solid var(--edge); background: transparent; color: var(--sage);
@@ -1565,7 +1587,7 @@
   }
   .plsegpop[hidden] { display: none; }
   .plseglab {
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
   }
   .plsegpop select {
@@ -1685,7 +1707,7 @@
   /* Packed so a real tag set fits TWO rows on a phone, not three
      (operator's screenshot, 2026-08-17). */
   .pltags .pill { color: var(--amber); border-color: var(--edge);
-                  font-size: 9.5px; letter-spacing: .08em; height: auto;
+                  font-size: 10px; letter-spacing: .08em; height: auto;
                   padding: 5px 6px; }
   .plprog[hidden] { display: none; }
   .plprog { display: flex; align-items: center; gap: 10px; width: 100%;
@@ -1735,7 +1757,7 @@
     position: relative; z-index: 1;
   }
   .card .pltabs .pltab {
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
     background: transparent; border: 1px solid transparent; border-bottom: 0;
     border-radius: 6px 6px 0 0; padding: 8px 12px; margin: 0;
@@ -1758,7 +1780,7 @@
      inherited the body face when it left the panel head and ballooned to
      16px (caught on the first screenshot). */
   .pltabs .plpanelmeta {
-    font: 400 9.5px/1 var(--font-mono); letter-spacing: .08em;
+    font: 400 10px/1 var(--font-mono); letter-spacing: .08em;
   }
   /* Headless on purpose: the tabs row IS the head. The body starts at the
      panel's own padding, the same air the booth's words get.
@@ -1792,7 +1814,7 @@
   .plscroll .plpanel:first-of-type { margin-top: 14px; }
   .plpanelhead {
     display: flex; align-items: center; gap: 7px;
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--coral);
   }
   .ppip { width: 7px; height: 7px; background: var(--edge); border-radius: 0;
@@ -1933,7 +1955,7 @@
        primary's own documented exception (#callBtn wears the same
        literal), so the two faces' filled controls now say it identically.
        The radius rides the skin token like every call-face control. */
-    background: var(--coral); color: #fff;
+    background: var(--coral-fill); color: var(--on-accent);
     font: 700 12px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case);
     border-radius: var(--skin-radius-ctl); cursor: pointer;
@@ -2251,7 +2273,7 @@
     display: inline-flex; align-items: center; gap: 6px; height: var(--chip-h);
     padding: 0 7px; border-radius: 0; min-width: 0;
     background: transparent; border: 1px solid var(--hairline); color: var(--sage-dim);
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em; text-transform: var(--skin-label-case);
+    font: 700 10px/1 var(--font-mono); letter-spacing: .1em; text-transform: var(--skin-label-case);
     transition: color .2s, border-color .2s;
     /* A pill's text never wraps inside it. "Reaching the booth" used to break
        onto a second line and stand the chip up two rows tall, which read as the
@@ -2280,7 +2302,7 @@
   .micchip {
     position: absolute; left: 0; right: 0; top: 50%;
     transform: translateY(-50%); text-align: center; pointer-events: none;
-    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .18em;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .18em;
     text-transform: var(--skin-label-case); font-weight: 700; line-height: 1;
     color: var(--sage-dim); white-space: nowrap;
     /* Legible over the bars beneath it without hiding them. */
@@ -2329,7 +2351,7 @@
     height: auto; min-height: 0; margin: 0;
     background: transparent; border: 0; border-radius: 0; box-shadow: none;
     cursor: pointer; text-transform: uppercase;
-    font: 700 9.5px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     letter-spacing: .14em; color: var(--sage-dim);
   }
   .routeswitch .rcell .rpip {
@@ -2479,7 +2501,7 @@
   }
   /* The labels are bare again — the box is round the whole block above. */
   .duplex .mlabel {
-    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .16em;
     text-transform: var(--skin-label-case); font-weight: 700; color: var(--sage-dim);
     white-space: nowrap; margin: 0;
     display: inline-flex; align-items: center;
@@ -2550,7 +2572,7 @@
   .vol { display: flex; align-items: center; gap: 10px; flex: 1 1 130px;
          min-width: 110px; max-width: 260px; }
   .vol label {
-    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--sage-dim); font-weight: 700;
   }
   /* A 3px trough with a fill in the accent — the same shape as every other
@@ -2628,7 +2650,7 @@
     box-shadow: 0 0 0 2px var(--amber);
   }
   .vol .pct {
-    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .16em;
     font-weight: 700; color: var(--sage-dim); width: 38px; text-align: right;
     font-variant-numeric: tabular-nums;
   }
@@ -2706,7 +2728,7 @@
      the only two-line control on the card. The key is drawn in the shape of
      the key it names, which says the same thing in one line's height. */
   .pttbar .keycap {
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .1em;
     text-transform: var(--skin-label-case); padding: 3px 6px;
     border: 1px solid currentColor; border-bottom-width: 2px;
     opacity: .75; flex: 0 0 auto;
@@ -2834,7 +2856,7 @@
   .vmrow .sname { flex: 0 1 auto; white-space: nowrap; overflow: hidden;
                   text-overflow: ellipsis; max-width: 220px; }
   .vmrow .vmstate {
-    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em;
     text-transform: var(--skin-label-case); font-weight: 700; color: var(--warn);
   }
   .vmrow .vmstate.ok { color: var(--ok); }
@@ -2956,13 +2978,13 @@
     min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
     display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
     background: var(--granite); border: 1px solid var(--hairline);
-    color: var(--sage); font: 700 9.5px/1 var(--font-mono);
+    color: var(--sage); font: 700 10px/1 var(--font-mono);
     letter-spacing: .14em; text-transform: var(--skin-label-case);
   }
   .card .callended:hover { background: var(--granite); color: var(--alpenglow);
                            border-color: var(--edge); }
   .callended[hidden] { display: none; }
-  .callended .chev { font-size: 9.5px; transition: transform .18s ease; }
+  .callended .chev { font-size: 10px; transition: transform .18s ease; }
   .callended.open .chev { transform: rotate(90deg); }
   .callended .when { display: none; }
 
@@ -2983,7 +3005,7 @@
      it disappears entirely on a narrow card: two thumbs need no caption, and
      the transcript's own label is the one that has to survive. */
   .rate .rlabel {
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .14em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
     white-space: nowrap; flex: 0 0 auto;
   }
@@ -3386,7 +3408,7 @@
   }
   .cap:last-child { margin-bottom: 0; }
   .cap .who {
-    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .16em;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .16em;
     text-transform: var(--skin-label-case); font-weight: 700;
     white-space: nowrap; margin-right: 8px;
   }
@@ -3421,10 +3443,10 @@
      Tinted and inset so it reads as something that HAPPENED, clearly not
      another thing the DJ said. */
   .cap.sys {
-    background: color-mix(in srgb, var(--coral) 9%, transparent);
-    border-left: 2px solid var(--coral);
+    background: var(--pick-live);
+    border: 1px solid color-mix(in srgb, var(--coral) 35%, transparent);
     border-radius: 0;
-    padding: 7px 9px; margin: 9px 0;
+    padding: 8px 10px; margin: 9px 0;
     /* display here, not inherited: .cap stopped being a grid when the
        speech labels went inline, and this card's icon column still is one. */
     /* 18px and a 7px gutter, not 20 and 9: the icon is one glyph, and the 6px
@@ -3432,7 +3454,13 @@
     display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 7px;
     align-items: start; line-height: 1.45;
   }
-  .cap.sys .ico { font-size: 12px; line-height: 1.2; text-align: center; }
+  /* The glyph call.js writes stays in the DOM (it is what the ticker and a
+     screen reader get); the card draws the house's square pip in its place,
+     the same mark as the state chips and ON AIR. */
+  .cap.sys .ico {
+    font-size: 0; line-height: 0; align-self: center; justify-self: center;
+    width: 8px; height: 8px; background: var(--coral);
+  }
   /* ONE LINE, wrapping. The name and the detail were two blocks at two sizes,
      which spent three lines and a lot of card on "SHOW TAKEOVER SET" over
      "THE OVERLOOK · After Dark for 60 min". They are one sentence — what
@@ -3486,7 +3514,7 @@
     border-bottom: 1px solid color-mix(in srgb, var(--coral) 14%, transparent);
   }
   .chattable thead th {
-    color: var(--coral); font-family: var(--font-mono); font-size: 9.5px;
+    color: var(--coral); font-family: var(--font-mono); font-size: 10px;
     letter-spacing: .12em; text-transform: var(--skin-label-case); font-weight: 700;
   }
   .chattable tbody td { color: var(--alpenglow); }
@@ -3637,7 +3665,7 @@
      once, quietly, and the list itself is the point. */
   .askrole {
     margin-left: auto; white-space: nowrap;
-    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em;
     text-transform: var(--skin-label-case); font-weight: 700; color: var(--sage-dim);
     border: 1px solid var(--hairline); border-radius: 999px; padding: 2px 7px;
   }
@@ -4110,7 +4138,7 @@
   .ticker[hidden] { display: none; }
   .ticker.show { opacity: 1; }
   .ticker .who {
-    font-family: var(--font-mono); font-size: 9.5px; font-weight: 700;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
     letter-spacing: .16em; text-transform: uppercase; text-align: right;
     color: var(--coral); white-space: nowrap;
   }
@@ -4294,13 +4322,9 @@
        writes its own, which are the safe-area max() expressions. */
     --card-pad-l: 16px;
     --card-pad-r: 16px;
-    /* The two selected-cell grounds. SOLID, and they stay that way now the
-       wash that first forced it is gone: the player's own artwork bloom
-       still sits behind this control, and a translucent tint changed colour
-       with the record. color-mix over --pine keeps the theming contract —
-       a station repaint moves these with its own accent. */
-    --pick-live: color-mix(in srgb, var(--coral) 13%, var(--pine));
-    --pick-priv: color-mix(in srgb, var(--cool) 13%, var(--pine));
+    /* --pick-live / --pick-priv moved to the base :root (2026-11-28): the
+       faces row and the receipts wear them on every surface now, and light
+       needs its own strength. */
   }
 
   /* -- no ambient wash -------------------------------------------------
@@ -4332,7 +4356,7 @@
   /* IN THE BOOTH — the eyebrow over the name, so the row says whose picture
      that is before the name has been read. */
   .who-row .whocap {
-    display: block; font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    display: block; font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
     margin: 0 0 6px; white-space: nowrap; overflow: hidden;
   }
@@ -4370,7 +4394,7 @@
   }
   .stationrow .stationmeta { flex: 1; min-width: 0; display: block; }
   .stationrow .stationcap {
-    display: block; font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    display: block; font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
     margin: 0 0 4px; white-space: nowrap; overflow: hidden;
   }
@@ -4466,7 +4490,7 @@
     gap: 14px;
   }
   .idleboard .stagehead {
-    flex: none; font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    flex: none; font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--cool);
     margin: 0 0 6px;
   }
@@ -4522,13 +4546,13 @@
     animation: blink 1.6s ease-in-out infinite;
   }
   .idleboard .openlab {
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--amber);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .idleboard .opentil {
     margin-left: auto; flex: none; white-space: nowrap;
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .12em;
     text-transform: var(--skin-label-case); color: var(--sage-dim);
   }
   /* THE BOOTH'S QUESTION IN THE STAGE'S OWN VOICE — the sentence above it,
@@ -4676,7 +4700,7 @@
     display: flex; align-items: center; justify-content: center; gap: 8px;
   }
   .rig.on .meters .vol label {
-    flex: none; font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    flex: none; font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--sage-dim); margin: 0;
   }
   /* The knob's position is the reading; the figure beside it was a third
@@ -4702,12 +4726,18 @@
      and the gap gives up half of itself. */
   .card .facebar .face {
     flex-direction: column; gap: 3px;
-    font-size: 9.5px; letter-spacing: .12em;
+    font-size: 10px; letter-spacing: .12em;
   }
   .card .facebar .face .facesvg { width: 15px; height: 15px; }
+  /* CLIP, not hidden. The hit-box ::after reaches 7px past the cell, and
+     overflow: hidden makes that a scroll container — clicking a face
+     focused it and scrolled its icon and label 7px up inside the cell
+     (measured: scrollTop 7.3 on the lit face, 2026-11-28). clip cuts the
+     same pixels and can never scroll. */
+  .card .facebar .face { overflow: clip; }
   .card .facebar .face + .face { box-shadow: inset 1px 0 0 var(--edge); }
   .card .facebar .face.on {
-    background: color-mix(in srgb, var(--coral) 9%, transparent);
+    background: var(--pick-live);
   }
   .card .facebar .face .facesvg { display: block; flex: none; }
   /* One line each, and the label is what gives up room — the icon is what
@@ -4788,7 +4818,7 @@
     justify-content: flex-start;
   }
   .card .pltags .pill {
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .06em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .06em;
     text-transform: var(--skin-label-case); color: var(--amber);
     border: 1px solid var(--edge); background: transparent;
     padding: 4px 5px; height: auto; border-radius: 0;
@@ -4845,7 +4875,7 @@
   .plscroll > .plpanel:not(.plqueue) .plpanelmeta {
     margin-left: auto; flex: 0 1 auto; min-width: 0; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis;
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .12em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .12em;
     text-transform: var(--skin-label-case); color: var(--alpenglow);
   }
   /* The DJ's line, centred in what is left — clamped to three, so a long
@@ -4877,14 +4907,19 @@
   }
   .card .pltabs .pltab {
     flex: 1 1 0; min-width: 0; height: var(--seg-h); padding: 0 6px; margin: 0;
-    background: var(--pine); border: 1px solid var(--edge); border-radius: 0;
-    box-shadow: none; color: var(--sage-dim);
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .14em;
+    background: none; border: 0;
+    border-radius: 0; box-shadow: none; color: var(--sage-dim);
+    font: 700 10px/1 var(--font-mono); letter-spacing: .12em;
     text-transform: var(--skin-label-case);
     display: inline-flex; align-items: center; justify-content: center;
-    gap: 6px; white-space: nowrap; overflow: hidden;
+    gap: 6px; white-space: nowrap;
+    /* clip, not hidden: the hit-box ::after made every tab a scroll
+       container 4px wider inside than out (see the faces row). */
+    overflow: clip;
   }
-  .card .pltabs .pltab + .pltab { border-left: 0; }
+  /* UNDERLINES, not boxes (design system, 2026-11-28): four boxed cells on a
+     360px phone left every label touching its own borders. A 2px mark under
+     the lit one, over the list's own top rule, gives each label its cell. */
   /* FOUR tabs (an operator's sheet: Requests, and Lyrics when the record
      has words) on a phone-width card ran "UP NEXT 4" into "JUST PLAYED 2"
      (2026-11-27, 360px). The tracking and the cell's inset give way first;
@@ -4894,7 +4929,8 @@
     letter-spacing: .04em; padding: 0 2px; gap: 3px;
   }
   .card .pltabs .pltab.on {
-    background: var(--pick-live); box-shadow: inset 0 0 0 1px var(--coral);
+    background: var(--pick-live); border-bottom-color: var(--coral);
+    box-shadow: inset 0 -2px 0 var(--coral);
     color: var(--coral);
     /* The bookmark-tab shape left the SELECTED cell a pixel lower than its
        neighbour and a pixel taller, which is what "Up next is misaligned,
@@ -4903,12 +4939,14 @@
        below it, because there is no panel edge to merge into any more. */
     margin-bottom: 0; padding-bottom: 0; border-radius: 0;
   }
-  .card .pltabs .pltab .ppip { visibility: hidden; }
-  .card .pltabs .pltab.on .ppip { visibility: visible; background: currentColor; }
+  /* Gone, not invisible, on an unlit tab: a hidden pip still took its 7px
+     and its gap, so every unlit label sat ~5px right of its cell's centre. */
+  .card .pltabs .pltab .ppip { display: none; }
+  .card .pltabs .pltab.on .ppip { display: block; background: currentColor; }
   /* The count beside a tab's label: a bare figure in the label's own quiet
      ink, the lit tab's coral when it is the face being read, and gone —
      gap and all — when there is nothing to count. */
-  .card .pltabs .pltab .plcount { color: var(--sage-dim); letter-spacing: .08em; }
+  .card .pltabs .pltab .plcount { color: var(--sage); font-weight: 500; letter-spacing: .04em; }
   .card .pltabs .pltab.on .plcount { color: inherit; }
   .card .pltabs .pltab .plcount:empty { display: none; }
   /* THE ONE SCROLLING REGION on this face. */
@@ -5093,7 +5131,7 @@
   .gdscroll > .gdsection {
     order: 2; padding: 16px 0 0; margin: 0;
     border-top: 1px solid var(--edge);
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--coral);
   }
   .gdscroll > .gdtodayhead { order: 3; }
@@ -5133,7 +5171,7 @@
   }
   .card .gdrow.live .gdwhen .gdwhent { color: var(--coral); }
   .card .gdwhen .gdwhend {
-    display: block; font: 9.5px/1.2 var(--font-mono); letter-spacing: .06em;
+    display: block; font: 10px/1.2 var(--font-mono); letter-spacing: .06em;
     color: var(--sage-dim); margin-top: 3px;
   }
   .card .gdspine { flex: none; width: 2px; display: block; }
@@ -5152,7 +5190,7 @@
     gap: 7px;
   }
   .card .gdflag {
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .1em;
     text-transform: var(--skin-label-case); color: var(--amber);
     white-space: nowrap;
   }
@@ -5167,7 +5205,7 @@
     flex: none; height: 24px; min-height: 0; margin: 0; padding: 0 8px;
     background: transparent; border: 1px solid var(--coral);
     border-radius: 0; color: var(--coral); cursor: pointer;
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .1em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .1em;
     text-transform: var(--skin-label-case); white-space: nowrap;
     display: inline-flex; align-items: center; justify-content: center;
   }
@@ -5270,7 +5308,7 @@
   }
   .card .gdherotop { display: flex; align-items: center; gap: 8px; flex: none; }
   .card .gdherolab {
-    font: 700 9.5px/1 var(--font-mono); letter-spacing: .16em;
+    font: 700 10px/1 var(--font-mono); letter-spacing: .16em;
     text-transform: var(--skin-label-case); color: var(--coral);
   }
   .card .gdheronext {
@@ -5432,6 +5470,15 @@
   .card .gdspine {
     width: 2px; height: auto; border-radius: 0; align-self: stretch;
   }
+  /* In the DAY list the spine says WHEN, not WHO (design system,
+     2026-11-28): coral on air, amber next, a quiet edge for the rest. A
+     column of per-show tones put amber, teal and coral down the list, the
+     same three colours that mean time, the caller and the station
+     everywhere else on the card. The week grid keeps the tones — there a
+     colour is how you follow one show across seven rows. */
+  .card .gdrow .gdspine { background: var(--edge); }
+  .card .gdrow.live .gdspine { background: var(--coral); }
+  .card .gdrow.next .gdspine { background: var(--amber); }
 
   /* -- the surfaces ------------------------------------------------------
      The handoff's own numbers, at the viewport it was drawn for: the
@@ -5493,7 +5540,12 @@
       font-size: 25px; line-height: 1.1; font-weight: 700; margin: 0;
     }
     body:not(.compact) .card:not([data-mode="chat"]) .who-row .show {
-      text-align: left; font-size: 11px; letter-spacing: .14em; margin: 3px 0 0;
+      /* 10px at .1em, not 11 at .14: "THE PIAZZA · GOLDEN-ERA POP" needed
+         220px of a 200px column and left POP alone on a second line. The
+         operator's rule (2026-11-28): smaller type that fits beats bigger
+         type that wraps. The two-line clamp stays as the fallback for a name
+         that is long even at this size. */
+      text-align: left; font-size: 10px; letter-spacing: .1em; margin: 3px 0 0;
     }
     body:not(.compact) .card:not([data-mode="chat"]) .who-row .tagline {
       margin: 3px 0 0;
@@ -5571,7 +5623,7 @@
        ellipsis for the genuinely long ones. Two lines of chrome over a
        three-line quote was the wrong half to spend the room on. */
     body:not(.compact) .plscroll > .plpanel:not(.plqueue) .plpanelhead {
-      flex-wrap: nowrap; font-size: 9.5px; gap: 7px;
+      flex-wrap: nowrap; font-size: 10px; gap: 7px;
     }
     body:not(.compact) .plscroll > .plpanel:not(.plqueue) .plpanelmeta {
       flex: 0 1 auto; min-width: 0; margin-left: auto;
@@ -5583,8 +5635,25 @@
     body:not(.compact) .card .plscroll > .plpanel:not(.plqueue) {
       margin: 10px 16px 10px; padding: 10px 14px;
     }
-    /* …and the tab row over the list, likewise. */
-    body:not(.compact) .card .pltabs { padding: 10px 16px 8px; }
+    /* …and the tab row over the list: a TRACK, not a row of buttons
+       (operator, 2026-11-28: "a little less tall"). 57px became 41 —
+       8px over 32px cells, nothing under them, so the lit tab's 2px
+       coral mark lands on the hairline every cell draws and the list
+       starts right there. No fill on the lit cell: the coral word, its
+       pip and the mark are three signals already. Its own height, not
+       --seg-h, because the route switch rides --seg-h at 38. The 16px
+       the row gives back goes to the list, which is the part that was
+       starved. */
+    body:not(.compact) .card .pltabs { padding: 8px 16px 0; }
+    body:not(.compact) .card .pltabs .pltab {
+      height: 32px; background: none;
+      box-shadow: inset 0 -1px 0 var(--hairline);
+    }
+    body:not(.compact) .card .pltabs .pltab.on {
+      background: none; box-shadow: inset 0 -2px 0 var(--coral);
+    }
+    /* The track IS the first row's top rule; its own would draw a second. */
+    body:not(.compact) .card .plqueue .plrow:first-child { border-top: 0; }
     /* THE LIST FILLS WHAT THE SHEET LEAVES, AND SCROLLS INSIDE IT. The
        group flexes on this surface but the panel inside it did not, so a
        296px group carried a 156px body with 140px of nothing under it, and
@@ -5736,7 +5805,7 @@
       /* 9.5, not the handoff's 9: the card has a type scale and the rail's
          word is not exempt from it — 9.5 is the step every other micro-label
          on the card already uses. */
-      font-size: 9.5px; letter-spacing: .14em;
+      font-size: 10px; letter-spacing: .14em;
     }
     body:not(.compact):not(.panelpage) .card.faces .facebar .face + .face {
       box-shadow: inset 0 1px 0 var(--edge);
